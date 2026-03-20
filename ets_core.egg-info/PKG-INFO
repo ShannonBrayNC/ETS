@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: ets-core
+Version: 0.1.0
+Summary: ETS transparency log core prototype
+Requires-Python: >=3.11
