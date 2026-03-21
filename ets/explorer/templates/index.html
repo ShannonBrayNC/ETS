@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ETS Explorer</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        .card { border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <h1>ETS Explorer</h1>
+
+    {% if api_error %}
+        <div class="card">
+            <strong>API Error:</strong> {{ api_error }}
+        </div>
+    {% endif %}
+
+    <div class="card">
+        <h2>Tree Head</h2>
+        <pre>{{ tree_head | tojson(indent=2) }}</pre>
+    </div>
+
+    <div class="card">
+        <h2>API Base</h2>
+        <p>{{ api_base_url }}</p>
+    </div>
+</body>
+</html>
