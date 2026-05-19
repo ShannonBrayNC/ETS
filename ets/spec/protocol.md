@@ -81,3 +81,18 @@ An inclusion proof contains:
 
 Each audit path step has a sibling `hash` and a `position` of `left` or `right`
 relative to the running hash.
+
+## Tree Head Comparison
+
+Verifier clients compare a previously trusted tree head with a later tree head
+before accepting local checkpoint progress. The comparison rejects:
+
+- different `log_id` values
+- a smaller later `tree_size`
+- a later timestamp earlier than the previous timestamp
+- equal `tree_size` values with different `root_hash` values
+- a larger `tree_size` with an unchanged `root_hash`
+
+This comparison catches local rollback and equivocation signals. It does not
+replace a future cryptographic consistency proof for append-only growth between
+two different roots.

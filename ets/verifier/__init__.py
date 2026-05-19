@@ -9,7 +9,13 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from ets.core import EvidenceEvent, InclusionProof, VerificationResult, canonical_sha256
+from ets.core import (
+    EvidenceEvent,
+    InclusionProof,
+    SignedTreeHead,
+    VerificationResult,
+    canonical_sha256,
+)
 from ets.core.proofs import verify_inclusion_proof
 
 
@@ -21,6 +27,19 @@ class EventHashVerificationResult:
     event_hash: str
     expected_event_hash: str
     reason: str
+
+
+@dataclass(frozen=True)
+class TreeHeadComparisonResult:
+    """Result of comparing a previously trusted tree head with a newer one."""
+
+    valid: bool
+    reason: str
+    log_id: str | None
+    previous_tree_size: int
+    latest_tree_size: int
+    previous_root_hash: str
+    latest_root_hash: str
 
 
 def compute_event_hash(event: EvidenceEvent | Mapping[str, Any]) -> str:
@@ -55,6 +74,49 @@ def verify_inclusion(
     return verify_inclusion_proof(parsed_proof)
 
 
+def compare_tree_heads(
+    previous: SignedTreeHead | Mapping[str, Any],
+    latest: SignedTreeHead | Mapping[str, Any],
+) -> TreeHeadComparisonResult:
+    """Compare tree heads for rollback, equivocation, and clock regressions.
+
+    This is a local checkpoint sanity check. It does not replace a future
+    cryptographic consistency proof for append-only growth between roots.
+    """
+
+    previous_head = _parse_tree_head(previous)
+    latest_head = _parse_tree_head(latest)
+
+    if previous_head.log_id != latest_head.log_id:
+        return _tree_head_result(previous_head, latest_head, False, "log IDs do not match")
+
+    if latest_head.tree_size < previous_head.tree_size:
+        return _tree_head_result(previous_head, latest_head, False, "tree size regressed")
+
+    if latest_head.created_at_utc < previous_head.created_at_utc:
+        return _tree_head_result(previous_head, latest_head, False, "tree head timestamp regressed")
+
+    if latest_head.tree_size == previous_head.tree_size:
+        if latest_head.root_hash != previous_head.root_hash:
+            return _tree_head_result(
+                previous_head,
+                latest_head,
+                False,
+                "same tree size has different roots",
+            )
+        return _tree_head_result(previous_head, latest_head, True, "ok")
+
+    if latest_head.root_hash == previous_head.root_hash:
+        return _tree_head_result(
+            previous_head,
+            latest_head,
+            False,
+            "tree size advanced without a root change",
+        )
+
+    return _tree_head_result(previous_head, latest_head, True, "tree size advanced")
+
+
 def _parse_event(event: EvidenceEvent | Mapping[str, Any]) -> EvidenceEvent:
     if isinstance(event, EvidenceEvent):
         return event
@@ -73,8 +135,36 @@ def _parse_proof(proof: InclusionProof | Mapping[str, Any]) -> InclusionProof:
         return InclusionProof.model_validate_json(json.dumps(proof))
 
 
+def _parse_tree_head(tree_head: SignedTreeHead | Mapping[str, Any]) -> SignedTreeHead:
+    if isinstance(tree_head, SignedTreeHead):
+        return tree_head
+    try:
+        return SignedTreeHead.model_validate(tree_head)
+    except ValidationError:
+        return SignedTreeHead.model_validate_json(json.dumps(tree_head))
+
+
+def _tree_head_result(
+    previous: SignedTreeHead,
+    latest: SignedTreeHead,
+    valid: bool,
+    reason: str,
+) -> TreeHeadComparisonResult:
+    return TreeHeadComparisonResult(
+        valid=valid,
+        reason=reason,
+        log_id=previous.log_id if previous.log_id == latest.log_id else None,
+        previous_tree_size=previous.tree_size,
+        latest_tree_size=latest.tree_size,
+        previous_root_hash=previous.root_hash,
+        latest_root_hash=latest.root_hash,
+    )
+
+
 __all__ = [
     "EventHashVerificationResult",
+    "TreeHeadComparisonResult",
+    "compare_tree_heads",
     "compute_event_hash",
     "verify_event_hash",
     "verify_inclusion",

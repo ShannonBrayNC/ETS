@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from ets.verifier import compute_event_hash, verify_event_hash, verify_inclusion
+from ets.verifier import compare_tree_heads, compute_event_hash, verify_event_hash, verify_inclusion
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -22,6 +22,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _event_hash(args.path, args.expected)
         if args.command == "inclusion-proof":
             return _inclusion_proof(args.path)
+        if args.command == "tree-head":
+            return _tree_head(args.previous, args.latest)
     except (OSError, json.JSONDecodeError, ValidationError, ValueError) as exc:
         print(json.dumps({"valid": False, "reason": str(exc)}, sort_keys=True))
         return 2
@@ -41,6 +43,10 @@ def _build_parser() -> argparse.ArgumentParser:
     inclusion = subparsers.add_parser("inclusion-proof", help="verify an inclusion proof")
     inclusion.add_argument("path", type=Path, help="path to an InclusionProof JSON file")
 
+    tree_head = subparsers.add_parser("tree-head", help="compare two signed tree heads")
+    tree_head.add_argument("previous", type=Path, help="path to the previously trusted tree head")
+    tree_head.add_argument("latest", type=Path, help="path to the latest tree head")
+
     return parser
 
 
@@ -59,6 +65,14 @@ def _inclusion_proof(path: Path) -> int:
     proof = _read_json(path)
     result = verify_inclusion(proof)
     print(json.dumps(result.model_dump(mode="json"), sort_keys=True))
+    return 0 if result.valid else 1
+
+
+def _tree_head(previous_path: Path, latest_path: Path) -> int:
+    previous = _read_json(previous_path)
+    latest = _read_json(latest_path)
+    result = compare_tree_heads(previous, latest)
+    print(json.dumps(result.__dict__, sort_keys=True))
     return 0 if result.valid else 1
 
 
