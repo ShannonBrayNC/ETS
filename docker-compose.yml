@@ -1,0 +1,39 @@
+services:
+  log-node-1:
+    build: .
+    environment:
+      ETS_LOG_ID: log-node-1
+    ports:
+      - "8101:8000"
+
+  log-node-2:
+    build: .
+    environment:
+      ETS_LOG_ID: log-node-2
+    ports:
+      - "8102:8000"
+
+  log-node-3:
+    build: .
+    environment:
+      ETS_LOG_ID: log-node-3
+    ports:
+      - "8103:8000"
+
+  verifier-node-1:
+    build: .
+    command: ["python", "-m", "uvicorn", "ets.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8201:8000"
+
+  verifier-node-2:
+    build: .
+    command: ["python", "-m", "uvicorn", "ets.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8202:8000"
+
+  witness-node:
+    build: .
+    command: ["python", "-m", "uvicorn", "ets.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8301:8000"

@@ -1,14 +1,26 @@
 from datetime import UTC, datetime
 
+import pytest
+
+from ets import __version__
 from ets.core import (
     EvidenceEvent,
+    EvidenceProofBundle,
     InMemoryAppendOnlyLog,
     SignedTreeHead,
     canonical_sha256,
+    generate_consistency_proof,
     generate_inclusion_proof,
 )
 from ets.core.merkle import EMPTY_TREE_ROOT
-from ets.verifier import compare_tree_heads, compute_event_hash, verify_event_hash, verify_inclusion
+from ets.verifier import (
+    compare_tree_heads,
+    compute_event_hash,
+    verify_bundle,
+    verify_consistency,
+    verify_event_hash,
+    verify_inclusion,
+)
 from ets.verifier.cli import main
 
 
@@ -67,6 +79,37 @@ def test_verify_inclusion_accepts_mapping_payload():
     proof = generate_inclusion_proof(log.list_entries(), 1)
 
     result = verify_inclusion(proof.model_dump(mode="json"))
+
+    assert result.valid is True
+    assert result.reason == "ok"
+
+
+def test_verify_consistency_accepts_mapping_payload():
+    log = InMemoryAppendOnlyLog()
+    log.append(make_event("evt_001"))
+    log.append(make_event("evt_002"))
+    proof = generate_consistency_proof(log.list_entries(), 1)
+
+    result = verify_consistency(proof.model_dump(mode="json"))
+
+    assert result.valid is True
+    assert result.reason == "ok"
+
+
+def test_verify_bundle_accepts_mapping_payload():
+    log = InMemoryAppendOnlyLog()
+    entry = log.append(make_event("evt_001"))
+    proof = generate_inclusion_proof(log.list_entries(), 0)
+    bundle = EvidenceProofBundle(
+        event=entry.event,
+        event_hash=entry.event_hash,
+        leaf_hash=entry.leaf_hash,
+        tree_head=make_tree_head(1, proof.root_hash),
+        inclusion_proof=proof,
+        verification_result=verify_inclusion(proof),
+    )
+
+    result = verify_bundle(bundle.model_dump(mode="json"))
 
     assert result.valid is True
     assert result.reason == "ok"
@@ -133,6 +176,43 @@ def test_cli_inclusion_proof_returns_nonzero_for_tampered_proof(tmp_path, capsys
     assert '"valid": false' in capsys.readouterr().out
 
 
+def test_cli_consistency_proof_returns_nonzero_for_tampered_proof(tmp_path, capsys):
+    log = InMemoryAppendOnlyLog()
+    log.append(make_event("evt_001"))
+    log.append(make_event("evt_002"))
+    proof = generate_consistency_proof(log.list_entries(), 1).model_copy(
+        update={"latest_root_hash": "0" * 64}
+    )
+    proof_path = tmp_path / "consistency.json"
+    proof_path.write_text(proof.model_dump_json(), encoding="utf-8")
+
+    exit_code = main(["consistency-proof", str(proof_path)])
+
+    assert exit_code == 1
+    assert '"valid": false' in capsys.readouterr().out
+
+
+def test_cli_bundle_returns_nonzero_for_tampered_bundle(tmp_path, capsys):
+    log = InMemoryAppendOnlyLog()
+    entry = log.append(make_event("evt_001"))
+    proof = generate_inclusion_proof(log.list_entries(), 0)
+    bundle = EvidenceProofBundle(
+        event=entry.event,
+        event_hash="0" * 64,
+        leaf_hash=entry.leaf_hash,
+        tree_head=make_tree_head(1, proof.root_hash),
+        inclusion_proof=proof,
+        verification_result=verify_inclusion(proof),
+    )
+    bundle_path = tmp_path / "bundle.json"
+    bundle_path.write_text(bundle.model_dump_json(), encoding="utf-8")
+
+    exit_code = main(["bundle", str(bundle_path)])
+
+    assert exit_code == 1
+    assert '"valid": false' in capsys.readouterr().out
+
+
 def test_cli_tree_head_compare_returns_nonzero_for_rollback(tmp_path, capsys):
     previous_path = tmp_path / "previous.json"
     latest_path = tmp_path / "latest.json"
@@ -143,3 +223,11 @@ def test_cli_tree_head_compare_returns_nonzero_for_rollback(tmp_path, capsys):
 
     assert exit_code == 1
     assert "tree size regressed" in capsys.readouterr().out
+
+
+def test_cli_version_prints_project_version(capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--version"])
+
+    assert exc_info.value.code == 0
+    assert __version__ in capsys.readouterr().out

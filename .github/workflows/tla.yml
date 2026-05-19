@@ -1,0 +1,20 @@
+name: Formal Specs
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check formal and RFC docs
+        run: |
+          test -f docs/research/FORMAL_THEOREMS.md
+          test -f docs/spec/rfc/ETS-RFC-0001.md
+          test -f docs/spec/rfc/ETS-RFC-0002-EVIDENCE.md
+          test -f docs/spec/rfc/ETS-RFC-0003-PROOFS.md
+          test -f docs/spec/rfc/ETS-RFC-0004-FEDERATION.md

@@ -15,13 +15,13 @@ class EvidenceEvent(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
-    event_id: str = Field(min_length=1)
-    tenant_id: str = Field(min_length=1)
-    workspace_id: str = Field(min_length=1)
-    evidence_id: str = Field(min_length=1)
-    event_type: str = Field(min_length=1)
+    event_id: str = Field(min_length=1, max_length=128)
+    tenant_id: str = Field(min_length=1, max_length=128)
+    workspace_id: str = Field(min_length=1, max_length=128)
+    evidence_id: str = Field(min_length=1, max_length=128)
+    event_type: str = Field(min_length=1, max_length=128)
     subject_ref: str | None
-    content_hash: str = Field(min_length=1)
+    content_hash: str = Field(min_length=64, max_length=64)
     content_hash_alg: str = Field(min_length=1)
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at_utc: datetime
@@ -58,11 +58,26 @@ class EvidenceEvent(BaseModel):
             raise ValueError("created_at_utc must be timezone-aware")
         return value.astimezone(UTC)
 
+    @field_validator("content_hash")
+    @classmethod
+    def require_content_hash_hex(cls, value: str) -> str:
+        bytes.fromhex(value)
+        return value
+
+    @field_validator("content_hash_alg")
+    @classmethod
+    def require_supported_content_hash_alg(cls, value: str) -> str:
+        if value != "sha256":
+            raise ValueError("content_hash_alg must be sha256")
+        return value
+
     @field_validator("metadata", "external_refs")
     @classmethod
     def require_json_native_mapping(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
         if value is not None:
-            canonicalize(value)
+            encoded = canonicalize(value)
+            if len(encoded) > 64 * 1024:
+                raise ValueError("metadata and external_refs must not exceed 64 KB")
         return value
 
     def hashable_payload(self) -> dict[str, Any]:

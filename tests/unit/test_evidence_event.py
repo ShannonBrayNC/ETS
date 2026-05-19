@@ -47,6 +47,17 @@ def test_evidence_event_requires_timezone_aware_created_at():
         make_event(created_at_utc=datetime(2026, 5, 18, 12, 30))
 
 
+@pytest.mark.parametrize("algorithm", ["md5", "sha1", "sha512", "", "SHA256"])
+def test_evidence_event_rejects_unsupported_content_hash_algorithms(algorithm):
+    with pytest.raises(ValidationError):
+        make_event(content_hash_alg=algorithm)
+
+
+def test_evidence_event_rejects_non_hex_content_hash():
+    with pytest.raises(ValidationError):
+        make_event(content_hash="z" * 64)
+
+
 def test_hashable_payload_excludes_server_generated_fields():
     event = make_event(source_system="unit-test")
     payload = event.hashable_payload()

@@ -19,7 +19,8 @@ app = FastAPI(
     description="Reference explorer interface for browsing ETS log events and proofs.",
 )
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
@@ -45,7 +46,7 @@ async def index(request: Request) -> HTMLResponse:
     api_error: str | None = None
 
     try:
-        tree_head = await api_get("/tree-head")
+        tree_head = await api_get("/api/v1/log/head")
         if tree_head.get("tree_size", 0) > 0:
             # Reference implementation fallback: probe recent events from a simple integer range.
             # This keeps the explorer useful even before a list endpoint exists.

@@ -10,13 +10,15 @@ from typing import Any
 from pydantic import ValidationError
 
 from ets.core import (
+    ConsistencyProof,
     EvidenceEvent,
+    EvidenceProofBundle,
     InclusionProof,
     SignedTreeHead,
     VerificationResult,
     canonical_sha256,
 )
-from ets.core.proofs import verify_inclusion_proof
+from ets.core.proofs import verify_consistency_proof, verify_inclusion_proof
 
 
 @dataclass(frozen=True)
@@ -72,6 +74,44 @@ def verify_inclusion(
 
     parsed_proof = _parse_proof(proof)
     return verify_inclusion_proof(parsed_proof)
+
+
+def verify_consistency(
+    proof: ConsistencyProof | Mapping[str, Any],
+) -> VerificationResult:
+    """Verify a self-contained ETS consistency proof."""
+
+    parsed_proof = _parse_consistency_proof(proof)
+    return verify_consistency_proof(parsed_proof)
+
+
+def verify_bundle(bundle: EvidenceProofBundle | Mapping[str, Any]) -> VerificationResult:
+    """Verify an ETS evidence proof bundle offline."""
+
+    parsed_bundle = _parse_bundle(bundle)
+    event_hash = compute_event_hash(parsed_bundle.event)
+    if event_hash != parsed_bundle.event_hash:
+        return VerificationResult(
+            valid=False,
+            reason="bundle event hash does not match event",
+            root_hash=parsed_bundle.inclusion_proof.root_hash,
+            leaf_hash=parsed_bundle.leaf_hash,
+            tree_size=parsed_bundle.inclusion_proof.tree_size,
+            verified_at_utc=parsed_bundle.verification_result.verified_at_utc,
+        )
+    proof_result = verify_inclusion_proof(parsed_bundle.inclusion_proof)
+    if not proof_result.valid:
+        return proof_result
+    if parsed_bundle.tree_head.root_hash != parsed_bundle.inclusion_proof.root_hash:
+        return VerificationResult(
+            valid=False,
+            reason="bundle tree head root does not match inclusion proof root",
+            root_hash=parsed_bundle.tree_head.root_hash,
+            leaf_hash=parsed_bundle.leaf_hash,
+            tree_size=parsed_bundle.tree_head.tree_size,
+            verified_at_utc=proof_result.verified_at_utc,
+        )
+    return proof_result
 
 
 def compare_tree_heads(
@@ -135,6 +175,26 @@ def _parse_proof(proof: InclusionProof | Mapping[str, Any]) -> InclusionProof:
         return InclusionProof.model_validate_json(json.dumps(proof))
 
 
+def _parse_consistency_proof(
+    proof: ConsistencyProof | Mapping[str, Any],
+) -> ConsistencyProof:
+    if isinstance(proof, ConsistencyProof):
+        return proof
+    try:
+        return ConsistencyProof.model_validate(proof)
+    except ValidationError:
+        return ConsistencyProof.model_validate_json(json.dumps(proof))
+
+
+def _parse_bundle(bundle: EvidenceProofBundle | Mapping[str, Any]) -> EvidenceProofBundle:
+    if isinstance(bundle, EvidenceProofBundle):
+        return bundle
+    try:
+        return EvidenceProofBundle.model_validate(bundle)
+    except ValidationError:
+        return EvidenceProofBundle.model_validate_json(json.dumps(bundle))
+
+
 def _parse_tree_head(tree_head: SignedTreeHead | Mapping[str, Any]) -> SignedTreeHead:
     if isinstance(tree_head, SignedTreeHead):
         return tree_head
@@ -167,5 +227,7 @@ __all__ = [
     "compare_tree_heads",
     "compute_event_hash",
     "verify_event_hash",
+    "verify_consistency",
+    "verify_bundle",
     "verify_inclusion",
 ]

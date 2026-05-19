@@ -1,4 +1,8 @@
 # ETS Security
 
-Security notes will live here. Sprint 00 stores only metadata and content hashes,
-not raw evidence content.
+Security documentation for the ETS local alpha:
+
+- [Security model](security-model.md)
+- [Threat model](threat-model.md)
+- [Metadata redaction](redaction.md)
+- [Local vs production trust](local-vs-production-trust.md)

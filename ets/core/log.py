@@ -43,6 +43,8 @@ class AppendOnlyLog(Protocol):
 class InMemoryAppendOnlyLog:
     """Append-only in-memory log for tests and local demos."""
 
+    provider_name = "in_memory"
+
     def __init__(self) -> None:
         self._entries: list[LogEntry] = []
         self._event_id_index: dict[str, LogEntry] = {}

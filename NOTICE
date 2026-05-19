@@ -1,0 +1,6 @@
+Evidence Transparency System
+
+This repository contains an alpha reference implementation for the ETS protocol.
+It includes no production trust guarantee and should not be deployed as a
+hosted evidence authority without completing the release, security, and IP gates
+documented under docs/.

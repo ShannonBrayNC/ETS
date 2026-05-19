@@ -28,3 +28,12 @@ tools/workspace/
 *.egg-info/
 .pytest_cache*/
 .pytest_tmp/
+.mypy_cache/
+.ruff_cache/
+dist/
+**/dist/
+node_modules/
+**/node_modules/
+artifacts/demo/
+artifacts/benchmarks/
+ets_core.egg-info/

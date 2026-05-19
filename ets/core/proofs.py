@@ -61,6 +61,34 @@ class VerificationResult(BaseModel):
     verified_at_utc: datetime
 
 
+class ConsistencyProof(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    schema_version: str = "ets.consistency_proof.v1"
+    previous_tree_size: int = Field(ge=0)
+    latest_tree_size: int = Field(ge=0)
+    previous_root_hash: str = Field(min_length=64, max_length=64)
+    latest_root_hash: str = Field(min_length=64, max_length=64)
+    leaf_hashes: list[str]
+    hash_alg: str = "sha256"
+    generated_at_utc: datetime
+
+    @field_validator("previous_root_hash", "latest_root_hash", "leaf_hashes")
+    @classmethod
+    def require_hash_hex(cls, value: str | list[str]) -> str | list[str]:
+        values = value if isinstance(value, list) else [value]
+        for item in values:
+            bytes.fromhex(item)
+        return value
+
+    @field_validator("generated_at_utc")
+    @classmethod
+    def require_utc_datetime(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("generated_at_utc must be timezone-aware")
+        return value.astimezone(UTC)
+
+
 def generate_inclusion_proof(
     entries: list[LogEntry],
     leaf_index: int,
@@ -83,6 +111,29 @@ def generate_inclusion_proof(
             AuditPathStep.model_validate(step)
             for step in audit_path_for_leaf(leaf_hashes, leaf_index)
         ],
+        generated_at_utc=generated_at,
+    )
+
+
+def generate_consistency_proof(
+    entries: list[LogEntry],
+    previous_tree_size: int,
+    generated_at_utc: datetime | None = None,
+) -> ConsistencyProof:
+    """Generate a linear consistency proof for duplicate-last ETS Merkle trees."""
+
+    latest_size = len(entries)
+    if previous_tree_size < 0 or previous_tree_size > latest_size:
+        raise ValueError("previous_tree_size must be between 0 and latest tree size")
+
+    leaf_hashes = [entry.leaf_hash for entry in entries]
+    generated_at = generated_at_utc or datetime.now(UTC)
+    return ConsistencyProof(
+        previous_tree_size=previous_tree_size,
+        latest_tree_size=latest_size,
+        previous_root_hash=merkle_root(leaf_hashes[:previous_tree_size]),
+        latest_root_hash=merkle_root(leaf_hashes),
+        leaf_hashes=leaf_hashes,
         generated_at_utc=generated_at,
     )
 
@@ -125,6 +176,38 @@ def verify_inclusion_proof(proof: InclusionProof) -> VerificationResult:
     )
 
 
+def verify_consistency_proof(proof: ConsistencyProof) -> VerificationResult:
+    verified_at = datetime.now(UTC)
+
+    if proof.hash_alg != "sha256":
+        return VerificationResult(
+            valid=False,
+            reason="unsupported hash algorithm",
+            root_hash=proof.latest_root_hash,
+            tree_size=proof.latest_tree_size,
+            verified_at_utc=verified_at,
+        )
+    if proof.previous_tree_size > proof.latest_tree_size:
+        return _invalid_consistency(proof, verified_at, "tree size regressed")
+    if len(proof.leaf_hashes) != proof.latest_tree_size:
+        return _invalid_consistency(
+            proof,
+            verified_at,
+            "leaf hash count does not match latest size",
+        )
+    if merkle_root(proof.leaf_hashes[: proof.previous_tree_size]) != proof.previous_root_hash:
+        return _invalid_consistency(proof, verified_at, "previous root does not match leaves")
+    if merkle_root(proof.leaf_hashes) != proof.latest_root_hash:
+        return _invalid_consistency(proof, verified_at, "latest root does not match leaves")
+    return VerificationResult(
+        valid=True,
+        reason="ok",
+        root_hash=proof.latest_root_hash,
+        tree_size=proof.latest_tree_size,
+        verified_at_utc=verified_at,
+    )
+
+
 def _expected_audit_path_positions(tree_size: int, leaf_index: int) -> list[str]:
     positions: list[str] = []
     level_size = tree_size
@@ -149,5 +232,19 @@ def _invalid(
         root_hash=proof.root_hash,
         leaf_hash=proof.leaf_hash,
         tree_size=proof.tree_size,
+        verified_at_utc=verified_at_utc,
+    )
+
+
+def _invalid_consistency(
+    proof: ConsistencyProof,
+    verified_at_utc: datetime,
+    reason: str,
+) -> VerificationResult:
+    return VerificationResult(
+        valid=False,
+        reason=reason,
+        root_hash=proof.latest_root_hash,
+        tree_size=proof.latest_tree_size,
         verified_at_utc=verified_at_utc,
     )
