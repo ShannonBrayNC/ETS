@@ -3,10 +3,45 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ets-core"
+name = "ets"
 version = "0.1.0"
-description = "ETS transparency log core prototype"
-requires-python = ">=3.11"
+description = "Evidence Trust System transparency log foundation"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "ETS Contributors" }]
+dependencies = [
+    "fastapi>=0.115,<1",
+    "pydantic>=2.8,<3",
+]
+
+[project.scripts]
+ets-verify = "ets.verifier.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.28,<1",
+    "pytest>=8,<9",
+    "ruff>=0.8,<1",
+    "mypy>=1.13,<2",
+    "uvicorn>=0.32,<1",
+]
+
+[tool.setuptools.packages.find]
+include = ["ets*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["ets"]

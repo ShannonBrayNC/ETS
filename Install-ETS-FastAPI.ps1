@@ -135,8 +135,9 @@ httpx==0.28.1
 "@ | Set-Content -Path (Join-Path $apiRoot "requirements.txt") -Encoding utf8
 
 Write-Step "Writing API README"
+Write-Step "Writing API README"
 
-@"
+$readme = @"
 # ETS API
 
 FastAPI service for the ETS transparency log.

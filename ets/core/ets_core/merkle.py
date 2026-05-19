@@ -1,5 +1,4 @@
 import hashlib
-from typing import List
 
 
 def _hash_pair(left_hex: str, right_hex: str) -> str:
@@ -7,7 +6,7 @@ def _hash_pair(left_hex: str, right_hex: str) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def merkle_root(leaves: List[str]) -> str:
+def merkle_root(leaves: list[str]) -> str:
     if not leaves:
         return hashlib.sha256(b"").hexdigest()
 
@@ -22,16 +21,16 @@ def merkle_root(leaves: List[str]) -> str:
     return level[0]
 
 
-def inclusion_proof(leaves: List[str], index: int) -> List[dict]:
+def inclusion_proof(leaves: list[str], index: int) -> list[dict[str, str]]:
     if index < 0 or index >= len(leaves):
         raise IndexError("Leaf index out of range")
 
-    proof = []
+    proof: list[dict[str, str]] = []
     level = leaves[:]
     idx = index
 
     while len(level) > 1:
-        next_level = []
+        next_level: list[str] = []
 
         for i in range(0, len(level), 2):
             left = level[i]
@@ -44,10 +43,12 @@ def inclusion_proof(leaves: List[str], index: int) -> List[dict]:
                 else:
                     sibling = left
                     position = "left"
-                proof.append({
-                    "position": position,
-                    "hash": sibling
-                })
+                proof.append(
+                    {
+                        "position": position,
+                        "hash": sibling,
+                    }
+                )
 
             next_level.append(_hash_pair(left, right))
 
@@ -57,7 +58,7 @@ def inclusion_proof(leaves: List[str], index: int) -> List[dict]:
     return proof
 
 
-def verify_inclusion(leaf_hash: str, proof: List[dict], expected_root: str) -> bool:
+def verify_inclusion(leaf_hash: str, proof: list[dict[str, str]], expected_root: str) -> bool:
     current = leaf_hash
     for step in proof:
         sibling = step["hash"]

@@ -1,5 +1,5 @@
 from ets.core.ets_core.hashing import hash_payload
-from ets.core.ets_core.merkle import merkle_root, inclusion_proof, verify_inclusion
+from ets.core.ets_core.merkle import inclusion_proof, merkle_root, verify_inclusion
 from ets.core.ets_core.service import TransparencyLogService
 
 
@@ -14,7 +14,7 @@ def test_merkle_proof_round_trip():
         "00" * 32,
         "11" * 32,
         "22" * 32,
-        "33" * 32
+        "33" * 32,
     ]
     root = merkle_root(leaves)
     proof = inclusion_proof(leaves, 2)

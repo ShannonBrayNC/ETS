@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Any, cast
 
 import httpx
 from fastapi import FastAPI, Request
@@ -22,15 +23,15 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
-async def api_get(path: str):
+async def api_get(path: str) -> dict[str, Any]:
     async with httpx.AsyncClient(timeout=20.0) as client:
         response = await client.get(f"{API_BASE_URL}{path}")
         response.raise_for_status()
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
 
 @app.get("/healthz")
-def healthz():
+def healthz() -> dict[str, str]:
     return {
         "status": "ok",
         "api_base_url": API_BASE_URL,
@@ -38,14 +39,13 @@ def healthz():
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    tree_head = None
-    events = []
-    api_error = None
+async def index(request: Request) -> HTMLResponse:
+    tree_head: dict[str, Any] | None = None
+    events: list[dict[str, Any]] = []
+    api_error: str | None = None
 
     try:
         tree_head = await api_get("/tree-head")
-        raw_events = []
         if tree_head.get("tree_size", 0) > 0:
             # Reference implementation fallback: probe recent events from a simple integer range.
             # This keeps the explorer useful even before a list endpoint exists.
