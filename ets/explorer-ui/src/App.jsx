@@ -122,7 +122,7 @@ export default function App() {
     const cert = await requestJson(`${apiBase}/reports/certificate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders },
-      body: JSON.stringify({ bundle: data, output_format: 'markdown' }),
+      body: JSON.stringify({ bundle: data, format: 'markdown' }),
     })
     setCertificate(cert)
   }
