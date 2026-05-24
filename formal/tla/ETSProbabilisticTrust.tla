@@ -5,51 +5,48 @@ EXTENDS Naturals, FiniteSets, TLC
 (* ETSProbabilisticTrust models bounded confidence semantics for ETS        *)
 (* verifier federation research. It intentionally avoids real probability   *)
 (* distributions inside TLA+ and instead models discretized confidence      *)
-(* levels. This allows TLC to check safety properties around trust decay,    *)
-(* weighted verifier observations, selective visibility, eclipse suspicion, *)
-(* quorum churn, and adaptive adversary pressure.                           *)
+(* levels through visible verifier support counts. This keeps the model     *)
+(* executable by TLC while preserving the key safety questions: confidence  *)
+(* acceptance, confidence suspension, selective visibility, eclipse          *)
+(* suspicion, quorum churn, and adaptive adversary pressure.                *)
 (*                                                                         *)
 (* This model does not prove probabilistic security. It specifies bounded   *)
 (* state-machine rules for how confidence may be accepted, degraded,        *)
 (* suspended, or rejected under adversarial observation conditions.          *)
 (***************************************************************************)
 
-CONSTANTS Verifiers, Roots, MaxTrust, AcceptThreshold, DegradedThreshold
+CONSTANTS Verifiers, Roots, AcceptThreshold, DegradedThreshold
 
-VARIABLES trust, visible, observations, acceptedRoot, confidence, adversaryMode, alerts
+VARIABLES visible, observations, acceptedRoot, confidence, adversaryMode, alerts
 
 AlertTypes == {"None", "LowConfidence", "EclipseSuspected", "AdaptivePressure", "ConflictingTrustedRoots"}
 AdversaryModes == {"Passive", "SelectiveVisibility", "Eclipse", "Adaptive"}
-
 Observation == [verifier: Verifiers, root: Roots]
 
 TypeOK ==
-    /\ trust \in [Verifiers -> 0..MaxTrust]
     /\ visible \subseteq Verifiers
     /\ observations \subseteq Observation
     /\ acceptedRoot \in Roots \cup {"None"}
-    /\ confidence \in 0..(Cardinality(Verifiers) * MaxTrust)
+    /\ confidence \in 0..Cardinality(Verifiers)
     /\ adversaryMode \in AdversaryModes
     /\ alerts \subseteq AlertTypes
-    /\ AcceptThreshold \in 1..(Cardinality(Verifiers) * MaxTrust)
+    /\ AcceptThreshold \in 1..Cardinality(Verifiers)
     /\ DegradedThreshold \in 0..AcceptThreshold
 
-VisibleObservation(obs) == obs.verifier \in visible
-TrustedWeightFor(root) ==
-    Sum({trust[obs.verifier] : obs \in observations /\ obs.root = root /\ VisibleObservation(obs)})
+VisibleVotesFor(root) == {obs.verifier : obs \in observations /\ obs.root = root /\ obs.verifier \in visible}
+ConfidenceFor(root) == Cardinality(VisibleVotesFor(root))
 
-AnyAcceptedRoot == \E root \in Roots : TrustedWeightFor(root) >= AcceptThreshold
-
+RootAccepted(root) == ConfidenceFor(root) >= AcceptThreshold
 ConflictingTrustedRoots ==
     \E r1, r2 \in Roots :
         /\ r1 # r2
-        /\ TrustedWeightFor(r1) >= AcceptThreshold
-        /\ TrustedWeightFor(r2) >= AcceptThreshold
+        /\ RootAccepted(r1)
+        /\ RootAccepted(r2)
 
 EclipseSuspected == Cardinality(visible) < Cardinality(Verifiers)
 
 AcceptedRootRequiresThreshold ==
-    acceptedRoot # "None" => TrustedWeightFor(acceptedRoot) >= AcceptThreshold
+    acceptedRoot # "None" => RootAccepted(acceptedRoot)
 
 NoAcceptedRootOnConflictingTrustedRoots ==
     ConflictingTrustedRoots => acceptedRoot = "None"
@@ -67,12 +64,9 @@ ConflictAlertSound ==
     "ConflictingTrustedRoots" \in alerts => ConflictingTrustedRoots
 
 ConfidenceMatchesAcceptedRoot ==
-    acceptedRoot # "None" => confidence = TrustedWeightFor(acceptedRoot)
-
-InitTrust == [v \in Verifiers |-> MaxTrust]
+    acceptedRoot # "None" => confidence = ConfidenceFor(acceptedRoot)
 
 Init ==
-    /\ trust = InitTrust
     /\ visible = Verifiers
     /\ observations = {}
     /\ acceptedRoot = "None"
@@ -80,78 +74,75 @@ Init ==
     /\ adversaryMode = "Passive"
     /\ alerts = {}
 
+NextAcceptedRoot(nextObservations, nextVisible) ==
+    IF \E r1, r2 \in Roots :
+        /\ r1 # r2
+        /\ Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r1 /\ obs.verifier \in nextVisible}) >= AcceptThreshold
+        /\ Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r2 /\ obs.verifier \in nextVisible}) >= AcceptThreshold
+    THEN "None"
+    ELSE IF \E r \in Roots : Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r /\ obs.verifier \in nextVisible}) >= AcceptThreshold
+    THEN CHOOSE r \in Roots : Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r /\ obs.verifier \in nextVisible}) >= AcceptThreshold
+    ELSE "None"
+
+NextConfidence(nextAcceptedRoot, nextObservations, nextVisible) ==
+    IF nextAcceptedRoot = "None" THEN 0
+    ELSE Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = nextAcceptedRoot /\ obs.verifier \in nextVisible})
+
+NextConflict(nextObservations, nextVisible) ==
+    \E r1, r2 \in Roots :
+        /\ r1 # r2
+        /\ Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r1 /\ obs.verifier \in nextVisible}) >= AcceptThreshold
+        /\ Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r2 /\ obs.verifier \in nextVisible}) >= AcceptThreshold
+
 Observe(verifier, root) ==
-    LET obs == [verifier |-> verifier, root |-> root] IN
-    LET nextObservations == observations \cup {obs} IN
-    LET nextConflict ==
-        \E r1, r2 \in Roots :
-            /\ r1 # r2
-            /\ Sum({trust[o.verifier] : o \in nextObservations /\ o.root = r1 /\ o.verifier \in visible}) >= AcceptThreshold
-            /\ Sum({trust[o.verifier] : o \in nextObservations /\ o.root = r2 /\ o.verifier \in visible}) >= AcceptThreshold IN
+    LET nextObservations == observations \cup {[verifier |-> verifier, root |-> root]} IN
+    LET nextAccepted == NextAcceptedRoot(nextObservations, visible) IN
+    LET nextConfidence == NextConfidence(nextAccepted, nextObservations, visible) IN
         /\ verifier \in Verifiers
         /\ root \in Roots
         /\ observations' = nextObservations
-        /\ UNCHANGED <<trust, visible, adversaryMode>>
-        /\ acceptedRoot' =
-            IF nextConflict THEN "None"
-            ELSE IF \E r \in Roots : Sum({trust[o.verifier] : o \in nextObservations /\ o.root = r /\ o.verifier \in visible}) >= AcceptThreshold THEN
-                CHOOSE r \in Roots : Sum({trust[o.verifier] : o \in nextObservations /\ o.root = r /\ o.verifier \in visible}) >= AcceptThreshold
-            ELSE "None"
-        /\ confidence' = IF acceptedRoot' = "None" THEN 0
-                         ELSE Sum({trust[o.verifier] : o \in nextObservations /\ o.root = acceptedRoot' /\ o.verifier \in visible})
+        /\ UNCHANGED <<visible, adversaryMode>>
+        /\ acceptedRoot' = nextAccepted
+        /\ confidence' = nextConfidence
         /\ alerts' =
-            (IF nextConflict THEN alerts \cup {"ConflictingTrustedRoots"} ELSE alerts) \cup
-            (IF confidence' < AcceptThreshold THEN {"LowConfidence"} ELSE {})
-
-DecayTrust(verifier) ==
-    /\ verifier \in Verifiers
-    /\ trust[verifier] > 0
-    /\ trust' = [trust EXCEPT ![verifier] = @ - 1]
-    /\ UNCHANGED <<visible, observations, adversaryMode>>
-    /\ acceptedRoot' = IF acceptedRoot # "None" /\ TrustedWeightFor(acceptedRoot) >= AcceptThreshold THEN acceptedRoot ELSE "None"
-    /\ confidence' = IF acceptedRoot' = "None" THEN 0 ELSE TrustedWeightFor(acceptedRoot')
-    /\ alerts' = IF confidence' < AcceptThreshold THEN alerts \cup {"LowConfidence"} ELSE alerts
-
-RestoreTrust(verifier) ==
-    /\ verifier \in Verifiers
-    /\ trust[verifier] < MaxTrust
-    /\ trust' = [trust EXCEPT ![verifier] = @ + 1]
-    /\ UNCHANGED <<visible, observations, adversaryMode>>
-    /\ acceptedRoot' = acceptedRoot
-    /\ confidence' = confidence
-    /\ alerts' = alerts
+            (IF NextConflict(nextObservations, visible) THEN alerts \cup {"ConflictingTrustedRoots"} ELSE alerts) \cup
+            (IF nextConfidence < AcceptThreshold THEN {"LowConfidence"} ELSE {})
 
 HideVerifier(verifier) ==
-    /\ verifier \in visible
-    /\ visible' = visible \ {verifier}
-    /\ adversaryMode' \in {"SelectiveVisibility", "Eclipse", "Adaptive"}
-    /\ UNCHANGED <<trust, observations>>
-    /\ acceptedRoot' = "None"
-    /\ confidence' = 0
-    /\ alerts' = alerts \cup {"EclipseSuspected", "LowConfidence"}
+    LET nextVisible == visible \ {verifier} IN
+    LET nextAccepted == NextAcceptedRoot(observations, nextVisible) IN
+    LET nextConfidence == NextConfidence(nextAccepted, observations, nextVisible) IN
+        /\ verifier \in visible
+        /\ visible' = nextVisible
+        /\ adversaryMode' \in {"SelectiveVisibility", "Eclipse", "Adaptive"}
+        /\ UNCHANGED observations
+        /\ acceptedRoot' = nextAccepted
+        /\ confidence' = nextConfidence
+        /\ alerts' = alerts \cup {"EclipseSuspected", "LowConfidence"}
 
 ShowVerifier(verifier) ==
-    /\ verifier \in Verifiers
-    /\ visible' = visible \cup {verifier}
-    /\ UNCHANGED <<trust, observations, adversaryMode>>
-    /\ acceptedRoot' = acceptedRoot
-    /\ confidence' = confidence
-    /\ alerts' = alerts
+    LET nextVisible == visible \cup {verifier} IN
+    LET nextAccepted == NextAcceptedRoot(observations, nextVisible) IN
+    LET nextConfidence == NextConfidence(nextAccepted, observations, nextVisible) IN
+        /\ verifier \in Verifiers
+        /\ visible' = nextVisible
+        /\ UNCHANGED <<observations, adversaryMode>>
+        /\ acceptedRoot' = nextAccepted
+        /\ confidence' = nextConfidence
+        /\ alerts' = alerts
 
 AdaptivePressure ==
     /\ adversaryMode' = "Adaptive"
-    /\ UNCHANGED <<trust, visible, observations, acceptedRoot, confidence>>
+    /\ UNCHANGED <<visible, observations, acceptedRoot, confidence>>
     /\ alerts' = alerts \cup {"AdaptivePressure"}
 
 Next ==
     \/ \E verifier \in Verifiers, root \in Roots : Observe(verifier, root)
-    \/ \E verifier \in Verifiers : DecayTrust(verifier)
-    \/ \E verifier \in Verifiers : RestoreTrust(verifier)
     \/ \E verifier \in Verifiers : HideVerifier(verifier)
     \/ \E verifier \in Verifiers : ShowVerifier(verifier)
     \/ AdaptivePressure
 
-Spec == Init /\ [][Next]_<<trust, visible, observations, acceptedRoot, confidence, adversaryMode, alerts>>
+Spec == Init /\ [][Next]_<<visible, observations, acceptedRoot, confidence, adversaryMode, alerts>>
 
 Safety ==
     /\ TypeOK
