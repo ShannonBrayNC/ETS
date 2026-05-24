@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Evidence Transparency System reference transparency log"
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [{ name = "ETS Contributors" }]
 dependencies = [
     "cryptography>=43,<47",
