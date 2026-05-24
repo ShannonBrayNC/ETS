@@ -1,19 +1,80 @@
-name: ci
+name: CI
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
-  validate:
+  python:
+    name: Python test, lint, and type check
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Repo structure check
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Upgrade packaging tools
+        run: python -m pip install --upgrade pip
+
+      - name: Install package
+        run: python -m pip install -e ".[dev]"
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Mypy
+        run: mypy
+
+      - name: Pytest
+        run: pytest --junitxml=test-results/pytest.xml
+
+      - name: Upload pytest results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: test-results/pytest.xml
+
+      - name: Dependency vulnerability scan
         run: |
-          test -d ets/core
-          test -d ets/api
-          test -d ets/verifier
-          test -d ets/spec
+          python -m pip install pip-audit
+          pip-audit
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  frontend:
+    name: Explorer frontend build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ets/explorer-ui/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ets/explorer-ui
+        run: npm ci
+
+      - name: Build
+        working-directory: ets/explorer-ui
+        run: npm run build

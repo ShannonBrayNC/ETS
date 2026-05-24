@@ -1,0 +1,73 @@
+[
+  {
+    "schema_version": "ets.election.packet.v1",
+    "event_id": "elx_evt_0001",
+    "election_id": "mock-election-2026",
+    "jurisdiction": "Fictional County",
+    "event_type": "election_config_registered",
+    "actor_id": "election-admin-demo",
+    "device_id": "config-workstation-01",
+    "timestamp_utc": "2026-05-01T12:00:00Z",
+    "payload_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+    "previous_event_hash": null,
+    "signature": {
+      "algorithm": "simulated-ed25519",
+      "key_id": "mock-election-key-1",
+      "value": "simulated-signature-elx-evt-0001"
+    },
+    "privacy_class": "public",
+    "artifact_ref": "sealed://mock-election/config-package.json",
+    "metadata": {
+      "milestone": "pre_election",
+      "note": "Fictional configuration package hash only"
+    }
+  },
+  {
+    "schema_version": "ets.election.packet.v1",
+    "event_id": "elx_evt_0002",
+    "election_id": "mock-election-2026",
+    "jurisdiction": "Fictional County",
+    "event_type": "logic_accuracy_test_registered",
+    "actor_id": "testing-board-demo",
+    "device_id": "lat-scanner-01",
+    "timestamp_utc": "2026-05-02T14:30:00Z",
+    "payload_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+    "previous_event_hash": "175d28ad5bcd2ed1a6d09fc0c7e8e9a45183d2ccaf0869ccc474ec16a3dbd440",
+    "signature": {
+      "algorithm": "simulated-ed25519",
+      "key_id": "mock-election-key-1",
+      "value": "simulated-signature-elx-evt-0002"
+    },
+    "privacy_class": "restricted",
+    "artifact_ref": "sealed://mock-election/logic-accuracy-test.pdf",
+    "metadata": {
+      "milestone": "pre_election",
+      "result": "pass",
+      "sealed_payload": true
+    }
+  },
+  {
+    "schema_version": "ets.election.packet.v1",
+    "event_id": "elx_evt_0003",
+    "election_id": "mock-election-2026",
+    "jurisdiction": "Fictional County",
+    "event_type": "custody_transfer",
+    "actor_id": "custody-team-demo",
+    "device_id": "chain-of-custody-terminal-01",
+    "timestamp_utc": "2026-05-03T09:15:00Z",
+    "payload_hash": "3333333333333333333333333333333333333333333333333333333333333333",
+    "previous_event_hash": "2291c9035340786e966ffc9f4905c2932547f8f6466148aee537a4c9c66f06ee",
+    "signature": {
+      "algorithm": "simulated-ed25519",
+      "key_id": "mock-election-key-1",
+      "value": "simulated-signature-elx-evt-0003"
+    },
+    "privacy_class": "sealed",
+    "artifact_ref": "sealed://mock-election/custody-transfer-0003.pdf",
+    "metadata": {
+      "batch_id": "mock-batch-17",
+      "from": "intake",
+      "to": "secure-storage"
+    }
+  }
+]

@@ -2,9 +2,7 @@ import random
 import uuid
 from datetime import datetime, timedelta
 
-
 random.seed(42)
-
 
 
 def generate_ticket_events(count: int):

@@ -3,9 +3,7 @@ from copy import deepcopy
 
 from ets.canonicalization.canonicalize import canonicalize
 
-
 EXCLUDED_FIELDS = {"hash", "signature"}
-
 
 
 def prepare_for_hash(evidence: dict) -> dict:
@@ -17,7 +15,6 @@ def prepare_for_hash(evidence: dict) -> dict:
     return prepared
 
 
-
 def hash_evidence(evidence: dict) -> str:
     prepared = prepare_for_hash(evidence)
     canonical = canonicalize(prepared)
@@ -25,7 +22,6 @@ def hash_evidence(evidence: dict) -> str:
     return hashlib.sha256(
         canonical.encode("utf-8")
     ).hexdigest()
-
 
 
 def verify_hash(evidence: dict) -> bool:

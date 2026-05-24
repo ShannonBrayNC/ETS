@@ -9,3 +9,32 @@ __pycache__/
 .vscode/
 .DS_Store
 Thumbs.db
+
+
+
+# Local Python / runner artifacts
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+
+# Guarded runner local workspace
+tools/workspace/
+
+# Python cache / build noise
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache*/
+.pytest_tmp/
+.mypy_cache/
+.ruff_cache/
+dist/
+**/dist/
+node_modules/
+**/node_modules/
+artifacts/demo/
+artifacts/benchmarks/
+artifacts/election-rc-demo/
+ets_core.egg-info/

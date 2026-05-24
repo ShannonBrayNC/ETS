@@ -1,0 +1,8 @@
+title = "ETS gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Historical .env.example placeholder false positive"
+commits = ['''2256862ece889ac9f09b357fb89b988d03489de3''']

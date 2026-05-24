@@ -1,0 +1,329 @@
+from datetime import UTC, datetime
+
+from fastapi.testclient import TestClient
+
+from ets import __version__
+from ets.api.app import create_app
+from ets.core.models import EvidenceEvent
+
+
+def make_event(event_id: str = "evt_001") -> dict:
+    event = EvidenceEvent(
+        event_id=event_id,
+        tenant_id="tenant_a",
+        workspace_id="workspace_a",
+        evidence_id="evidence_001",
+        event_type="evidence.registered",
+        subject_ref=None,
+        content_hash="c" * 64,
+        content_hash_alg="sha256",
+        metadata={"case": "alpha"},
+        created_at_utc=datetime(2026, 5, 18, 12, 30, tzinfo=UTC),
+    )
+    return event.model_dump(mode="json")
+
+
+def make_client() -> TestClient:
+    return TestClient(create_app())
+
+
+def append_event(client: TestClient, event_id: str = "evt_001") -> dict:
+    response = client.post("/api/v1/events", json=make_event(event_id))
+    assert response.status_code == 201
+    return response.json()
+
+
+def test_health_and_ready_routes():
+    client = make_client()
+
+    assert client.get("/health").json() == {"status": "ok", "version": __version__}
+    assert client.get("/version").json() == {
+        "name": "Evidence Transparency System",
+        "version": __version__,
+        "api_version": "v1",
+    }
+    assert client.get("/ready").json() == {
+        "status": "ready",
+        "storage": "in_memory",
+        "version": __version__,
+        "auth": "local_header",
+        "signing": "local_unsigned",
+    }
+
+
+def test_log_head_route_returns_unsigned_local_head():
+    client = make_client()
+
+    response = client.get("/api/v1/log/head")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["tree_size"] == 0
+    assert body["log_id"] == "ets-local-dev"
+    assert body["signature"] is None
+
+
+def test_event_ingestion_updates_tree_and_returns_proof_url():
+    client = make_client()
+
+    body = append_event(client)
+
+    assert body["event_id"] == "evt_001"
+    assert body["log_index"] == 0
+    assert len(body["event_hash"]) == 64
+    assert body["tree_head"]["tree_size"] == 1
+    assert body["inclusion_proof_url"] == "/api/v1/proofs/inclusion/evt_001"
+
+
+def test_duplicate_event_returns_deterministic_conflict():
+    client = make_client()
+    append_event(client)
+
+    response = client.post("/api/v1/events", json=make_event())
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "ETS_EVENT_DUPLICATE"
+
+
+def test_event_can_be_retrieved_by_id_and_index():
+    client = make_client()
+    append_event(client)
+
+    by_id = client.get("/api/v1/events/evt_001")
+    by_index = client.get("/api/v1/events/by-index/0")
+
+    assert by_id.status_code == 200
+    assert by_index.status_code == 200
+    assert by_id.json() == by_index.json()
+    assert by_id.json()["event"]["event_id"] == "evt_001"
+
+
+def test_events_can_be_listed_in_log_index_order():
+    client = make_client()
+    append_event(client, "evt_001")
+    append_event(client, "evt_002")
+    append_event(client, "evt_003")
+
+    response = client.get("/api/v1/events")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 3
+    assert body["limit"] == 50
+    assert body["offset"] == 0
+    assert [item["log_index"] for item in body["items"]] == [0, 1, 2]
+    assert [item["event"]["event_id"] for item in body["items"]] == [
+        "evt_001",
+        "evt_002",
+        "evt_003",
+    ]
+
+
+def test_empty_event_list_returns_zero_items():
+    client = make_client()
+
+    response = client.get("/api/v1/events")
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "limit": 50, "offset": 0, "total": 0}
+
+
+def test_event_list_supports_bounded_pagination():
+    client = make_client()
+    append_event(client, "evt_001")
+    append_event(client, "evt_002")
+    append_event(client, "evt_003")
+
+    response = client.get("/api/v1/events?limit=1&offset=1")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["limit"] == 1
+    assert body["offset"] == 1
+    assert body["total"] == 3
+    assert [item["event"]["event_id"] for item in body["items"]] == ["evt_002"]
+
+
+def test_event_list_supports_tenant_and_workspace_filters():
+    client = make_client()
+    client.post("/api/v1/events", json=make_event("evt_001"))
+    other = make_event("evt_002")
+    other["tenant_id"] = "tenant_b"
+    other["workspace_id"] = "workspace_b"
+    client.post("/api/v1/events", json=other)
+
+    response = client.get("/api/v1/events?tenant_id=tenant_b&workspace_id=workspace_b")
+
+    assert response.status_code == 200
+    assert [item["event"]["event_id"] for item in response.json()["items"]] == ["evt_002"]
+
+
+def test_event_list_rejects_invalid_pagination_with_error_envelope():
+    client = make_client()
+
+    response = client.get("/api/v1/events?limit=501", headers={"X-Correlation-ID": "corr_001"})
+
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["code"] == "ETS_VALIDATION_ERROR"
+    assert error["correlation_id"] == "corr_001"
+
+
+def test_missing_event_returns_404():
+    client = make_client()
+
+    response = client.get("/api/v1/events/missing")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "ETS_EVENT_NOT_FOUND"
+
+
+def test_inclusion_proof_route_and_verify_route_accept_valid_proof():
+    client = make_client()
+    append_event(client, "evt_001")
+    append_event(client, "evt_002")
+
+    proof_response = client.get("/api/v1/proofs/inclusion/evt_002")
+    assert proof_response.status_code == 200
+
+    verify_response = client.post("/api/v1/verify/inclusion", json=proof_response.json())
+
+    assert verify_response.status_code == 200
+    assert verify_response.json()["valid"] is True
+    assert verify_response.json()["reason"] == "ok"
+
+
+def test_verify_route_rejects_tampered_proof_without_hidden_state():
+    client = make_client()
+    append_event(client, "evt_001")
+    append_event(client, "evt_002")
+    proof = client.get("/api/v1/proofs/inclusion/evt_002").json()
+    proof["root_hash"] = "0" * 64
+
+    response = client.post("/api/v1/verify/inclusion", json=proof)
+
+    assert response.status_code == 200
+    assert response.json()["valid"] is False
+
+
+def test_consistency_proof_route_and_verify_route_accept_valid_proof():
+    client = make_client()
+    append_event(client, "evt_001")
+    append_event(client, "evt_002")
+    append_event(client, "evt_003")
+
+    proof_response = client.get("/api/v1/proofs/consistency?previous_tree_size=1")
+    assert proof_response.status_code == 200
+
+    verify_response = client.post("/api/v1/verify/consistency", json=proof_response.json())
+
+    assert verify_response.status_code == 200
+    assert verify_response.json()["valid"] is True
+    assert verify_response.json()["reason"] == "ok"
+
+
+def test_consistency_verify_rejects_tampered_latest_root():
+    client = make_client()
+    append_event(client, "evt_001")
+    append_event(client, "evt_002")
+    proof = client.get("/api/v1/proofs/consistency?previous_tree_size=1").json()
+    proof["latest_root_hash"] = "0" * 64
+
+    response = client.post("/api/v1/verify/consistency", json=proof)
+
+    assert response.status_code == 200
+    assert response.json()["valid"] is False
+
+
+def test_proof_bundle_route_returns_offline_verification_artifacts():
+    client = make_client()
+    append_event(client, "evt_001")
+
+    response = client.get("/api/v1/bundles/evt_001")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["event"]["event_id"] == "evt_001"
+    assert body["verification_result"]["valid"] is True
+    assert body["tree_head"]["root_hash"] == body["inclusion_proof"]["root_hash"]
+
+
+def test_metrics_route_reports_activity_counts():
+    client = make_client()
+    append_event(client, "evt_001")
+    proof = client.get("/api/v1/proofs/inclusion/evt_001").json()
+    client.post("/api/v1/verify/inclusion", json=proof)
+
+    response = client.get("/api/v1/metrics")
+
+    assert response.status_code == 200
+    assert response.json()["append_count"] == 1
+    assert response.json()["proof_count"] == 1
+    assert response.json()["verification_success_count"] == 1
+
+
+def test_rc5_protocol_lab_endpoints_round_trip():
+    client = make_client()
+    event = make_event("evt_001")
+    append_response = client.post("/evidence", json=event)
+    expected_hash = append_response.json()["event_hash"]
+
+    read_response = client.get("/evidence/evt_001")
+    read_by_sequence_response = client.get("/evidence/sequence/0")
+    root_response = client.get("/log/root")
+    size_response = client.get("/log/size")
+    proof_response = client.get("/proof/inclusion/evt_001")
+    verify_event_response = client.post(
+        "/verify/evidence",
+        json={"event": event, "expected_event_hash": expected_hash},
+    )
+    verify_proof_response = client.post("/verify/inclusion", json=proof_response.json())
+    verify_compat_proof_response = client.post(
+        "/verify/proof/inclusion",
+        json=proof_response.json(),
+    )
+
+    assert append_response.status_code == 201
+    assert read_response.status_code == 200
+    assert read_by_sequence_response.status_code == 200
+    assert len(root_response.json()["root_hash"]) == 64
+    assert size_response.json() == {"tree_size": 1}
+    assert verify_event_response.json()["valid"] is True
+    assert verify_proof_response.json()["valid"] is True
+    assert verify_compat_proof_response.json()["valid"] is True
+
+
+def test_certificate_report_endpoint_generates_markdown():
+    client = make_client()
+    append_event(client, "evt_001")
+    bundle = client.get("/api/v1/bundles/evt_001").json()
+
+    response = client.post(
+        "/reports/certificate",
+        json={"bundle": bundle, "format": "markdown"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["format"] == "markdown"
+    assert "ETS Verification Certificate" in response.json()["content"]
+
+
+def test_malformed_proof_returns_validation_error():
+    client = make_client()
+
+    response = client.post("/api/v1/verify/inclusion", json={"tree_size": "bad"})
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "ETS_VALIDATION_ERROR"
+
+
+def test_openapi_schema_is_generated_with_required_routes():
+    client = make_client()
+
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    paths = response.json()["paths"]
+    assert "/api/v1/events" in paths
+    assert "/api/v1/verify/inclusion" in paths
+    assert paths["/tree-head"]["get"].get("deprecated") is True

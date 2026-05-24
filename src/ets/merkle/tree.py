@@ -12,7 +12,7 @@ class MerkleTree:
     @staticmethod
     def _hash_pair(left: str, right: str) -> str:
         return hashlib.sha256(
-            f"{left}{right}".encode("utf-8")
+            f"{left}{right}".encode()
         ).hexdigest()
 
     def _build(self):

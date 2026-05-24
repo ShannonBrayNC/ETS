@@ -4,7 +4,6 @@ from ets.datasets.generator import generate_ticket_events
 from ets.log.node import TransparencyNode
 
 
-
 def benchmark_append(count=10000):
     node = TransparencyNode("node-a")
 

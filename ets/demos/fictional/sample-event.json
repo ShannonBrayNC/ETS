@@ -1,0 +1,25 @@
+{
+  "event_id": "evt_demo_001",
+  "tenant_id": "tenant_demo",
+  "workspace_id": "workspace_alpha",
+  "evidence_id": "evidence_demo_001",
+  "event_type": "evidence.registered",
+  "subject_ref": "case:demo-001",
+  "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "content_hash_alg": "sha256",
+  "metadata": {
+    "case": "demo",
+    "source": "fictional-demo",
+    "sequence": 1,
+    "description": "Fictional metadata-only event for ETS demo walkthroughs."
+  },
+  "created_at_utc": "2026-05-18T12:30:00Z",
+  "schema_version": "ets.event.v1",
+  "source_system": "ets-demo-fixture",
+  "actor_id": "demo-user",
+  "correlation_id": "corr_demo_001",
+  "external_refs": {
+    "demo": "local"
+  },
+  "redaction_profile": "none"
+}
