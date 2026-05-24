@@ -63,6 +63,25 @@ def test_sqlite_api_persists_across_app_instances(tmp_path) -> None:
     assert second_client.get("/ready").json()["storage"] == "sqlite"
 
 
+def test_sqlite_api_proofs_survive_app_restart(tmp_path) -> None:
+    path = tmp_path / "ets.db"
+    first_client = TestClient(create_app(log=SQLiteEventStore(path)))
+
+    assert first_client.post("/api/v1/events", json=make_event("evt_001")).status_code == 201
+    assert first_client.post("/api/v1/events", json=make_event("evt_002")).status_code == 201
+
+    second_client = TestClient(create_app(log=SQLiteEventStore(path)))
+    proof_response = second_client.get("/api/v1/proofs/inclusion/evt_002")
+
+    assert proof_response.status_code == 200
+    proof = proof_response.json()
+    verify_response = second_client.post("/api/v1/verify/inclusion", json=proof)
+
+    assert verify_response.status_code == 200
+    assert verify_response.json()["valid"] is True
+    assert verify_response.json()["reason"] == "ok"
+
+
 def test_create_app_from_env_uses_sqlite_provider(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("ETS_STORAGE_PROVIDER", "sqlite")
     monkeypatch.setenv("ETS_SQLITE_PATH", str(tmp_path / "ets.db"))
