@@ -7,14 +7,44 @@ on:
       - main
 
 jobs:
-  docs:
+  tla:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
-      - name: Check formal and RFC docs
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Download TLC
+        run: |
+          mkdir -p tools
+          curl -L https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar -o tools/tla2tools.jar
+
+      - name: Validate formal documentation
         run: |
           test -f docs/research/FORMAL_THEOREMS.md
           test -f docs/spec/rfc/ETS-RFC-0001.md
           test -f docs/spec/rfc/ETS-RFC-0002-EVIDENCE.md
           test -f docs/spec/rfc/ETS-RFC-0003-PROOFS.md
           test -f docs/spec/rfc/ETS-RFC-0004-FEDERATION.md
+
+      - name: Execute TLC models
+        working-directory: formal/tla
+        run: |
+          java -cp ../../tools/tla2tools.jar tlc2.TLC ETSLog.tla -config ETSLog.cfg -deadlock
+          java -cp ../../tools/tla2tools.jar tlc2.TLC ETSVerifierFederation.tla -config ETSVerifierFederation.cfg -deadlock
+          java -cp ../../tools/tla2tools.jar tlc2.TLC ETSTemporalByzantineFederation.tla -config ETSTemporalByzantineFederation.cfg -deadlock
+          java -cp ../../tools/tla2tools.jar tlc2.TLC ETSProbabilisticTrust.tla -config ETSProbabilisticTrust.cfg -deadlock
+
+      - name: Publish TLC summary
+        run: |
+          echo "TLC formal model execution completed successfully." >> $GITHUB_STEP_SUMMARY
+          echo "Validated models:" >> $GITHUB_STEP_SUMMARY
+          echo "- ETSLog" >> $GITHUB_STEP_SUMMARY
+          echo "- ETSVerifierFederation" >> $GITHUB_STEP_SUMMARY
+          echo "- ETSTemporalByzantineFederation" >> $GITHUB_STEP_SUMMARY
+          echo "- ETSProbabilisticTrust" >> $GITHUB_STEP_SUMMARY
