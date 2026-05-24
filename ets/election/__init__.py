@@ -21,6 +21,18 @@ from ets.election.models import (
     PacketSignature,
     hash_election_packet,
 )
+from ets.election.proofs import (
+    ElectionBatchProofBundle,
+    ElectionInclusionProofBundle,
+    ElectionRootManifest,
+    create_election_batch_proof,
+    create_election_inclusion_proof,
+    create_election_root_manifest,
+    export_election_proof_report,
+    export_root_manifest_audit_summary,
+    verify_election_batch_bundle,
+    verify_election_inclusion_bundle,
+)
 
 __all__ = [
     "ChainContinuityError",
@@ -30,14 +42,24 @@ __all__ = [
     "DuplicatePacketError",
     "PRIVACY_CLASSES",
     "ElectionEvidencePacket",
+    "ElectionBatchProofBundle",
+    "ElectionInclusionProofBundle",
     "ElectionLedgerEntry",
     "ElectionLedgerError",
     "ElectionPacketStore",
+    "ElectionRootManifest",
     "InMemoryElectionLedger",
     "PacketNotFoundError",
     "PacketSignature",
+    "create_election_batch_proof",
+    "create_election_inclusion_proof",
+    "create_election_root_manifest",
     "export_election_audit_log",
+    "export_election_proof_report",
+    "export_root_manifest_audit_summary",
     "hash_election_packet",
     "make_compensating_packet",
+    "verify_election_batch_bundle",
     "verify_election_chain",
+    "verify_election_inclusion_bundle",
 ]

@@ -13,6 +13,12 @@ from ets.election.ledger import (
     verify_election_chain,
 )
 from ets.election.models import ElectionEvidencePacket
+from ets.election.proofs import (
+    create_election_inclusion_proof,
+    create_election_root_manifest,
+    export_election_proof_report,
+    verify_election_inclusion_bundle,
+)
 
 
 def load_sample_packets(
@@ -64,6 +70,30 @@ def run_tamper_demo() -> dict[str, Any]:
         "tampered_chain": tampered_result.valid,
         "tamper_issue_codes": [issue.code for issue in tampered_result.issues],
         "audit_log": export_election_audit_log(entries),
+    }
+
+
+def run_proof_demo(event_id: str = "elx_evt_0002") -> dict[str, Any]:
+    """Run a deterministic inclusion proof demo for one sample event."""
+
+    ledger = build_sample_ledger()
+    entries = ledger.list_entries()
+    manifest = create_election_root_manifest(entries, milestone="pre_election")
+    bundle = create_election_inclusion_proof(entries, event_id, milestone="pre_election")
+    valid_result = verify_election_inclusion_bundle(bundle)
+
+    tampered = bundle.model_copy(
+        update={"leaf_hash": "0" * 64},
+        deep=True,
+    )
+    tampered_result = verify_election_inclusion_bundle(tampered)
+
+    return {
+        "root_manifest": manifest.model_dump(mode="json"),
+        "proof_report": export_election_proof_report(bundle),
+        "valid_proof": valid_result.valid,
+        "tampered_proof": tampered_result.valid,
+        "tampered_reason": tampered_result.reason,
     }
 
 

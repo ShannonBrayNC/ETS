@@ -217,6 +217,7 @@ The election-security RC demo uses fictional, non-PII election-adjacent packets:
 
 - [packet schema guide](docs/spec/ELECTION_EVIDENCE_PACKET.md)
 - [ledger guide](docs/spec/ELECTION_LEDGER.md)
+- [Merkle proof guide](docs/spec/ELECTION_PROOFS.md)
 - [packet JSON schema](docs/spec/election-evidence-packet.schema.json)
 - [sample packets](ets/demos/election-security/sample-packets.json)
 
@@ -224,6 +225,12 @@ Run the hash-chain tamper demo:
 
 ```powershell
 .\.venv\Scripts\python.exe -m ets.election.demo
+```
+
+Verify an exported election proof bundle:
+
+```powershell
+.\.venv\Scripts\ets-verify.exe election-proof .\path\to\election-proof.json
 ```
 
 This demo is an evidence/audit workflow only. It is not voting software,

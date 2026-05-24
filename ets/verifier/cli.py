@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from ets import __version__
 from ets.core import EvidenceProofBundle
+from ets.election import ElectionInclusionProofBundle, verify_election_inclusion_bundle
 from ets.reports import CertificateFormat, create_certificate
 from ets.verifier import (
     compare_tree_heads,
@@ -40,6 +41,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _certificate(args.path, args.format, args.out)
         if args.command == "tree-head":
             return _tree_head(args.previous, args.latest)
+        if args.command == "election-proof":
+            return _election_proof(args.path)
     except (OSError, json.JSONDecodeError, ValidationError, ValueError) as exc:
         print(json.dumps({"valid": False, "reason": str(exc)}, sort_keys=True))
         return 2
@@ -79,6 +82,16 @@ def _build_parser() -> argparse.ArgumentParser:
     tree_head = subparsers.add_parser("tree-head", help="compare two signed tree heads")
     tree_head.add_argument("previous", type=Path, help="path to the previously trusted tree head")
     tree_head.add_argument("latest", type=Path, help="path to the latest tree head")
+
+    election_proof = subparsers.add_parser(
+        "election-proof",
+        help="verify an election inclusion proof bundle",
+    )
+    election_proof.add_argument(
+        "path",
+        type=Path,
+        help="path to an ElectionInclusionProofBundle JSON file",
+    )
 
     return parser
 
@@ -131,6 +144,14 @@ def _tree_head(previous_path: Path, latest_path: Path) -> int:
     latest = _read_json(latest_path)
     result = compare_tree_heads(previous, latest)
     print(json.dumps(result.__dict__, sort_keys=True))
+    return 0 if result.valid else 1
+
+
+def _election_proof(path: Path) -> int:
+    payload = _read_json(path)
+    bundle = ElectionInclusionProofBundle.model_validate_json(json.dumps(payload))
+    result = verify_election_inclusion_bundle(bundle)
+    print(json.dumps(result.model_dump(mode="json"), sort_keys=True))
     return 0 if result.valid else 1
 
 
