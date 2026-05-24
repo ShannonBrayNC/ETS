@@ -1,0 +1,85 @@
+@baseUrl = http://localhost:8000
+@tenant = tenant_demo
+@workspace = workspace_alpha
+@eventId = evt_demo_001
+
+### Health
+GET {{baseUrl}}/health
+
+### Ready
+GET {{baseUrl}}/ready
+
+### Version
+GET {{baseUrl}}/version
+
+### Auth context
+GET {{baseUrl}}/api/v1/auth/context
+X-ETS-Tenant: {{tenant}}
+X-ETS-Workspace: {{workspace}}
+
+### Log head
+GET {{baseUrl}}/api/v1/log/head
+X-ETS-Tenant: {{tenant}}
+X-ETS-Workspace: {{workspace}}
+
+### Append fictional event
+POST {{baseUrl}}/api/v1/events
+Content-Type: application/json
+X-ETS-Tenant: {{tenant}}
+X-ETS-Workspace: {{workspace}}
+X-Correlation-ID: corr_demo_001
+
+{
+  "event_id": "evt_demo_001",
+  "tenant_id": "tenant_demo",
+  "workspace_id": "workspace_alpha",
+  "evidence_id": "evidence_demo_001",
+  "event_type": "evidence.registered",
+  "subject_ref": "case:demo-001",
+  "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "content_hash_alg": "sha256",
+  "metadata": {
+    "case": "demo",
+    "source": "local-requests",
+    "sequence": 1
+  },
+  "created_at_utc": "2026-05-18T12:30:00Z",
+  "schema_version": "ets.event.v1",
+  "source_system": "ets-local-http",
+  "actor_id": "demo-user",
+  "correlation_id": "corr_demo_001",
+  "external_refs": {
+    "demo": "local"
+  },
+  "redaction_profile": "none"
+}
+
+### List events
+GET {{baseUrl}}/api/v1/events?limit=50&offset=0
+X-ETS-Tenant: {{tenant}}
+X-ETS-Workspace: {{workspace}}
+
+### Read event
+GET {{baseUrl}}/api/v1/events/{{eventId}}
+X-ETS-Tenant: {{tenant}}
+X-ETS-Workspace: {{workspace}}
+
+### Inclusion proof
+GET {{baseUrl}}/api/v1/proofs/inclusion/{{eventId}}
+X-ETS-Tenant: {{tenant}}
+X-ETS-Workspace: {{workspace}}
+
+### Proof bundle
+GET {{baseUrl}}/api/v1/bundles/{{eventId}}
+X-ETS-Tenant: {{tenant}}
+X-ETS-Workspace: {{workspace}}
+
+### Consistency proof from empty tree
+GET {{baseUrl}}/api/v1/proofs/consistency?previous_tree_size=0
+X-ETS-Tenant: {{tenant}}
+X-ETS-Workspace: {{workspace}}
+
+### Metrics
+GET {{baseUrl}}/api/v1/metrics
+X-ETS-Tenant: {{tenant}}
+X-ETS-Workspace: {{workspace}}
