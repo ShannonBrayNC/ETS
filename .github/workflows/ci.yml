@@ -50,7 +50,6 @@ jobs:
   frontend:
     name: Explorer frontend build
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('ets/explorer-ui/package.json') != '' }}
 
     steps:
       - name: Check out repository
