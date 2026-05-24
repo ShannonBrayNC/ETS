@@ -216,8 +216,15 @@ external expected-event policy and observation process.
 The election-security RC demo uses fictional, non-PII election-adjacent packets:
 
 - [packet schema guide](docs/spec/ELECTION_EVIDENCE_PACKET.md)
+- [ledger guide](docs/spec/ELECTION_LEDGER.md)
 - [packet JSON schema](docs/spec/election-evidence-packet.schema.json)
 - [sample packets](ets/demos/election-security/sample-packets.json)
+
+Run the hash-chain tamper demo:
+
+```powershell
+.\.venv\Scripts\python.exe -m ets.election.demo
+```
 
 This demo is an evidence/audit workflow only. It is not voting software,
 tabulation software, or the vote of record.
