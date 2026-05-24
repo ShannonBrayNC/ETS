@@ -29,6 +29,8 @@ and raw evidence bytes are outside the ETS storage boundary.
 - `ets/demos` - example use cases
 - `docs/architecture` - architecture notes
 - `docs/security` - security notes and roadmap
+- `docs/research` - formal systems, reproducibility, and publication artifacts
+- `docs/ip` - patent-aware technical preparation material for counsel review
 
 ## Canonical Package Layout
 
@@ -191,3 +193,33 @@ See [ets/spec/protocol.md](ets/spec/protocol.md) for the protocol contract
 covering canonical JSON and the EvidenceEvent schema. The broader solution and
 release gates live in
 [docs/requirements/ETS_COMPLETE_SOLUTION_REQUIREMENTS.md](docs/requirements/ETS_COMPLETE_SOLUTION_REQUIREMENTS.md).
+
+## Research Platform
+
+ETS is also organized as a reproducible distributed-systems research lab. The
+current research surface includes:
+
+- [research program](docs/research/RESEARCH_PROGRAM.md)
+- [formal theorem appendix](docs/research/FORMAL_THEOREMS.md)
+- [reproducibility appendix](docs/research/REPRODUCIBILITY_APPENDIX.md)
+- [interconnected systems architecture guide](docs/architecture/INTERCONNECTED_SYSTEMS_GUIDE.md)
+- [RFC-style protocol documents](docs/spec/rfc/)
+- [TLA+ model](formal/tla/ETSLog.tla)
+- [Alloy causal model](formal/alloy/ETSCausalModel.als)
+
+The research docs are intentionally restrained: ETS verifies submitted evidence
+and proof material, but it does not prove real-world completeness without an
+external expected-event policy and observation process.
+
+## Patent-Aware Release Preparation
+
+Patent preparation artifacts are in [docs/ip](docs/ip). They are technical
+review materials for counsel, not legal advice and not filed claims:
+
+- [invention disclosure](docs/ip/INVENTION_DISCLOSURE.md)
+- [prior art analysis](docs/ip/PRIOR_ART_ANALYSIS.md)
+- [candidate claim areas](docs/ip/CANDIDATE_CLAIMS.md)
+- [patent preparation diagrams](docs/ip/PATENT_DIAGRAMS.md)
+
+Do not tag a public release until the public release checklist and IP review
+gate are complete.
