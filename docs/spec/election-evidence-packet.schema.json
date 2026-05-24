@@ -1,0 +1,160 @@
+{
+  "$id": "https://example.invalid/ets/election-evidence-packet.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "RC demo schema for nonpartisan election-adjacent evidence metadata and hashes.",
+  "properties": {
+    "schema_version": {
+      "const": "ets.election.packet.v1",
+      "default": "ets.election.packet.v1",
+      "title": "Schema Version"
+    },
+    "event_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Event Id",
+      "type": "string"
+    },
+    "election_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Election Id",
+      "type": "string"
+    },
+    "jurisdiction": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Jurisdiction",
+      "type": "string"
+    },
+    "event_type": {
+      "enum": [
+        "election_config_registered",
+        "logic_accuracy_test_registered",
+        "ballot_batch_scanned",
+        "custody_transfer",
+        "observer_note_registered",
+        "cvr_export_registered",
+        "audit_started",
+        "audit_completed",
+        "certification_snapshot"
+      ],
+      "title": "Event Type",
+      "type": "string"
+    },
+    "actor_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Actor Id",
+      "type": "string"
+    },
+    "device_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Device Id",
+      "type": "string"
+    },
+    "timestamp_utc": {
+      "format": "date-time",
+      "title": "Timestamp Utc",
+      "type": "string"
+    },
+    "payload_hash": {
+      "maxLength": 64,
+      "minLength": 64,
+      "title": "Payload Hash",
+      "type": "string"
+    },
+    "previous_event_hash": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous Event Hash"
+    },
+    "signature": {
+      "$ref": "#/$defs/PacketSignature"
+    },
+    "privacy_class": {
+      "enum": [
+        "public",
+        "restricted",
+        "sealed"
+      ],
+      "title": "Privacy Class",
+      "type": "string"
+    },
+    "artifact_ref": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Artifact Ref"
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "title": "Metadata",
+      "type": "object"
+    }
+  },
+  "required": [
+    "event_id",
+    "election_id",
+    "jurisdiction",
+    "event_type",
+    "actor_id",
+    "device_id",
+    "timestamp_utc",
+    "payload_hash",
+    "previous_event_hash",
+    "signature",
+    "privacy_class"
+  ],
+  "$defs": {
+    "PacketSignature": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "key_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key Id",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "algorithm",
+        "key_id",
+        "value"
+      ],
+      "title": "PacketSignature",
+      "type": "object"
+    }
+  },
+  "title": "ElectionEvidencePacket",
+  "type": "object"
+}

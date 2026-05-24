@@ -211,6 +211,17 @@ The research docs are intentionally restrained: ETS verifies submitted evidence
 and proof material, but it does not prove real-world completeness without an
 external expected-event policy and observation process.
 
+## Election Evidence RC Demo
+
+The election-security RC demo uses fictional, non-PII election-adjacent packets:
+
+- [packet schema guide](docs/spec/ELECTION_EVIDENCE_PACKET.md)
+- [packet JSON schema](docs/spec/election-evidence-packet.schema.json)
+- [sample packets](ets/demos/election-security/sample-packets.json)
+
+This demo is an evidence/audit workflow only. It is not voting software,
+tabulation software, or the vote of record.
+
 ## Patent-Aware Release Preparation
 
 Patent preparation artifacts are in [docs/ip](docs/ip). They are technical
