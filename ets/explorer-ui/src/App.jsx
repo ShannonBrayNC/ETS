@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+
+import { electionDemo } from './electionDemo.js'
 
 const DEFAULT_API = import.meta.env.VITE_ETS_API_BASE_URL ?? 'http://localhost:8000'
 
@@ -40,6 +42,7 @@ export default function App() {
   const [certificate, setCertificate] = useState(null)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [showTamperDemo, setShowTamperDemo] = useState(false)
 
   const authHeaders = useMemo(() => {
     const headers = {}
@@ -156,6 +159,8 @@ export default function App() {
 
       {error && <Panel title="API Error"><pre>{error}</pre></Panel>}
 
+      <ElectionRcDemo showTamperDemo={showTamperDemo} setShowTamperDemo={setShowTamperDemo} />
+
       <Panel title="Connection">
         <div className="grid">
           <label>API base URL<input value={apiBase} onChange={(e) => setApiBase(e.target.value)} /></label>
@@ -207,6 +212,92 @@ export default function App() {
         <JsonPanel title="Verification" data={verification} />
         <JsonPanel title="Certificate" data={certificate} downloadName="ets-certificate.json" />
       </div>
+    </div>
+  )
+}
+
+function ElectionRcDemo({ showTamperDemo, setShowTamperDemo }) {
+  const verification = showTamperDemo ? electionDemo.tamperVerification : electionDemo.validVerification
+  const statusTone = verification.valid ? 'good' : 'bad'
+
+  return (
+    <section className="election-demo">
+      <div className="election-demo-header">
+        <div>
+          <p className="eyebrow">Election RC public verification</p>
+          <h2>{electionDemo.jurisdiction} milestone proof</h2>
+          <p>
+            Fictional evidence metadata, a public Merkle root, and a verifier-visible
+            tamper rejection path for screenshots and presentations.
+          </p>
+        </div>
+        <div className="actions">
+          <button onClick={() => setShowTamperDemo(false)}>Valid proof</button>
+          <button className="danger-button" onClick={() => setShowTamperDemo(true)}>Tamper demo</button>
+        </div>
+      </div>
+
+      <div className="status-grid">
+        <StatusBlock label="Chain integrity" value="Continuous" tone="good" />
+        <StatusBlock label="Tree size" value={String(electionDemo.root.treeSize)} tone="neutral" />
+        <StatusBlock label="Inclusion proof" value={verification.valid ? 'Verified' : 'Rejected'} tone={statusTone} />
+      </div>
+
+      <div className="election-layout">
+        <div className="timeline">
+          {electionDemo.timeline.map((item) => (
+            <article className="timeline-item" key={item.eventId}>
+              <span className="timeline-dot" />
+              <div>
+                <div className="row">
+                  <strong>{item.label}</strong>
+                  <span className={`privacy-pill ${item.privacyClass}`}>{item.privacyClass}</span>
+                </div>
+                <p>{item.type}</p>
+                <code>{item.eventId}</code>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="proof-card">
+          <h3>Milestone Merkle Root</h3>
+          <code>{electionDemo.root.merkleRoot}</code>
+          <dl>
+            <dt>Milestone</dt>
+            <dd>{electionDemo.milestone}</dd>
+            <dt>Generated</dt>
+            <dd>{electionDemo.root.generatedAt}</dd>
+            <dt>Verified event</dt>
+            <dd>{electionDemo.proof.eventId}</dd>
+          </dl>
+
+          <h3>Inclusion Proof</h3>
+          <ol className="proof-path">
+            {electionDemo.proof.auditPath.map((step) => (
+              <li key={`${step.position}-${step.hash}`}>
+                <span>{step.position}</span>
+                <code>{step.hash.slice(0, 24)}...</code>
+              </li>
+            ))}
+          </ol>
+
+          <div className={`verification-banner ${statusTone}`}>
+            <strong>{verification.valid ? 'Proof accepted' : 'Proof rejected'}</strong>
+            <span>{verification.reason}</span>
+            {showTamperDemo && <code>{electionDemo.tamperVerification.tamperedLeafHash}</code>}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function StatusBlock({ label, value, tone }) {
+  return (
+    <div className={`status-block ${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   )
 }

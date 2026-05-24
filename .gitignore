@@ -36,4 +36,5 @@ node_modules/
 **/node_modules/
 artifacts/demo/
 artifacts/benchmarks/
+artifacts/election-rc-demo/
 ets_core.egg-info/

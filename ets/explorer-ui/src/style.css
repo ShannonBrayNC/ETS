@@ -34,6 +34,11 @@ button:disabled {
   opacity: 0.45;
 }
 
+.danger-button {
+  border-color: #ef4444;
+  background: #991b1b;
+}
+
 input {
   width: 100%;
   border: 1px solid #334155;
@@ -182,6 +187,172 @@ th {
   gap: 1rem;
 }
 
+.election-demo {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #2563eb;
+  border-radius: 1.25rem;
+  background: rgba(12, 20, 36, 0.92);
+}
+
+.election-demo-header,
+.election-layout,
+.status-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.election-demo-header {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.election-demo h2,
+.election-demo h3 {
+  margin: 0 0 0.65rem;
+}
+
+.election-demo p {
+  color: #b6c4d8;
+}
+
+.status-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin: 1rem 0;
+}
+
+.status-block {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.85rem;
+  border: 1px solid #334155;
+  border-radius: 1rem;
+  background: #0f172a;
+}
+
+.status-block span {
+  color: #b6c4d8;
+  font-size: 0.82rem;
+}
+
+.status-block.good {
+  border-color: #22c55e;
+}
+
+.status-block.bad {
+  border-color: #ef4444;
+}
+
+.election-layout {
+  grid-template-columns: minmax(280px, 0.85fr) minmax(320px, 1.15fr);
+}
+
+.timeline {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.timeline-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid #1e293b;
+  border-radius: 1rem;
+  background: #020617;
+}
+
+.timeline-dot {
+  width: 0.85rem;
+  height: 0.85rem;
+  margin-top: 0.25rem;
+  border-radius: 999px;
+  background: #38bdf8;
+  box-shadow: 0 0 0 0.3rem rgba(56, 189, 248, 0.15);
+}
+
+.timeline-item p {
+  margin: 0.25rem 0;
+}
+
+.privacy-pill {
+  border: 1px solid #334155;
+  border-radius: 999px;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.privacy-pill.public {
+  color: #bbf7d0;
+  border-color: #22c55e;
+}
+
+.privacy-pill.restricted {
+  color: #fde68a;
+  border-color: #f59e0b;
+}
+
+.privacy-pill.internal {
+  color: #bfdbfe;
+  border-color: #3b82f6;
+}
+
+.proof-card {
+  padding: 1rem;
+  border: 1px solid #1e293b;
+  border-radius: 1rem;
+  background: #020617;
+}
+
+.proof-card dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.35rem 0.75rem;
+}
+
+.proof-card dt {
+  color: #93c5fd;
+}
+
+.proof-card dd {
+  margin: 0;
+}
+
+.proof-path {
+  display: grid;
+  gap: 0.5rem;
+  padding-left: 1.2rem;
+}
+
+.proof-path li span {
+  display: inline-block;
+  min-width: 3rem;
+  color: #93c5fd;
+  font-weight: 800;
+}
+
+.verification-banner {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 1rem;
+  padding: 0.85rem;
+  border: 1px solid #334155;
+  border-radius: 1rem;
+}
+
+.verification-banner.good {
+  border-color: #22c55e;
+  background: rgba(20, 83, 45, 0.35);
+}
+
+.verification-banner.bad {
+  border-color: #ef4444;
+  background: rgba(127, 29, 29, 0.45);
+}
+
 .step {
   position: relative;
 }
@@ -222,7 +393,9 @@ summary {
 }
 
 @media (max-width: 760px) {
-  .hero {
+  .hero,
+  .election-demo-header,
+  .election-layout {
     grid-template-columns: 1fr;
   }
 

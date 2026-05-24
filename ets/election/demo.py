@@ -20,9 +20,13 @@ from ets.election.proofs import (
     verify_election_inclusion_bundle,
 )
 
+SAMPLE_PACKET_PATH = (
+    Path(__file__).resolve().parents[1] / "demos/election-security/sample-packets.json"
+)
+
 
 def load_sample_packets(
-    path: Path = Path("ets/demos/election-security/sample-packets.json"),
+    path: Path = SAMPLE_PACKET_PATH,
 ) -> list[ElectionEvidencePacket]:
     """Load fictional election evidence packets from JSON."""
 

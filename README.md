@@ -227,6 +227,19 @@ Run the hash-chain tamper demo:
 .\.venv\Scripts\python.exe -m ets.election.demo
 ```
 
+Run the full RC walkthrough and artifact export:
+
+```powershell
+.\scripts\run-election-rc-demo.ps1
+```
+
+The RC walkthrough writes `root-manifest.json`, `audit-log.json`,
+`proof-bundle.json`, `verification-result.json`, `tamper-result.json`, and
+`walkthrough.md` under `artifacts/election-rc-demo/`. The matching visual path is
+available in the Explorer UI as the Election RC public verification panel. See
+[the walkthrough](docs/demo/election-rc-walkthrough.md) for the storyboard and
+privacy boundary.
+
 Verify an exported election proof bundle:
 
 ```powershell
