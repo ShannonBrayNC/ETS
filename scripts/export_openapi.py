@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
-from ets.api.app import create_app
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+from ets.api.app import create_app  # noqa: E402
 
 
 def main() -> int:
-    repo_root = Path(__file__).resolve().parents[1]
-    output_path = repo_root / "docs" / "api" / "openapi.generated.json"
+    output_path = REPO_ROOT / "docs" / "api" / "openapi.generated.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     app = create_app()

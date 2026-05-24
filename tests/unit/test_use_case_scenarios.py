@@ -249,6 +249,8 @@ def test_ets_use_case_scenario_generates_verifiable_receipt(scenario: Scenario) 
 
 
 def test_scenario_matrix_covers_all_planned_issues() -> None:
-    assert [scenario.issue for scenario in SCENARIOS] == [f"SCN-{index:03d}" for index in range(1, 11)]
+    assert [scenario.issue for scenario in SCENARIOS] == [
+        f"SCN-{index:03d}" for index in range(1, 11)
+    ]
     assert len({scenario.slug for scenario in SCENARIOS}) == 10
     assert len({scenario.content_hash for scenario in SCENARIOS}) == 10

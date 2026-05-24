@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from ets.core.signing import NoOpTreeHeadSigner, tree_head_signature_payload, verify_tree_head_signature
+from ets.core.signing import (
+    NoOpTreeHeadSigner,
+    tree_head_signature_payload,
+    verify_tree_head_signature,
+)
 from ets.core.tree_head import SignedTreeHead
 
 

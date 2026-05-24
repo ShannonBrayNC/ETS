@@ -25,7 +25,7 @@ def test_merkle_vectors_match_implementation() -> None:
 
 def test_v0_1_event_vector_matches_canonical_contract() -> None:
     vector = json.loads((VECTOR_ROOT / "v0.1" / "event-vectors.json").read_text(encoding="utf-8"))
-    event = EvidenceEvent.model_validate(vector["event"])
+    event = EvidenceEvent.model_validate_json(json.dumps(vector["event"]))
     expected = vector["expected"]
 
     payload = event.hashable_payload()
@@ -42,7 +42,7 @@ def test_v0_1_event_vector_detects_tampered_payload() -> None:
     event_data["metadata"] = dict(event_data["metadata"])
     event_data["metadata"]["sequence"] = 2
 
-    event = EvidenceEvent.model_validate(event_data)
+    event = EvidenceEvent.model_validate_json(json.dumps(event_data))
     event_hash = canonical_sha256(event.hashable_payload())
 
     assert event_hash != vector["expected"]["event_hash"]

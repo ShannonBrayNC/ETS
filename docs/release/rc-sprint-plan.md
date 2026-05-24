@@ -26,11 +26,11 @@ This plan organizes the open RC issues into small, reviewable sprints for Codex-
 - PR #15 is intentionally kept in draft because the source branch is ahead of `main` and behind `main`.
 - RC-002 is complete through `docs/decisions/ADR-0001-ets-public-name.md`.
 - RC-012 is complete through `docs/release/v0.1.0-alpha-checklist.md`.
-- RC-001 release-control setup is complete once this plan and the PR comment are present; the physical merge remains blocked until branch divergence is resolved and CI is reviewed.
+- RC-001 release-control setup is complete once this plan and the PR comment are present; the physical merge remains blocked until the divergence-resolution commit is pushed and CI is reviewed.
 
 **Next Codex task after Sprint 1:**
 
-Resolve PR #15 branch divergence in a bounded commit, preserve active implementation behavior, run CI, and leave the PR in draft until checks are reviewed.
+Push the PR #15 divergence-resolution commit, preserve active implementation behavior, run CI, and leave the PR in draft until checks are reviewed.
 
 ## Sprint 2: Protocol and Verifier Fidelity
 
