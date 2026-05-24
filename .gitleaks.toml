@@ -1,0 +1,10 @@
+title = "ETS gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Documented placeholder values in .env.example"
+condition = "AND"
+paths = ['''^\.env\.example$''']
+regexes = ['''replace-with-[A-Za-z0-9+_-]+''']
