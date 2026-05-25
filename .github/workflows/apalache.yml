@@ -32,12 +32,43 @@ jobs:
           test -f formal/apalache/model-targets.json
           jq empty formal/apalache/model-targets.json
 
-      - name: Execute symbolic verification targets
+      - name: Execute symbolic-safe ETSLog model
+        run: |
+          mkdir -p artifacts/proofs/etslog
+          tools/apalache/bin/apalache-mc check \
+            --init=Init \
+            --next=Next \
+            --inv=TypeOK \
+            formal/apalache/models/ETSLogSymbolic.tla \
+            > artifacts/proofs/etslog/output.txt
+
+      - name: Execute symbolic-safe federation model
+        run: |
+          mkdir -p artifacts/proofs/federation
+          tools/apalache/bin/apalache-mc check \
+            --init=Init \
+            --next=Next \
+            --inv=AcceptedRequiresQuorum \
+            formal/apalache/models/ETSVerifierFederationSymbolic.tla \
+            > artifacts/proofs/federation/output.txt
+
+      - name: Execute symbolic-safe transport model
+        run: |
+          mkdir -p artifacts/proofs/transport
+          tools/apalache/bin/apalache-mc check \
+            --init=Init \
+            --next=Next \
+            --inv=ReplayRequiresDelivery \
+            formal/apalache/models/ETSAsyncTransportSymbolic.tla \
+            > artifacts/proofs/transport/output.txt
+
+      - name: Generate symbolic verification summary
         run: |
           mkdir -p artifacts/proofs
-          echo "Sprint 14 symbolic verification execution scaffold" > artifacts/proofs/summary.txt
-          echo "Current workflow validates symbolic verification infrastructure and manifest integrity." >> artifacts/proofs/summary.txt
-          echo "Model-specific symbolic execution should be incrementally enabled as models are hardened for Apalache compatibility." >> artifacts/proofs/summary.txt
+          echo "ETS symbolic-safe verification summary" > artifacts/proofs/summary.txt
+          echo "Executed symbolic-safe bounded models under Apalache." >> artifacts/proofs/summary.txt
+          echo "These models preserve core safety semantics while intentionally reducing unsupported symbolic complexity." >> artifacts/proofs/summary.txt
+          echo "This workflow does not constitute universal theorem proof or complete symbolic coverage." >> artifacts/proofs/summary.txt
 
       - name: Upload symbolic proof artifacts
         uses: actions/upload-artifact@v4
