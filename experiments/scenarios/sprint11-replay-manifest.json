@@ -1,0 +1,36 @@
+{
+  "manifestVersion": "ets.experiment.manifest.v0.1",
+  "name": "sprint11-reproducibility-baseline",
+  "description": "Deterministic non-PII replay scenarios for ETS reproducible research pipeline.",
+  "seed": 20260524,
+  "scenarios": [
+    {
+      "id": "federation-baseline",
+      "type": "federation",
+      "eventCount": 100,
+      "verifiers": 3,
+      "expectedResult": "converged"
+    },
+    {
+      "id": "transport-replay-baseline",
+      "type": "transport-replay",
+      "eventCount": 100,
+      "replayEvery": 10,
+      "expectedResult": "replay-visible"
+    },
+    {
+      "id": "omission-suspicion-baseline",
+      "type": "omission",
+      "eventCount": 100,
+      "omitEvery": 17,
+      "expectedResult": "omission-suspected"
+    },
+    {
+      "id": "adversarial-visibility-baseline",
+      "type": "visibility",
+      "eventCount": 100,
+      "hiddenVerifier": "v3",
+      "expectedResult": "visibility-degraded"
+    }
+  ]
+}
