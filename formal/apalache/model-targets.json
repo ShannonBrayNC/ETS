@@ -1,0 +1,58 @@
+{
+  "manifestVersion": "ets.apalache.targets.v0.1",
+  "purpose": "Define initial ETS TLA+ models targeted for SMT-backed symbolic verification.",
+  "researchBoundary": "These targets establish bounded symbolic validation. They do not constitute universal theorem proof or complete protocol correctness.",
+  "targets": [
+    {
+      "id": "ETSLog",
+      "module": "formal/tla/ETSLog.tla",
+      "config": "formal/tla/ETSLog.cfg",
+      "required": true,
+      "reason": "Base append-only evidence-state model with safety-oriented invariants.",
+      "status": "initial-required-target",
+      "expectedValidation": ["TypeOK", "append-only safety", "missing suspicion boundaries"]
+    },
+    {
+      "id": "ETSVerifierFederation",
+      "module": "formal/tla/ETSVerifierFederation.tla",
+      "config": "formal/tla/ETSVerifierFederation.cfg",
+      "required": true,
+      "reason": "Core verifier quorum and conflict semantics model.",
+      "status": "initial-required-target",
+      "expectedValidation": ["accepted root quorum", "conflict detection", "equivocation suspicion"]
+    },
+    {
+      "id": "ETSAsyncTransport",
+      "module": "formal/tla/ETSAsyncTransport.tla",
+      "config": "formal/tla/ETSAsyncTransport.cfg",
+      "required": true,
+      "reason": "Bounded asynchronous transport and replay-order semantics model.",
+      "status": "initial-required-target",
+      "expectedValidation": ["no duplicate delivery", "topology-aware delivery", "replay suspicion justification"]
+    },
+    {
+      "id": "ETSTemporalByzantineFederation",
+      "module": "formal/tla/ETSTemporalByzantineFederation.tla",
+      "config": "formal/tla/ETSTemporalByzantineFederation.cfg",
+      "required": false,
+      "reason": "Important model, but may require symbolic-safe refactoring due temporal and adversarial transition complexity.",
+      "status": "deferred-symbolic-target"
+    },
+    {
+      "id": "ETSProbabilisticTrust",
+      "module": "formal/tla/ETSProbabilisticTrust.tla",
+      "config": "formal/tla/ETSProbabilisticTrust.cfg",
+      "required": false,
+      "reason": "Discretized confidence semantics model. Symbolic-safe coverage should be added after core safety models are stable.",
+      "status": "deferred-symbolic-target"
+    },
+    {
+      "id": "ETSLivenessFederation",
+      "module": "formal/tla/ETSLivenessFederation.tla",
+      "config": "formal/tla/ETSLivenessFederation.cfg",
+      "required": false,
+      "reason": "Liveness and fairness model. Symbolic liveness requires separate treatment and should not be conflated with safety checking.",
+      "status": "future-liveness-symbolic-target"
+    }
+  ]
+}
