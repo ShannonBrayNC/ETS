@@ -27,18 +27,23 @@ jobs:
         run: |
           test -f formal/lean/lakefile.lean
           test -f formal/lean/src/ETSProofs/TemporalLiveness.lean
+          test -f formal/lean/src/ETSProofs/Fairness.lean
           test -f docs/dissertation/MECHANIZED_TEMPORAL_PROOFS.md
+          test -f docs/dissertation/MECHANIZED_FAIRNESS_PROOFS.md
 
       - name: Execute Lean theorem validation
         working-directory: formal/lean
         run: |
           lean src/ETSProofs/TemporalLiveness.lean
+          lean src/ETSProofs/Fairness.lean
 
       - name: Publish proof summary
         run: |
-          echo "Mechanized temporal theorem proofs validated successfully." >> $GITHUB_STEP_SUMMARY
+          echo "Mechanized theorem proofs validated successfully." >> $GITHUB_STEP_SUMMARY
           echo "Validated proof domains:" >> $GITHUB_STEP_SUMMARY
           echo "- bounded temporal progress" >> $GITHUB_STEP_SUMMARY
           echo "- terminal-state correctness" >> $GITHUB_STEP_SUMMARY
           echo "- classification exclusivity" >> $GITHUB_STEP_SUMMARY
-          echo "Current proofs remain bounded and do not claim universal asynchronous liveness." >> $GITHUB_STEP_SUMMARY
+          echo "- fairness-constrained progress" >> $GITHUB_STEP_SUMMARY
+          echo "- timeout classification semantics" >> $GITHUB_STEP_SUMMARY
+          echo "Current proofs mechanize consequences of fairness assumptions, not universal scheduler fairness." >> $GITHUB_STEP_SUMMARY
