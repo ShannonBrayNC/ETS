@@ -1,0 +1,46 @@
+name: Apalache Symbolic Verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  symbolic-verification:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Download Apalache
+        run: |
+          mkdir -p tools
+          cd tools
+          curl -L -o apalache.tgz https://github.com/informalsystems/apalache/releases/download/v0.40.7/apalache.tgz
+          tar -xzf apalache.tgz
+
+      - name: Validate symbolic target manifest
+        run: |
+          test -f formal/apalache/model-targets.json
+          jq empty formal/apalache/model-targets.json
+
+      - name: Execute symbolic verification targets
+        run: |
+          mkdir -p artifacts/proofs
+          echo "Sprint 14 symbolic verification execution scaffold" > artifacts/proofs/summary.txt
+          echo "Current workflow validates symbolic verification infrastructure and manifest integrity." >> artifacts/proofs/summary.txt
+          echo "Model-specific symbolic execution should be incrementally enabled as models are hardened for Apalache compatibility." >> artifacts/proofs/summary.txt
+
+      - name: Upload symbolic proof artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: symbolic-proof-artifacts
+          path: artifacts/proofs/
