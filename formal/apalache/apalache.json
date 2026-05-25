@@ -1,0 +1,11 @@
+{
+  "inv": [
+    "TypeOK"
+  ],
+  "length": 20,
+  "maxError": 1,
+  "profiling": true,
+  "smt": {
+    "timeout": 30000
+  }
+}
