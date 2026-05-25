@@ -1,0 +1,44 @@
+name: Lean Mechanized Proofs
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  lean-proofs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install elan
+        run: |
+          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
+          echo "$HOME/.elan/bin" >> $GITHUB_PATH
+
+      - name: Install Lean toolchain
+        run: |
+          elan default leanprover/lean4:stable
+          lean --version
+
+      - name: Validate mechanized proof files
+        run: |
+          test -f formal/lean/lakefile.lean
+          test -f formal/lean/src/ETSProofs/TemporalLiveness.lean
+          test -f docs/dissertation/MECHANIZED_TEMPORAL_PROOFS.md
+
+      - name: Execute Lean theorem validation
+        working-directory: formal/lean
+        run: |
+          lean src/ETSProofs/TemporalLiveness.lean
+
+      - name: Publish proof summary
+        run: |
+          echo "Mechanized temporal theorem proofs validated successfully." >> $GITHUB_STEP_SUMMARY
+          echo "Validated proof domains:" >> $GITHUB_STEP_SUMMARY
+          echo "- bounded temporal progress" >> $GITHUB_STEP_SUMMARY
+          echo "- terminal-state correctness" >> $GITHUB_STEP_SUMMARY
+          echo "- classification exclusivity" >> $GITHUB_STEP_SUMMARY
+          echo "Current proofs remain bounded and do not claim universal asynchronous liveness." >> $GITHUB_STEP_SUMMARY
