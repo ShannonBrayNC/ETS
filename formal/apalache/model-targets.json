@@ -31,6 +31,14 @@
       "expectedValidation": ["no duplicate delivery", "topology-aware delivery", "replay suspicion justification"]
     },
     {
+      "id": "ETSLivenessProgressSymbolic",
+      "module": "formal/apalache/models/ETSLivenessProgressSymbolic.tla",
+      "required": true,
+      "reason": "Bounded symbolic progress monitor representing ETS liveness semantics under finite scheduling assumptions.",
+      "status": "initial-bounded-liveness-target",
+      "expectedValidation": ["bounded progress", "terminal convergence", "timeout resolution"]
+    },
+    {
       "id": "ETSTemporalByzantineFederation",
       "module": "formal/tla/ETSTemporalByzantineFederation.tla",
       "config": "formal/tla/ETSTemporalByzantineFederation.cfg",
@@ -51,7 +59,7 @@
       "module": "formal/tla/ETSLivenessFederation.tla",
       "config": "formal/tla/ETSLivenessFederation.cfg",
       "required": false,
-      "reason": "Liveness and fairness model. Symbolic liveness requires separate treatment and should not be conflated with safety checking.",
+      "reason": "Full liveness and fairness model. Universal symbolic liveness remains future work and should not be conflated with bounded progress semantics.",
       "status": "future-liveness-symbolic-target"
     }
   ]
