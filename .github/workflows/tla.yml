@@ -34,6 +34,7 @@ jobs:
           test -f docs/research/TLA_EXECUTION_AND_VALIDATION.md
           test -f docs/research/ASYNC_TRANSPORT_RESEARCH.md
           test -f docs/dissertation/TEMPORAL_LIVENESS_THEOREMS.md
+          test -f docs/dissertation/UNIVERSAL_TEMPORAL_LIVENESS.md
 
       - name: Execute TLC models
         working-directory: formal/tla
@@ -45,6 +46,7 @@ jobs:
           java -cp ../../tools/tla2tools.jar tlc2.TLC ETSLivenessFederation.tla -config ETSLivenessFederation.cfg -deadlock
           java -cp ../../tools/tla2tools.jar tlc2.TLC ETSAsyncTransport.tla -config ETSAsyncTransport.cfg -deadlock
           java -cp ../../tools/tla2tools.jar tlc2.TLC ETSTemporalLivenessTheorems.tla -config ETSTemporalLivenessTheorems.cfg -deadlock
+          java -cp ../../tools/tla2tools.jar tlc2.TLC ETSUniversalTemporalLiveness.tla -config ETSTemporalLivenessTheorems.cfg -deadlock
 
       - name: Publish TLC summary
         run: |
@@ -57,4 +59,5 @@ jobs:
           echo "- ETSLivenessFederation" >> $GITHUB_STEP_SUMMARY
           echo "- ETSAsyncTransport" >> $GITHUB_STEP_SUMMARY
           echo "- ETSTemporalLivenessTheorems" >> $GITHUB_STEP_SUMMARY
-          echo "Temporal liveness validation currently represents bounded eventual-progress semantics under explicit fairness assumptions." >> $GITHUB_STEP_SUMMARY
+          echo "- ETSUniversalTemporalLiveness" >> $GITHUB_STEP_SUMMARY
+          echo "Universal temporal liveness is modeled as conditional bounded eventual classification under explicit fairness assumptions." >> $GITHUB_STEP_SUMMARY
