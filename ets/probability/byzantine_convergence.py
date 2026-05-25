@@ -49,3 +49,11 @@ class ProbabilisticByzantineConvergence:
             raise ByzantineConvergenceError("rounds must be positive")
 
         return 1.0 - math.pow(1.0 - self.honest_fraction, rounds)
+
+    def convergence_result(self, rounds: int) -> ConvergenceResult:
+        return ConvergenceResult(
+            rounds=rounds,
+            probability_of_honest_majority=self.probability_of_honest_majority(),
+            expected_byzantine_fraction=self.expected_byzantine_fraction,
+            convergence_confidence=self.convergence_confidence(rounds),
+        )
