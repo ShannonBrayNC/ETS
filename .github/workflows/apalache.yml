@@ -62,13 +62,24 @@ jobs:
             formal/apalache/models/ETSAsyncTransportSymbolic.tla \
             > artifacts/proofs/transport/output.txt
 
+      - name: Execute bounded liveness progress model
+        run: |
+          mkdir -p artifacts/proofs/liveness
+          tools/apalache/bin/apalache-mc check \
+            --cinit=Init \
+            --next=Next \
+            --inv=BoundedProgress \
+            formal/apalache/models/ETSLivenessProgressSymbolic.tla \
+            > artifacts/proofs/liveness/output.txt
+
       - name: Generate symbolic verification summary
         run: |
           mkdir -p artifacts/proofs
           echo "ETS symbolic-safe verification summary" > artifacts/proofs/summary.txt
           echo "Executed symbolic-safe bounded models under Apalache." >> artifacts/proofs/summary.txt
-          echo "These models preserve core safety semantics while intentionally reducing unsupported symbolic complexity." >> artifacts/proofs/summary.txt
-          echo "This workflow does not constitute universal theorem proof or complete symbolic coverage." >> artifacts/proofs/summary.txt
+          echo "Executed bounded progress semantics for symbolic liveness analysis." >> artifacts/proofs/summary.txt
+          echo "Current liveness verification represents bounded progress reasoning, not universal temporal liveness theorem proof." >> artifacts/proofs/summary.txt
+          echo "These models preserve core safety and bounded progress semantics while intentionally reducing unsupported symbolic complexity." >> artifacts/proofs/summary.txt
 
       - name: Upload symbolic proof artifacts
         uses: actions/upload-artifact@v4
