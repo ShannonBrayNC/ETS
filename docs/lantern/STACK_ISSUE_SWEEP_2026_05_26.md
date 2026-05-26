@@ -65,6 +65,11 @@ Stack repos under review:
   - validation: `npm test` passed after local `npm install`
   - note: pre-existing local `signalforge` deletion of `.env.example` was not staged or committed
   - closed: `ShannonBrayNC/signalforge#36`
+- SignalForge `#20`: reviewed recommendation registry and scheduled review orchestration against acceptance criteria.
+  - covered by existing docs: `docs/architecture/recommendation-registry.md`, `docs/lantern/RECOMMENDATION_REGISTRY.md`
+  - covered by existing code: `recommendations.py`, `review.py`, `local_registry.py`, `review_runner.py`
+  - closed using validation from branch `codex/signalforge-lantern-contract-fixes`
+  - closed: `ShannonBrayNC/signalforge#20`
 
 ## In progress
 
@@ -84,7 +89,6 @@ Stack repos under review:
 ### SignalForge
 
 - `#36` Lantern Protocol Sprint 01: shared event envelope, registry, and ETS verification gate
-- `#20` Lantern Core: recommendation registry and scheduled review orchestration
 - `#25` Lantern PM Sprint 01: Christina, SignalForge, and GitHub adapter contracts
 - `#35` Lantern Protocol Sprint 00: consent-first trust model and ecosystem charter
 - `#26` Lantern PM Sprint 02: review storage, handoff audit, and SignalForge mapping
