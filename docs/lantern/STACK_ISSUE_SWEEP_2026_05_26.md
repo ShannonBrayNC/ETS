@@ -132,10 +132,19 @@ Stack repos under review:
   - validation: `npm run build` passed
   - note: pre-existing local `package-lock.json` modification was not committed
   - closed: `ShannonBrayNC/EchoLiving#2`, `#4`, `#5`
+- EchoLiving `#3`: added recommendation export and Christina sprint-candidate intake support.
+  - branch: `codex/echoliving-lantern-adapter-doc`
+  - commit: `dc81df3`
+  - added `src/lantern/recommendationRegistry.ts` with SignalForge registry keys, open recommendation export, sprint candidates, dedupe by `dedupeKey` or tracking issue URL, review notes, and status updates
+  - updated `docs/lantern-adapter.md` with the recommendation export/query pattern
+  - validation: `npm run test:lantern` passed with 15 tests
+  - validation: `npm run build` passed
+  - note: pre-existing local `package-lock.json` modification was not committed
+  - closed: `ShannonBrayNC/EchoLiving#3`
 
 ## In progress
 
-- Process EchoLiving `#3` recommendation export and sprint-candidate intake.
+- Inspect EchoMedia Content Engine queue and worktree before selecting the next issue.
 
 ## Not completed yet
 
@@ -166,7 +175,7 @@ No currently tracked high-priority Christina starter items remain in this sweep 
 
 ### EchoLiving
 
-- `#3` EchoLiving: expose open recommendations and sprint candidates to Christina operating loop
+No currently tracked high-priority EchoLiving Lantern starter items remain in this sweep queue.
 
 ### EchoMedia Content Engine
 
