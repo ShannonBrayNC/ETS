@@ -54,10 +54,21 @@ Stack repos under review:
   - validation: `python -m mypy` passed
   - validation: `python -m ruff check .` passed
   - validation: `python -m pytest -q` passed with 291 tests
+- SignalForge `#36`: reviewed existing Lantern envelope, registry, adapter registry, and intake contracts; fixed contract validation blockers.
+  - branch: `codex/signalforge-lantern-contract-fixes`
+  - commit: `78dc211`
+  - fix: Pydantic after validators now use safe assignment in Lantern contract gates
+  - fix: review-cycle duplicate linking now requires explicit `dedupeKey`, avoiding accidental collapse of distinct same-title recommendations
+  - validation: `python -m pytest src\shared\tests\test_lantern_contracts.py src\shared\tests\test_lantern_intake.py -q` passed
+  - validation: `python -m pytest -q` passed with 26 tests
+  - validation: `python -m mypy src\shared\signalforge_contracts` passed
+  - validation: `npm test` passed after local `npm install`
+  - note: pre-existing local `signalforge` deletion of `.env.example` was not staged or committed
+  - closed: `ShannonBrayNC/signalforge#36`
 
 ## In progress
 
-- Sync ETS `#46` implementation and close issue.
+- Select next recommended stack issue after SignalForge `#36`.
 
 ## Not completed yet
 
