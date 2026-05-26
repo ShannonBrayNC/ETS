@@ -1,6 +1,102 @@
 {
   "components": {
     "schemas": {
+      "ArtifactReadResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_hash": {
+            "title": "Artifact Hash",
+            "type": "string"
+          },
+          "artifact_id": {
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "byte_size": {
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "ingestion_timestamp_utc": {
+            "format": "date-time",
+            "title": "Ingestion Timestamp Utc",
+            "type": "string"
+          },
+          "log_index": {
+            "title": "Log Index",
+            "type": "integer"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "reference_uri": {
+            "title": "Reference Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "artifact_hash",
+          "reference_uri",
+          "content_type",
+          "byte_size",
+          "metadata",
+          "ingestion_timestamp_utc",
+          "event_id",
+          "log_index"
+        ],
+        "title": "ArtifactReadResponse",
+        "type": "object"
+      },
+      "ArtifactReceiptResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_hash": {
+            "title": "Artifact Hash",
+            "type": "string"
+          },
+          "artifact_id": {
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "block_number": {
+            "title": "Block Number",
+            "type": "integer"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "proof_url": {
+            "title": "Proof Url",
+            "type": "string"
+          },
+          "timestamp_utc": {
+            "format": "date-time",
+            "title": "Timestamp Utc",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "artifact_hash",
+          "event_id",
+          "block_number",
+          "timestamp_utc",
+          "proof_url"
+        ],
+        "title": "ArtifactReceiptResponse",
+        "type": "object"
+      },
       "AuditPathStep": {
         "additionalProperties": false,
         "properties": {
@@ -437,6 +533,127 @@
           "verification_result"
         ],
         "title": "EvidenceProofBundle",
+        "type": "object"
+      },
+      "FederationAssessment": {
+        "additionalProperties": false,
+        "description": "Quorum and fork-suspicion result for a set of verifier observations.",
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/FederationConflict"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "observation_count": {
+            "title": "Observation Count",
+            "type": "integer"
+          },
+          "quorum_log_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quorum Log Id"
+          },
+          "quorum_met": {
+            "title": "Quorum Met",
+            "type": "boolean"
+          },
+          "quorum_root_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quorum Root Hash"
+          },
+          "quorum_tree_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quorum Tree Size"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "threshold": {
+            "title": "Threshold",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accepted",
+          "threshold",
+          "observation_count",
+          "quorum_met",
+          "quorum_log_id",
+          "quorum_tree_size",
+          "quorum_root_hash",
+          "conflicts",
+          "reasons"
+        ],
+        "title": "FederationAssessment",
+        "type": "object"
+      },
+      "FederationConflict": {
+        "additionalProperties": false,
+        "description": "A same-log, same-size root disagreement observed by the federation.",
+        "properties": {
+          "log_id": {
+            "title": "Log Id",
+            "type": "string"
+          },
+          "root_hashes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Root Hashes",
+            "type": "array"
+          },
+          "tree_size": {
+            "title": "Tree Size",
+            "type": "integer"
+          },
+          "verifier_ids_by_root": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Verifier Ids By Root",
+            "type": "object"
+          }
+        },
+        "required": [
+          "log_id",
+          "tree_size",
+          "root_hashes",
+          "verifier_ids_by_root"
+        ],
+        "title": "FederationConflict",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1133,6 +1350,27 @@
         ]
       }
     },
+    "/api/v1/federation/assess": {
+      "post": {
+        "operationId": "assess_federation_route_api_v1_federation_assess_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FederationAssessment"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Assess Federation Route",
+        "tags": [
+          "federation"
+        ]
+      }
+    },
     "/api/v1/log/head": {
       "get": {
         "operationId": "get_log_head_api_v1_log_head_get",
@@ -1524,6 +1762,27 @@
         "summary": "Append Lab Evidence"
       }
     },
+    "/evidence/register": {
+      "post": {
+        "operationId": "register_artifact_evidence_register_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactReceiptResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Register Artifact",
+        "tags": [
+          "artifacts"
+        ]
+      }
+    },
     "/evidence/sequence/{sequence}": {
       "get": {
         "operationId": "get_lab_evidence_by_sequence_evidence_sequence__sequence__get",
@@ -1563,6 +1822,71 @@
         "summary": "Get Lab Evidence By Sequence"
       }
     },
+    "/evidence/verify": {
+      "post": {
+        "operationId": "verify_artifact_evidence_verify_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Verify Artifact Evidence Verify Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Verify Artifact",
+        "tags": [
+          "artifacts"
+        ]
+      }
+    },
+    "/evidence/{artifact_id}/proof": {
+      "get": {
+        "operationId": "get_artifact_proof_evidence__artifact_id__proof_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceProofBundle"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Artifact Proof",
+        "tags": [
+          "artifacts"
+        ]
+      }
+    },
     "/evidence/{event_id}": {
       "get": {
         "operationId": "get_lab_evidence_evidence__event_id__get",
@@ -1582,7 +1906,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EventReadResponse"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/EventReadResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ArtifactReadResponse"
+                    }
+                  ],
+                  "title": "Response Get Lab Evidence Evidence  Event Id  Get"
                 }
               }
             },

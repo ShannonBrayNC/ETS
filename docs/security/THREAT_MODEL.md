@@ -16,3 +16,9 @@ workflow completeness policy exists.
 - Missing-event attacks: documented and partially explored through omission
   detection experiments; not overclaimed as proof-of-completeness.
 - API abuse: local request limits exist; hosted rate limiting remains future.
+- Asynchronous network adversaries: bounded seeded simulations exist for delay
+  and packet loss, but ETS does not prove Internet-scale liveness.
+- Byzantine consensus adversaries: ETS can report root disagreement and quorum
+  policy results, but it does not prove BFT safety or liveness.
+- Governance disputes: deterministic escalation semantics exist, but legal,
+  organizational, and ethical decisions remain external controls.

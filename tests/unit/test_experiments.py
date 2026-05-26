@@ -1,5 +1,8 @@
+import pytest
+
 from ets.core import InMemoryAppendOnlyLog
 from ets.experiments.dataset import generate_synthetic_events
+from ets.experiments.federation_convergence import run_federation_convergence
 from ets.experiments.fork_simulation import run_fork_simulation
 from ets.experiments.omission_detection import detect_omissions
 
@@ -27,3 +30,30 @@ def test_omission_detection_reports_missing_expected_event() -> None:
     findings = detect_omissions([event.event_id for event in events], log.list_entries())
 
     assert [finding.event_id for finding in findings] == ["evt_lab_0001"]
+
+
+def test_federation_convergence_accepts_unanimous_roots() -> None:
+    result = run_federation_convergence(verifier_count=3, threshold=2)
+
+    assert result.accepted is True
+    assert result.quorum_met is True
+    assert result.conflict_count == 0
+
+
+def test_federation_convergence_reports_conflicting_roots() -> None:
+    result = run_federation_convergence(
+        verifier_count=3,
+        threshold=2,
+        conflicting_roots=1,
+    )
+
+    assert result.accepted is False
+    assert result.quorum_met is True
+    assert result.conflict_count == 1
+
+
+def test_federation_convergence_rejects_invalid_parameters() -> None:
+    with pytest.raises(ValueError):
+        run_federation_convergence(verifier_count=0)
+    with pytest.raises(ValueError):
+        run_federation_convergence(verifier_count=2, conflicting_roots=3)

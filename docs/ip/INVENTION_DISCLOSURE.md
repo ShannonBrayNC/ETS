@@ -49,6 +49,14 @@ flowchart LR
   Q --> R["Audit or rejection"]
 ```
 
+The current reference implementation includes a deterministic federation
+assessment primitive in `ets.core.federation` and
+`POST /api/v1/federation/assess`. It groups verifier-observed tree heads by
+`(log_id, tree_size, root_hash)`, applies a positive integer quorum threshold,
+and reports same-log, same-size root disagreements as fork-suspicion evidence.
+This is protocol integration material for attorney review; it is not a claim
+over generic voting, hashing, signatures, or Merkle-tree construction.
+
 ## Omission Detection Concept
 
 ETS does not prove universal completeness. It can produce omission findings

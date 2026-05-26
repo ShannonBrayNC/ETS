@@ -30,6 +30,20 @@ Invoke-RestMethod http://localhost:8000/openapi.json | ConvertTo-Json -Depth 100
 
 Do not manually edit generated OpenAPI output. Re-export it after API route or schema changes.
 
+## Evidence Registration
+
+Sprint 2 compatibility routes support deterministic artifact registration
+without storing raw bytes:
+
+- `POST /evidence/register`
+- `GET /evidence/{artifactId}`
+- `GET /evidence/{artifactId}/proof`
+- `POST /evidence/verify`
+
+Clients provide artifact bytes as base64 JSON. ETS computes the SHA-256 content
+hash, stores reference metadata, appends an `EvidenceEvent`, and returns a proof
+receipt. Metadata changes do not affect the artifact hash; byte changes do.
+
 ## Hosted auth note
 
 For hosted deployments, use the JWKS profile in `docs/security/HOSTED_AUTH_PROFILE.md`. The local examples intentionally use development headers and no bearer token by default.

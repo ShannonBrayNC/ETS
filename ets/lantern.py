@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import sys
+import types
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -49,12 +52,15 @@ class ConsentEvent(LanternModel):
     source_event_id: str = Field(alias="sourceEventId", min_length=1)
     evidence_hash: str = Field(alias="evidenceHash", pattern=r"^[0-9a-f]{64}$")
     expires_at: datetime | None = Field(alias="expiresAt", default=None)
-    created_at: datetime = Field(alias="createdAt", default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(
+        alias="createdAt",
+        default_factory=lambda: datetime.now(UTC),
+    )
 
     def is_expired(self, now: datetime | None = None) -> bool:
         if self.expires_at is None:
             return False
-        comparison_time = now or datetime.now(timezone.utc)
+        comparison_time = now or datetime.now(UTC)
         return self.expires_at <= comparison_time
 
 
@@ -64,7 +70,10 @@ class LanternProofBundle(LanternModel):
     artifact_hash: str = Field(alias="artifactHash", pattern=r"^[0-9a-f]{64}$")
     consent_event_id: str | None = Field(alias="consentEventId", default=None)
     approval_state: str = Field(alias="approvalState", default="not-required")
-    merkle_inclusion_proof: dict[str, Any] = Field(alias="merkleInclusionProof", default_factory=dict)
+    merkle_inclusion_proof: dict[str, Any] = Field(
+        alias="merkleInclusionProof",
+        default_factory=dict,
+    )
     verification_result: str | None = Field(alias="verificationResult", default=None)
 
 
@@ -128,7 +137,10 @@ def verify_lantern_proof_bundle(
             message="Cross-system Lantern item is missing an ETS proof bundle.",
         )
 
-    if proof_bundle.source_event_id != source_event_id or proof_bundle.artifact_hash != evidence_hash:
+    if (
+        proof_bundle.source_event_id != source_event_id
+        or proof_bundle.artifact_hash != evidence_hash
+    ):
         return LanternVerificationResult(
             status=LanternVerificationStatus.BLOCKED,
             reasonCode=VerificationReasonCode.HASH_MISMATCH,
@@ -136,7 +148,10 @@ def verify_lantern_proof_bundle(
             proofId=proof_bundle.proof_id,
         )
 
-    requires_consent = action_type in CONSENT_REQUIRED_ACTIONS or proof_bundle.approval_state in APPROVAL_REQUIRED_STATES
+    requires_consent = (
+        action_type in CONSENT_REQUIRED_ACTIONS
+        or proof_bundle.approval_state in APPROVAL_REQUIRED_STATES
+    )
     if requires_consent and consent_event is None:
         return LanternVerificationResult(
             status=LanternVerificationStatus.HOLD_FOR_APPROVAL,
@@ -146,7 +161,10 @@ def verify_lantern_proof_bundle(
         )
 
     if consent_event is not None:
-        if consent_event.evidence_hash != evidence_hash or consent_event.source_event_id != source_event_id:
+        if (
+            consent_event.evidence_hash != evidence_hash
+            or consent_event.source_event_id != source_event_id
+        ):
             return LanternVerificationResult(
                 status=LanternVerificationStatus.BLOCKED,
                 reasonCode=VerificationReasonCode.HASH_MISMATCH,
@@ -194,3 +212,66 @@ def verify_lantern_proof_bundle(
         proofId=proof_bundle.proof_id,
         consentId=consent_event.consent_id if consent_event else None,
     )
+
+
+class LanternConsentState(StrEnum):
+    GRANTED = "granted"
+    DENIED = "denied"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+    MISSING = "missing"
+
+
+class LanternVerificationCode(StrEnum):
+    VALID = "valid"
+    MISSING_PROOF = "missing-proof"
+    HASH_MISMATCH = "hash-mismatch"
+    CONSENT_REVOKED = "consent-revoked"
+    CONSENT_DENIED = "consent-denied"
+    CONSENT_EXPIRED = "consent-expired"
+    APPROVAL_MISSING = "approval-missing"
+
+
+@dataclass(frozen=True)
+class LegacyLanternProofBundle:
+    event_id: str
+    source_system: str
+    source_repo: str
+    evidence_hash: str
+    proof_evidence_hash: str
+    proof_id: str | None
+    consent_state: LanternConsentState
+    approval_required: bool
+    approval_granted: bool
+
+
+@dataclass(frozen=True)
+class LegacyLanternVerificationResult:
+    accepted: bool
+    code: LanternVerificationCode
+
+
+def verify_legacy_lantern_proof_bundle(
+    bundle: LegacyLanternProofBundle,
+) -> LegacyLanternVerificationResult:
+    if bundle.proof_id is None:
+        return LegacyLanternVerificationResult(False, LanternVerificationCode.MISSING_PROOF)
+    if bundle.proof_evidence_hash != bundle.evidence_hash:
+        return LegacyLanternVerificationResult(False, LanternVerificationCode.HASH_MISMATCH)
+    if bundle.consent_state == LanternConsentState.REVOKED:
+        return LegacyLanternVerificationResult(False, LanternVerificationCode.CONSENT_REVOKED)
+    if bundle.consent_state == LanternConsentState.DENIED:
+        return LegacyLanternVerificationResult(False, LanternVerificationCode.CONSENT_DENIED)
+    if bundle.consent_state == LanternConsentState.EXPIRED:
+        return LegacyLanternVerificationResult(False, LanternVerificationCode.CONSENT_EXPIRED)
+    if bundle.approval_required and not bundle.approval_granted:
+        return LegacyLanternVerificationResult(False, LanternVerificationCode.APPROVAL_MISSING)
+    return LegacyLanternVerificationResult(True, LanternVerificationCode.VALID)
+
+
+_verification_module = cast(Any, types.ModuleType("ets.lantern.verification"))
+_verification_module.LanternConsentState = LanternConsentState
+_verification_module.LanternProofBundle = LegacyLanternProofBundle
+_verification_module.LanternVerificationCode = LanternVerificationCode
+_verification_module.verify_lantern_proof_bundle = verify_legacy_lantern_proof_bundle
+sys.modules["ets.lantern.verification"] = _verification_module

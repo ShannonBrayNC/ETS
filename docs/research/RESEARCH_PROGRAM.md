@@ -30,6 +30,9 @@ experiments.
 The formal track maps implementation behavior to explicit invariants:
 
 - append-only log growth;
+- bounded asynchronous message queues;
+- packet reordering and bounded transport-loss semantics;
+- fairness-scoped liveness properties;
 - deterministic canonicalization and hashing;
 - inclusion proof soundness;
 - linear consistency proof limits;
@@ -40,8 +43,15 @@ The formal track maps implementation behavior to explicit invariants:
 Executable artifacts:
 
 - `formal/tla/ETSLog.tla` models append-only state and fork observation.
+- `formal/tla/ETSAsyncNetwork.tla` models bounded queues, delivery, and packet
+  loss as nondeterministic transitions. It is not a probabilistic proof.
+- `formal/tla/ETSLiveness.tla` models replay eventuality, partition healing,
+  witness propagation completion, stale-state recovery, and bounded convergence
+  under explicit weak-fairness assumptions.
 - `formal/alloy/ETSCausalModel.als` models causal evidence relationships and
   omission suspicion.
+- `docs/research/FORMAL_TRACEABILITY_MATRIX.md` maps claims to TLA+, Alloy,
+  code, and tests.
 - `docs/research/FORMAL_THEOREMS.md` states theorem assumptions and
   non-theorems.
 
@@ -49,7 +59,8 @@ Executable artifacts:
 
 The distributed systems track evaluates ETS as a federation of log nodes,
 witnesses, and independent verifiers. The reference implementation models
-quorum decisions, root comparison, fork simulation, and omission detection.
+quorum decisions, root comparison, fork simulation, omission detection, and
+seeded asynchronous broadcast experiments.
 
 Current assumptions:
 
@@ -58,6 +69,10 @@ Current assumptions:
 - witnesses publish observed tree heads but do not prove real-world
   completeness;
 - quorum acceptance is a local policy decision, not universal truth.
+- asynchronous network simulations are bounded experimental models, not
+  Internet-scale liveness proofs.
+- liveness claims require eventual partition healing, bounded adversarial
+  pressure, and weak fairness for propagation/recovery actions.
 
 ## Cryptographic Evidence Track
 
@@ -87,9 +102,26 @@ Experiments must produce deterministic or clearly bounded artifacts:
 
 - fork simulations must report conflicting roots;
 - omission experiments must report missing expected IDs;
+- asynchronous network simulations must record seed, delay bounds, packet-loss
+  probability, and partial-synchrony bound;
+- probabilistic experiments must state the statistical model and prior;
 - benchmarks must write JSON and Markdown outputs;
 - datasets must be synthetic and contain no real PII;
 - results must include run parameters and known limitations.
+
+## Probabilistic Inference Track
+
+ETS now includes a bounded Beta-Bernoulli update primitive for observed verifier
+reliability experiments. This is true Bayesian updating over a simple
+Bernoulli observation model. It is not a stochastic-process proof of federation
+convergence, and it does not establish Byzantine safety or liveness.
+
+## Human Governance Track
+
+ETS separates protocol verification from organizational action. Governance
+semantics classify proof failures, fork suspicion, omission suspicion, override
+requests, and legal holds as escalation signals. Dispute resolution and trust
+arbitration remain human and organizational processes.
 
 ## Publication Deliverables
 
@@ -106,3 +138,11 @@ ETS can prove that a submitted evidence record matches a published digest and
 log proof. ETS cannot prove that all relevant real-world evidence was submitted
 unless an external completeness policy defines the expected evidence set and a
 trusted observation process enforces it.
+
+ETS does not yet prove BFT convergence, safety/liveness under asynchronous
+adversaries, Internet-scale adversarial correctness, or legal sufficiency of a
+governance outcome.
+
+Symbolic model checking and refinement proofs are tracked as future work in
+`formal/apalache/README.md`; they are not currently claimed as completed ETS
+results.

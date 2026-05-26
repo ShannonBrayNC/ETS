@@ -21,7 +21,7 @@ def test_signed_execution_verification() -> None:
     payload_hash = 'payload-001'
 
     signature = sha256(
-        f'exec-001:{payload_hash}'.encode('utf-8')
+        f"exec-001:{payload_hash}".encode()
     ).hexdigest()
 
     request = SignedExecutionRequest(

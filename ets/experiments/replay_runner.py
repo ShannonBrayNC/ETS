@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from ets.benchmarks.run_benchmarks import run_benchmarks
-
 
 DEFAULT_MANIFEST = Path("experiments/scenarios/sprint11-replay-manifest.json")
 DEFAULT_OUTPUT = Path("artifacts/experiments")
@@ -15,7 +15,7 @@ DEFAULT_OUTPUT = Path("artifacts/experiments")
 def execute_manifest(
     manifest_path: Path = DEFAULT_MANIFEST,
     output_dir: Path = DEFAULT_OUTPUT,
-) -> dict:
+) -> dict[str, Any]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     output_dir.mkdir(parents=True, exist_ok=True)
 

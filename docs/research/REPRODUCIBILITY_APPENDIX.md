@@ -45,12 +45,49 @@ Fork simulations should report divergent roots. Omission experiments should
 report findings only for expected event IDs that are absent from the observed
 log.
 
+The federation convergence experiment is exercised by:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/unit/test_experiments.py
+```
+
+It uses fixed synthetic tree heads to measure quorum acceptance and conflict
+rejection without relying on wall-clock network convergence.
+
+Async-network and Bayesian reliability primitives are exercised by:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/unit/test_async_network.py tests/unit/test_liveness.py tests/unit/test_probabilistic.py
+```
+
+The async-network experiment records deterministic seeded delivery/loss
+outcomes under bounded delay settings. The Bayesian primitive performs
+Beta-Bernoulli posterior updates for observed verifier behavior. Neither test
+suite establishes BFT consensus or stochastic convergence.
+
+## Federation API Reproduction
+
+The federation quorum/fork primitive is tested through both unit tests and the
+FastAPI integration suite:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/unit/test_federation.py tests/integration/test_api.py
+```
+
+The route `POST /api/v1/federation/assess` is deterministic for a fixed set of
+tree-head observations. It does not contact external verifiers or discover
+public keys.
+
 ## Formal Model Reproduction
 
 TLA+ validation is represented by:
 
 - `formal/tla/ETSLog.tla`
 - `formal/tla/ETSLog.cfg`
+- `formal/tla/ETSAsyncNetwork.tla`
+- `formal/tla/ETSAsyncNetwork.cfg`
+- `formal/tla/ETSLiveness.tla`
+- `formal/tla/ETSLiveness.cfg`
 
 Alloy causal modeling is represented by:
 
@@ -59,6 +96,13 @@ Alloy causal modeling is represented by:
 CI may validate syntax or artifact presence when model checkers are not
 installed. A full paper artifact must state whether TLC or Alloy Analyzer was
 executed and with which bounds.
+
+## Symbolic Verification Status
+
+Apalache and refinement proofs are tracked in `formal/apalache/README.md`.
+They are not currently part of the reproducibility baseline. Publications must
+describe symbolic verification as pending until a pinned checker version,
+commands, and outputs are committed.
 
 ## Docker Federation
 

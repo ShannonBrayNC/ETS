@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ets.lantern import (
     ConsentEvent,
@@ -35,7 +35,7 @@ def make_consent(event_type=ConsentEventType.GRANTED, **overrides):
         "scope": "customer-message:ticket-12345",
         "sourceEventId": "evt-1",
         "evidenceHash": HASH,
-        "createdAt": datetime(2026, 5, 25, tzinfo=timezone.utc),
+        "createdAt": datetime(2026, 5, 25, tzinfo=UTC),
     }
     values.update(overrides)
     return ConsentEvent(**values)

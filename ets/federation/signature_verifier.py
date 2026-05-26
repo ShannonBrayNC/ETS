@@ -8,7 +8,7 @@ from ets.federation.identity_contracts import SignedExecutionRequest
 class SignatureVerifier:
     def verify(self, request: SignedExecutionRequest) -> bool:
         expected = hashlib.sha256(
-            f'{request.execution_id}:{request.payload_hash}'.encode('utf-8')
+            f"{request.execution_id}:{request.payload_hash}".encode()
         ).hexdigest()
 
         return expected == request.signature

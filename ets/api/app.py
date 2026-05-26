@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from fastapi import FastAPI, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ets import __version__
 from ets.api.audit import audit_event
@@ -23,19 +23,29 @@ from ets.api.auth import (
     ProductionJWTAuthPolicy,
 )
 from ets.core import (
+    ArtifactRecord,
     ConsistencyProof,
     DuplicateEventError,
     EventNotFoundError,
     EventStore,
     EvidenceEvent,
     EvidenceProofBundle,
+    FederationAssessment,
+    FederationObservation,
     InclusionProof,
     InMemoryAppendOnlyLog,
     LogEntry,
     SignedTreeHead,
     SQLiteEventStore,
     StorageValidationError,
+    assess_federation,
+    build_artifact_event_id,
+    build_artifact_reference_uri,
     canonical_sha256,
+    create_artifact_record,
+    decode_artifact_base64,
+    hash_artifact_bytes,
+    normalize_artifact_metadata,
 )
 from ets.core.merkle import merkle_root
 from ets.core.proofs import (
@@ -87,6 +97,53 @@ class EvidenceVerificationRequest(BaseModel):
     expected_event_hash: str
 
 
+class ArtifactRegistrationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    artifact_id: str = Field(min_length=1, max_length=128)
+    artifact_base64: str = Field(min_length=1)
+    tenant_id: str = Field(min_length=1, max_length=128)
+    workspace_id: str = Field(min_length=1, max_length=128)
+    content_type: str = Field(min_length=1, max_length=128)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    reference_uri: str | None = None
+    source_system: str | None = None
+    actor_id: str | None = None
+    correlation_id: str | None = None
+
+
+class ArtifactReceiptResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    artifact_id: str
+    artifact_hash: str
+    event_id: str
+    block_number: int
+    timestamp_utc: datetime
+    proof_url: str
+
+
+class ArtifactReadResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    artifact_id: str
+    artifact_hash: str
+    reference_uri: str
+    content_type: str
+    byte_size: int
+    metadata: dict[str, object]
+    ingestion_timestamp_utc: datetime
+    event_id: str
+    log_index: int
+
+
+class ArtifactVerificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    artifact_id: str = Field(min_length=1, max_length=128)
+    artifact_base64: str = Field(min_length=1)
+
+
 class MetricsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
@@ -111,6 +168,13 @@ class CertificateResponse(BaseModel):
 
     format: CertificateFormat
     content: str
+
+
+class FederationAssessmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    observations: list[FederationObservation]
+    threshold: int = Field(ge=1)
 
 
 @dataclass(frozen=True)
@@ -161,6 +225,7 @@ def create_app(
     app.state.redaction_profile = redaction_profile
     app.state.auth_mode = auth_mode
     app.state.signing_mode = signing_mode
+    app.state.artifact_records = {}
     app.state.metrics = {
         "append_count": 0,
         "proof_count": 0,
@@ -401,6 +466,106 @@ def create_app(
     async def append_lab_evidence(request: Request) -> EventAppendResponse:
         return await append_event(request)
 
+    @app.post(
+        "/evidence/register",
+        response_model=ArtifactReceiptResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["artifacts"],
+    )
+    async def register_artifact(request: Request) -> ArtifactReceiptResponse:
+        context = _authenticate(request, request_auth_policy)
+        scope = _scope_from_request(request, context)
+        payload = _validate_json_body(ArtifactRegistrationRequest, await request.body())
+        if payload.artifact_id in app.state.artifact_records:
+            raise DuplicateEventError(f"artifact_id already exists: {payload.artifact_id}")
+        artifact_bytes = decode_artifact_base64(payload.artifact_base64)
+        artifact_hash = hash_artifact_bytes(artifact_bytes)
+        metadata = normalize_artifact_metadata(payload.metadata)
+        created_at = datetime.now(UTC)
+        event = EvidenceEvent(
+            event_id=build_artifact_event_id(payload.artifact_id),
+            tenant_id=payload.tenant_id,
+            workspace_id=payload.workspace_id,
+            evidence_id=payload.artifact_id,
+            event_type="evidence.registered",
+            subject_ref=payload.reference_uri or build_artifact_reference_uri(payload.artifact_id),
+            content_hash=artifact_hash,
+            content_hash_alg="sha256",
+            metadata={
+                "artifact_id": payload.artifact_id,
+                "content_type": payload.content_type,
+                "byte_size": len(artifact_bytes),
+                "metadata": metadata,
+            },
+            created_at_utc=created_at,
+            source_system=payload.source_system,
+            actor_id=payload.actor_id,
+            correlation_id=payload.correlation_id,
+            external_refs={"reference_uri": payload.reference_uri}
+            if payload.reference_uri is not None
+            else None,
+        )
+        _ensure_event_matches_scope(event, scope)
+        entry = event_log.append(event)
+        reference_uri = payload.reference_uri or build_artifact_reference_uri(payload.artifact_id)
+        record = create_artifact_record(
+            artifact_id=payload.artifact_id,
+            artifact_hash=artifact_hash,
+            reference_uri=reference_uri,
+            content_type=payload.content_type,
+            byte_size=len(artifact_bytes),
+            metadata=metadata,
+            ingestion_timestamp_utc=created_at,
+            event_id=entry.event.event_id,
+            log_index=entry.log_index,
+        )
+        app.state.artifact_records[payload.artifact_id] = record
+        _increment_metric(request, "append_count")
+        audit_event(
+            "artifact_registered",
+            "ok",
+            tenant_id=entry.event.tenant_id,
+            workspace_id=entry.event.workspace_id,
+            event_id=entry.event.event_id,
+            correlation_id=scope.correlation_id or entry.event.correlation_id,
+        )
+        return ArtifactReceiptResponse(
+            artifact_id=record.artifact_id,
+            artifact_hash=record.artifact_hash,
+            event_id=record.event_id,
+            block_number=record.log_index,
+            timestamp_utc=record.ingestion_timestamp_utc,
+            proof_url=f"/evidence/{record.artifact_id}/proof",
+        )
+
+    @app.get(
+        "/evidence/{artifact_id}/proof",
+        response_model=EvidenceProofBundle,
+        tags=["artifacts"],
+    )
+    def get_artifact_proof(artifact_id: str, request: Request) -> EvidenceProofBundle:
+        record = _get_artifact_record(request, artifact_id)
+        return get_proof_bundle(record.event_id, request)
+
+    @app.post("/evidence/verify", tags=["artifacts"])
+    async def verify_artifact(request: Request) -> dict[str, object]:
+        _authenticate(request, request_auth_policy)
+        payload = _validate_json_body(ArtifactVerificationRequest, await request.body())
+        record = _get_artifact_record(request, payload.artifact_id)
+        artifact_hash = hash_artifact_bytes(decode_artifact_base64(payload.artifact_base64))
+        valid = artifact_hash == record.artifact_hash
+        _increment_metric(
+            request,
+            "verification_success_count" if valid else "verification_failure_count",
+        )
+        return {
+            "valid": valid,
+            "artifact_id": payload.artifact_id,
+            "artifact_hash": artifact_hash,
+            "expected_artifact_hash": record.artifact_hash,
+            "reason": "ok" if valid else "artifact hash does not match registered hash",
+        }
+
     @app.get("/api/v1/events/{event_id}", response_model=EventReadResponse, tags=["events"])
     def get_event(event_id: str, request: Request) -> EventReadResponse:
         context = _authenticate(request, request_auth_policy)
@@ -417,8 +582,14 @@ def create_app(
         )
         return _entry_response(entry)
 
-    @app.get("/evidence/{event_id}", response_model=EventReadResponse)
-    def get_lab_evidence(event_id: str, request: Request) -> EventReadResponse:
+    @app.get("/evidence/{event_id}")
+    def get_lab_evidence(
+        event_id: str,
+        request: Request,
+    ) -> EventReadResponse | ArtifactReadResponse:
+        artifact_records: dict[str, ArtifactRecord] = request.app.state.artifact_records
+        if event_id in artifact_records:
+            return _artifact_response(artifact_records[event_id])
         return get_event(event_id, request)
 
     @app.get("/api/v1/events/by-index/{index}", response_model=EventReadResponse, tags=["events"])
@@ -599,6 +770,23 @@ def create_app(
         return result.model_dump(mode="json")
 
     @app.post(
+        "/api/v1/federation/assess",
+        response_model=FederationAssessment,
+        tags=["federation"],
+    )
+    async def assess_federation_route(request: Request) -> FederationAssessment:
+        _authenticate(request, request_auth_policy)
+        payload = _validate_json_body(FederationAssessmentRequest, await request.body())
+        assessment = assess_federation(payload.observations, payload.threshold)
+        audit_event(
+            "federation_assessed",
+            "ok" if assessment.accepted else "suspicious",
+            correlation_id=_correlation_id(request),
+            reason="; ".join(assessment.reasons),
+        )
+        return assessment
+
+    @app.post(
         "/reports/certificate",
         response_model=CertificateResponse,
         tags=["reports"],
@@ -719,6 +907,28 @@ def _entry_response(entry: LogEntry) -> EventReadResponse:
         leaf_hash=entry.leaf_hash,
         event=entry.event,
     )
+
+
+def _artifact_response(record: ArtifactRecord) -> ArtifactReadResponse:
+    return ArtifactReadResponse(
+        artifact_id=record.artifact_id,
+        artifact_hash=record.artifact_hash,
+        reference_uri=record.reference_uri,
+        content_type=record.content_type,
+        byte_size=record.byte_size,
+        metadata=record.metadata,
+        ingestion_timestamp_utc=record.ingestion_timestamp_utc,
+        event_id=record.event_id,
+        log_index=record.log_index,
+    )
+
+
+def _get_artifact_record(request: Request, artifact_id: str) -> ArtifactRecord:
+    artifact_records: dict[str, ArtifactRecord] = request.app.state.artifact_records
+    try:
+        return artifact_records[artifact_id]
+    except KeyError as exc:
+        raise EventNotFoundError(f"artifact_id not found: {artifact_id}") from exc
 
 
 def _validate_json_body[ModelT: BaseModel](model_type: type[ModelT], body: bytes) -> ModelT:

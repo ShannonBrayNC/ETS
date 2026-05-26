@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel
 
 
-class TrustRole(str, Enum):
-    SYSTEM = 'system'
-    GOVERNANCE = 'governance'
-    EXECUTION = 'execution'
-    VERIFIER = 'verifier'
+class TrustRole(StrEnum):
+    SYSTEM = "system"
+    GOVERNANCE = "governance"
+    EXECUTION = "execution"
+    VERIFIER = "verifier"
 
 
 class FederatedIdentity(BaseModel):

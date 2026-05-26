@@ -48,3 +48,19 @@ Do not claim:
 
 Potential claim language must focus on ETS-specific protocol integration and
 operational semantics.
+
+## Implemented Claim-Supporting Artifact Candidates
+
+The following artifacts may help counsel evaluate whether any claim language is
+supported by implementation evidence:
+
+- `ets.core.federation`: deterministic assessment of verifier-observed tree
+  heads, quorum threshold, and same-view root conflicts;
+- `/api/v1/federation/assess`: executable API surface for independent verifier
+  federation experiments;
+- `tests/unit/test_federation.py` and `tests/integration/test_api.py`:
+  reproducible evidence that quorum and conflict behavior is implemented.
+
+These artifacts should be framed as system-level evidence-verification
+semantics. They should not be framed as ownership of threshold voting,
+cryptographic signatures, Merkle proofs, or generic log replication.

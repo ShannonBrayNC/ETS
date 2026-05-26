@@ -1,3 +1,4 @@
+import base64
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
@@ -31,6 +32,22 @@ def append_event(client: TestClient, event_id: str = "evt_001") -> dict:
     response = client.post("/api/v1/events", json=make_event(event_id))
     assert response.status_code == 201
     return response.json()
+
+
+def make_artifact_registration(
+    artifact_id: str = "artifact_001",
+    content: bytes = b"synthetic artifact",
+    metadata: dict | None = None,
+) -> dict:
+    return {
+        "artifact_id": artifact_id,
+        "artifact_base64": base64.b64encode(content).decode("ascii"),
+        "tenant_id": "tenant_a",
+        "workspace_id": "workspace_a",
+        "content_type": "application/json",
+        "metadata": metadata or {"case": "sprint-2"},
+        "source_system": "pytest",
+    }
 
 
 def test_health_and_ready_routes():
@@ -235,6 +252,32 @@ def test_consistency_verify_rejects_tampered_latest_root():
     assert response.json()["valid"] is False
 
 
+def test_federation_assessment_route_reports_quorum_and_conflicts():
+    client = make_client()
+    append_event(client, "evt_001")
+    tree_head = client.get("/api/v1/log/head").json()
+    conflicting_head = {**tree_head, "root_hash": "b" * 64}
+
+    response = client.post(
+        "/api/v1/federation/assess",
+        json={
+            "threshold": 2,
+            "observations": [
+                {"verifier_id": "verifier-a", "tree_head": tree_head},
+                {"verifier_id": "verifier-b", "tree_head": tree_head},
+                {"verifier_id": "verifier-c", "tree_head": conflicting_head},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["accepted"] is False
+    assert body["quorum_met"] is True
+    assert body["quorum_root_hash"] == tree_head["root_hash"]
+    assert body["conflicts"][0]["tree_size"] == tree_head["tree_size"]
+
+
 def test_proof_bundle_route_returns_offline_verification_artifacts():
     client = make_client()
     append_event(client, "evt_001")
@@ -291,6 +334,88 @@ def test_rc5_protocol_lab_endpoints_round_trip():
     assert verify_event_response.json()["valid"] is True
     assert verify_proof_response.json()["valid"] is True
     assert verify_compat_proof_response.json()["valid"] is True
+
+
+def test_artifact_registration_hashes_bytes_and_returns_receipt():
+    client = make_client()
+
+    response = client.post("/evidence/register", json=make_artifact_registration())
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["artifact_id"] == "artifact_001"
+    assert len(body["artifact_hash"]) == 64
+    assert body["event_id"] == "artifact_registered:artifact_001"
+    assert body["block_number"] == 0
+    assert body["proof_url"] == "/evidence/artifact_001/proof"
+
+
+def test_registered_artifact_can_be_read_and_proven_without_raw_bytes():
+    client = make_client()
+    receipt = client.post("/evidence/register", json=make_artifact_registration()).json()
+
+    read_response = client.get("/evidence/artifact_001")
+    proof_response = client.get("/evidence/artifact_001/proof")
+
+    assert read_response.status_code == 200
+    artifact = read_response.json()
+    assert artifact["artifact_hash"] == receipt["artifact_hash"]
+    assert artifact["reference_uri"] == "ets://artifact/artifact_001"
+    assert artifact["byte_size"] == len(b"synthetic artifact")
+    assert "artifact_base64" not in artifact
+    assert proof_response.status_code == 200
+    assert proof_response.json()["event"]["event_id"] == "artifact_registered:artifact_001"
+
+
+def test_artifact_verification_accepts_original_and_rejects_tampered_bytes():
+    client = make_client()
+    client.post("/evidence/register", json=make_artifact_registration())
+
+    valid_response = client.post(
+        "/evidence/verify",
+        json={
+            "artifact_id": "artifact_001",
+            "artifact_base64": base64.b64encode(b"synthetic artifact").decode("ascii"),
+        },
+    )
+    tampered_response = client.post(
+        "/evidence/verify",
+        json={
+            "artifact_id": "artifact_001",
+            "artifact_base64": base64.b64encode(b"synthetic artifact.").decode("ascii"),
+        },
+    )
+
+    assert valid_response.status_code == 200
+    assert valid_response.json()["valid"] is True
+    assert tampered_response.status_code == 200
+    assert tampered_response.json()["valid"] is False
+    assert tampered_response.json()["reason"] == "artifact hash does not match registered hash"
+
+
+def test_duplicate_artifact_id_returns_conflict():
+    client = make_client()
+    payload = make_artifact_registration()
+    client.post("/evidence/register", json=payload)
+
+    response = client.post("/evidence/register", json=payload)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "ETS_EVENT_DUPLICATE"
+
+
+def test_artifact_hash_does_not_depend_on_metadata():
+    client = make_client()
+    first = client.post(
+        "/evidence/register",
+        json=make_artifact_registration("artifact_001", metadata={"case": "alpha"}),
+    ).json()
+    second = client.post(
+        "/evidence/register",
+        json=make_artifact_registration("artifact_002", metadata={"case": "beta"}),
+    ).json()
+
+    assert first["artifact_hash"] == second["artifact_hash"]
 
 
 def test_certificate_report_endpoint_generates_markdown():
