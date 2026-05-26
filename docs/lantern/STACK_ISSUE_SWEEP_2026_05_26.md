@@ -99,10 +99,22 @@ Stack repos under review:
   - validation: `npm test` passed with 111 tests
   - note: pre-existing local Christina RC worktree edits were left unstaged/uncommitted
   - closed: `ShannonBrayNC/christina-assistant#72`
+- Christina `#74`, `#75`, `#76`: implemented scheduled repo-review MVP and opened PR.
+  - branch: `codex/christina-verified-recommendation-inbox`
+  - commit: `5a8aaf6`
+  - PR: `https://github.com/ShannonBrayNC/christina-assistant/pull/77`
+  - added six-hour/manual GitHub Actions workflow, `christina.review.json`, PowerShell runner/module, OpenAI Responses API review call with dry-run fallback, issue fingerprint sync, bootstrap script, prompts, docs, and report path
+  - validation: `pwsh -NoProfile -Command "Import-Module ./tools/christina/Christina.Review.psm1 -Force"` passed
+  - validation: `pwsh -NoProfile -File ./scripts/codex/bootstrap-christina-review.ps1 -Force` passed
+  - validation: `pwsh -NoProfile -File ./tools/christina/Invoke-ChristinaRepoReview.ps1 -ConfigPath ./christina.review.json -TargetRepo ShannonBrayNC/OpsHelm -DryRun` passed
+  - validation: `npm run build` passed
+  - validation: `npm test` passed with 111 tests
+  - note: checked official OpenAI Responses API docs for the direct API call shape
+  - closed: `ShannonBrayNC/christina-assistant#74`, `#75`, `#76`
 
 ## In progress
 
-- Select next recommended stack issue after Christina `#72`.
+- Select next recommended stack issue after Christina scheduled review MVP.
 
 ## Not completed yet
 
@@ -121,8 +133,7 @@ No currently tracked high-priority SignalForge Lantern starter items remain in t
 
 ### Christina Assistant
 
-- `#76` Codex Job: Christina scheduled repo review MVP
-- `#74` Christina Timer Job MVP: scheduled repo review, sprint planning, and issue sync
+No currently tracked high-priority Christina starter items remain in this sweep queue.
 
 ### OpsHelm
 
