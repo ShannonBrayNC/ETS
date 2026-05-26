@@ -114,10 +114,18 @@ Stack repos under review:
 - OpsHelm queue review: implementation deferred because local `C:\GitHub\OpsHelm` has active merge conflicts (`AA`/`UU`) and unrelated staged additions.
   - blocked issues in queue: `#30`, `#31`, `#32`, `#33`, `#34`
   - action: leave unmodified until the conflict resolution branch is clean or a separate clean worktree is provided
+- EchoLiving `#1`: added root `docs/lantern-adapter.md` documenting capabilities, Lantern Core input payload, output artifacts, guest reply/listing optimization/property onboarding workflows, memory observations, Content Engine handoff, and approval gates.
+  - branch: `codex/echoliving-lantern-adapter-doc`
+  - commit: `f3d2e7a`
+  - validation: `npx tsx --test src/lantern/propertyAction.test.ts` passed with 3 tests
+  - validation: `npm run build` passed
+  - note: aggregate `npm run test:lantern` fails on an existing harness mismatch because `sanitizePropertyPayload.test.ts` imports `vitest` while root `package.json` does not declare it
+  - note: pre-existing local `package-lock.json` modification was not committed
+  - closed: `ShannonBrayNC/EchoLiving#1`
 
 ## In progress
 
-- Select next recommended stack issue after skipping conflicted OpsHelm worktree.
+- Select next recommended stack issue after EchoLiving `#1`.
 
 ## Not completed yet
 
@@ -148,7 +156,6 @@ No currently tracked high-priority Christina starter items remain in this sweep 
 
 ### EchoLiving
 
-- `#1` Lantern Adapter: connect EchoLiving host operations to Christina and Lantern Core
 - `#2` EchoLiving Feature Set: implement Lantern hospitality operations adapter
 - `#3` EchoLiving: expose open recommendations and sprint candidates to Christina operating loop
 - `#4`/`#5` Lantern Protocol: property-operations adapter and approval-gated guest/owner workflows
