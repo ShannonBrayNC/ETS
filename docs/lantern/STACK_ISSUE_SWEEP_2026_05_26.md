@@ -82,10 +82,19 @@ Stack repos under review:
   - covered by existing scaffold storage, audit, mapping, examples, and Sprint 02 docs
   - validation: `python -m pytest scaffolds\lantern-pm\src\tests\test_storage_and_signalforge_mapping.py -q` passed with 4 tests
   - closed: `ShannonBrayNC/signalforge#26`
+- Christina `#73`: added verified recommendation inbox core model and tests.
+  - branch: `codex/christina-verified-recommendation-inbox`
+  - commit: `91b8370`
+  - added mock SignalForge recommendation loading, verified/unverified/blocked lanes, source/target/risk/consent/ETS proof display fields, dry-run external action posture, reason capture for medium/high/restricted reviews, and reviewed work item payload generation back to SignalForge
+  - validation: `npm exec vitest run tests/lanternRecommendationInbox.test.ts` passed with 5 tests
+  - validation: `npm run build` passed
+  - validation: `npm test` passed with 108 tests
+  - note: pre-existing local Christina RC worktree edits were left unstaged/uncommitted
+  - closed: `ShannonBrayNC/christina-assistant#73`
 
 ## In progress
 
-- Select next recommended stack issue after SignalForge `#26`.
+- Select next recommended stack issue after Christina `#73`.
 
 ## Not completed yet
 
@@ -104,7 +113,6 @@ No currently tracked high-priority SignalForge Lantern starter items remain in t
 
 ### Christina Assistant
 
-- `#73` Lantern Protocol: verified recommendation inbox and consent-aware review flow
 - `#72` Christina Operating Loop: review open recommendations every 6 hours
 - `#76` Codex Job: Christina scheduled repo review MVP
 - `#74` Christina Timer Job MVP: scheduled repo review, sprint planning, and issue sync
