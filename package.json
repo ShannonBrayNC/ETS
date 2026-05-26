@@ -3,6 +3,8 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "demo:anchor": "python scripts/run_anchor_demo.py"
+    "demo:anchor": "python scripts/run_anchor_demo.py",
+    "demo:phase2": "python scripts/run_phase2_demo.py",
+    "demo:phase3": "python scripts/run_phase3_demo.py"
   }
 }
