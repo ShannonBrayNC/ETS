@@ -91,10 +91,18 @@ Stack repos under review:
   - validation: `npm test` passed with 108 tests
   - note: pre-existing local Christina RC worktree edits were left unstaged/uncommitted
   - closed: `ShannonBrayNC/christina-assistant#73`
+- Christina `#72`: added six-hour Lantern operating-loop planner, structured summary, sprint candidate output, duplicate/update handling, personal request separation, and documentation.
+  - branch: `codex/christina-verified-recommendation-inbox`
+  - commit: `b6d3c78`
+  - validation: `npm exec vitest run tests/lanternOperatingLoop.test.ts tests/lanternRecommendationInbox.test.ts` passed with 8 tests
+  - validation: `npm run build` passed
+  - validation: `npm test` passed with 111 tests
+  - note: pre-existing local Christina RC worktree edits were left unstaged/uncommitted
+  - closed: `ShannonBrayNC/christina-assistant#72`
 
 ## In progress
 
-- Select next recommended stack issue after Christina `#73`.
+- Select next recommended stack issue after Christina `#72`.
 
 ## Not completed yet
 
@@ -113,7 +121,6 @@ No currently tracked high-priority SignalForge Lantern starter items remain in t
 
 ### Christina Assistant
 
-- `#72` Christina Operating Loop: review open recommendations every 6 hours
 - `#76` Codex Job: Christina scheduled repo review MVP
 - `#74` Christina Timer Job MVP: scheduled repo review, sprint planning, and issue sync
 
