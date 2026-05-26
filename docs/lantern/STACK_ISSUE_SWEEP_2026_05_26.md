@@ -219,14 +219,48 @@ Stack repos under review:
   - validation: `python -m pytest -q` passed with 293 tests
   - note: pre-existing untracked `package-lock.json` was not committed
   - closed: `ShannonBrayNC/ETS#34`, `#35`
+- EchoMedia Content Engine `#44`, `#45`, `#46`, `#51`, `#52`, `#53`, `#54`, `#55`: added provider documentation ingestion strategy and no-provider audio/video adapter contracts.
+  - worktree: `C:\GitHub\EchoMedia-ContentEngine-codex-lantern`
+  - branch: `codex/content-engine-lantern-assets`
+  - commit: `49cc561`
+  - added `docs/provider-documentation-ingestion.md`
+  - added `services/voice_providers.py` with provider-neutral voice request/result/profile contracts, fake provider, Azure Speech mapping, manifest output, and validation gates
+  - added `services/video_providers.py` with provider-neutral video request/job/profile contracts, Runway/OpenAI-video/Luma mappings, Kling/Pika planned-blocked profiles, traceability to voice/audio/timing refs, and validation gates
+  - added `tests/e2e/test_voice_video_provider_contracts.py`
+  - validation: `python -m pytest tests/e2e/test_voice_video_provider_contracts.py -q` passed with 5 tests
+  - validation: `python -m pytest -q` passed with 20 tests
+  - validation: `python scripts/validate_repo_baseline.py` passed
+  - closed: `ShannonBrayNC/EchoMedia-ContentEngine#44`, `#45`, `#46`, `#51`, `#52`, `#53`, `#54`, `#55`
+- ETS `#51`, `#52`, `#53`, `#54`, `#55`: added missing dissertation-track deliverables called out in issue comments.
+  - branch: `codex/lantern-stack-sweep-20260526`
+  - commit: `122e27a`
+  - added `docs/dissertation/PROSPECTUS.md`, `LITERATURE_REVIEW.md`, `FORMAL_FOUNDATIONS.md`, `EVALUATION_AND_BENCHMARKS.md`, `ABSTRACT.md`, `DEFENSE_SLIDES.md`, `CONTRIBUTIONS.md`, and `PUBLICATION_PIPELINE.md`
+  - added `tests/unit/test_dissertation_deliverables.py`
+  - validation: `python -m pytest tests/unit/test_dissertation_deliverables.py -q` passed with 3 tests
+  - validation: `python -m ruff check .` passed
+  - validation: `python -m pytest -q` passed with 296 tests
+  - note: pre-existing untracked `package-lock.json` was not committed
+  - closed: `ShannonBrayNC/ETS#51`, `#52`, `#53`, `#54`, `#55`
+- OpsHelm blocker review and `#34` resolution: original `C:\GitHub\OpsHelm` checkout remains unsafe for direct edits because it has unresolved `AA`/`UU` conflicts, so an isolated clean worktree was used.
+  - recommendation: finish or abort the merge in `C:\GitHub\OpsHelm` separately; for unrelated issue work, continue using clean worktrees from `origin/main`
+  - worktree: `C:\GitHub\OpsHelm-codex-christina`
+  - branch: `codex/opshelm-christina-onboarding`
+  - commit: `7f4f303`
+  - added `.christina/repo-profile.json`, `docs/christina-repo-review.md`, and `services/christina/repoProfile.test.ts`
+  - added `npm run test:christina`
+  - verified Christina control-plane config already includes `ShannonBrayNC/OpsHelm`
+  - validation after `npm ci`: `npm run test:christina` passed with 2 tests
+  - validation: `npm run test:lantern` passed with 5 tests
+  - validation: `npm run test:ingestion` passed with 10 tests
+  - closed: `ShannonBrayNC/OpsHelm#34`
 
 ## In progress
 
-- Sweep complete for all processable tracked items.
+- Sweep follow-up complete for newly requested open items.
 
 ## Not completed yet
 
-- OpsHelm `#30`, `#31`, `#32`, `#33`, and `#34` remain blocked by active local merge conflicts in `C:\GitHub\OpsHelm`.
+- OpsHelm `#30`, `#31`, `#32`, and `#33` remain blocked by active local merge conflicts in `C:\GitHub\OpsHelm` unless processed from a clean worktree.
 
 ## Recommended issue queue
 
