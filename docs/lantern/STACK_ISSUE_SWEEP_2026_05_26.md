@@ -70,6 +70,10 @@ Stack repos under review:
   - covered by existing code: `recommendations.py`, `review.py`, `local_registry.py`, `review_runner.py`
   - closed using validation from branch `codex/signalforge-lantern-contract-fixes`
   - closed: `ShannonBrayNC/signalforge#20`
+- SignalForge `#25`: reviewed Lantern PM Christina, SignalForge, GitHub adapter contracts and downstream handoff filter.
+  - covered by existing scaffold contracts/adapters/gates under `scaffolds/lantern-pm/src/lantern_pm`
+  - validation: `python -m pytest scaffolds\lantern-pm\src\tests\test_adapters_and_handoff.py -q` passed with 7 tests
+  - closed: `ShannonBrayNC/signalforge#25`
 
 ## In progress
 
@@ -89,7 +93,6 @@ Stack repos under review:
 ### SignalForge
 
 - `#36` Lantern Protocol Sprint 01: shared event envelope, registry, and ETS verification gate
-- `#25` Lantern PM Sprint 01: Christina, SignalForge, and GitHub adapter contracts
 - `#35` Lantern Protocol Sprint 00: consent-first trust model and ecosystem charter
 - `#26` Lantern PM Sprint 02: review storage, handoff audit, and SignalForge mapping
 
