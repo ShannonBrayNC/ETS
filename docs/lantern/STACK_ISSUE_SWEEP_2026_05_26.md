@@ -204,21 +204,35 @@ Stack repos under review:
   - validation: `python -m pytest -q` passed with 4 tests
   - validation: `python -m compileall src tests` passed
   - closed: `ShannonBrayNC/Lantern-Civic#10`, `#11`, `#12`
+- ETS `#34`, `#35`: added explicit Phase 2 and Phase 3 npm demo entry points.
+  - branch: `codex/lantern-stack-sweep-20260526`
+  - commit: `eed710b`
+  - added `npm run demo:phase2` via `scripts/run_phase2_demo.py`
+  - Phase 2 demo covers artifact upload, proof generation, explorer timeline steps, verification, tamper simulation, failed verification, API surface, and Azure immutable-storage deployment path
+  - added `npm run demo:phase3` via `scripts/run_phase3_demo.py`
+  - Phase 3 demo covers multi-node root sync, signed root exchange, shared evidence verification, divergence injection, divergent node reporting, and explicitly avoids claiming distributed consensus
+  - added `tests/unit/test_phase_demos.py`
+  - validation: `npm run demo:phase2` passed
+  - validation: `npm run demo:phase3` passed
+  - validation: `python -m pytest tests/unit/test_phase_demos.py -q` passed with 2 tests
+  - validation: `python -m ruff check .` passed
+  - validation: `python -m pytest -q` passed with 293 tests
+  - note: pre-existing untracked `package-lock.json` was not committed
+  - closed: `ShannonBrayNC/ETS#34`, `#35`
 
 ## In progress
 
-- Review remaining ETS phase issues and OpsHelm blocker status.
+- Sweep complete for all processable tracked items.
 
 ## Not completed yet
 
-- Process next recommended stack issue.
+- OpsHelm `#30`, `#31`, `#32`, `#33`, and `#34` remain blocked by active local merge conflicts in `C:\GitHub\OpsHelm`.
 
 ## Recommended issue queue
 
 ### ETS
 
-- `#34` Phase 2 enterprise-ready explorer, APIs, and Azure deployment path
-- `#35` Phase 3 distributed trust validation and multi-node architecture
+No currently tracked high-priority ETS Lantern starter items remain in this sweep queue.
 
 ### SignalForge
 
