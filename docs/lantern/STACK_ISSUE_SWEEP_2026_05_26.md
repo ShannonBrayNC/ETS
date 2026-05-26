@@ -74,6 +74,10 @@ Stack repos under review:
   - covered by existing scaffold contracts/adapters/gates under `scaffolds/lantern-pm/src/lantern_pm`
   - validation: `python -m pytest scaffolds\lantern-pm\src\tests\test_adapters_and_handoff.py -q` passed with 7 tests
   - closed: `ShannonBrayNC/signalforge#25`
+- SignalForge `#35`: reviewed consent-first charter, consent model, trust boundary, ecosystem responsibilities, event envelope, registry, and adapter registry docs.
+  - covered by existing docs under `docs/lantern`
+  - covered by shared contract consent/approval behavior in `src/shared/signalforge_contracts/lantern.py`
+  - closed: `ShannonBrayNC/signalforge#35`
 
 ## In progress
 
@@ -93,7 +97,6 @@ Stack repos under review:
 ### SignalForge
 
 - `#36` Lantern Protocol Sprint 01: shared event envelope, registry, and ETS verification gate
-- `#35` Lantern Protocol Sprint 00: consent-first trust model and ecosystem charter
 - `#26` Lantern PM Sprint 02: review storage, handoff audit, and SignalForge mapping
 
 ### Christina Assistant
