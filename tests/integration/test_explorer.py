@@ -38,3 +38,24 @@ def test_explorer_index_fetches_v1_tree_head(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert requested_paths == ["/api/v1/log/head"]
+
+
+def test_explorer_sprint5_routes_render(monkeypatch) -> None:
+    async def fake_api_get(path: str) -> dict[str, Any]:
+        return {
+            "tree_size": 1,
+            "root_hash": "1" * 64,
+            "created_at_utc": "2026-05-26T00:00:00Z",
+            "log_id": "ets-local-dev",
+            "signature_alg": None,
+            "signature": None,
+            "public_key_id": None,
+        }
+
+    monkeypatch.setattr(explorer_app, "api_get", fake_api_get)
+    client = TestClient(explorer_app.app)
+
+    for path in ["/explorer", "/verify", "/demo/tamper", "/blocks/0", "/events/evt_001"]:
+        response = client.get(path)
+        assert response.status_code == 200
+        assert "ETS Explorer" in response.text

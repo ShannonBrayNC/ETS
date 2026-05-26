@@ -40,7 +40,16 @@ def healthz() -> dict[str, str]:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request) -> HTMLResponse:
+@app.get("/explorer", response_class=HTMLResponse)
+@app.get("/verify", response_class=HTMLResponse)
+@app.get("/demo/tamper", response_class=HTMLResponse)
+@app.get("/blocks/{block_id}", response_class=HTMLResponse)
+@app.get("/events/{event_id}", response_class=HTMLResponse)
+async def index(
+    request: Request,
+    block_id: str | None = None,
+    event_id: str | None = None,
+) -> HTMLResponse:
     tree_head: dict[str, Any] | None = None
     events: list[dict[str, Any]] = []
     api_error: str | None = None
@@ -63,5 +72,7 @@ async def index(request: Request) -> HTMLResponse:
             "tree_head": tree_head,
             "events": events,
             "api_error": api_error,
+            "block_id": block_id,
+            "event_id": event_id,
         },
     )

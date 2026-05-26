@@ -40,6 +40,13 @@ export default function App() {
   const [proof, setProof] = useState(null)
   const [verification, setVerification] = useState(null)
   const [certificate, setCertificate] = useState(null)
+  const [artifactId, setArtifactId] = useState('artifact_explorer_demo')
+  const [artifactFile, setArtifactFile] = useState(null)
+  const [artifactReceipt, setArtifactReceipt] = useState(null)
+  const [artifactRecord, setArtifactRecord] = useState(null)
+  const [artifactProof, setArtifactProof] = useState(null)
+  const [artifactVerification, setArtifactVerification] = useState(null)
+  const [simulateTamper, setSimulateTamper] = useState(false)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
   const [showTamperDemo, setShowTamperDemo] = useState(false)
@@ -130,6 +137,56 @@ export default function App() {
     setCertificate(cert)
   }
 
+  async function registerArtifact() {
+    if (!artifactFile || !artifactId) return
+    const artifactBase64 = await fileToBase64(artifactFile)
+    const data = await requestJson(`${apiBase}/evidence/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({
+        artifact_id: artifactId,
+        artifact_base64: artifactBase64,
+        tenant_id: tenant,
+        workspace_id: workspace,
+        content_type: artifactFile.type || 'application/octet-stream',
+        metadata: {
+          filename: artifactFile.name,
+          demo: 'explorer-artifact-verifier',
+          contains_real_pii: false,
+        },
+        source_system: 'ets-explorer-ui',
+      }),
+    })
+    setArtifactReceipt(data)
+    setArtifactVerification(null)
+    const record = await requestJson(`${apiBase}/evidence/${encodeURIComponent(artifactId)}`, {
+      headers: authHeaders,
+    })
+    setArtifactRecord(record)
+    const bundle = await requestJson(`${apiBase}/evidence/${encodeURIComponent(artifactId)}/proof`, {
+      headers: authHeaders,
+    })
+    setArtifactProof(bundle)
+    await loadTree()
+    await loadEvents()
+  }
+
+  async function verifyArtifact() {
+    if (!artifactFile || !artifactId) return
+    const original = await artifactFile.arrayBuffer()
+    const bytes = new Uint8Array(original)
+    const verificationBytes = simulateTamper ? new Uint8Array([...bytes, 46]) : bytes
+    const data = await requestJson(`${apiBase}/evidence/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({
+        artifact_id: artifactId,
+        artifact_base64: bytesToBase64(verificationBytes),
+      }),
+    })
+    setArtifactVerification(data)
+  }
+
   useEffect(() => {
     runStep(async () => {
       await checkStatus()
@@ -183,6 +240,33 @@ export default function App() {
         <Step number="4" title="Certificate" text="Generate a Markdown verification certificate." action="Generate" onClick={() => runStep(generateCertificate)} disabled={busy || !eventId} />
       </section>
 
+      <Panel title="Artifact verifier">
+        <div className="artifact-layout">
+          <div className="artifact-controls">
+            <label>Artifact ID<input value={artifactId} onChange={(e) => setArtifactId(e.target.value)} /></label>
+            <label>Artifact file<input type="file" onChange={(e) => setArtifactFile(e.target.files?.[0] ?? null)} /></label>
+            <label className="toggle-row">
+              <input type="checkbox" checked={simulateTamper} onChange={(e) => setSimulateTamper(e.target.checked)} />
+              Simulate tampering before verification
+            </label>
+            <div className="actions">
+              <button disabled={busy || !artifactFile || !artifactId} onClick={() => runStep(registerArtifact)}>Register artifact</button>
+              <button disabled={busy || !artifactReceipt} onClick={() => runStep(verifyArtifact)}>Verify artifact</button>
+            </div>
+          </div>
+          <div className="verification-summary">
+            <CheckLine label="Hash Match" state={artifactVerification ? artifactVerification.valid : null} />
+            <CheckLine label="Chain Valid" state={artifactReceipt ? true : null} />
+            <CheckLine label="Merkle Proof" state={artifactProof?.verification_result?.valid ?? null} />
+            <CheckLine label="Signature" state={tree?.signature ? true : null} emptyLabel={tree?.signature ? 'Pending' : 'Unsigned local'} />
+            <div className={`artifact-result ${artifactVerification?.valid ? 'good' : artifactVerification ? 'bad' : 'neutral'}`}>
+              <strong>{artifactVerification?.valid ? 'Verified' : artifactVerification ? 'Verification Failed' : 'Awaiting verification'}</strong>
+              <span>{artifactVerification?.reason ?? 'Register an artifact, then verify it or enable tamper simulation.'}</span>
+            </div>
+          </div>
+        </div>
+      </Panel>
+
       <Panel title="Events">
         <table>
           <thead><tr><th>Index</th><th>Event ID</th><th>Type</th><th>Hash</th></tr></thead>
@@ -211,6 +295,8 @@ export default function App() {
         <JsonPanel title="Proof" data={proof} downloadName="ets-proof.json" />
         <JsonPanel title="Verification" data={verification} />
         <JsonPanel title="Certificate" data={certificate} downloadName="ets-certificate.json" />
+        <JsonPanel title="Artifact receipt" data={artifactReceipt} downloadName="ets-artifact-receipt.json" />
+        <JsonPanel title="Artifact proof bundle" data={artifactProof} downloadName="ets-artifact-proof.json" />
       </div>
     </div>
   )
@@ -302,6 +388,17 @@ function StatusBlock({ label, value, tone }) {
   )
 }
 
+function CheckLine({ label, state, emptyLabel = 'Pending' }) {
+  const text = state === true ? 'Yes' : state === false ? 'No' : emptyLabel
+  const tone = state === true ? 'good' : state === false ? 'bad' : 'neutral'
+  return (
+    <div className={`check-line ${tone}`}>
+      <span>{label}</span>
+      <strong>{text}</strong>
+    </div>
+  )
+}
+
 function Badge({ label, tone }) {
   return <span className={`badge ${tone}`}>{label}</span>
 }
@@ -349,4 +446,16 @@ function download(name, text) {
   link.download = name
   link.click()
   URL.revokeObjectURL(url)
+}
+
+function fileToBase64(file) {
+  return file.arrayBuffer().then((buffer) => bytesToBase64(new Uint8Array(buffer)))
+}
+
+function bytesToBase64(bytes) {
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
 }

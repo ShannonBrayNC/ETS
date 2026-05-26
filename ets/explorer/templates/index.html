@@ -3,18 +3,32 @@
 <head>
     <title>ETS Explorer</title>
     <style>
-        body { font-family: Arial; margin: 20px; }
-        .card { border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; }
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f8fafc; color: #172026; }
+        .card { border: 1px solid #cbd5e1; border-radius: 8px; padding: 15px; margin-bottom: 15px; background: white; }
+        .status { display: inline-block; padding: 4px 8px; border-radius: 8px; background: #dcfce7; color: #14532d; font-weight: 700; }
+        nav a { margin-right: 12px; color: #0f766e; }
     </style>
 </head>
 <body>
     <h1>ETS Explorer</h1>
+    <nav>
+        <a href="/explorer">Explorer</a>
+        <a href="/verify">Verify</a>
+        <a href="/demo/tamper">Tamper demo</a>
+    </nav>
 
     {% if api_error %}
         <div class="card">
             <strong>API Error:</strong> {{ api_error }}
         </div>
     {% endif %}
+
+    <div class="card">
+        <h2>Route Context</h2>
+        <p><span class="status">Demo surface ready</span></p>
+        {% if block_id %}<p>Block route: <code>{{ block_id }}</code></p>{% endif %}
+        {% if event_id %}<p>Event route: <code>{{ event_id }}</code></p>{% endif %}
+    </div>
 
     <div class="card">
         <h2>Tree Head</h2>
