@@ -118,11 +118,12 @@ Content Engine should treat unverified, quarantined, or blocked outputs as non-i
 1. Christina asks Lantern to review `DEMO-1001`.
 2. Lantern Core asks OpsHelm for ticket and redacted log analysis.
 3. OpsHelm returns hashes for the ticket body, redacted HAR, internal notes, and draft customer update.
-4. ETS registers the hashes as `evidence.registered` events and emits proof bundles.
-5. Lantern Core calls `POST /api/v1/lantern/verify` with the source event, proof bundle, consent event, and `action_type`.
-6. ETS returns `passed`, `hold-for-approval`, `quarantined`, or `blocked` with a stable `reasonCode`.
-7. Christina reviews any `hold-for-approval` customer-facing draft.
-8. Approved reusable KB candidates are forwarded to Content Engine with proof and consent references.
+4. Lantern Core calls `POST /api/v1/lantern/support/analyze` to receive the structured support-intelligence bundle.
+5. ETS registers the hashes as `evidence.registered` events and emits proof bundles.
+6. Lantern Core calls `POST /api/v1/lantern/verify` with the source event, proof bundle, consent event, and `action_type`.
+7. ETS returns `passed`, `hold-for-approval`, `quarantined`, or `blocked` with a stable `reasonCode`.
+8. Christina reviews any `hold-for-approval` customer-facing draft.
+9. Approved reusable KB candidates are forwarded to Content Engine with proof and consent references.
 
 ## Boundary statement
 

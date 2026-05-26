@@ -71,7 +71,10 @@ from ets.core.signing import (
 from ets.lantern import (
     ConsentEvent,
     LanternProofBundle,
+    LanternSupportAnalysisRequest,
+    LanternSupportAnalysisResponse,
     LanternVerificationResult,
+    build_lantern_support_analysis,
     verify_lantern_proof_bundle,
 )
 from ets.reports.certificate import CertificateFormat, create_certificate
@@ -943,6 +946,25 @@ def create_app(
             "verification_success_count"
             if result.status == "passed"
             else "verification_failure_count",
+        )
+        return result
+
+    @app.post(
+        "/api/v1/lantern/support/analyze",
+        response_model=LanternSupportAnalysisResponse,
+        tags=["lantern"],
+    )
+    async def analyze_lantern_support(
+        request: Request,
+    ) -> LanternSupportAnalysisResponse:
+        _authenticate(request, request_auth_policy)
+        payload = _validate_json_body(LanternSupportAnalysisRequest, await request.body())
+        result = build_lantern_support_analysis(payload)
+        audit_event(
+            "lantern_support_analysis_built",
+            "ok" if result.status == "passed" else "pending",
+            correlation_id=_correlation_id(request),
+            reason=result.reason_code,
         )
         return result
 

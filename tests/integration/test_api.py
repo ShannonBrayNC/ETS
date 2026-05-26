@@ -575,6 +575,44 @@ def test_lantern_verify_route_rejects_tampered_payload():
     assert body["reasonCode"] == "hash-mismatch"
 
 
+def test_lantern_support_analysis_route_returns_structured_bundle():
+    client = make_client()
+
+    response = client.post(
+        "/api/v1/lantern/support/analyze",
+        json={
+            "lanternEventId": "lantern-support-001",
+            "eventType": "lantern.support.analysis.requested",
+            "sourceSystem": "opshelm",
+            "workspaceId": "workspace-alpha",
+            "ticketRef": "DEMO-1001",
+            "artifactHashes": [
+                {"artifactId": "ticket-body", "sha256": "a" * 64, "kind": "ticket"},
+                {"artifactId": "har-redacted", "sha256": "b" * 64, "kind": "har"},
+            ],
+            "requestedOutputs": [
+                "customer_summary",
+                "internal_summary",
+                "technical_findings",
+                "recommended_actions",
+                "kb_candidates",
+            ],
+            "approvalState": "required",
+            "consentId": "consent-support-001",
+            "correlationId": "corr-support-001",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "hold-for-approval"
+    assert body["reasonCode"] == "approval-required"
+    assert body["outputs"]["customerSummary"]["approvalRequired"] is True
+    assert body["outputs"]["internalSummary"]["approvalRequired"] is False
+    assert body["outputs"]["kbCandidates"][0]["reuseScope"] == "internal-knowledge-base"
+    assert body["memoryObservations"][0]["type"] == "recurring_support_pattern"
+
+
 def test_certificate_report_endpoint_generates_markdown():
     client = make_client()
     append_event(client, "evt_001")

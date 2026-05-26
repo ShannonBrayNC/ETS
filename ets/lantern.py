@@ -9,6 +9,8 @@ from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ets.core.canonical_json import canonical_sha256
+
 
 class ConsentEventType(StrEnum):
     REQUESTED = "consent.requested"
@@ -85,6 +87,81 @@ class LanternVerificationResult(LanternModel):
     consent_id: str | None = Field(alias="consentId", default=None)
 
 
+class LanternArtifactHash(LanternModel):
+    artifact_id: str = Field(alias="artifactId", min_length=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    kind: str = Field(min_length=1)
+
+
+class LanternSupportAnalysisRequest(LanternModel):
+    lantern_event_id: str = Field(alias="lanternEventId", min_length=1)
+    event_type: str = Field(alias="eventType", min_length=1)
+    source_system: str = Field(alias="sourceSystem", min_length=1)
+    workspace_id: str = Field(alias="workspaceId", min_length=1)
+    ticket_ref: str = Field(alias="ticketRef", min_length=1)
+    artifact_hashes: list[LanternArtifactHash] = Field(alias="artifactHashes", min_length=1)
+    requested_outputs: list[str] = Field(alias="requestedOutputs", min_length=1)
+    approval_state: str = Field(alias="approvalState", default="required")
+    consent_id: str | None = Field(alias="consentId", default=None)
+    correlation_id: str | None = Field(alias="correlationId", default=None)
+
+
+class LanternOutputArtifact(LanternModel):
+    artifact_hash: str = Field(alias="artifactHash", pattern=r"^[0-9a-f]{64}$")
+    approval_required: bool = Field(alias="approvalRequired")
+    approval_state: str = Field(alias="approvalState")
+    source_artifact_ids: list[str] = Field(alias="sourceArtifactIds")
+
+
+class LanternTechnicalFinding(LanternModel):
+    code: str
+    summary: str
+    evidence_hash: str = Field(alias="evidenceHash", pattern=r"^[0-9a-f]{64}$")
+
+
+class LanternRecommendedAction(LanternModel):
+    action_type: str = Field(alias="actionType")
+    summary: str
+    approval_required: bool = Field(alias="approvalRequired")
+
+
+class LanternKBCandidate(LanternModel):
+    title: str
+    evidence_hash: str = Field(alias="evidenceHash", pattern=r"^[0-9a-f]{64}$")
+    reuse_scope: str = Field(alias="reuseScope")
+    approval_required: bool = Field(alias="approvalRequired")
+
+
+class LanternMemoryObservation(LanternModel):
+    observation_type: str = Field(alias="type")
+    summary: str
+    evidence_hash: str = Field(alias="evidenceHash", pattern=r"^[0-9a-f]{64}$")
+
+
+class LanternSupportOutputs(LanternModel):
+    customer_summary: LanternOutputArtifact | None = Field(alias="customerSummary", default=None)
+    internal_summary: LanternOutputArtifact | None = Field(alias="internalSummary", default=None)
+    technical_findings: list[LanternTechnicalFinding] = Field(
+        alias="technicalFindings",
+        default_factory=list,
+    )
+    recommended_actions: list[LanternRecommendedAction] = Field(
+        alias="recommendedActions",
+        default_factory=list,
+    )
+    kb_candidates: list[LanternKBCandidate] = Field(alias="kbCandidates", default_factory=list)
+
+
+class LanternSupportAnalysisResponse(LanternModel):
+    lantern_event_id: str = Field(alias="lanternEventId")
+    status: LanternVerificationStatus
+    reason_code: VerificationReasonCode = Field(alias="reasonCode")
+    proof_bundle_url: str = Field(alias="proofBundleUrl")
+    outputs: LanternSupportOutputs
+    metrics: dict[str, int]
+    memory_observations: list[LanternMemoryObservation] = Field(alias="memoryObservations")
+
+
 APPROVAL_REQUIRED_STATES = {"required", "pending"}
 CONSENT_REQUIRED_ACTIONS = {
     "customer-message",
@@ -96,6 +173,149 @@ CONSENT_REQUIRED_ACTIONS = {
     "data-export",
     "memory-write",
 }
+
+
+CUSTOMER_FACING_OUTPUTS = {"customer_summary", "recommended_actions", "kb_candidates"}
+
+
+def build_lantern_support_analysis(
+    request: LanternSupportAnalysisRequest,
+) -> LanternSupportAnalysisResponse:
+    """Build a deterministic Lantern support-intelligence envelope.
+
+    ETS does not generate natural-language support advice here. It creates the stable adapter
+    envelope that downstream systems can fill, verify, approve, and reuse.
+    """
+
+    source_ids = [artifact.artifact_id for artifact in request.artifact_hashes]
+    output_payload = {
+        "lanternEventId": request.lantern_event_id,
+        "sourceSystem": request.source_system,
+        "ticketRef": request.ticket_ref,
+        "artifactHashes": [
+            artifact.model_dump(mode="json", by_alias=True)
+            for artifact in request.artifact_hashes
+        ],
+    }
+    approval_required = (
+        request.approval_state in APPROVAL_REQUIRED_STATES
+        or bool(CUSTOMER_FACING_OUTPUTS.intersection(request.requested_outputs))
+    )
+    customer_summary = (
+        _support_output_artifact(
+            request,
+            "customer_summary",
+            source_ids,
+            approval_required=True,
+        )
+        if "customer_summary" in request.requested_outputs
+        else None
+    )
+    internal_summary = (
+        _support_output_artifact(
+            request,
+            "internal_summary",
+            source_ids,
+            approval_required=False,
+        )
+        if "internal_summary" in request.requested_outputs
+        else None
+    )
+    finding_hash = canonical_sha256({**output_payload, "output": "technical_findings"})
+    kb_hash = canonical_sha256({**output_payload, "output": "kb_candidates"})
+    outputs = LanternSupportOutputs(
+        customerSummary=customer_summary,
+        internalSummary=internal_summary,
+        technicalFindings=[
+            LanternTechnicalFinding(
+                code="lantern.support.finding.evidence-linked",
+                summary="Support analysis is linked to registered ticket and artifact hashes.",
+                evidenceHash=finding_hash,
+            )
+        ]
+        if "technical_findings" in request.requested_outputs
+        else [],
+        recommendedActions=[
+            LanternRecommendedAction(
+                actionType="customer-message",
+                summary="Hold customer-facing response for Christina approval.",
+                approvalRequired=True,
+            )
+        ]
+        if "recommended_actions" in request.requested_outputs
+        else [],
+        kbCandidates=[
+            LanternKBCandidate(
+                title=f"Reusable support pattern for {request.ticket_ref}",
+                evidenceHash=kb_hash,
+                reuseScope="internal-knowledge-base",
+                approvalRequired=True,
+            )
+        ]
+        if "kb_candidates" in request.requested_outputs
+        else [],
+    )
+    memory_hash = canonical_sha256({**output_payload, "observation": "recurring_support_pattern"})
+    status = (
+        LanternVerificationStatus.HOLD_FOR_APPROVAL
+        if approval_required
+        else LanternVerificationStatus.PASSED
+    )
+    reason_code = (
+        VerificationReasonCode.APPROVAL_REQUIRED
+        if approval_required
+        else VerificationReasonCode.OK
+    )
+    return LanternSupportAnalysisResponse(
+        lanternEventId=request.lantern_event_id,
+        status=status,
+        reasonCode=reason_code,
+        proofBundleUrl=f"/api/v1/bundles/{request.lantern_event_id}",
+        outputs=outputs,
+        metrics={
+            "artifact_count": len(request.artifact_hashes),
+            "requested_output_count": len(request.requested_outputs),
+            "approval_gated_output_count": _approval_gated_output_count(outputs),
+        },
+        memoryObservations=[
+            LanternMemoryObservation(
+                type="recurring_support_pattern",
+                summary="Support request is available for SignalForge memory correlation.",
+                evidenceHash=memory_hash,
+            )
+        ],
+    )
+
+
+def _support_output_artifact(
+    request: LanternSupportAnalysisRequest,
+    output_name: str,
+    source_ids: list[str],
+    *,
+    approval_required: bool,
+) -> LanternOutputArtifact:
+    return LanternOutputArtifact(
+        artifactHash=canonical_sha256(
+            {
+                "lanternEventId": request.lantern_event_id,
+                "ticketRef": request.ticket_ref,
+                "output": output_name,
+                "sourceArtifacts": source_ids,
+            }
+        ),
+        approvalRequired=approval_required,
+        approvalState=request.approval_state if approval_required else "not-required",
+        sourceArtifactIds=source_ids,
+    )
+
+
+def _approval_gated_output_count(outputs: LanternSupportOutputs) -> int:
+    count = 0
+    output_artifacts = [outputs.customer_summary, outputs.internal_summary]
+    count += sum(1 for output in output_artifacts if output and output.approval_required)
+    count += sum(1 for action in outputs.recommended_actions if action.approval_required)
+    count += sum(1 for candidate in outputs.kb_candidates if candidate.approval_required)
+    return count
 
 
 def verify_lantern_proof_bundle(

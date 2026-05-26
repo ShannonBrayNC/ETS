@@ -44,10 +44,15 @@ Stack repos under review:
   - validation: `python -m pytest tests\unit\test_lantern_adapter_docs.py -q` passed
   - validation: `python -m ruff check .` passed
   - validation: `python -m pytest -q` passed with 285 tests
+- ETS `#45`: added deterministic support-intelligence adapter models, `POST /api/v1/lantern/support/analyze`, structured artifact bundle output, approval-gated customer outputs, memory observations, KB candidate metadata, and API/unit tests.
+  - validation: `python -m pytest tests\test_lantern_support_adapter.py tests\integration\test_api.py -q` passed
+  - validation: `python -m ruff check ets\lantern.py ets\api\app.py tests\test_lantern_support_adapter.py tests\integration\test_api.py` passed
+  - validation: `python -m pytest -q` passed with 288 tests
+  - validation: `python -m mypy` passed
 
 ## In progress
 
-- Sync ETS `#44` implementation and close issue.
+- Sync ETS `#45` implementation and close issue.
 
 ## Not completed yet
 
@@ -57,7 +62,6 @@ Stack repos under review:
 
 ### ETS
 
-- `#45` ETS Feature Set: implement Lantern enterprise support intelligence adapter
 - `#46` ETS: expose open recommendations and sprint candidates to Christina operating loop
 - `#34` Phase 2 enterprise-ready explorer, APIs, and Azure deployment path
 - `#35` Phase 3 distributed trust validation and multi-node architecture
