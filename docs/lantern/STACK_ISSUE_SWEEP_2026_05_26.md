@@ -193,10 +193,21 @@ Stack repos under review:
   - validation: `python -m ruff check .` passed
   - note: `python -m mypy src` still reports pre-existing missing dependency/stub and `no-any-return` findings outside this onboarding change
   - closed: `ShannonBrayNC/echocode-platform#35`
+- Lantern Civic `#10`, `#11`, `#12`: added executable civic orchestration, Christina governance, and ETS trust foundation.
+  - repo: `C:\GitHub\Lantern-Civic`
+  - branch: `codex/lantern-civic-core-foundation`
+  - commit: `8bb0b82`
+  - added `pyproject.toml`, package `src/lantern_civic`, docs, and tests
+  - `event_bus.py` covers event taxonomy, idempotency, routing, replay, dead-letter handling, approval checkpoints, audit hashes, provenance references, and research mirroring
+  - `christina_governance.py` covers civic workflow classification, summarization, confidence, human approval checkpoints, escalation, explainability, AI disclosure, prompt lineage, and research metadata
+  - `ets_trust.py` covers consent ledger/revocation, provenance chain reconstruction, AI disclosure, trust scoring, audit export, and replay support
+  - validation: `python -m pytest -q` passed with 4 tests
+  - validation: `python -m compileall src tests` passed
+  - closed: `ShannonBrayNC/Lantern-Civic#10`, `#11`, `#12`
 
 ## In progress
 
-- Inspect Lantern Civic queue and worktree before selecting the next issue.
+- Review remaining ETS phase issues and OpsHelm blocker status.
 
 ## Not completed yet
 
@@ -239,6 +250,4 @@ No currently tracked high-priority EchoCode Platform Lantern starter items remai
 
 ### Lantern Civic
 
-- `#10` Build SignalForge Civic Event Bus and Workflow Orchestration
-- `#11` Implement Christina AI Governance and Coordination Layer
-- `#12` Build ETS Provenance, Consent and AI Disclosure Engine
+No currently tracked high-priority Lantern Civic starter items remain in this sweep queue.
