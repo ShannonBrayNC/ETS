@@ -78,10 +78,14 @@ Stack repos under review:
   - covered by existing docs under `docs/lantern`
   - covered by shared contract consent/approval behavior in `src/shared/signalforge_contracts/lantern.py`
   - closed: `ShannonBrayNC/signalforge#35`
+- SignalForge `#26`: reviewed Lantern PM storage, handoff audit, and SignalForge mapping.
+  - covered by existing scaffold storage, audit, mapping, examples, and Sprint 02 docs
+  - validation: `python -m pytest scaffolds\lantern-pm\src\tests\test_storage_and_signalforge_mapping.py -q` passed with 4 tests
+  - closed: `ShannonBrayNC/signalforge#26`
 
 ## In progress
 
-- Select next recommended stack issue after SignalForge `#36`.
+- Select next recommended stack issue after SignalForge `#26`.
 
 ## Not completed yet
 
@@ -96,8 +100,7 @@ Stack repos under review:
 
 ### SignalForge
 
-- `#36` Lantern Protocol Sprint 01: shared event envelope, registry, and ETS verification gate
-- `#26` Lantern PM Sprint 02: review storage, handoff audit, and SignalForge mapping
+No currently tracked high-priority SignalForge Lantern starter items remain in this sweep queue.
 
 ### Christina Assistant
 
