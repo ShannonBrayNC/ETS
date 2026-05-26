@@ -176,10 +176,27 @@ Stack repos under review:
   - validation: `python -m pytest -q` passed with 15 tests
   - validation: `python scripts/validate_repo_baseline.py` passed
   - closed: `ShannonBrayNC/EchoMedia-ContentEngine#106`
+- EchoCode Platform `#35`: onboarded repo for Christina scheduled review loop from an isolated clean worktree.
+  - original checkout note: `C:\GitHub\echocode-platform` has active Phase 11 local edits and was not modified
+  - worktree: `C:\GitHub\echocode-platform-codex-lantern`
+  - branch: `codex/echocode-christina-onboarding`
+  - commit: `9926da9`
+  - verified Christina control-plane `christina.review.json` already includes `ShannonBrayNC/echocode-platform`
+  - added `.christina/repo-profile.json` and `docs/christina-repo-review.md`
+  - added duplicate-safe issue fingerprint policy, suggested labels, safe commands, review priorities, and human-approved auto-fix boundaries limited to `needs-codex`
+  - added `tests/conftest.py` and `tests/unit/test_christina_repo_profile.py`
+  - made `ExecutionLoop` no-provider friendly by skipping GitHub publishing unless app credentials are present
+  - declared `PyJWT` dependency and removed an unused `sys` import from `tools/ci_validate.py`
+  - validation: `python -m pytest tests/unit/test_christina_repo_profile.py -q` passed with 2 tests
+  - validation: `python -m pytest tests/unit -q` passed with 11 tests
+  - validation: `python tools/ci_validate.py` passed
+  - validation: `python -m ruff check .` passed
+  - note: `python -m mypy src` still reports pre-existing missing dependency/stub and `no-any-return` findings outside this onboarding change
+  - closed: `ShannonBrayNC/echocode-platform#35`
 
 ## In progress
 
-- Inspect EchoCode Platform queue and worktree before selecting the next issue.
+- Inspect Lantern Civic queue and worktree before selecting the next issue.
 
 ## Not completed yet
 
@@ -218,7 +235,7 @@ No currently tracked high-priority EchoMedia Content Engine Lantern starter item
 
 ### EchoCode Platform
 
-- `#35` Onboard EchoCode Platform to Christina scheduled repo review loop
+No currently tracked high-priority EchoCode Platform Lantern starter items remain in this sweep queue.
 
 ### Lantern Civic
 
