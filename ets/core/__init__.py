@@ -1,5 +1,13 @@
 """Core ETS contracts and deterministic hashing helpers."""
 
+from ets.core.anchors import (
+    AnchorExport,
+    AnchorTarget,
+    AnchorVerificationResult,
+    anchor_export_payload,
+    build_anchor_export,
+    verify_anchor_export,
+)
 from ets.core.artifacts import (
     ArtifactRecord,
     build_artifact_event_id,
@@ -44,6 +52,9 @@ from ets.core.tree_head import SignedTreeHead
 __all__ = [
     "EMPTY_TREE_ROOT",
     "ArtifactRecord",
+    "AnchorExport",
+    "AnchorTarget",
+    "AnchorVerificationResult",
     "DuplicateEventError",
     "EvidenceProofBundle",
     "EventNotFoundError",
@@ -66,10 +77,12 @@ __all__ = [
     "VerificationResult",
     "VerifierVote",
     "audit_path_for_leaf",
+    "anchor_export_payload",
     "assess_federation",
     "build_artifact_event_id",
     "build_artifact_reference_uri",
     "build_block",
+    "build_anchor_export",
     "canonical_sha256",
     "canonicalize",
     "create_artifact_record",
@@ -83,4 +96,5 @@ __all__ = [
     "normalize_artifact_metadata",
     "recompute_block_hash",
     "verify_chain",
+    "verify_anchor_export",
 ]

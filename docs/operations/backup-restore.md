@@ -19,6 +19,10 @@ After restore:
 3. Check `GET /api/v1/log/head`.
 4. Fetch a known inclusion proof and verify it.
 5. Compare the restored tree head with the pre-backup checkpoint.
+6. Re-import the latest external anchor with `POST /verify/anchor` when one is
+   available.
+7. If the restored log advanced past the anchor, request a consistency proof
+   from the anchored tree size to the restored tree size.
 
 ## PostgreSQL Target
 
@@ -30,3 +34,5 @@ policy; initial suggested targets are RPO 15 minutes and RTO 4 hours.
 
 Restoring an older database can create rollback risk. Clients should compare
 trusted checkpoints and require consistency proofs after restore.
+
+External root export guidance lives in `docs/operations/ANCHORING.md`.

@@ -62,6 +62,20 @@ verifies the signature, then demonstrates tampered-root and wrong-signer
 failures. This is a local development workflow; production deployments still
 require key custody, rotation, and incident-response controls.
 
+## External Anchor Sprint 6 Demo
+
+Run the local external-anchor demo:
+
+```powershell
+npm run demo:anchor
+```
+
+The demo appends synthetic non-PII events, exports a deterministic root
+checkpoint, re-imports the exported anchor through `/verify/anchor`, then shows
+a tampered Merkle root failure. The export can be published as a GitHub release
+asset or Azure immutable-storage object by deployment automation; the local demo
+does not perform live cloud publication.
+
 ## Python package
 
 - `ets.core.canonical_json`

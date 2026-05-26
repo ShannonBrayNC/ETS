@@ -1,0 +1,8 @@
+{
+  "name": "ets-research-platform",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "demo:anchor": "python scripts/run_anchor_demo.py"
+  }
+}

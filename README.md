@@ -26,6 +26,7 @@ and raw evidence bytes are outside the ETS storage boundary.
 - `ets/reports` - JSON, Markdown, and HTML verification certificates
 - `ets/explorer` - future UI for browsing and verification
 - `ets/spec` - protocol docs and whitepaper
+- `docs/operations` - deployment, backup, restore, and anchoring runbooks
 - `ets/demos` - example use cases
 - `docs/architecture` - architecture notes
 - `docs/security` - security notes and roadmap
@@ -52,7 +53,9 @@ The current foundation includes:
 SQLite persistence, deterministic metadata redaction, tenant/workspace scoping,
 structured audit logging, opt-in HS256 bearer auth, RS256 JWKS bearer auth,
 Ed25519 tree-head signing, and consistency proof verification are available for
-RC validation. Hosted identity operations and key rotation runbooks still need
+RC validation. External anchor export and deterministic anchor verification are
+available for deployment-hardening experiments. Hosted identity operations,
+cloud publication automation, and key rotation runbooks still need
 deployment-owner review.
 
 ## Setup on Windows PowerShell 7+
@@ -79,6 +82,12 @@ Set-Location ets\explorer-ui
 npm ci
 npm run build
 Set-Location ..\..
+```
+
+Run the Sprint 6 external-anchor demo:
+
+```powershell
+npm run demo:anchor
 ```
 
 ## Run the Local API

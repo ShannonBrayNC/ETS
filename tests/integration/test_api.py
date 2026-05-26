@@ -138,6 +138,40 @@ def test_event_ingestion_updates_tree_and_returns_proof_url():
     assert body["inclusion_proof_url"] == "/api/v1/proofs/inclusion/evt_001"
 
 
+def test_anchor_routes_export_history_and_verify_roots():
+    client = make_client()
+    append_event(client, "evt_001")
+
+    latest_response = client.get("/anchors/latest?target=azure_immutable_storage")
+    history_response = client.get("/anchors/history")
+    verify_response = client.post("/verify/anchor", json=latest_response.json())
+
+    assert latest_response.status_code == 200
+    latest = latest_response.json()
+    assert latest["target"] == "azure_immutable_storage"
+    assert latest["tree_size"] == 1
+    assert latest["merkle_root"] == latest["signed_tree_head"]["root_hash"]
+    assert len(latest["latest_block_hash"]) == 64
+    assert history_response.status_code == 200
+    assert history_response.json()[0]["anchor_id"] == latest["anchor_id"]
+    assert verify_response.status_code == 200
+    assert verify_response.json()["valid"] is True
+    assert verify_response.json()["reason"] == "ok"
+
+
+def test_anchor_verify_rejects_mismatch_without_server_state():
+    client = make_client()
+    append_event(client, "evt_001")
+    anchor = client.get("/anchors/latest").json()
+    anchor["latest_block_hash"] = "0" * 64
+
+    response = client.post("/verify/anchor", json=anchor)
+
+    assert response.status_code == 200
+    assert response.json()["valid"] is False
+    assert response.json()["reason"] == "anchor hash does not match contents"
+
+
 def test_duplicate_event_returns_deterministic_conflict():
     client = make_client()
     append_event(client)

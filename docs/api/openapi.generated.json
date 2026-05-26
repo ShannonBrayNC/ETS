@@ -1,6 +1,132 @@
 {
   "components": {
     "schemas": {
+      "AnchorExport": {
+        "additionalProperties": false,
+        "description": "Portable checkpoint intended for publication to an external trust anchor.",
+        "properties": {
+          "anchor_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Anchor Hash",
+            "type": "string"
+          },
+          "anchor_id": {
+            "minLength": 1,
+            "title": "Anchor Id",
+            "type": "string"
+          },
+          "exported_at_utc": {
+            "format": "date-time",
+            "title": "Exported At Utc",
+            "type": "string"
+          },
+          "latest_block_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Latest Block Hash",
+            "type": "string"
+          },
+          "merkle_root": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Merkle Root",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": "ets.anchor_export.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "signed_tree_head": {
+            "$ref": "#/components/schemas/SignedTreeHead"
+          },
+          "source_log_id": {
+            "minLength": 1,
+            "title": "Source Log Id",
+            "type": "string"
+          },
+          "target": {
+            "enum": [
+              "github_release",
+              "azure_immutable_storage",
+              "local_file"
+            ],
+            "title": "Target",
+            "type": "string"
+          },
+          "tree_size": {
+            "minimum": 0.0,
+            "title": "Tree Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "anchor_id",
+          "anchor_hash",
+          "target",
+          "source_log_id",
+          "tree_size",
+          "merkle_root",
+          "latest_block_hash",
+          "signed_tree_head",
+          "exported_at_utc"
+        ],
+        "title": "AnchorExport",
+        "type": "object"
+      },
+      "AnchorVerificationResult": {
+        "additionalProperties": false,
+        "description": "Deterministic result for offline anchor continuity checks.",
+        "properties": {
+          "anchor_hash": {
+            "title": "Anchor Hash",
+            "type": "string"
+          },
+          "anchor_id": {
+            "title": "Anchor Id",
+            "type": "string"
+          },
+          "merkle_root": {
+            "title": "Merkle Root",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "source_log_id": {
+            "title": "Source Log Id",
+            "type": "string"
+          },
+          "tree_size": {
+            "title": "Tree Size",
+            "type": "integer"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid",
+          "reason",
+          "anchor_id",
+          "anchor_hash",
+          "source_log_id",
+          "tree_size",
+          "merkle_root"
+        ],
+        "title": "AnchorVerificationResult",
+        "type": "object"
+      },
       "ArtifactReadResponse": {
         "additionalProperties": false,
         "properties": {
@@ -947,6 +1073,79 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/anchors/history": {
+      "get": {
+        "operationId": "get_anchor_history_anchors_history_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AnchorExport"
+                  },
+                  "title": "Response Get Anchor History Anchors History Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Anchor History",
+        "tags": [
+          "anchors"
+        ]
+      }
+    },
+    "/anchors/latest": {
+      "get": {
+        "operationId": "get_latest_anchor_anchors_latest_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "default": "local_file",
+              "enum": [
+                "github_release",
+                "azure_immutable_storage",
+                "local_file"
+              ],
+              "title": "Target",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnchorExport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Latest Anchor",
+        "tags": [
+          "anchors"
+        ]
+      }
+    },
     "/api/v1/auth/context": {
       "get": {
         "operationId": "auth_context_api_v1_auth_context_get",
@@ -2231,6 +2430,27 @@
         "summary": "Get Tree Head By Id",
         "tags": [
           "proofs"
+        ]
+      }
+    },
+    "/verify/anchor": {
+      "post": {
+        "operationId": "verify_anchor_verify_anchor_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnchorVerificationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Verify Anchor",
+        "tags": [
+          "verifier"
         ]
       }
     },

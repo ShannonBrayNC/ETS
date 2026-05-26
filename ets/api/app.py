@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Annotated
 
 from fastapi import FastAPI, Query, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -23,6 +24,10 @@ from ets.api.auth import (
     ProductionJWTAuthPolicy,
 )
 from ets.core import (
+    GENESIS_BLOCK_HASH,
+    AnchorExport,
+    AnchorTarget,
+    AnchorVerificationResult,
     ArtifactRecord,
     ConsistencyProof,
     DuplicateEventError,
@@ -39,6 +44,7 @@ from ets.core import (
     SQLiteEventStore,
     StorageValidationError,
     assess_federation,
+    build_anchor_export,
     build_artifact_event_id,
     build_artifact_reference_uri,
     canonical_sha256,
@@ -46,6 +52,7 @@ from ets.core import (
     decode_artifact_base64,
     hash_artifact_bytes,
     normalize_artifact_metadata,
+    verify_anchor_export,
 )
 from ets.core.merkle import merkle_root
 from ets.core.proofs import (
@@ -241,6 +248,7 @@ def create_app(
     app.state.auth_mode = auth_mode
     app.state.signing_mode = signing_mode
     app.state.artifact_records = {}
+    app.state.anchor_history = []
     app.state.metrics = {
         "append_count": 0,
         "proof_count": 0,
@@ -418,6 +426,51 @@ def create_app(
     def get_lab_log_size(request: Request) -> dict[str, int]:
         _authenticate(request, request_auth_policy)
         return {"tree_size": len(event_log.list_entries())}
+
+    @app.get("/anchors/latest", response_model=AnchorExport, tags=["anchors"])
+    def get_latest_anchor(
+        request: Request,
+        target: Annotated[AnchorTarget, Query()] = "local_file",
+    ) -> AnchorExport:
+        _authenticate(request, request_auth_policy)
+        tree_head = _tree_head(event_log, log_id, tree_head_signer)
+        anchor = build_anchor_export(
+            target=target,
+            tree_head=tree_head,
+            latest_block_hash=_latest_block_hash(event_log.list_entries()),
+            exported_at_utc=datetime.now(UTC),
+            notes=_anchor_notes(target, signing_mode),
+        )
+        app.state.anchor_history.append(anchor)
+        audit_event(
+            "anchor_exported",
+            "ok",
+            correlation_id=_correlation_id(request),
+            reason=f"target={target}",
+        )
+        return anchor
+
+    @app.get("/anchors/history", response_model=list[AnchorExport], tags=["anchors"])
+    def get_anchor_history(request: Request) -> list[AnchorExport]:
+        _authenticate(request, request_auth_policy)
+        return list(app.state.anchor_history)
+
+    @app.post("/verify/anchor", response_model=AnchorVerificationResult, tags=["verifier"])
+    async def verify_anchor(request: Request) -> AnchorVerificationResult:
+        _authenticate(request, request_auth_policy)
+        payload = _validate_json_body(AnchorExport, await request.body())
+        result = verify_anchor_export(payload)
+        audit_event(
+            "anchor_verified",
+            "ok" if result.valid else "invalid",
+            correlation_id=_correlation_id(request),
+            reason=result.reason,
+        )
+        _increment_metric(
+            request,
+            "verification_success_count" if result.valid else "verification_failure_count",
+        )
+        return result
 
     @app.get("/api/v1/events", response_model=EventListResponse, tags=["events"])
     def list_events(
@@ -996,6 +1049,36 @@ def _signature_result(valid: bool, reason: str, tree_head: SignedTreeHead) -> di
         "tree_size": tree_head.tree_size,
         "root_hash": tree_head.root_hash,
     }
+
+
+def _latest_block_hash(entries: list[LogEntry]) -> str:
+    if not entries:
+        return GENESIS_BLOCK_HASH
+    latest = entries[-1]
+    return canonical_sha256(
+        {
+            "event_hash": latest.event_hash,
+            "event_id": latest.event.event_id,
+            "leaf_hash": latest.leaf_hash,
+            "log_index": latest.log_index,
+        }
+    )
+
+
+def _anchor_notes(target: AnchorTarget, signing_mode: str) -> tuple[str, ...]:
+    target_note = {
+        "github_release": "publish this JSON as a release asset and retain the release URL",
+        "azure_immutable_storage": (
+            "upload this JSON to immutable blob storage with retention enabled"
+        ),
+        "local_file": "local file target is for demos and offline verifier tests",
+    }[target]
+    signing_note = (
+        "signed tree head included"
+        if signing_mode != "local_unsigned"
+        else "local unsigned tree head is not a production trust anchor"
+    )
+    return (target_note, signing_note)
 
 
 def _validate_json_body[ModelT: BaseModel](model_type: type[ModelT], body: bytes) -> ModelT:
