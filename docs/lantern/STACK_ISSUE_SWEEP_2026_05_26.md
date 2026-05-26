@@ -253,6 +253,19 @@ Stack repos under review:
   - validation: `npm run test:lantern` passed with 5 tests
   - validation: `npm run test:ingestion` passed with 10 tests
   - closed: `ShannonBrayNC/OpsHelm#34`
+- OpsHelm `#30`, `#31`, `#32`, `#33`: completed from the isolated clean worktree while leaving the conflicted original checkout untouched.
+  - recommendation carried out: continue unrelated fixes from clean worktrees until `C:\GitHub\OpsHelm` merge conflicts are resolved or aborted separately
+  - worktree: `C:\GitHub\OpsHelm-codex-christina`
+  - branch: `codex/opshelm-christina-onboarding`
+  - commit: `730b3b9`
+  - added `docs/lantern-adapter.md` with stable `support.analysis.requested` payload, artifact metadata contract, sample shim, support feature surface, SignalForge/Christina routing, and customer-send approval gate
+  - expanded `services/lantern/opshelmLanternAdapter.ts` with request creation, artifact refs, read-only/draft/customer-facing action classification, ETS proof references, missing-proof quarantine, and Christina sprint candidate export
+  - added tests for valid support-analysis payloads, approval-gated customer drafts, medium-risk drafts, mock ETS proof refs, required missing proof quarantine, and deduplicated Christina sprint export links/status/buckets
+  - validation: `npm run test:lantern` passed with 9 tests
+  - validation: `npm run test:christina` passed with 2 tests
+  - validation: `npm run test:ingestion` passed with 10 tests
+  - validation: `npx tsc --noEmit` passed
+  - closed: `ShannonBrayNC/OpsHelm#30`, `#31`, `#32`, `#33`
 
 ## In progress
 
@@ -260,7 +273,8 @@ Stack repos under review:
 
 ## Not completed yet
 
-- OpsHelm `#30`, `#31`, `#32`, and `#33` remain blocked by active local merge conflicts in `C:\GitHub\OpsHelm` unless processed from a clean worktree.
+- The original `C:\GitHub\OpsHelm` checkout still has unresolved merge conflicts and should be resolved or abandoned separately before it is used for future work.
+- A post-closure GitHub sanity check still shows broader backlog in OpsHelm, SignalForge, Christina, ETS, EchoMedia Content Engine, and Lantern Civic. Those are sprint, epic, production-hardening, or newly generated items outside the current recommended Lantern/Christina sweep list.
 
 ## Recommended issue queue
 
@@ -278,11 +292,7 @@ No currently tracked high-priority Christina starter items remain in this sweep 
 
 ### OpsHelm
 
-- `#30` Lantern Adapter: expose OpsHelm support intelligence as reusable Lantern service
-- `#31` OpsHelm Feature Set: expose support intelligence services to Lantern
-- `#32` OpsHelm: expose open recommendations and sprint candidates to Christina operating loop
-- `#33` Lantern Protocol: support-intelligence adapter and ETS-notarized findings
-- `#34` Onboard OpsHelm to Christina scheduled repo review loop
+No currently tracked high-priority OpsHelm Lantern/Christina starter items remain in this sweep queue.
 
 ### EchoLiving
 
