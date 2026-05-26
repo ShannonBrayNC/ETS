@@ -39,10 +39,15 @@ Stack repos under review:
   - validation: `python -m ruff check .` passed
   - validation: `python -m pytest -q` passed with 284 tests
   - closed ETS issues `#60` and `#61`
+- ETS: synced branch `codex/lantern-stack-sweep-20260526` to origin with commit `f684fd9`.
+- ETS `#44`: added `docs/lantern-adapter.md` contract and `tests/unit/test_lantern_adapter_docs.py`.
+  - validation: `python -m pytest tests\unit\test_lantern_adapter_docs.py -q` passed
+  - validation: `python -m ruff check .` passed
+  - validation: `python -m pytest -q` passed with 285 tests
 
 ## In progress
 
-- Sync ETS implementation branch.
+- Sync ETS `#44` implementation and close issue.
 
 ## Not completed yet
 
@@ -52,7 +57,6 @@ Stack repos under review:
 
 ### ETS
 
-- `#44` Lantern Adapter: connect ETS ticket intelligence to shared orchestration
 - `#45` ETS Feature Set: implement Lantern enterprise support intelligence adapter
 - `#46` ETS: expose open recommendations and sprint candidates to Christina operating loop
 - `#34` Phase 2 enterprise-ready explorer, APIs, and Azure deployment path
