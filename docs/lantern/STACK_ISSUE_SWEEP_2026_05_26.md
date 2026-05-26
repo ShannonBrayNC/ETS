@@ -122,10 +122,20 @@ Stack repos under review:
   - note: aggregate `npm run test:lantern` fails on an existing harness mismatch because `sanitizePropertyPayload.test.ts` imports `vitest` while root `package.json` does not declare it
   - note: pre-existing local `package-lock.json` modification was not committed
   - closed: `ShannonBrayNC/EchoLiving#1`
+- EchoLiving `#2`, `#4`, `#5`: implemented executable Lantern hospitality and property-operations workflows.
+  - branch: `codex/echoliving-lantern-adapter-doc`
+  - commit: `d417e94`
+  - added `src/lantern/hospitalityAdapter.ts` for guest reply, listing optimization, and property onboarding workflow payloads
+  - outputs include Lantern action, recommendation id/kind, Christina or Content Engine artifact, memory observation, channel notes, sanitized payload, approval state, and ETS proof placeholder
+  - fixed root Lantern test harness to use `node:test` consistently and repaired nested redaction/blocking propagation
+  - validation: `npm run test:lantern` passed with 11 tests
+  - validation: `npm run build` passed
+  - note: pre-existing local `package-lock.json` modification was not committed
+  - closed: `ShannonBrayNC/EchoLiving#2`, `#4`, `#5`
 
 ## In progress
 
-- Select next recommended stack issue after EchoLiving `#1`.
+- Process EchoLiving `#3` recommendation export and sprint-candidate intake.
 
 ## Not completed yet
 
@@ -156,9 +166,7 @@ No currently tracked high-priority Christina starter items remain in this sweep 
 
 ### EchoLiving
 
-- `#2` EchoLiving Feature Set: implement Lantern hospitality operations adapter
 - `#3` EchoLiving: expose open recommendations and sprint candidates to Christina operating loop
-- `#4`/`#5` Lantern Protocol: property-operations adapter and approval-gated guest/owner workflows
 
 ### EchoMedia Content Engine
 
