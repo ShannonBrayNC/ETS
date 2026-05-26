@@ -141,10 +141,22 @@ Stack repos under review:
   - validation: `npm run build` passed
   - note: pre-existing local `package-lock.json` modification was not committed
   - closed: `ShannonBrayNC/EchoLiving#3`
+- EchoMedia Content Engine `#100`, `#101`: implemented Lantern reusable content asset adapter and no-provider pipeline from an isolated clean worktree.
+  - original checkout note: `C:\GitHub\EchoMedia-ContentEngine` has active local edits and was not modified
+  - worktree: `C:\GitHub\EchoMedia-ContentEngine-codex-lantern`
+  - branch: `codex/content-engine-lantern-assets`
+  - commit: `bb27a83`
+  - added root `docs/lantern-adapter.md` covering Lantern inputs, reusable outputs, `opportunity.detected` mapping, approval flow, brand voice, and feedback scaffolding
+  - added `services/lantern_content_assets.py` for deterministic source-artifact-to-assets conversion with metadata, traceability, backlog records, channel previews, approval gates, and blocked-rights enforcement
+  - added `tests/e2e/test_lantern_content_assets.py`
+  - validation: `python -m pytest tests/e2e/test_lantern_content_assets.py -q` passed with 3 tests
+  - validation: `python scripts/validate_repo_baseline.py` passed
+  - validation: `python -m pytest -q` passed with 6 tests
+  - closed: `ShannonBrayNC/EchoMedia-ContentEngine#100`, `#101`
 
 ## In progress
 
-- Inspect EchoMedia Content Engine queue and worktree before selecting the next issue.
+- Process next EchoMedia Content Engine queue item from isolated worktree.
 
 ## Not completed yet
 
@@ -179,8 +191,6 @@ No currently tracked high-priority EchoLiving Lantern starter items remain in th
 
 ### EchoMedia Content Engine
 
-- `#100` Lantern Adapter: turn vertical outputs into reusable content assets
-- `#101` Content Engine Feature Set: implement Lantern reusable asset pipeline
 - `#102` Content Engine: expose open recommendations and sprint candidates to Christina operating loop
 - `#105` Sprint 10: recommendation registry and RC readiness report
 - `#106` Lantern Protocol: canon registry, consent theme bible, and verified asset pipeline
