@@ -68,6 +68,12 @@ from ets.core.signing import (
     TreeHeadSigner,
     verify_tree_head_signature,
 )
+from ets.lantern import (
+    ConsentEvent,
+    LanternProofBundle,
+    LanternVerificationResult,
+    verify_lantern_proof_bundle,
+)
 from ets.reports.certificate import CertificateFormat, create_certificate
 
 DEFAULT_LOG_ID = "ets-local-dev"
@@ -197,6 +203,19 @@ class FederationAssessmentRequest(BaseModel):
 
     observations: list[FederationObservation]
     threshold: int = Field(ge=1)
+
+
+class LanternVerificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    source_event_id: str = Field(min_length=1)
+    evidence_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    proof_bundle: LanternProofBundle | None = None
+    consent_event: ConsentEvent | None = None
+    action_type: str | None = None
+    source_is_registered: bool = True
+    replay_detected: bool = False
+    now: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -894,6 +913,38 @@ def create_app(
             reason="; ".join(assessment.reasons),
         )
         return assessment
+
+    @app.post(
+        "/api/v1/lantern/verify",
+        response_model=LanternVerificationResult,
+        tags=["lantern"],
+    )
+    async def verify_lantern_handoff(request: Request) -> LanternVerificationResult:
+        _authenticate(request, request_auth_policy)
+        payload = _validate_json_body(LanternVerificationRequest, await request.body())
+        result = verify_lantern_proof_bundle(
+            source_event_id=payload.source_event_id,
+            evidence_hash=payload.evidence_hash,
+            proof_bundle=payload.proof_bundle,
+            consent_event=payload.consent_event,
+            action_type=payload.action_type,
+            source_is_registered=payload.source_is_registered,
+            replay_detected=payload.replay_detected,
+            now=payload.now,
+        )
+        audit_event(
+            "lantern_handoff_verified",
+            "ok" if result.status == "passed" else "invalid",
+            correlation_id=_correlation_id(request),
+            reason=result.reason_code,
+        )
+        _increment_metric(
+            request,
+            "verification_success_count"
+            if result.status == "passed"
+            else "verification_failure_count",
+        )
+        return result
 
     @app.post(
         "/reports/certificate",

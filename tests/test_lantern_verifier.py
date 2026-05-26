@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from ets.lantern import (
     ConsentEvent,
@@ -90,6 +90,51 @@ def test_revoked_consent_blocks_item():
 
     assert result.status == LanternVerificationStatus.BLOCKED
     assert result.reason_code == VerificationReasonCode.CONSENT_REVOKED
+
+
+def test_expired_consent_blocks_item():
+    result = verify_lantern_proof_bundle(
+        source_event_id="evt-1",
+        evidence_hash=HASH,
+        proof_bundle=make_proof(),
+        consent_event=make_consent(
+            expiresAt=datetime(2026, 5, 25, 1, tzinfo=UTC),
+        ),
+        action_type="customer-message",
+        now=datetime(2026, 5, 25, 2, tzinfo=UTC),
+    )
+
+    assert result.status == LanternVerificationStatus.BLOCKED
+    assert result.reason_code == VerificationReasonCode.CONSENT_EXPIRED
+
+
+def test_missing_approval_holds_item():
+    result = verify_lantern_proof_bundle(
+        source_event_id="evt-1",
+        evidence_hash=HASH,
+        proof_bundle=make_proof(),
+        consent_event=make_consent(ConsentEventType.REQUESTED),
+        action_type="customer-message",
+    )
+
+    assert result.status == LanternVerificationStatus.HOLD_FOR_APPROVAL
+    assert result.reason_code == VerificationReasonCode.APPROVAL_REQUIRED
+
+
+def test_granted_unexpired_consent_passes_with_clock():
+    result = verify_lantern_proof_bundle(
+        source_event_id="evt-1",
+        evidence_hash=HASH,
+        proof_bundle=make_proof(),
+        consent_event=make_consent(
+            expiresAt=datetime(2026, 5, 25, tzinfo=UTC) + timedelta(days=1),
+        ),
+        action_type="customer-message",
+        now=datetime(2026, 5, 25, tzinfo=UTC),
+    )
+
+    assert result.status == LanternVerificationStatus.PASSED
+    assert result.reason_code == VerificationReasonCode.OK
 
 
 def test_unregistered_source_quarantines_item():

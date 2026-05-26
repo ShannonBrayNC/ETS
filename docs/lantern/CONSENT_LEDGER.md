@@ -69,6 +69,18 @@ A `LanternProofBundle` should link:
 - Missing human approval for approval-gated action: hold for Christina.
 - Unknown source: quarantine.
 
+## Local verification paths
+
+Use `POST /api/v1/lantern/verify` to verify a Lantern recommendation, artifact, or action handoff through the ETS API. The response is suitable for SignalForge registry intake because it includes a stable `status` and `reasonCode`.
+
+For presentation and local review, run:
+
+```powershell
+python scripts/run_lantern_tamper_demo.py
+```
+
+The demo covers a valid recommendation, a forged recommendation with missing proof, and a tampered recommendation whose payload hash no longer matches its proof bundle.
+
 ## Boundary statement
 
 ETS proves that the recorded artifact, consent event, and proof chain have not changed since they were notarized. ETS does not prove that every real-world fact in an AI-generated recommendation is true. Source systems remain responsible for factual grounding and evidence capture.

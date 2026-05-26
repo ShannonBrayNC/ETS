@@ -510,6 +510,71 @@ def test_artifact_hash_does_not_depend_on_metadata():
     assert first["artifact_hash"] == second["artifact_hash"]
 
 
+def test_lantern_verify_route_returns_machine_readable_codes():
+    client = make_client()
+    evidence_hash = "c" * 64
+    payload = {
+        "source_event_id": "evt-1",
+        "evidence_hash": evidence_hash,
+        "action_type": "customer-message",
+        "proof_bundle": {
+            "proofId": "proof-1",
+            "sourceEventId": "evt-1",
+            "artifactHash": evidence_hash,
+            "consentEventId": "consent-1",
+            "approvalState": "required",
+            "merkleInclusionProof": {"leaf": evidence_hash},
+        },
+        "consent_event": {
+            "eventType": "consent.granted",
+            "consentId": "consent-1",
+            "workspaceId": "default",
+            "subjectId": "human-owner",
+            "grantedTo": "christina",
+            "scope": "customer-message:ticket-12345",
+            "sourceEventId": "evt-1",
+            "evidenceHash": evidence_hash,
+            "createdAt": "2026-05-25T00:00:00Z",
+        },
+    }
+
+    response = client.post("/api/v1/lantern/verify", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "passed"
+    assert body["reasonCode"] == "ok"
+    assert body["proofId"] == "proof-1"
+    assert body["consentId"] == "consent-1"
+
+
+def test_lantern_verify_route_rejects_tampered_payload():
+    client = make_client()
+    evidence_hash = "c" * 64
+
+    response = client.post(
+        "/api/v1/lantern/verify",
+        json={
+            "source_event_id": "evt-1",
+            "evidence_hash": evidence_hash,
+            "action_type": "customer-message",
+            "proof_bundle": {
+                "proofId": "proof-1",
+                "sourceEventId": "evt-1",
+                "artifactHash": "d" * 64,
+                "consentEventId": "consent-1",
+                "approvalState": "required",
+                "merkleInclusionProof": {"leaf": "d" * 64},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "blocked"
+    assert body["reasonCode"] == "hash-mismatch"
+
+
 def test_certificate_report_endpoint_generates_markdown():
     client = make_client()
     append_event(client, "evt_001")
