@@ -153,10 +153,22 @@ Stack repos under review:
   - validation: `python scripts/validate_repo_baseline.py` passed
   - validation: `python -m pytest -q` passed with 6 tests
   - closed: `ShannonBrayNC/EchoMedia-ContentEngine#100`, `#101`
+- EchoMedia Content Engine `#102`, `#105`: implemented machine-readable recommendation export, Christina sprint candidates, and RC readiness JSON report.
+  - worktree: `C:\GitHub\EchoMedia-ContentEngine-codex-lantern`
+  - branch: `codex/content-engine-lantern-assets`
+  - commit: `8aaa0c8`
+  - added `services/lantern_recommendations.py` with registry export, SignalForge keys, duplicate-key/linked-issue dedupe, sprint candidates, review notes, and status updates
+  - added `scripts/export_lantern_recommendations.py`
+  - generated `docs/reports/content-engine-recommendation-export-2026-05-26.json` and `docs/reports/rc-readiness-2026-05-26.json`
+  - updated `docs/recommendation-registry.md` and `docs/reports/rc-readiness-2026-05-24.md`
+  - validation: `python -m pytest tests/e2e/test_lantern_recommendations.py -q` passed with 4 tests
+  - validation: `python scripts/validate_repo_baseline.py` passed
+  - validation: `python -m pytest -q` passed with 10 tests
+  - closed: `ShannonBrayNC/EchoMedia-ContentEngine#102`, `#105`
 
 ## In progress
 
-- Process next EchoMedia Content Engine queue item from isolated worktree.
+- Evaluate EchoMedia Content Engine `#106` verified asset pipeline.
 
 ## Not completed yet
 
@@ -191,8 +203,6 @@ No currently tracked high-priority EchoLiving Lantern starter items remain in th
 
 ### EchoMedia Content Engine
 
-- `#102` Content Engine: expose open recommendations and sprint candidates to Christina operating loop
-- `#105` Sprint 10: recommendation registry and RC readiness report
 - `#106` Lantern Protocol: canon registry, consent theme bible, and verified asset pipeline
 
 ### EchoCode Platform
