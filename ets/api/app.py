@@ -71,10 +71,15 @@ from ets.core.signing import (
 from ets.lantern import (
     ConsentEvent,
     LanternProofBundle,
+    LanternRecommendationExport,
+    LanternRecommendationUpdateRequest,
     LanternSupportAnalysisRequest,
     LanternSupportAnalysisResponse,
     LanternVerificationResult,
     build_lantern_support_analysis,
+    build_recommendation_export,
+    default_ets_recommendations,
+    update_recommendation,
     verify_lantern_proof_bundle,
 )
 from ets.reports.certificate import CertificateFormat, create_certificate
@@ -271,6 +276,10 @@ def create_app(
     app.state.signing_mode = signing_mode
     app.state.artifact_records = {}
     app.state.anchor_history = []
+    app.state.lantern_recommendations = {
+        recommendation.recommendation_id: recommendation
+        for recommendation in default_ets_recommendations()
+    }
     app.state.metrics = {
         "append_count": 0,
         "proof_count": 0,
@@ -967,6 +976,42 @@ def create_app(
             reason=result.reason_code,
         )
         return result
+
+    @app.get(
+        "/api/v1/lantern/recommendations",
+        response_model=LanternRecommendationExport,
+        tags=["lantern"],
+    )
+    def list_lantern_recommendations(request: Request) -> LanternRecommendationExport:
+        _authenticate(request, request_auth_policy)
+        recommendations = list(request.app.state.lantern_recommendations.values())
+        return build_recommendation_export(recommendations)
+
+    @app.post(
+        "/api/v1/lantern/recommendations/{recommendation_id}",
+        response_model=LanternRecommendationExport,
+        tags=["lantern"],
+    )
+    async def update_lantern_recommendation(
+        recommendation_id: str,
+        request: Request,
+    ) -> LanternRecommendationExport:
+        _authenticate(request, request_auth_policy)
+        recommendations = request.app.state.lantern_recommendations
+        if recommendation_id not in recommendations:
+            raise EventNotFoundError(f"recommendation not found: {recommendation_id}")
+        payload = _validate_json_body(LanternRecommendationUpdateRequest, await request.body())
+        recommendations[recommendation_id] = update_recommendation(
+            recommendations[recommendation_id],
+            payload,
+        )
+        audit_event(
+            "lantern_recommendation_updated",
+            "ok",
+            correlation_id=_correlation_id(request),
+            reason=recommendation_id,
+        )
+        return build_recommendation_export(list(recommendations.values()))
 
     @app.post(
         "/reports/certificate",

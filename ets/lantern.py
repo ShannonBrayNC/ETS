@@ -40,6 +40,21 @@ class LanternVerificationStatus(StrEnum):
     HOLD_FOR_APPROVAL = "hold-for-approval"
 
 
+class LanternRecommendationKind(StrEnum):
+    SOFTWARE_CHANGE = "software-change"
+    PROCESS_CHANGE = "process-change"
+    DOCUMENTATION_CHANGE = "documentation-change"
+    INVESTIGATION = "investigation"
+
+
+class LanternRecommendationStatus(StrEnum):
+    OPEN = "open"
+    ROUTED = "routed"
+    IN_REVIEW = "in-review"
+    BLOCKED = "blocked"
+    CLOSED = "closed"
+
+
 class LanternModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True, str_strip_whitespace=True, extra="forbid")
 
@@ -162,6 +177,55 @@ class LanternSupportAnalysisResponse(LanternModel):
     memory_observations: list[LanternMemoryObservation] = Field(alias="memoryObservations")
 
 
+class LanternRecommendationNote(LanternModel):
+    author: str = Field(min_length=1)
+    note: str = Field(min_length=1)
+    created_at: datetime = Field(alias="createdAt", default_factory=lambda: datetime.now(UTC))
+
+
+class LanternRecommendation(LanternModel):
+    recommendation_id: str = Field(alias="recommendationId", min_length=1)
+    title: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    item_type: LanternRecommendationKind = Field(alias="itemType")
+    priority: str = Field(min_length=1)
+    source: str = Field(min_length=1)
+    status: LanternRecommendationStatus
+    owner_repo: str = Field(alias="ownerRepo", min_length=1)
+    suggested_sprint_bucket: str = Field(alias="suggestedSprintBucket", min_length=1)
+    related_refs: list[str] = Field(alias="relatedRefs", default_factory=list)
+    tracking_issue_url: str | None = Field(alias="trackingIssueUrl", default=None)
+    duplicate_key: str = Field(alias="duplicateKey", min_length=1)
+    approval_required: bool = Field(alias="approvalRequired", default=False)
+    review_notes: list[LanternRecommendationNote] = Field(
+        alias="reviewNotes",
+        default_factory=list,
+    )
+
+
+class LanternSprintCandidate(LanternModel):
+    recommendation_id: str = Field(alias="recommendationId")
+    title: str
+    owner_repo: str = Field(alias="ownerRepo")
+    suggested_sprint_bucket: str = Field(alias="suggestedSprintBucket")
+    priority: str
+    tracking_issue_url: str | None = Field(alias="trackingIssueUrl", default=None)
+
+
+class LanternRecommendationExport(LanternModel):
+    owner_repo: str = Field(alias="ownerRepo")
+    generated_at: datetime = Field(alias="generatedAt")
+    recommendations: list[LanternRecommendation]
+    sprint_candidates: list[LanternSprintCandidate] = Field(alias="sprintCandidates")
+
+
+class LanternRecommendationUpdateRequest(LanternModel):
+    status: LanternRecommendationStatus | None = None
+    tracking_issue_url: str | None = Field(alias="trackingIssueUrl", default=None)
+    note: str | None = None
+    author: str = "christina"
+
+
 APPROVAL_REQUIRED_STATES = {"required", "pending"}
 CONSENT_REQUIRED_ACTIONS = {
     "customer-message",
@@ -176,6 +240,148 @@ CONSENT_REQUIRED_ACTIONS = {
 
 
 CUSTOMER_FACING_OUTPUTS = {"customer_summary", "recommended_actions", "kb_candidates"}
+
+
+def default_ets_recommendations() -> list[LanternRecommendation]:
+    return [
+        _default_recommendation(
+            recommendation_id="ets-rec-phase2-hosted-readiness",
+            title="Finish hosted ETS explorer and API readiness path",
+            summary="Complete the hosted Phase 2 path for explorer/API deployment readiness.",
+            item_type=LanternRecommendationKind.SOFTWARE_CHANGE,
+            priority="P2",
+            source="github:ShannonBrayNC/ETS#34",
+            suggested_sprint_bucket="hosted-readiness",
+            related_refs=["https://github.com/ShannonBrayNC/ETS/issues/34"],
+            tracking_issue_url="https://github.com/ShannonBrayNC/ETS/issues/34",
+        ),
+        _default_recommendation(
+            recommendation_id="ets-rec-distributed-trust-validation",
+            title="Plan distributed ETS validation without premature consensus scope",
+            summary=(
+                "Keep Phase 3 distributed validation scoped to root exchange and "
+                "divergence detection."
+            ),
+            item_type=LanternRecommendationKind.INVESTIGATION,
+            priority="P3",
+            source="github:ShannonBrayNC/ETS#35",
+            suggested_sprint_bucket="distributed-validation",
+            related_refs=["https://github.com/ShannonBrayNC/ETS/issues/35"],
+            tracking_issue_url="https://github.com/ShannonBrayNC/ETS/issues/35",
+        ),
+        _default_recommendation(
+            recommendation_id="ets-rec-dissertation-artifacts",
+            title="Fill missing dissertation chapter artifacts",
+            summary=(
+                "Add the remaining prospectus, literature review, formal foundations, "
+                "evaluation, and contribution artifacts."
+            ),
+            item_type=LanternRecommendationKind.DOCUMENTATION_CHANGE,
+            priority="P3",
+            source="github:ShannonBrayNC/ETS#51-55",
+            suggested_sprint_bucket="dissertation-artifacts",
+            related_refs=[
+                "https://github.com/ShannonBrayNC/ETS/issues/51",
+                "https://github.com/ShannonBrayNC/ETS/issues/52",
+                "https://github.com/ShannonBrayNC/ETS/issues/53",
+                "https://github.com/ShannonBrayNC/ETS/issues/54",
+                "https://github.com/ShannonBrayNC/ETS/issues/55",
+            ],
+            tracking_issue_url=None,
+        ),
+    ]
+
+
+def _default_recommendation(
+    *,
+    recommendation_id: str,
+    title: str,
+    summary: str,
+    item_type: LanternRecommendationKind,
+    priority: str,
+    source: str,
+    suggested_sprint_bucket: str,
+    related_refs: list[str],
+    tracking_issue_url: str | None,
+) -> LanternRecommendation:
+    owner_repo = "ShannonBrayNC/ETS"
+    return LanternRecommendation(
+        recommendationId=recommendation_id,
+        title=title,
+        summary=summary,
+        itemType=item_type,
+        priority=priority,
+        source=source,
+        status=LanternRecommendationStatus.OPEN,
+        ownerRepo=owner_repo,
+        suggestedSprintBucket=suggested_sprint_bucket,
+        relatedRefs=related_refs,
+        trackingIssueUrl=tracking_issue_url,
+        duplicateKey=recommendation_duplicate_key(owner_repo, item_type, title),
+        approvalRequired=False,
+    )
+
+
+def recommendation_duplicate_key(owner_repo: str, item_type: str, title: str) -> str:
+    return canonical_sha256(
+        {
+            "ownerRepo": owner_repo.lower(),
+            "itemType": item_type,
+            "title": title.strip().lower(),
+        }
+    )
+
+
+def build_recommendation_export(
+    recommendations: list[LanternRecommendation],
+    *,
+    owner_repo: str = "ShannonBrayNC/ETS",
+    generated_at: datetime | None = None,
+) -> LanternRecommendationExport:
+    actionable = [
+        recommendation
+        for recommendation in recommendations
+        if recommendation.status
+        in {
+            LanternRecommendationStatus.OPEN,
+            LanternRecommendationStatus.ROUTED,
+            LanternRecommendationStatus.IN_REVIEW,
+        }
+    ]
+    return LanternRecommendationExport(
+        ownerRepo=owner_repo,
+        generatedAt=generated_at or datetime.now(UTC),
+        recommendations=recommendations,
+        sprintCandidates=[
+            LanternSprintCandidate(
+                recommendationId=recommendation.recommendation_id,
+                title=recommendation.title,
+                ownerRepo=recommendation.owner_repo,
+                suggestedSprintBucket=recommendation.suggested_sprint_bucket,
+                priority=recommendation.priority,
+                trackingIssueUrl=recommendation.tracking_issue_url,
+            )
+            for recommendation in actionable
+        ],
+    )
+
+
+def update_recommendation(
+    recommendation: LanternRecommendation,
+    request: LanternRecommendationUpdateRequest,
+) -> LanternRecommendation:
+    notes = list(recommendation.review_notes)
+    if request.note is not None:
+        notes.append(LanternRecommendationNote(author=request.author, note=request.note))
+    return recommendation.model_copy(
+        update={
+            "status": request.status or recommendation.status,
+            "tracking_issue_url": request.tracking_issue_url
+            if request.tracking_issue_url is not None
+            else recommendation.tracking_issue_url,
+            "review_notes": notes,
+        }
+    )
 
 
 def build_lantern_support_analysis(

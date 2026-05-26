@@ -613,6 +613,33 @@ def test_lantern_support_analysis_route_returns_structured_bundle():
     assert body["memoryObservations"][0]["type"] == "recurring_support_pattern"
 
 
+def test_lantern_recommendation_routes_export_and_update_items():
+    client = make_client()
+
+    export_response = client.get("/api/v1/lantern/recommendations")
+
+    assert export_response.status_code == 200
+    export = export_response.json()
+    assert export["ownerRepo"] == "ShannonBrayNC/ETS"
+    assert export["recommendations"][0]["duplicateKey"]
+    assert export["sprintCandidates"]
+
+    recommendation_id = export["recommendations"][0]["recommendationId"]
+    update_response = client.post(
+        f"/api/v1/lantern/recommendations/{recommendation_id}",
+        json={
+            "status": "in-review",
+            "note": "Selected for Christina sprint review.",
+            "author": "christina",
+        },
+    )
+
+    assert update_response.status_code == 200
+    updated = update_response.json()["recommendations"][0]
+    assert updated["status"] == "in-review"
+    assert updated["reviewNotes"][0]["note"] == "Selected for Christina sprint review."
+
+
 def test_certificate_report_endpoint_generates_markdown():
     client = make_client()
     append_event(client, "evt_001")
