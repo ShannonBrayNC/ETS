@@ -165,10 +165,21 @@ Stack repos under review:
   - validation: `python scripts/validate_repo_baseline.py` passed
   - validation: `python -m pytest -q` passed with 10 tests
   - closed: `ShannonBrayNC/EchoMedia-ContentEngine#102`, `#105`
+- EchoMedia Content Engine `#106`: added verified Lantern asset release gate and SignalForge artifact handoff.
+  - worktree: `C:\GitHub\EchoMedia-ContentEngine-codex-lantern`
+  - branch: `codex/content-engine-lantern-assets`
+  - commit: `63e90bc`
+  - existing canon registry and consent theme bible are now backed by `services/lantern_verified_assets.py`
+  - release gate requires cleared rights, approved human approval state, granted or not-required consent, evidence hash, and ETS proof reference before production-ready release
+  - SignalForge `artifact.created` handoff is emitted only for released manifests
+  - validation: `python -m pytest tests/e2e/test_lantern_verified_assets.py -q` passed with 5 tests
+  - validation: `python -m pytest -q` passed with 15 tests
+  - validation: `python scripts/validate_repo_baseline.py` passed
+  - closed: `ShannonBrayNC/EchoMedia-ContentEngine#106`
 
 ## In progress
 
-- Evaluate EchoMedia Content Engine `#106` verified asset pipeline.
+- Inspect EchoCode Platform queue and worktree before selecting the next issue.
 
 ## Not completed yet
 
@@ -203,7 +214,7 @@ No currently tracked high-priority EchoLiving Lantern starter items remain in th
 
 ### EchoMedia Content Engine
 
-- `#106` Lantern Protocol: canon registry, consent theme bible, and verified asset pipeline
+No currently tracked high-priority EchoMedia Content Engine Lantern starter items remain in this sweep queue.
 
 ### EchoCode Platform
 
