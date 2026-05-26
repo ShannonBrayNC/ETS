@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from ets.core.signing import (
+    Ed25519TreeHeadSigner,
     NoOpTreeHeadSigner,
     tree_head_signature_payload,
     verify_tree_head_signature,
@@ -68,3 +69,16 @@ def test_signature_verifier_rejects_malformed_signature() -> None:
     )
 
     assert verify_tree_head_signature(tree_head, "0" * 64) is False
+
+
+def test_ed25519_tree_head_signer_round_trips_fixture_key() -> None:
+    signer = Ed25519TreeHeadSigner("07" * 32, "fixture-key")
+    signed = signer.sign(_tree_head())
+
+    assert signed.signature_alg == "ed25519"
+    assert signed.public_key_id == "fixture-key"
+    assert signed.signature is not None
+    assert verify_tree_head_signature(
+        signed,
+        "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+    )

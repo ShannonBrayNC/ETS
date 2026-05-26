@@ -2067,6 +2067,48 @@
         "summary": "Get Lab Inclusion Proof"
       }
     },
+    "/proofs/event/{event_id}": {
+      "get": {
+        "operationId": "get_sprint3_event_proof_proofs_event__event_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InclusionProof"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Sprint3 Event Proof",
+        "tags": [
+          "proofs"
+        ]
+      }
+    },
     "/ready": {
       "get": {
         "operationId": "ready_ready_get",
@@ -2129,6 +2171,69 @@
         "summary": "Legacy Tree Head"
       }
     },
+    "/tree-head/latest": {
+      "get": {
+        "operationId": "get_latest_tree_head_tree_head_latest_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignedTreeHead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Latest Tree Head",
+        "tags": [
+          "proofs"
+        ]
+      }
+    },
+    "/tree-head/{tree_head_id}": {
+      "get": {
+        "operationId": "get_tree_head_by_id_tree_head__tree_head_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tree_head_id",
+            "required": true,
+            "schema": {
+              "title": "Tree Head Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignedTreeHead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tree Head By Id",
+        "tags": [
+          "proofs"
+        ]
+      }
+    },
     "/verify/evidence": {
       "post": {
         "operationId": "verify_lab_evidence_verify_evidence_post",
@@ -2169,6 +2274,26 @@
         "summary": "Verify Lab Inclusion"
       }
     },
+    "/verify/proof": {
+      "post": {
+        "operationId": "verify_sprint3_proof_verify_proof_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Verify Sprint3 Proof Verify Proof Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Verify Sprint3 Proof"
+      }
+    },
     "/verify/proof/inclusion": {
       "post": {
         "operationId": "verify_compat_inclusion_verify_proof_inclusion_post",
@@ -2187,6 +2312,29 @@
           }
         },
         "summary": "Verify Compat Inclusion"
+      }
+    },
+    "/verify/signature": {
+      "post": {
+        "operationId": "verify_signature_verify_signature_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Verify Signature Verify Signature Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Verify Signature",
+        "tags": [
+          "verifier"
+        ]
       }
     },
     "/version": {

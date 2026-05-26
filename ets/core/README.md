@@ -37,6 +37,31 @@ stores only a content hash plus reference metadata, retrieves a proof bundle,
 and verifies that the original artifact passes while a one-byte tamper fails.
 Raw artifact bytes are not stored in the ETS log.
 
+## Merkle Proof Sprint 3 Demo
+
+Run the local Merkle proof demo:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_merkle_demo.py
+```
+
+The demo appends multiple synthetic events, exports an inclusion proof, verifies
+it from the exported proof data alone, then tampers with the proof root and
+shows deterministic verification failure.
+
+## Signature Sprint 4 Demo
+
+Run the local signed tree-head demo:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_signatures_demo.py
+```
+
+The demo uses a deterministic local Ed25519 fixture key, signs a tree head,
+verifies the signature, then demonstrates tampered-root and wrong-signer
+failures. This is a local development workflow; production deployments still
+require key custody, rotation, and incident-response controls.
+
 ## Python package
 
 - `ets.core.canonical_json`

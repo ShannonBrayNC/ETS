@@ -176,6 +176,19 @@ def test_cli_inclusion_proof_returns_nonzero_for_tampered_proof(tmp_path, capsys
     assert '"valid": false' in capsys.readouterr().out
 
 
+def test_cli_verify_proof_alias_accepts_valid_inclusion_proof(tmp_path, capsys):
+    log = InMemoryAppendOnlyLog()
+    log.append(make_event("evt_001"))
+    proof = generate_inclusion_proof(log.list_entries(), 0)
+    proof_path = tmp_path / "proof.json"
+    proof_path.write_text(proof.model_dump_json(), encoding="utf-8")
+
+    exit_code = main(["verify-proof", str(proof_path)])
+
+    assert exit_code == 0
+    assert '"valid": true' in capsys.readouterr().out
+
+
 def test_cli_consistency_proof_returns_nonzero_for_tampered_proof(tmp_path, capsys):
     log = InMemoryAppendOnlyLog()
     log.append(make_event("evt_001"))

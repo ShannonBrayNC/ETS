@@ -33,6 +33,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _event_hash(args.path, args.expected)
         if args.command == "inclusion-proof":
             return _inclusion_proof(args.path)
+        if args.command == "verify-proof":
+            return _inclusion_proof(args.path)
         if args.command == "consistency-proof":
             return _consistency_proof(args.path)
         if args.command == "bundle":
@@ -62,6 +64,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     inclusion = subparsers.add_parser("inclusion-proof", help="verify an inclusion proof")
     inclusion.add_argument("path", type=Path, help="path to an InclusionProof JSON file")
+
+    verify_proof = subparsers.add_parser(
+        "verify-proof",
+        help="verify an inclusion proof using the Sprint 3 command name",
+    )
+    verify_proof.add_argument("path", type=Path, help="path to an InclusionProof JSON file")
 
     consistency = subparsers.add_parser("consistency-proof", help="verify a consistency proof")
     consistency.add_argument("path", type=Path, help="path to a ConsistencyProof JSON file")

@@ -1,11 +1,14 @@
 import base64
 from datetime import UTC, datetime
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from fastapi.testclient import TestClient
 
 from ets import __version__
 from ets.api.app import create_app
 from ets.core.models import EvidenceEvent
+from ets.core.signing import Ed25519TreeHeadSigner
 
 
 def make_event(event_id: str = "evt_001") -> dict:
@@ -78,6 +81,49 @@ def test_log_head_route_returns_unsigned_local_head():
     assert body["tree_size"] == 0
     assert body["log_id"] == "ets-local-dev"
     assert body["signature"] is None
+
+
+def test_tree_head_signature_routes_verify_valid_invalid_and_expired_keys():
+    private_key_hex = "07" * 32
+    public_key_hex = (
+        Ed25519PrivateKey.from_private_bytes(bytes.fromhex(private_key_hex))
+        .public_key()
+        .public_bytes(Encoding.Raw, PublicFormat.Raw)
+        .hex()
+    )
+    client = TestClient(
+        create_app(
+            signer=Ed25519TreeHeadSigner(private_key_hex, "fixture-key"),
+            signing_mode="ed25519",
+        )
+    )
+    tree_head = client.get("/tree-head/latest").json()
+
+    valid_response = client.post(
+        "/verify/signature",
+        json={"tree_head": tree_head, "public_key_hex": public_key_hex},
+    )
+    wrong_signer_response = client.post(
+        "/verify/signature",
+        json={"tree_head": tree_head, "public_key_hex": "0" * 64},
+    )
+    expired_response = client.post(
+        "/verify/signature",
+        json={
+            "tree_head": tree_head,
+            "public_key_hex": public_key_hex,
+            "valid_at_utc": "2026-05-26T12:00:00Z",
+            "key_not_after_utc": "2026-05-25T12:00:00Z",
+        },
+    )
+
+    assert tree_head["signature_alg"] == "ed25519"
+    assert client.get("/tree-head/latest").status_code == 200
+    assert client.get("/tree-head/latest").json()["signature"] is not None
+    assert client.get("/tree-head/current").status_code == 404
+    assert valid_response.json()["valid"] is True
+    assert wrong_signer_response.json()["valid"] is False
+    assert expired_response.json()["reason"] == "key is expired"
 
 
 def test_event_ingestion_updates_tree_and_returns_proof_url():
@@ -208,6 +254,18 @@ def test_inclusion_proof_route_and_verify_route_accept_valid_proof():
     assert verify_response.status_code == 200
     assert verify_response.json()["valid"] is True
     assert verify_response.json()["reason"] == "ok"
+
+
+def test_sprint3_proof_aliases_round_trip():
+    client = make_client()
+    append_event(client, "evt_001")
+
+    proof_response = client.get("/proofs/event/evt_001")
+    verify_response = client.post("/verify/proof", json=proof_response.json())
+
+    assert proof_response.status_code == 200
+    assert verify_response.status_code == 200
+    assert verify_response.json()["valid"] is True
 
 
 def test_verify_route_rejects_tampered_proof_without_hidden_state():

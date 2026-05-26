@@ -44,6 +44,20 @@ Clients provide artifact bytes as base64 JSON. ETS computes the SHA-256 content
 hash, stores reference metadata, appends an `EvidenceEvent`, and returns a proof
 receipt. Metadata changes do not affect the artifact hash; byte changes do.
 
+## Sprint Compatibility Routes
+
+The API also exposes compatibility routes for the early trust-ledger sprints:
+
+- `GET /proofs/event/{eventId}`
+- `POST /verify/proof`
+- `GET /tree-head/latest`
+- `GET /tree-head/{id}`
+- `POST /verify/signature`
+
+These routes wrap the same core verifier and signing code as the `/api/v1/*`
+routes. They exist so demos, scripts, and external prototype clients can use
+stable sprint-era names without duplicating verification behavior.
+
 ## Hosted auth note
 
 For hosted deployments, use the JWKS profile in `docs/security/HOSTED_AUTH_PROFILE.md`. The local examples intentionally use development headers and no bearer token by default.

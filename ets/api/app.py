@@ -55,7 +55,12 @@ from ets.core.proofs import (
     verify_inclusion_proof,
 )
 from ets.core.redaction import apply_redaction_profile
-from ets.core.signing import Ed25519TreeHeadSigner, NoOpTreeHeadSigner, TreeHeadSigner
+from ets.core.signing import (
+    Ed25519TreeHeadSigner,
+    NoOpTreeHeadSigner,
+    TreeHeadSigner,
+    verify_tree_head_signature,
+)
 from ets.reports.certificate import CertificateFormat, create_certificate
 
 DEFAULT_LOG_ID = "ets-local-dev"
@@ -142,6 +147,16 @@ class ArtifactVerificationRequest(BaseModel):
 
     artifact_id: str = Field(min_length=1, max_length=128)
     artifact_base64: str = Field(min_length=1)
+
+
+class TreeHeadSignatureVerificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    tree_head: SignedTreeHead
+    public_key_hex: str = Field(min_length=64, max_length=64)
+    valid_at_utc: datetime | None = None
+    key_not_before_utc: datetime | None = None
+    key_not_after_utc: datetime | None = None
 
 
 class MetricsResponse(BaseModel):
@@ -383,6 +398,16 @@ def create_app(
     def get_log_head(request: Request) -> SignedTreeHead:
         _authenticate(request, request_auth_policy)
         return _tree_head(event_log, log_id, tree_head_signer)
+
+    @app.get("/tree-head/latest", response_model=SignedTreeHead, tags=["proofs"])
+    def get_latest_tree_head(request: Request) -> SignedTreeHead:
+        return get_log_head(request)
+
+    @app.get("/tree-head/{tree_head_id}", response_model=SignedTreeHead, tags=["proofs"])
+    def get_tree_head_by_id(tree_head_id: str, request: Request) -> SignedTreeHead:
+        if tree_head_id != "latest":
+            raise EventNotFoundError(f"tree head not found: {tree_head_id}")
+        return get_log_head(request)
 
     @app.get("/log/root", tags=["proofs"])
     def get_lab_log_root(request: Request) -> dict[str, str]:
@@ -633,6 +658,10 @@ def create_app(
     def get_lab_inclusion_proof(event_id: str, request: Request) -> InclusionProof:
         return get_inclusion_proof(event_id, request)
 
+    @app.get("/proofs/event/{event_id}", response_model=InclusionProof, tags=["proofs"])
+    def get_sprint3_event_proof(event_id: str, request: Request) -> InclusionProof:
+        return get_inclusion_proof(event_id, request)
+
     @app.get(
         "/api/v1/bundles/{event_id}",
         response_model=EvidenceProofBundle,
@@ -722,6 +751,33 @@ def create_app(
     @app.post("/verify/proof/inclusion")
     async def verify_compat_inclusion(request: Request) -> dict[str, object]:
         return await verify_inclusion(request)
+
+    @app.post("/verify/proof")
+    async def verify_sprint3_proof(request: Request) -> dict[str, object]:
+        return await verify_inclusion(request)
+
+    @app.post("/verify/signature", tags=["verifier"])
+    async def verify_signature(request: Request) -> dict[str, object]:
+        _authenticate(request, request_auth_policy)
+        payload = _validate_json_body(
+            TreeHeadSignatureVerificationRequest,
+            await request.body(),
+        )
+        valid_at = payload.valid_at_utc or datetime.now(UTC)
+        if (
+            payload.key_not_before_utc is not None
+            and valid_at < payload.key_not_before_utc
+        ):
+            return _signature_result(False, "key is not valid yet", payload.tree_head)
+        if payload.key_not_after_utc is not None and valid_at > payload.key_not_after_utc:
+            return _signature_result(False, "key is expired", payload.tree_head)
+
+        valid = verify_tree_head_signature(payload.tree_head, payload.public_key_hex)
+        return _signature_result(
+            valid,
+            "ok" if valid else "tree head signature is invalid",
+            payload.tree_head,
+        )
 
     @app.post("/verify/evidence")
     async def verify_lab_evidence(request: Request) -> dict[str, object]:
@@ -929,6 +985,17 @@ def _get_artifact_record(request: Request, artifact_id: str) -> ArtifactRecord:
         return artifact_records[artifact_id]
     except KeyError as exc:
         raise EventNotFoundError(f"artifact_id not found: {artifact_id}") from exc
+
+
+def _signature_result(valid: bool, reason: str, tree_head: SignedTreeHead) -> dict[str, object]:
+    return {
+        "valid": valid,
+        "reason": reason,
+        "signature_alg": tree_head.signature_alg,
+        "public_key_id": tree_head.public_key_id,
+        "tree_size": tree_head.tree_size,
+        "root_hash": tree_head.root_hash,
+    }
 
 
 def _validate_json_body[ModelT: BaseModel](model_type: type[ModelT], body: bytes) -> ModelT:
