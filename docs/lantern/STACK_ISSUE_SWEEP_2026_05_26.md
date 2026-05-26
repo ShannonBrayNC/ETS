@@ -111,10 +111,13 @@ Stack repos under review:
   - validation: `npm test` passed with 111 tests
   - note: checked official OpenAI Responses API docs for the direct API call shape
   - closed: `ShannonBrayNC/christina-assistant#74`, `#75`, `#76`
+- OpsHelm queue review: implementation deferred because local `C:\GitHub\OpsHelm` has active merge conflicts (`AA`/`UU`) and unrelated staged additions.
+  - blocked issues in queue: `#30`, `#31`, `#32`, `#33`, `#34`
+  - action: leave unmodified until the conflict resolution branch is clean or a separate clean worktree is provided
 
 ## In progress
 
-- Select next recommended stack issue after Christina scheduled review MVP.
+- Select next recommended stack issue after skipping conflicted OpsHelm worktree.
 
 ## Not completed yet
 
