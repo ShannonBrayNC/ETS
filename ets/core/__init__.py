@@ -98,3 +98,4 @@ __all__ = [
     "verify_chain",
     "verify_anchor_export",
 ]
+from .schemas.lantern_reward import LanternRewardClaimRequested
