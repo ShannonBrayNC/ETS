@@ -1,0 +1,13 @@
+import json
+from ets.core.verifier import validate_event
+
+def test_lantern_reward_event_schema():
+    event = {
+        "eventType": "lantern.reward.claim.requested",
+        "eventVersion": "1.0",
+        "campaignId": "lantern-crisis-v1",
+        "claimId": "550e8400-e29b-41d4-a716-446655440000",
+        "emailHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "consentToSendReward": True
+    }
+    assert validate_event(event) == True

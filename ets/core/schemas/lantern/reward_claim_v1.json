@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LanternRewardClaim",
+  "description": "ETS provenance event for Lantern Easter egg reward claims",
+  "type": "object",
+  "required": [
+    "eventType",
+    "eventVersion",
+    "campaignId",
+    "claimId",
+    "emailHash",
+    "consentToSendReward"
+  ],
+  "properties": {
+    "eventType": { "type": "string", "const": "lantern.reward.claim.requested" },
+    "eventVersion": { "type": "string", "const": "1.0" },
+    "campaignId": { "type": "string" },
+    "clientEventId": { "type": "string" },
+    "claimId": { "type": "string" },
+    "triggerMethod": { "type": "string" },
+    "triggerTimestamp": { "type": "string", "format": "date-time" },
+    "claimTimestamp": { "type": "string", "format": "date-time" },
+    "emailHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "consentToSendReward": { "type": "boolean" },
+    "marketingOptIn": { "type": "boolean" },
+    "rewardAssetId": { "type": "string" },
+    "verificationStatus": { "type": "string" },
+    "sourceSystem": { "type": "string" },
+    "processingSystem": { "type": "string" }
+  }
+}
