@@ -14,23 +14,28 @@ This plan organizes the open RC issues into small, reviewable sprints for Codex-
 
 **Definition of done:**
 
-- Draft PR exists from the active implementation branch toward `main`.
-- Branch divergence is visible and documented.
+- Current `main` is the release baseline.
 - Public naming decision is recorded for RC work.
 - Release checklist exists and references all RC workstreams.
+- Release validation records current CI, formal proof, Docker federation, and
+  secret scan status.
 - No production deployment or release tag is created.
 
 **Current status:**
 
-- Draft PR #15 exists for the active implementation branch.
-- PR #15 is intentionally kept in draft because the source branch is ahead of `main` and behind `main`.
+- Historical PR #15 is retired as the release-control gate.
 - RC-002 is complete through `docs/decisions/ADR-0001-ets-public-name.md`.
 - RC-012 is complete through `docs/release/v0.1.0-alpha-checklist.md`.
-- RC-001 release-control setup is complete once this plan and the PR comment are present; the physical merge remains blocked until the divergence-resolution commit is pushed and CI is reviewed.
+- Release control now requires validating the selected tag candidate from
+  current `main`, then recording the CI run URLs and configured-environment
+  Docker/gitleaks results in `docs/release/v0.1.0-alpha-validation.md`.
 
 **Next Codex task after Sprint 1:**
 
-Push the PR #15 divergence-resolution commit, preserve active implementation behavior, run CI, and leave the PR in draft until checks are reviewed.
+Run the configured release gate from current `main`: CI, formal TLA+/Lean,
+Docker federation, gitleaks secret scan, OpenAPI export, and final release-doc
+refresh. Do not create a tag until every required gate is passed or explicitly
+approved as a documented exception.
 
 ## Sprint 2: Protocol and Verifier Fidelity
 
