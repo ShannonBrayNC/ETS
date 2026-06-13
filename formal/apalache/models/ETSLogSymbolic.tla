@@ -32,8 +32,13 @@ AppendEvent(event) ==
     /\ event \notin {log[i] : i \in DOMAIN log}
     /\ log' = Append(log, event)
 
+FullLogStutter ==
+    /\ Len(log) = 3
+    /\ UNCHANGED log
+
 Next ==
-    \E event \in EventIds : AppendEvent(event)
+    \/ \E event \in EventIds : AppendEvent(event)
+    \/ FullLogStutter
 
 Spec == Init /\ [][Next]_log
 
