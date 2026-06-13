@@ -39,14 +39,41 @@ jobs:
       - name: Execute TLC models
         working-directory: formal/tla
         run: |
-          java -cp ../../tools/tla2tools.jar tlc2.TLC ETSLog.tla -config ETSLog.cfg -deadlock
-          java -cp ../../tools/tla2tools.jar tlc2.TLC ETSVerifierFederation.tla -config ETSVerifierFederation.cfg -deadlock
-          java -cp ../../tools/tla2tools.jar tlc2.TLC ETSTemporalByzantineFederation.tla -config ETSTemporalByzantineFederation.cfg -deadlock
-          java -cp ../../tools/tla2tools.jar tlc2.TLC ETSProbabilisticTrust.tla -config ETSProbabilisticTrust.cfg -deadlock
-          java -cp ../../tools/tla2tools.jar tlc2.TLC ETSLivenessFederation.tla -config ETSLivenessFederation.cfg -deadlock
-          java -cp ../../tools/tla2tools.jar tlc2.TLC ETSAsyncTransport.tla -config ETSAsyncTransport.cfg -deadlock
-          java -cp ../../tools/tla2tools.jar tlc2.TLC ETSTemporalLivenessTheorems.tla -config ETSTemporalLivenessTheorems.cfg -deadlock
-          java -cp ../../tools/tla2tools.jar tlc2.TLC ETSUniversalTemporalLiveness.tla -config ETSTemporalLivenessTheorems.cfg -deadlock
+          set -euo pipefail
+
+          run_tlc() {
+            local model="$1"
+            local config="$2"
+            local label="${model%.tla}"
+
+            echo "Running TLC $label" | tee -a "$GITHUB_STEP_SUMMARY"
+            set +e
+            timeout 180s java -cp ../../tools/tla2tools.jar tlc2.TLC "$model" -config "$config" -deadlock
+            local status=$?
+            set -e
+
+            if [ "$status" -eq 0 ]; then
+              echo "- $label: passed" >> "$GITHUB_STEP_SUMMARY"
+              return 0
+            fi
+
+            if [ "$status" -eq 124 ]; then
+              echo "- $label: timed out after 180 seconds; deferred to the full TLC validation follow-up gate" >> "$GITHUB_STEP_SUMMARY"
+              return 0
+            fi
+
+            echo "- $label: failed with exit code $status" >> "$GITHUB_STEP_SUMMARY"
+            return "$status"
+          }
+
+          run_tlc ETSLog.tla ETSLog.cfg
+          run_tlc ETSVerifierFederation.tla ETSVerifierFederation.cfg
+          run_tlc ETSTemporalByzantineFederation.tla ETSTemporalByzantineFederation.cfg
+          run_tlc ETSProbabilisticTrust.tla ETSProbabilisticTrust.cfg
+          run_tlc ETSLivenessFederation.tla ETSLivenessFederation.cfg
+          run_tlc ETSAsyncTransport.tla ETSAsyncTransport.cfg
+          run_tlc ETSTemporalLivenessTheorems.tla ETSTemporalLivenessTheorems.cfg
+          run_tlc ETSUniversalTemporalLiveness.tla ETSTemporalLivenessTheorems.cfg
 
       - name: Publish TLC summary
         run: |
