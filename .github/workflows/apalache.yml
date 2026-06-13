@@ -70,7 +70,7 @@ jobs:
           set -o pipefail
           mkdir -p artifacts/proofs/liveness
           tools/apalache/bin/apalache-mc check \
-            --cinit=Init \
+            --init=Init \
             --next=Next \
             --inv=BoundedProgress \
             formal/apalache/models/ETSLivenessProgressSymbolic.tla \
