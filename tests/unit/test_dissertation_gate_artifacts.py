@@ -21,14 +21,14 @@ def test_advisor_committee_gate_records_human_decisions_and_non_claims() -> None
 def test_evidence_capture_report_records_urls_blockers_and_artifacts() -> None:
     text = read_doc("docs/dissertation/EVIDENCE_CAPTURE_REPORT.md")
 
-    assert "https://github.com/ShannonBrayNC/ETS/actions/runs/27478309954" in text
-    assert "https://github.com/ShannonBrayNC/ETS/actions/runs/27478309944" in text
-    assert "https://github.com/ShannonBrayNC/ETS/actions/runs/27478309950" in text
-    assert "https://github.com/ShannonBrayNC/ETS/actions/runs/27478309946" in text
-    assert "https://github.com/ShannonBrayNC/ETS/actions/runs/27478309940" in text
+    assert "https://github.com/ShannonBrayNC/ETS/actions/runs/27479858656" in text
+    assert "https://github.com/ShannonBrayNC/ETS/actions/runs/27479858667" in text
+    assert "https://github.com/ShannonBrayNC/ETS/actions/runs/27479858674" in text
+    assert "https://github.com/ShannonBrayNC/ETS/actions/runs/27479858651" in text
+    assert "https://github.com/ShannonBrayNC/ETS/actions/runs/27479858659" in text
     assert "19 passed" in text
     assert "symbolic-proof-artifacts" in text
-    assert "Related tracking issue: `#67`" in text
+    assert "Related tracking issues: `#67`, `#70`" in text
 
 
 def test_dissertation_integration_sprint_has_prose_figures_tables_and_format_gate() -> None:
