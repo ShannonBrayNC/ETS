@@ -84,15 +84,15 @@ CastVote(verifier, root) ==
             conflictDetected \/
             (\E r1, r2 \in RootIds :
                 /\ r1 # r2
-                /\ Cardinality({vote.verifier : vote \in nextVotes /\ vote.root = r1}) >= Threshold
-                /\ Cardinality({vote.verifier : vote \in nextVotes /\ vote.root = r2}) >= Threshold)
+                /\ Cardinality({submittedVote.verifier : submittedVote \in nextVotes /\ submittedVote.root = r1}) >= Threshold
+                /\ Cardinality({submittedVote.verifier : submittedVote \in nextVotes /\ submittedVote.root = r2}) >= Threshold)
         /\ acceptedRoot' =
             IF acceptedRoot # "None" THEN acceptedRoot
             ELSE IF ~conflictDetected' THEN
                 CHOOSE r \in RootIds \cup {"None"} :
                     \/ r = "None" /\ ~(\E candidate \in RootIds :
-                        Cardinality({vote.verifier : vote \in nextVotes /\ vote.root = candidate}) >= Threshold)
-                    \/ r \in RootIds /\ Cardinality({vote.verifier : vote \in nextVotes /\ vote.root = r}) >= Threshold
+                        Cardinality({submittedVote.verifier : submittedVote \in nextVotes /\ submittedVote.root = candidate}) >= Threshold)
+                    \/ r \in RootIds /\ Cardinality({submittedVote.verifier : submittedVote \in nextVotes /\ submittedVote.root = r}) >= Threshold
             ELSE "None"
 
 Next ==
