@@ -19,7 +19,8 @@ VARIABLE
     log
 
 TypeOK ==
-    /\ log \in Seq(EventIds)
+    /\ Len(log) \in 0..3
+    /\ \A i \in DOMAIN log : log[i] \in EventIds
 
 NoDuplicateEvents ==
     \A i, j \in DOMAIN log : i # j => log[i] # log[j]
@@ -29,6 +30,7 @@ Init ==
 
 AppendEvent(event) ==
     /\ event \in EventIds
+    /\ Len(log) < 3
     /\ event \notin {log[i] : i \in DOMAIN log}
     /\ log' = Append(log, event)
 
