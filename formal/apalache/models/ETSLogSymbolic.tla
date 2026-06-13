@@ -10,9 +10,7 @@ EXTENDS Naturals, Sequences, FiniteSets, TLC
 (* and accepted log state remains bounded and typed.                        *)
 (***************************************************************************)
 
-CONSTANT
-    \* @type: Set(Int);
-    EventIds
+EventIds == 1..3
 
 VARIABLE
     \* @type: Seq(Int);
