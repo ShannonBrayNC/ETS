@@ -15,6 +15,7 @@ EXTENDS Naturals, FiniteSets, TLC
 CONSTANTS Verifiers, MaxRoot, Threshold
 
 RootIds == 0..MaxRoot
+NoRoot == MaxRoot + 1
 RootView == [root: RootIds]
 Vote == [verifier: Verifiers, root: RootIds]
 
@@ -22,7 +23,7 @@ VARIABLES votes, acceptedRoot, conflictDetected, equivocationSuspicions
 
 TypeOK ==
     /\ votes \subseteq Vote
-    /\ acceptedRoot \in RootIds \cup {"None"}
+    /\ acceptedRoot \in RootIds \cup {NoRoot}
     /\ conflictDetected \in BOOLEAN
     /\ equivocationSuspicions \subseteq Verifiers
     /\ Threshold \in 1..Cardinality(Verifiers)
@@ -50,7 +51,7 @@ VerifierEquivocated(verifier) ==
         /\ v1.root # v2.root
 
 AcceptedRootHasQuorum ==
-    acceptedRoot # "None" => QuorumFor(acceptedRoot)
+    acceptedRoot # NoRoot => QuorumFor(acceptedRoot)
 
 NoConflictingAcceptedRoots ==
     ~(\E r1, r2 \in RootIds :
@@ -66,7 +67,7 @@ EquivocationSuspicionsAreJustified ==
 
 Init ==
     /\ votes = {}
-    /\ acceptedRoot = "None"
+    /\ acceptedRoot = NoRoot
     /\ conflictDetected = FALSE
     /\ equivocationSuspicions = {}
 
@@ -96,10 +97,10 @@ CastVote(verifier, root) ==
                         /\ submittedVote.verifier = v
                         /\ submittedVote.root = r2}) >= Threshold)
         /\ acceptedRoot' =
-            IF acceptedRoot # "None" THEN acceptedRoot
+            IF acceptedRoot # NoRoot THEN acceptedRoot
             ELSE IF ~conflictDetected' THEN
-                CHOOSE r \in RootIds \cup {"None"} :
-                    \/ r = "None" /\ ~(\E candidate \in RootIds :
+                CHOOSE r \in RootIds \cup {NoRoot} :
+                    \/ r = NoRoot /\ ~(\E candidate \in RootIds :
                         Cardinality({v \in Verifiers :
                             \E submittedVote \in nextVotes :
                                 /\ submittedVote.verifier = v
@@ -108,7 +109,7 @@ CastVote(verifier, root) ==
                         \E submittedVote \in nextVotes :
                             /\ submittedVote.verifier = v
                             /\ submittedVote.root = r}) >= Threshold
-            ELSE "None"
+            ELSE NoRoot
 
 Next ==
     \E verifier \in Verifiers, root \in RootIds : CastVote(verifier, root)
