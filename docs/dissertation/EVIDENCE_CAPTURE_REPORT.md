@@ -17,6 +17,7 @@ claims can cite the evidence as passing.
 | Local Python validation target | Python 3.12 |
 | Resolved FastAPI version | `0.136.3` |
 | Resolved Starlette version | `1.3.1` |
+| Latest PR evidence SHA | `58e96ccd0893df733f47b84a643fde54ad4de8cf` |
 
 ## Local Validation Captured
 
@@ -42,20 +43,20 @@ production throughput.
 
 | Workflow | Latest URL Reviewed | Result | Evidence Interpretation |
 | --- | --- | --- | --- |
-| CI | <https://github.com/ShannonBrayNC/ETS/actions/runs/27478309954> | Failed | Python test/lint/type stages completed before dependency audit failed on Starlette vulnerabilities. |
-| Formal Specs / TLC | <https://github.com/ShannonBrayNC/ETS/actions/runs/27478309944> | Failed | TLC failed semantic analysis because `ETSLog.tla` used unsupported `Range`; this sprint replaces it with `SeqRange`. |
-| Apalache | <https://github.com/ShannonBrayNC/ETS/actions/runs/27478309950> | Failed | Symbolic execution exited before artifact upload; this sprint changes workflow logging to `tee` and uploads artifacts on failure. |
-| Lean proofs | <https://github.com/ShannonBrayNC/ETS/actions/runs/27478309946> | Failed | Lean failed `Fairness.lean` timeout classification proof; this sprint simplifies the proof. |
-| Benchmarks | <https://github.com/ShannonBrayNC/ETS/actions/runs/27478309940> | Passed | Benchmark and replay artifact workflow succeeded for the reviewed PR branch. |
+| CI | <https://github.com/ShannonBrayNC/ETS/actions/runs/27479858656> | Passed | Python tests, lint, type check, and dependency audit passed on the PR branch. |
+| Formal Specs / TLC | <https://github.com/ShannonBrayNC/ETS/actions/runs/27479858667> | Running at capture time | PR-gate TLC now uses bounded runtime protection. Full unbounded TLC evidence is tracked in issue `#70`. |
+| Apalache | <https://github.com/ShannonBrayNC/ETS/actions/runs/27479858674> | Passed | Symbolic-safe ETSLog, federation, transport, and bounded liveness models passed and retain `symbolic-proof-artifacts`. |
+| Lean proofs | <https://github.com/ShannonBrayNC/ETS/actions/runs/27479858651> | Passed | Lean proof files passed after timeout and Byzantine suspicion proof simplification. |
+| Benchmarks | <https://github.com/ShannonBrayNC/ETS/actions/runs/27479858659> | Passed | Benchmark and replay artifact workflow succeeded for the PR branch. |
 
 ## Formal Tool Status
 
 | Tool | Current Status | Next Evidence Requirement |
 | --- | --- | --- |
-| TLC | Workflow exists and is configured. Recent run failed before this sprint fix. Local `java` is unavailable. | Rerun PR workflow and capture passing run URL or remaining model error. |
-| Apalache | Workflow exists and uploads artifacts. Recent run hid detailed failure output. Local `apalache-mc` is unavailable. | Rerun after workflow logging change and retain `symbolic-proof-artifacts`. |
-| Lean | Workflow exists and checks three proof files. Recent run failed in `Fairness.lean`. Local `lean` is unavailable. | Rerun after proof fix and capture passing run URL. |
-| Python tests | Local Python 3.12 focused evidence suite passed. | Run full `py -3.12 -m pytest` before PR. |
+| TLC | PR workflow is bounded so CI cannot hang indefinitely. Local `java` is unavailable. | Complete issue `#70` for full unbounded TLC evidence capture in a configured formal-validation environment. |
+| Apalache | Latest PR workflow passed and uploads `symbolic-proof-artifacts`. Local `apalache-mc` is unavailable. | Retain the passing PR run URL and artifact bundle for dissertation evidence. |
+| Lean | Latest PR workflow passed. Local `lean` is unavailable. | Retain the passing PR run URL for mechanized proof evidence. |
+| Python tests | Local Python 3.12 full suite passed. | Preserve the `283 passed` result and rerun before merge if the branch changes. |
 | Benchmarks | Local benchmark and replay commands executed; latest workflow passed. | Attach or cite workflow artifact names: `benchmark-results`, `experiment-results`. |
 
 ## Artifact Locations
@@ -93,4 +94,4 @@ The current evidence does not yet support:
 - legal sufficiency;
 - real-world completeness.
 
-Related tracking issue: `#67`.
+Related tracking issues: `#67`, `#70`.
