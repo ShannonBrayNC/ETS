@@ -39,20 +39,27 @@ Init ==
     /\ accepted = FALSE
 
 CastVote(v, root) ==
+    /\ ~accepted
     /\ v \in Verifiers
     /\ root \in Roots
     /\ votes' = [votes EXCEPT ![v] = root]
     /\ accepted' = accepted
 
 AcceptRoot ==
+    /\ ~accepted
     /\ HasQuorum
     /\ ~ConflictingRoots
     /\ accepted' = TRUE
     /\ votes' = votes
 
+AcceptedStutter ==
+    /\ accepted
+    /\ UNCHANGED <<votes, accepted>>
+
 Next ==
     \/ \E v \in Verifiers, root \in Roots : CastVote(v, root)
     \/ AcceptRoot
+    \/ AcceptedStutter
 
 AcceptedRequiresQuorum ==
     accepted => HasQuorum
