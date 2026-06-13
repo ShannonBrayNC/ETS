@@ -47,7 +47,7 @@ Deliver ==
 
 Defer ==
     /\ pending
-    /\ round < MaxRounds
+    /\ round + 1 < MaxRounds
     /\ round' = round + 1
     /\ pending' = pending
     /\ delivered' = delivered
@@ -55,11 +55,11 @@ Defer ==
 
 Timeout ==
     /\ pending
-    /\ round = MaxRounds
+    /\ round + 1 = MaxRounds
     /\ pending' = FALSE
     /\ delivered' = delivered
     /\ terminal' = TRUE
-    /\ round' = round
+    /\ round' = MaxRounds
 
 StutterTerminal ==
     /\ terminal
