@@ -5,7 +5,7 @@ import types
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -38,8 +38,46 @@ class LanternVerificationStatus(StrEnum):
     HOLD_FOR_APPROVAL = "hold-for-approval"
 
 
+class LanternRewardTriggerMethod(StrEnum):
+    TYPED_LANTERN = "typed:LANTERN"
+
+
+class LanternRewardVerificationStatus(StrEnum):
+    REQUIRES_HUMAN_REVIEW = "requires_human_review"
+    SYSTEM_VERIFIED = "system_verified"
+    REJECTED = "rejected"
+
+
 class LanternModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True, str_strip_whitespace=True, extra="forbid")
+
+
+class LanternEventSignature(LanternModel):
+    algorithm: str = Field(min_length=1)
+    key_id: str = Field(alias="keyId", min_length=1)
+    value: str = Field(min_length=1)
+
+
+class LanternRewardClaimEvent(LanternModel):
+    event_type: Literal["lantern.reward.claim.requested"] = Field(
+        alias="eventType",
+        default="lantern.reward.claim.requested",
+    )
+    event_version: Literal["1.0"] = Field(alias="eventVersion", default="1.0")
+    campaign_id: str = Field(alias="campaignId", min_length=1)
+    client_event_id: str = Field(alias="clientEventId", min_length=1)
+    claim_id: str = Field(alias="claimId", min_length=1)
+    trigger_method: LanternRewardTriggerMethod = Field(alias="triggerMethod")
+    trigger_timestamp: datetime = Field(alias="triggerTimestamp")
+    claim_timestamp: datetime = Field(alias="claimTimestamp")
+    email_hash: str = Field(alias="emailHash", pattern=r"^[0-9a-f]{64}$")
+    consent_to_send_reward: bool = Field(alias="consentToSendReward")
+    marketing_opt_in: bool = Field(alias="marketingOptIn", default=False)
+    reward_asset_id: str = Field(alias="rewardAssetId", min_length=1)
+    verification_status: LanternRewardVerificationStatus = Field(alias="verificationStatus")
+    source_system: str = Field(alias="sourceSystem", min_length=1)
+    processing_system: str = Field(alias="processingSystem", min_length=1)
+    signature: LanternEventSignature | None = None
 
 
 class ConsentEvent(LanternModel):

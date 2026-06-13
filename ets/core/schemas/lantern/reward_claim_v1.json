@@ -1,31 +1,58 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.invalid/ets/lantern/reward-claim-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "LanternRewardClaim",
   "description": "ETS provenance event for Lantern Easter egg reward claims",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "eventType",
     "eventVersion",
     "campaignId",
+    "clientEventId",
     "claimId",
+    "triggerMethod",
+    "triggerTimestamp",
+    "claimTimestamp",
     "emailHash",
-    "consentToSendReward"
+    "consentToSendReward",
+    "marketingOptIn",
+    "rewardAssetId",
+    "verificationStatus",
+    "sourceSystem",
+    "processingSystem"
   ],
   "properties": {
     "eventType": { "type": "string", "const": "lantern.reward.claim.requested" },
     "eventVersion": { "type": "string", "const": "1.0" },
-    "campaignId": { "type": "string" },
-    "clientEventId": { "type": "string" },
-    "claimId": { "type": "string" },
-    "triggerMethod": { "type": "string" },
+    "campaignId": { "type": "string", "minLength": 1 },
+    "clientEventId": { "type": "string", "minLength": 1 },
+    "claimId": { "type": "string", "minLength": 1 },
+    "triggerMethod": {
+      "type": "string",
+      "enum": ["typed:LANTERN"]
+    },
     "triggerTimestamp": { "type": "string", "format": "date-time" },
     "claimTimestamp": { "type": "string", "format": "date-time" },
     "emailHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "consentToSendReward": { "type": "boolean" },
-    "marketingOptIn": { "type": "boolean" },
-    "rewardAssetId": { "type": "string" },
-    "verificationStatus": { "type": "string" },
-    "sourceSystem": { "type": "string" },
-    "processingSystem": { "type": "string" }
+    "marketingOptIn": { "type": "boolean", "default": false },
+    "rewardAssetId": { "type": "string", "minLength": 1 },
+    "verificationStatus": {
+      "type": "string",
+      "enum": ["requires_human_review", "system_verified", "rejected"]
+    },
+    "sourceSystem": { "type": "string", "minLength": 1 },
+    "processingSystem": { "type": "string", "minLength": 1 },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "keyId", "value"],
+      "properties": {
+        "algorithm": { "type": "string", "minLength": 1 },
+        "keyId": { "type": "string", "minLength": 1 },
+        "value": { "type": "string", "minLength": 1 }
+      }
+    }
   }
 }
