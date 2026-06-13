@@ -8,9 +8,17 @@ EXTENDS Naturals, FiniteSets, Sequences, TLC
 (* semantics suitable for initial SMT-backed checking.                     *)
 (***************************************************************************)
 
-CONSTANTS Messages
+CONSTANT
+    \* @type: Set(Int);
+    Messages
 
-VARIABLES pending, delivered, replayDetected
+VARIABLE
+    \* @type: Set(Int);
+    pending,
+    \* @type: Set(Int);
+    delivered,
+    \* @type: Bool;
+    replayDetected
 
 TypeOK ==
     /\ pending \subseteq Messages

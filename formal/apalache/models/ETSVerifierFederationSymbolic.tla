@@ -8,9 +8,19 @@ EXTENDS Naturals, FiniteSets, TLC
 (* minimizing unsupported symbolic complexity.                              *)
 (***************************************************************************)
 
-CONSTANTS Verifiers, Roots, Threshold
+CONSTANT
+    \* @type: Set(Str);
+    Verifiers,
+    \* @type: Set(Str);
+    Roots,
+    \* @type: Int;
+    Threshold
 
-VARIABLES votes, accepted
+VARIABLE
+    \* @type: Str -> Str;
+    votes,
+    \* @type: Bool;
+    accepted
 
 TypeOK ==
     /\ votes \in [Verifiers -> Roots \cup {"NONE"}]

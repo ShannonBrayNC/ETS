@@ -133,9 +133,8 @@ theorem byzantineSuspicionIsNotNone
   (hb : s.outcome = ByzantineOutcome.byzantineSuspected) :
   s.outcome != ByzantineOutcome.none := by
 
-  intro hbad
-  rw [hb] at hbad
-  contradiction
+  rw [hb]
+  simp
 
 /--
 Research boundary.

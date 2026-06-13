@@ -10,9 +10,13 @@ EXTENDS Naturals, Sequences, FiniteSets, TLC
 (* and accepted log state remains bounded and typed.                        *)
 (***************************************************************************)
 
-CONSTANT EventIds
+CONSTANT
+    \* @type: Set(Int);
+    EventIds
 
-VARIABLES log
+VARIABLE
+    \* @type: Seq(Int);
+    log
 
 TypeOK ==
     /\ log \in Seq(EventIds)
