@@ -85,7 +85,7 @@ CastVote(verifier, root) ==
                     /\ v2.verifier = v
                     /\ v1.root # v2.root}
         /\ conflictDetected' =
-            conflictDetected \/
+            (conflictDetected \/
             (\E r1, r2 \in RootIds :
                 /\ r1 # r2
                 /\ Cardinality({v \in Verifiers :
@@ -95,7 +95,7 @@ CastVote(verifier, root) ==
                 /\ Cardinality({v \in Verifiers :
                     \E submittedVote \in nextVotes :
                         /\ submittedVote.verifier = v
-                        /\ submittedVote.root = r2}) >= Threshold)
+                        /\ submittedVote.root = r2}) >= Threshold))
         /\ acceptedRoot' =
             IF acceptedRoot # NoRoot THEN acceptedRoot
             ELSE IF ~conflictDetected' THEN
