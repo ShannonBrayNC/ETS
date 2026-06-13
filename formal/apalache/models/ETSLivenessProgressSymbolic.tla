@@ -14,9 +14,19 @@ EXTENDS Naturals, TLC
 (* - does not model arbitrary Byzantine scheduling.                         *)
 (***************************************************************************)
 
-CONSTANT MaxRounds
+CONSTANT
+    \* @type: Int;
+    MaxRounds
 
-VARIABLES round, pending, delivered, terminal
+VARIABLE
+    \* @type: Int;
+    round,
+    \* @type: Bool;
+    pending,
+    \* @type: Bool;
+    delivered,
+    \* @type: Bool;
+    terminal
 
 TypeOK ==
     /\ round \in 0..MaxRounds

@@ -69,9 +69,8 @@ theorem timeoutIsClassified
   (h : s.outcome = FairOutcome.timedOut) :
   s.outcome != FairOutcome.unresolved := by
 
-  intro hbad
-  rw [h] at hbad
-  contradiction
+  rw [h]
+  simp
 
 /--
 Mechanized theorem:
