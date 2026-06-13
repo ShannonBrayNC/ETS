@@ -222,3 +222,16 @@ ETS becomes strongest when every paper contributes:
 - and one clearly traceable formal contribution.
 
 That discipline will make the dissertation substantially stronger over time.
+
+## Sprint 6 Boundary
+
+The current paper set is a candidate pipeline, not a submission-ready package.
+Before any paper is submitted, the advisor should approve:
+
+- target venue;
+- paper order;
+- author list;
+- evidence package;
+- citation style;
+- artifact availability statement;
+- limitation wording.

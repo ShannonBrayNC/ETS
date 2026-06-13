@@ -4,6 +4,14 @@
 
 This document prepares ETS for dissertation committee review, publication critique, and formal defense questioning.
 
+Sprint 8 defense artifacts extend this document:
+
+- `DEFENSE_QA.md`
+- `DEFENSE_DECK_PLAN.md`
+- `ARTIFACT_WALKTHROUGH_SCRIPT.md`
+- `FINAL_REVISION_CHECKLIST.md`
+- `SPRINT_8_READINESS_REPORT.md`
+
 The goal is not rhetorical persuasion.
 
 The goal is:
@@ -294,3 +302,19 @@ The project becomes stronger whenever it explicitly separates:
 - and what remains uncertain.
 
 That discipline is one of the defining strengths of ETS.
+
+---
+
+# 9. Sprint 8 Defense Boundary
+
+Current materials are ready for advisor-facing defense preparation.
+
+They are not a formal defense package until:
+
+- advisor approves the dissertation framing;
+- committee path is confirmed;
+- chapter prose is integrated;
+- formal workflow outputs are captured;
+- experiment artifacts are generated;
+- Missouri S&T formatting is applied;
+- the final deck is reviewed.

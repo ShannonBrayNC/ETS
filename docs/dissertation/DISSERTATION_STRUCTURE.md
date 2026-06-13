@@ -8,6 +8,14 @@
 
 This document defines the dissertation narrative architecture for ETS.
 
+Sprint 7 assembly artifacts refine this structure into a committee-draft path:
+
+- `DISSERTATION_ASSEMBLY_PLAN.md`
+- `CHAPTER_INTEGRATION_CHECKLIST.md`
+- `FIGURE_TABLE_PLAN.md`
+- `COMMITTEE_DRAFT_READINESS.md`
+- `SPRINT_7_READINESS_REPORT.md`
+
 The dissertation must not read as:
 
 - a product manual;
@@ -306,6 +314,22 @@ Purpose:
 Closing frame:
 
 ETS contributes a formal architecture for distinguishing what is evidenced, what is observed, what is trusted, what is uncertain, and what remains defensible under bounded and adversarial conditions.
+
+---
+
+# 7. Sprint 7 Assembly Boundary
+
+The current dissertation is ready for advisor review as a structured restart
+package. It is not yet ready for committee circulation.
+
+Committee circulation still requires:
+
+- integrated chapter prose;
+- citation normalization;
+- figure and table creation;
+- captured CI/model-checking/artifact outputs;
+- advisor approval of thesis framing and publication sequence;
+- Missouri S&T formatting alignment.
 
 ---
 

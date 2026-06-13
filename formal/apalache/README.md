@@ -8,7 +8,8 @@ TLC currently provides bounded explicit-state exploration. Apalache adds
 SMT-backed symbolic checking for selected TLA+ specifications over supported
 TLA+ fragments.
 
-ETS does not currently run Apalache in CI.
+ETS includes an Apalache GitHub Actions workflow for pull requests and manual
+dispatches: `.github/workflows/apalache.yml`.
 
 ## Scientific Boundary
 
@@ -20,9 +21,10 @@ It provides another validation mode:
 - Apalache: bounded symbolic analysis over supported TLA+ fragments.
 - Refinement proof and theorem proving: future work.
 
-Until a pinned Apalache version, CI command, and retained outputs exist, ETS
-should describe symbolic verification as a planned research track, not a
-completed result.
+The workflow pins Apalache v0.40.7 and executes symbolic-safe reduced models.
+Until retained outputs are attached to a specific commit and mapped into the
+proof index, ETS should describe Apalache as bounded symbolic-safe validation,
+not complete symbolic verification.
 
 ## Initial Target Models
 
@@ -58,6 +60,7 @@ apalache-mc check formal/tla/ETSLog.tla
 
 ## Current Status
 
-This is symbolic-verification scaffolding. It establishes a repeatable
-verification path while documenting limitations. It is not yet evidence of
-completed symbolic model checking or implementation refinement.
+This is a symbolic-safe verification workflow for reduced ETS models. It
+establishes a repeatable validation path while documenting limitations. It is
+not evidence of complete symbolic model checking coverage or implementation
+refinement.

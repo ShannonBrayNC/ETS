@@ -25,6 +25,14 @@ Paper drafts should include:
 - limitations,
 - artifact availability.
 
+Sprint 6 paper-candidate planning is captured in:
+
+- `docs/dissertation/PAPER_PIPELINE_ROADMAP.md`
+- `docs/dissertation/PAPER_ABSTRACTS_AND_OUTLINES.md`
+- `docs/dissertation/PAPER_CLAIM_EVIDENCE_MAP.md`
+- `docs/dissertation/VENUE_STRATEGY.md`
+- `docs/dissertation/SPRINT_6_READINESS_REPORT.md`
+
 Figures should include:
 
 - evidence event lifecycle,
@@ -73,10 +81,13 @@ artifact/
 
 ## Readiness Gate
 
-Do not mark a paper or defense artifact ready until:
+Do not mark a paper or defense artifact submission-ready until:
 
 - all claims map to repo artifacts,
 - limitations are explicit,
 - reproduction commands pass,
 - citations are normalized,
 - committee-review questions have draft responses.
+- advisor has approved the target venue family,
+- artifact availability language is drafted,
+- author and affiliation handling are confirmed.

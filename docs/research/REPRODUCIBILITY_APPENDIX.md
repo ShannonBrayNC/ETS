@@ -34,6 +34,21 @@ Expected artifacts:
 Benchmark timings are machine-dependent. Event counts, tree size, and output
 shape are deterministic.
 
+## Golden Vector Reproduction
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/spec/test_vectors.py -q
+```
+
+Current golden vectors are:
+
+- `ets/spec/test-vectors/v0.1/event-vectors.json`
+- `ets/spec/test-vectors/merkle-vectors.json`
+
+These vectors support deterministic canonical JSON, event-hash, leaf-hash, and
+small Merkle-root checks. They do not yet cover proof bundles, signed tree
+heads, redaction profiles, or cross-language implementation outputs.
+
 ## Experiment Reproduction
 
 ```powershell
@@ -65,6 +80,21 @@ outcomes under bounded delay settings. The Bayesian primitive performs
 Beta-Bernoulli posterior updates for observed verifier behavior. Neither test
 suite establishes BFT consensus or stochastic convergence.
 
+The manifest-driven replay harness is:
+
+```powershell
+.\.venv\Scripts\python.exe -m ets.experiments.replay_runner
+```
+
+Primary manifest:
+
+- `experiments/scenarios/sprint11-replay-manifest.json`
+
+Expected generated artifacts:
+
+- `artifacts/experiments/experiment-results.json`
+- `artifacts/experiments/experiment-results.md`
+
 ## Federation API Reproduction
 
 The federation quorum/fork primitive is tested through both unit tests and the
@@ -93,16 +123,33 @@ Alloy causal modeling is represented by:
 
 - `formal/alloy/ETSCausalModel.als`
 
-CI may validate syntax or artifact presence when model checkers are not
-installed. A full paper artifact must state whether TLC or Alloy Analyzer was
-executed and with which bounds.
+The formal CI workflow executes bounded TLC checks for selected TLA+ models.
+A full paper artifact must state the workflow run URL, checker version, commit
+SHA, and configured bounds.
 
 ## Symbolic Verification Status
 
-Apalache and refinement proofs are tracked in `formal/apalache/README.md`.
-They are not currently part of the reproducibility baseline. Publications must
-describe symbolic verification as pending until a pinned checker version,
-commands, and outputs are committed.
+Apalache symbolic-safe reduced model checks are tracked in
+`formal/apalache/README.md` and `.github/workflows/apalache.yml`.
+Publications must distinguish bounded symbolic-safe workflow results from
+complete symbolic verification or implementation refinement proof.
+
+## Dissertation Artifact Package
+
+Sprint 5 proposes a committee-facing artifact package in:
+
+- `docs/dissertation/EXPERIMENT_ARTIFACT_PLAN.md`
+
+The recommended package records:
+
+- environment summary;
+- commands;
+- test summary;
+- golden-vector summaries;
+- benchmark JSON/Markdown;
+- experiment manifest and outputs;
+- interpretation notes;
+- known non-claims.
 
 ## Docker Federation
 

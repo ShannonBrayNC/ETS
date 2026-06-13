@@ -1,5 +1,11 @@
 # Defense Slide Outline
 
+Sprint 8 expanded slide planning lives in:
+
+- `DEFENSE_DECK_PLAN.md`
+- `DEFENSE_QA.md`
+- `ARTIFACT_WALKTHROUGH_SCRIPT.md`
+
 ## Slide 1: Title
 
 Evidence Transparency Systems: Formal Protocols for Verifiable Digital Evidence, Distributed Trust, and Computationally Bounded Epistemic Coordination
@@ -69,3 +75,8 @@ Input truth, complete observation, key compromise, human governance, and large-s
 ## Slide 16: Closing
 
 ETS turns opaque digital assertions into evidence artifacts that can be independently checked, replayed, and governed under explicit assumptions.
+
+## Slide 17: Advisor-Approved Next Steps
+
+Confirm chapter integration sequence, required formal/artifact evidence, paper
+priority, and administrative path before committee circulation.

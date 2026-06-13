@@ -18,7 +18,8 @@ does not yet claim that evidence.
 | Bayesian verifier reliability | not modeled | not modeled | `probabilistic.py` | `test_probabilistic.py` | statistical only |
 | Governance escalation | not modeled | pending | `ets.governance` | `test_governance.py` | process model |
 | Byzantine consensus | pending | pending | none | none | not claimed |
-| Symbolic model checking | Apalache pending | pending | none | none | not claimed |
+| Symbolic-safe reduced model checking | Apalache workflow | pending | none | `.github/workflows/apalache.yml` | bounded symbolic-safe |
+| Complete symbolic verification | pending | pending | none | none | not claimed |
 
 ## Refinement Notes
 
@@ -34,6 +35,9 @@ Publication text should use:
 - "bounded model" when TLC or deterministic simulation covers finite cases;
 - "fairness-scoped" when liveness depends on weak fairness and eventual
   removal of partition/adversarial pressure;
-- "pending" when Alloy, Apalache, or refinement evidence does not exist;
+- "bounded symbolic-safe" when reduced Apalache models are checked by workflow
+  but full symbolic coverage is not complete;
+- "pending" when Alloy, complete Apalache coverage, or refinement evidence does
+  not exist;
 - "not claimed" for Byzantine consensus and Internet-scale adversarial
   correctness.

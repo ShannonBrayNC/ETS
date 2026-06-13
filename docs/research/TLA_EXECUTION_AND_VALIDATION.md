@@ -44,6 +44,10 @@ The CI workflow currently executes:
 - ETSVerifierFederation
 - ETSTemporalByzantineFederation
 - ETSProbabilisticTrust
+- ETSLivenessFederation
+- ETSAsyncTransport
+- ETSTemporalLivenessTheorems
+- ETSUniversalTemporalLiveness
 
 Each model includes:
 
@@ -129,14 +133,16 @@ This creates an enforceable boundary between:
 
 The current formal CI still does NOT include:
 
-- liveness proofs;
-- temporal fairness proofs;
 - probabilistic theorem proving;
-- asynchronous network simulation;
 - Byzantine transport verification;
-- Apalache model checking;
+- complete Apalache coverage beyond symbolic-safe reduced models;
 - PlusCal refinement;
 - Alloy/TLA+ cross-validation.
+- implementation-to-model refinement proof.
+
+The CI does include bounded TLC liveness/property checks for selected models,
+but these remain fairness-scoped and bounded. They are not universal liveness
+theorems.
 
 Those remain future work.
 

@@ -1,0 +1,359 @@
+from __future__ import annotations
+
+from pathlib import Path
+import re
+
+from docx import Document
+from docx.enum.section import WD_SECTION
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.style import WD_STYLE_TYPE
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Inches, Pt, RGBColor
+
+
+OUT_DIR = Path(__file__).resolve().parent
+MD_PATH = OUT_DIR / "ETS_PHD_DISSERTATION_ROUGH_DRAFT.md"
+DOCX_PATH = OUT_DIR / "ETS_PHD_DISSERTATION_ROUGH_DRAFT.docx"
+
+
+TITLE = "Evidence Transparency Systems"
+SUBTITLE = (
+    "A Formal Architecture for Computationally Bounded Evidentiary "
+    "Coordination Under Adversarial and Incomplete Observation Conditions"
+)
+AUTHOR = "Shannon Bray"
+DATE = "Rough dissertation draft, June 2026"
+
+
+SECTIONS: list[tuple[int, str, list[str]]] = [
+    (
+        1,
+        "Abstract",
+        [
+            "This dissertation draft reviews and synthesizes the Evidence Transparency Systems (ETS) research program into a doctoral-style argument. ETS addresses a verification gap that appears across modern digital systems: operational evidence exists, but the parties who must audit, govern, contest, or reproduce that evidence often cannot verify integrity, ordering, omission risk, or provenance without trusting the same institution or platform that produced the evidence. The core claim is deliberately bounded. ETS is not a system for proving universal truth. It is a protocol architecture for making recorded digital evidence independently checkable, tamper-evident, replayable, and governable under explicit cryptographic, computational, adversarial, and organizational assumptions.",
+            "The dissertation positions ETS at the intersection of transparency logs, canonicalization, cryptographic proof systems, distributed verification, formal methods, reproducible experiments, and information systems governance. It argues that evidentiary coordination requires a careful separation between evidence and truth, observation and certainty, confidence and proof, omission suspicion and completeness, and disagreement and system failure. ETS contributes a layered architecture in which canonical evidence records are bound by deterministic hashing, appended to transparency logs, summarized by roots and proofs, checked by independent verifiers, and interpreted through bounded trust and confidence semantics.",
+            "The research artifacts currently include protocol documentation, TLA+ models, Alloy and symbolic-verification scaffolding, Lean theorem-development notes, Python reference implementation paths, deterministic experiments, benchmark plans, a formal traceability matrix, and dissertation component files. This draft consolidates those materials into a rough PhD dissertation format: introduction, literature review, theory, protocol architecture, formal models, implementation, evaluation, governance implications, limitations, conclusion, references, and appendices. It is intended as a committee-facing rough draft and not as a final defended dissertation. Citation normalization, empirical result tables, proof-completion status, and institutional formatting still require later revision.",
+        ],
+    ),
+    (
+        1,
+        "Chapter 1. Introduction",
+        [
+            "Digital societies increasingly depend on systems that generate consequential claims about events. Audit platforms report that a control passed. AI governance tools report that a prompt, model, policy, or reviewer action occurred. Observability systems report that a transaction followed a particular path. Election, compliance, research, and security systems produce records that may later become evidence. Yet in many of these settings, the record remains controlled by the same operator whose behavior is under review. The resulting verification gap is not merely a tooling problem. It is a structural problem in how modern institutions coordinate evidence, trust, and accountability.",
+            "ETS begins from a narrow but consequential observation: evidence can exist without being independently verifiable. A log entry may be present, but an external auditor may not be able to recompute its hash, verify that its representation was canonical, determine whether it was included in an append-only structure, identify whether alternate histories were shown to different verifiers, or reproduce the state claimed by a report. In such cases, the practical question is not whether a record was stored somewhere. The question is what an independent party can defensibly verify about that record under stated assumptions.",
+            "The thesis of this dissertation is that Evidence Transparency Systems can provide a defensible formal architecture for computationally bounded evidentiary coordination by combining canonical evidence records, append-only transparency logs, cryptographic proof artifacts, verifier federation, replay, confidence semantics, and reproducible validation. ETS improves independent verifiability and governance traceability without claiming semantic truth, perfect completeness, full Byzantine consensus, or universal correctness under arbitrary adversarial conditions.",
+            "The research questions follow from that thesis. First, how can heterogeneous operational events be represented so independent implementations compute stable hashes? Second, how can append-only transparency structures expose tampering, reordering, or forked histories without requiring trust in the original operator? Third, how can independent verifiers detect divergence, stale state, omission suspicion, or inconsistent roots across partially visible systems? Fourth, how can asynchronous transport, selective disclosure, and partial synchrony be modeled without overstating liveness or completeness? Fifth, how should confidence and trust be represented as bounded semantics rather than absolute truth labels? Finally, how can protocol requirements trace to executable code, formal models, tests, and reproducible artifacts?",
+            "ETS contributes four kinds of work. The first is theoretical: a vocabulary for evidence, observation, proof, replay, visibility, suspicion, confidence, and trust decay in distributed systems. The second is architectural: a layered protocol model that combines canonicalization, hashing, logs, proof bundles, signed roots, verifier federation, and governance escalation. The third is formal: bounded TLA+ models, theorem registries, and proof-index materials that specify safety and liveness claims with explicit assumption boundaries. The fourth is empirical and engineering-oriented: a reference implementation, experiments, benchmarks, CI-oriented tests, and reproducibility appendices that make the claims inspectable.",
+            "The scope is intentionally conservative. ETS proves integrity and consistency properties about recorded artifacts under assumptions such as hash collision resistance, correct canonicalization, verifier access to relevant artifacts, sound key management, and bounded transport conditions. It does not prove that an input event was semantically true. It does not prove that all relevant events were captured unless an external completeness policy defines the expected event set and a trustworthy observation process enforces it. It does not replace Byzantine consensus protocols. It does not make legal sufficiency automatic. This constraint is not a weakness of the research; it is the discipline that keeps the research scientifically meaningful.",
+        ],
+    ),
+    (
+        1,
+        "Chapter 2. Background and Literature Review",
+        [
+            "ETS should be read as a synthesis and extension of several established research areas rather than as an invention from nowhere. Append-only transparency systems, Certificate Transparency, Merkle proof systems, hash chains, digital signatures, distributed systems, Byzantine fault tolerance, formal methods, observability, security auditing, and computational trust each provide part of the intellectual background. ETS integrates these traditions into an evidence-coordination architecture for settings where visibility is partial, trust is bounded, and downstream users need proof-carrying artifacts rather than operator assurances.",
+            "Transparency logs show that public or witnessable append-only structures can change the trust posture of a system. Certificate Transparency, software supply-chain attestations, and related approaches do not make every certificate or artifact good. They make certain properties observable: inclusion, consistency, equivocation, and sometimes failure to disclose. ETS adopts this distinction. The goal is not to prove the goodness of an event; the goal is to make claims about recorded evidence reproducible and independently checkable.",
+            "Merkle trees and hash chains provide compact integrity structures for large or growing records. A Merkle inclusion proof can show that a leaf participates in a particular root without exposing the full log, while a consistency proof can support claims about append-only growth. Hash chains bind sequential events, making mutation of past entries visible to later verification. ETS uses these primitives as established tools. Its claimed novelty is not the invention of hashing or Merkle trees, but the protocol semantics that connect canonical evidence objects, proof bundles, federation checks, and governance interpretation.",
+            "Distributed systems research provides the cautionary context. Asynchronous networks may delay, reorder, drop, or partition messages. Independent verifiers may see different roots at different times without any one verifier behaving maliciously. Byzantine fault-tolerance literature shows that strong agreement properties require explicit models, thresholds, and protocol machinery. ETS therefore does not claim full Byzantine consensus. It models verifier federation as root comparison, observation sharing, replay validation, and divergence reporting under bounded assumptions. This keeps ETS closer to transparency and auditability than to consensus replacement.",
+            "Formal methods are essential because informal trust language can easily overstate what a system proves. TLA+ models can specify append-only state transitions, queue behavior, liveness assumptions, verifier observations, partition healing, and fairness-scoped eventuality. Alloy-style structural models can explore causality and omission suspicion. Lean theorem work can strengthen selected mathematical claims. The dissertation treats formal artifacts as claim boundaries: where a property is modeled and checked, the text should say so; where it is pending, the text should not smuggle it into the contribution list.",
+            "Observability and SIEM systems provide another contrast. They collect large volumes of telemetry, alerts, traces, and logs, but they often remain operator-centered and environment-specific. ETS shifts attention from collecting evidence to making evidence independently verifiable. A trace can be useful operationally yet weak as an audit artifact if its canonical form, integrity binding, inclusion status, replay method, and omission model are unavailable to independent reviewers.",
+            "AI governance makes the stakes concrete. Organizations increasingly need records of prompt hashes, model identifiers, policy versions, output hashes, reviewer actions, override decisions, and deployment context. ETS can record and verify that such evidence artifacts were captured and bound into a reproducible chain. It cannot prove that a model was fair, that an explanation was correct, or that no unrecorded inference occurred. That boundary is especially important because governance systems are tempted to turn audit trails into truth claims. ETS instead treats them as structured evidence claims.",
+        ],
+    ),
+    (
+        1,
+        "Chapter 3. Evidence Theory for Distributed Systems",
+        [
+            "The most distinctive theoretical contribution of ETS is the separation of concepts that are often collapsed in practice. Evidence is not truth. Observation is not certainty. Confidence is not proof. Omission suspicion is not completeness. Disagreement is not necessarily failure. These distinctions allow a system to express what is known, what is visible, what is reproducible, what is merely suspected, and what remains outside the evidence boundary.",
+            "An evidence event is a canonical record containing stable identifiers, content hashes, event type, metadata, timestamp, source, actor, and optional external references. The event's integrity identity is computed as a cryptographic digest over a deterministic canonical representation of its hashable fields. This definition makes canonicalization central. If two independent verifiers serialize the same semantic event differently, they may compute different hashes and lose the ability to coordinate. ETS therefore treats canonicalization not as a convenience but as a protocol obligation.",
+            "Observation is verifier-relative. A verifier may observe an event, root, proof, replay result, or divergence report at a particular logical or wall-clock time. Different verifiers may observe different artifacts without immediate contradiction. Transport delay, partition, stale state, or selective disclosure can all create asymmetry. ETS makes observation explicit so it can reason about visibility rather than quietly assuming shared global knowledge.",
+            "Proof is narrower than confidence. An inclusion proof may demonstrate that a canonical leaf participates in a particular root. A signature may demonstrate that a key endorsed a tree head. A replay result may demonstrate that deterministic reconstruction matches expected state. Confidence may combine those proofs with verifier independence, recency, quorum policy, successful replay, and historical reliability. ETS keeps these categories separate so that policy does not masquerade as mathematics.",
+            "Omission suspicion is one of the central bounded epistemic states. A verifier may have reason to believe that expected evidence is missing, delayed, or selectively hidden, but this is not the same as proving semantic deletion. Omission requires an expectation model: an external schedule, sequence range, manifest, obligation, monitoring source, or policy defining what should have appeared. Without such a model, absence from a log is not sufficient evidence of omission. With such a model, missing entries can be reported as suspicion, investigated, and potentially resolved.",
+            "Trust decay captures the fact that evidence coordination is temporal. A root that was fresh yesterday may be stale today. A verifier that regularly participated may fail heartbeat checks. Expected monitoring evidence may disappear. Confidence should degrade when observations age, roots stop updating, proofs become inaccessible, or known adversarial visibility increases. ETS therefore models trust as an evolving judgment rather than a static label.",
+            "Replay provides a bridge between evidence and reproducibility. A replay process deterministically reconstructs state from canonical events and proof artifacts. If replay succeeds, an independent reviewer gains evidence that the published artifacts are internally consistent under the protocol rules. If replay fails, the failure can identify a mismatched hash, invalid ordering, missing entry, tampered payload, or implementation divergence. Replay is not omniscience; it is disciplined reconstruction within the visible evidence set.",
+        ],
+    ),
+    (
+        1,
+        "Chapter 4. ETS Protocol Architecture",
+        [
+            "The ETS architecture can be described as a layered protocol model. At the evidence object layer, events are represented as stable canonical records. At the integrity layer, canonical records are bound by cryptographic hashes. At the transparency log layer, records are appended to structures that expose inclusion, consistency, root, and append-only behavior. At the verifier federation layer, independent parties observe roots, validate proofs, compare reports, and detect divergence. At the temporal and adversarial layer, freshness, delay, partition, selective disclosure, and stale state become explicit. At the governance layer, technical findings become escalation signals rather than automatic truth judgments.",
+            "The formal system model can be summarized as ETS = (E, C, H, L, P, V), where E is the set of evidence objects, C is the canonicalization function, H is the cryptographic hash function, L is the append-only log, P is the proof-generation system, and V is the verification function. An ETS-compliant system transforms operational events into verifiable evidence chains by requiring each stage to be independently checkable under public rules.",
+            "The protocol invariants are intentionally familiar but important. The integrity invariant requires that evidence hashes verify. The append-only invariant requires later log states to preserve prior entries. The chain-consistency invariant binds sequential evidence by previous-hash references where sequence semantics apply. The deterministic-canonicalization invariant requires equivalent evidence objects to produce the same canonical form. The proof-verifiability invariant requires verification without privileged access to the originating system.",
+            "Proof bundles are the practical unit of independent review. A bundle should contain the canonical evidence representation or its approved redacted form, the digest, relevant inclusion or consistency proofs, root or signed tree-head material, verifier observations where available, replay metadata, and interpretation notes. This turns an audit record from a claim about a system into an artifact that another party can inspect and recompute.",
+            "Verifier federation is a coordination mechanism, not a consensus protocol. Verifiers compare signed roots, replay outputs, proof bundles, observation histories, and divergence reports. A quorum threshold may express local policy confidence in root agreement or suspicion, but the quorum does not prove universal completeness. Federation improves the chance that forks, stale views, inconsistent roots, or selective disclosure become visible to at least some independent participants.",
+            "Privacy and redaction are part of the architecture rather than afterthoughts. ETS does not require sensitive raw payloads to be permanently exposed. It can store hashes, metadata, redaction profiles, and external references while allowing designated reviewers to validate canonical forms under controlled disclosure. The research problem is therefore not simply to maximize transparency. It is to make evidence verifiable while respecting secrecy, privacy, retention, and legal boundaries.",
+            "The architecture also separates capture from interpretation. A captured AI workflow event may record prompt hash, model identifier, policy version, output hash, reviewer action, and deployment context. ETS can verify that the artifact was recorded and bound to a log. Whether the policy was adequate, the reviewer was competent, the model behavior was acceptable, or the downstream decision was lawful remains a governance question.",
+        ],
+    ),
+    (
+        1,
+        "Chapter 5. Formal Models and Verification",
+        [
+            "The dissertation's formal-methods strategy is to convert ETS claims into bounded models, theorem statements, validation artifacts, and traceability matrices. This matters because ETS operates in a domain where loose language can easily become dangerous. If the system says it detects omission, the model must clarify that omission suspicion depends on an expected event set. If the system says it supports liveness, the model must state fairness and partition-healing assumptions. If the system says federation detects divergence, the model must specify what conflicting roots must become visible to whom.",
+            "The TLA+ model set includes append-only state and fork observation, verifier federation, asynchronous transport, temporal and Byzantine federation behavior, probabilistic trust, liveness federation, and universal temporal liveness variants. The available research notes describe a progression from simple log safety toward temporal freshness, adversarial visibility, bounded convergence, stale-state recovery, and fairness-scoped eventuality. The dissertation should present these models as a research suite rather than as isolated proofs.",
+            "Safety properties include deterministic hashes, rejection of tampered leaves, rejection of invalid growth, rejection of invalid previous-hash chains, rejection of tampered or wrongly signed roots, stable replay under identical inputs, and preservation of conflicting-root evidence in divergence reports. These properties are relatively natural for transparency systems but still require executable validation because implementation details can break them.",
+            "Liveness properties are more delicate. ETS can only claim that submitted events, published roots, replay jobs, witness propagation, or divergence reports eventually occur under bounded assumptions: finite input sets, operational verifiers, fair delivery, eventual partition healing, and bounded adversarial pressure. The research notes correctly avoid claiming liveness under permanent partition, total eclipse, arbitrary Internet-scale adversarial behavior, or unavailable verifiers.",
+            "The formal traceability matrix provides a model of scholarly discipline. Append-only log safety maps to TLA+ and implementation tests. Omission requires expectation and is supported by Alloy and executable omission experiments. Root quorum assessment is implemented in federation code and API tests. Async queue disposition and packet reordering are bounded models. Replay eventuality, partition healing, witness propagation, and stale-state recovery are fairness-scoped. Bayesian verifier reliability is statistical only. Byzantine consensus and symbolic model checking are not yet claimed.",
+            "Lean and mechanized-proof materials strengthen the proof agenda but should be framed carefully. Their role in a rough dissertation is to show that ETS has an explicit path from informal protocol claims to mechanized theorem work. They should not be presented as completed coverage unless the proof registry and build evidence support that claim. A mature dissertation revision should include a proof-completion table that distinguishes proved, modeled, executable, pending, and not-claimed results.",
+            "The refinement hierarchy runs from dissertation definitions to protocol specifications, formal models, Python core implementation, API and CLI behavior, tests, demos, and reproducibility artifacts. A full refinement proof remains future work. The draft should therefore say that ETS currently has traceability and bounded validation evidence, not a complete end-to-end refinement theorem.",
+        ],
+    ),
+    (
+        1,
+        "Chapter 6. Reference Implementation",
+        [
+            "The ETS reference implementation is a research artifact. Its purpose is to make the protocol concrete, executable, testable, and reproducible. It should not be described as a production-certified trust service. The implementation demonstrates how canonical evidence objects, hash generation, append-only behavior, proof bundles, signed roots, verifier checks, replay, experiments, and governance reports can be assembled into a working platform.",
+            "Canonicalization is the foundation of implementation correctness. The implementation must decide which fields are hashable, how ordering is normalized, how timestamps and identifiers are represented, how optional fields are handled, and how redaction profiles preserve verification semantics. A small canonicalization drift can invalidate independent verification even when the underlying event is unchanged. For that reason, golden test vectors and cross-implementation checks are important future dissertation evidence.",
+            "The log implementation embodies append-only behavior and proof generation. Entries can be linked by hash chains where sequence semantics are needed, and summarized through Merkle roots for compact inclusion proofs. Signed roots or tree heads allow verifiers to bind observations to key material. The dissertation should distinguish these layers: an event hash identifies a canonical record, an inclusion proof relates a leaf to a root, a signed root associates a root with a signer, and federation compares observed roots across parties.",
+            "The verifier implementation checks proof bundles without privileged access to the originating system. This is a central architectural requirement. A verifier should recompute hashes, validate inclusion or consistency proofs, check signatures where applicable, compare roots, run replay jobs, and emit reports describing success, failure, stale state, divergence, or suspicion. Such reports are not merely logs; they are governance artifacts that preserve the evidence supporting a conclusion.",
+            "The experiments and tests make the reference implementation research-grade. Fork simulations should report conflicting roots. Omission experiments should report missing expected identifiers and distinguish unresolved delay from confirmed mismatch under an expectation model. Replay runners should record the input manifest, command, environment, result, and known limitations. Benchmarks should emit JSON and Markdown outputs that a reviewer can reproduce.",
+            "API, CLI, SDK, and explorer components are valuable because they expose the research to different users: developers, auditors, governance reviewers, and independent verifiers. The dissertation should not spend too much space on interface mechanics, but it should show that the implementation is not a purely abstract model. ETS is meant to be executable evidence infrastructure.",
+            "Implementation risks remain. Key management assumptions must be explicit. Canonicalization must be tested across edge cases. Redaction must not destroy verification semantics. Federation must avoid implying consensus where only observation comparison exists. UI and report language must be careful not to transform suspicion into proof. These are dissertation-relevant engineering constraints, not merely product backlog items.",
+        ],
+    ),
+    (
+        1,
+        "Chapter 7. Experimental Evaluation and Reproducibility",
+        [
+            "The ETS evaluation program should be understood as reproducible systems evidence rather than marketing performance measurement. The central questions are whether federation can detect root divergence, whether replay can detect tampered or reordered evidence, how omission suspicion behaves under delay and partial visibility, how proof sizes and verification costs scale, how asynchronous transport affects confidence and convergence, and whether results can be repeated across machines and CI runs.",
+            "Federation-convergence experiments measure how verifier nodes converge on a shared root or report divergence. Important metrics include convergence latency, root agreement rate, divergent-root detection time, stale-root frequency, and observation count. These results should be presented with careful scenario labels because a three-node synthetic federation does not imply Internet-scale adversarial safety.",
+            "Replay-order experiments evaluate deterministic reconstruction over canonical event sequences, reordered inputs, missing entries, and tampered payloads. Metrics can include replay success rate, mismatch count, failed event index, and reconstruction latency. Replay is especially important for committee review because it turns the ETS claim into a repeatable procedure: given the artifacts and command, can the reviewer reproduce the result?",
+            "Omission-detection experiments simulate expected event ranges, missing ranges, delayed delivery, and selective visibility. The key is the expectation model. Without expected identifiers, schedules, manifests, obligations, or monitoring constraints, absence is ambiguous. With such constraints, ETS can raise bounded suspicion and record whether the suspicion is later resolved, escalated, or confirmed as a mismatch.",
+            "Transport-asymmetry experiments evaluate partitions, delayed roots, one-way visibility, and verifier eclipse scenarios. Metrics include propagation delay, partition recovery time, asymmetric observation count, confidence degradation, and stale-state recovery. These experiments should be tied to the TLA+ transport and liveness models so that empirical scenarios and formal assumptions reinforce each other.",
+            "Reproducibility requirements are explicit. Each experiment should record code commit, Python version, dependency lock or environment summary, random seed, scenario manifest, input dataset, output report, command used, and known limitations. Datasets should be synthetic and contain no real personally identifiable information. Results should be published as artifact packages with README, scenario, command, environment, results, and interpretation files.",
+            "The dissertation should include a clear statement of what has and has not been evaluated. Deterministic local experiments support claims about the reference implementation and bounded models. They do not prove legal sufficiency, universal workload performance, adversarial Internet-scale correctness, or complete Byzantine safety. That limitation makes the evaluation honest and allows future work to extend it.",
+        ],
+    ),
+    (
+        1,
+        "Chapter 8. Governance, AI Accountability, and Institutional Use",
+        [
+            "ETS matters because evidence verification is not purely technical. Institutions need ways to coordinate accountability when records are incomplete, contested, delayed, selectively visible, or controlled by interested parties. ETS provides a protocol vocabulary for turning technical proof results into governance signals while preserving the difference between a cryptographic finding and an institutional decision.",
+            "In AI governance, ETS can record workflow evidence such as prompt hash, model identifier, policy version, output hash, reviewer action, override request, deployment context, and post-deployment monitoring event. This supports reconstruction of decision chains and independent verification that certain artifacts were recorded. It does not prove fairness, model correctness, explanation quality, or the absence of unrecorded inference. That separation is crucial for responsible deployment.",
+            "In compliance and enterprise audit settings, ETS can make control evidence more inspectable. A control test can be bound to canonical records, included in a transparency log, and later verified by an auditor without relying solely on screenshots or self-attested reports. Divergence, stale roots, invalid signatures, failed replay, or missing expected IDs can become escalation triggers.",
+            "In civic and election-related scenarios, ETS can help package evidence about processes, chain-of-custody events, observation points, or published artifacts. But the dissertation should be especially careful here. ETS cannot make contested social facts true by hashing them. It can preserve, bind, publish, and verify the integrity of evidence records under strict assumptions. Legal and civic legitimacy require procedures beyond the protocol.",
+            "In research integrity settings, ETS can support reproducible artifact publication. Experiment manifests, commands, outputs, seeds, environment summaries, and interpretation notes can be bound into verifiable evidence packages. This aligns with the dissertation's own methodology: the research should be reviewable not only as prose, but as a set of executable artifacts.",
+            "Governance semantics classify proof failures, fork suspicion, omission suspicion, invalid signatures, replay mismatch, stale state, override requests, and legal holds as signals. A signal may require human investigation, policy judgment, disclosure, retesting, or dispute resolution. ETS can improve the evidence available to those processes, but it should not automate legitimacy.",
+        ],
+    ),
+    (
+        1,
+        "Chapter 9. Limitations and Future Work",
+        [
+            "The strongest version of ETS is the bounded version. Its limitations should be foregrounded because they define the claims that remain defensible. ETS does not prove semantic truth. It verifies properties of recorded artifacts. If a false event is captured and correctly hashed, ETS can prove integrity of the false record, not truth of the real-world event. This distinction must remain visible throughout the dissertation.",
+            "ETS does not guarantee perfect completeness. Omitted evidence can be suspected, detected by reconciliation, or bounded by monitoring, but only when an external expectation model exists. Without that expectation, a missing record may indicate non-occurrence, delay, capture failure, selective disclosure, or lack of visibility. The dissertation should avoid any language that implies universal omission detection.",
+            "ETS does not implement full Byzantine consensus. Verifier federation compares roots, observations, proof bundles, and replay results. It can detect certain divergences when conflicting evidence becomes visible. It does not guarantee agreement under arbitrary Byzantine behavior. Future work may integrate stronger consensus protocols or witness architectures, but that would be an extension rather than a current claim.",
+            "The current formal program is broad, but proof maturity varies. Some claims are modeled and tested; some are fairness-scoped; some are statistical; some are pending; some are explicitly not claimed. A dissertation-ready revision should include a formal proof index with build status, model-checking commands, theorem dependencies, counterexample notes, and precise mapping to text claims.",
+            "The evaluation program also requires expansion. Larger-scale federation experiments, cross-implementation interoperability tests, richer transport simulations, redaction correctness tests, usability studies for governance workflows, and independent replication packages would all strengthen the dissertation. The current artifacts establish a credible research platform, but the final dissertation should separate completed evidence from planned evidence.",
+            "Privacy and legal boundaries need further development. Redaction profiles, retention policies, key compromise, legal holds, selective disclosure, and sensitive metadata leakage all deserve more rigorous treatment. A protocol that makes evidence more visible must also specify when visibility would be harmful or unlawful.",
+            "Future work includes quantitative confidence semantics, stronger probabilistic models, cross-language canonicalization test suites, independent verifier deployments, formal refinement proofs from implementation state to TLA+ variables, mechanized theorem completion, human-subject governance studies, and domain-specific ETS profiles for AI, compliance, research integrity, and civic evidence.",
+        ],
+    ),
+    (
+        1,
+        "Chapter 10. Conclusion",
+        [
+            "This dissertation draft argues that modern digital institutions need formal mechanisms for coordinating evidence under bounded trust, partial visibility, and adversarial conditions. ETS responds with a layered architecture that binds canonical evidence records into verifiable structures, exposes proof artifacts to independent verifiers, models temporal and adversarial visibility, supports reproducible replay, and translates technical findings into governance signals.",
+            "The central contribution is not a claim that technology can settle all disputes. It is the more disciplined claim that systems can be designed so that some evidentiary questions become independently checkable. Did this canonical artifact hash to this value? Was it included under this root? Did this signature validate? Did replay reconstruct the claimed state? Did different verifiers observe conflicting roots? Did an expected event range appear complete under the stated expectation model? These are bounded questions, but they are powerful.",
+            "ETS is valuable precisely because it keeps its epistemic categories separate. It does not confuse evidence with truth, confidence with proof, visibility with completeness, or federation with consensus. By preserving those distinctions, it gives auditors, researchers, engineers, and governance bodies a more honest substrate for institutional accountability.",
+            "The rough draft should now evolve in two directions. One direction is scholarly polish: normalized citations, deeper literature engagement, committee-specific formatting, and more rigorous chapter transitions. The other is evidentiary hardening: final test runs, published experiment packages, proof-completion tables, traceability updates, and clearer artifact-to-claim mapping. Together, those revisions can turn the current ETS research program into a defensible dissertation manuscript.",
+        ],
+    ),
+    (
+        1,
+        "References and Citation Placeholders",
+        [
+            "This rough draft intentionally uses citation placeholders rather than claiming a finalized bibliography. The final dissertation should normalize sources in the style required by the university or committee. The likely reference areas include Certificate Transparency and transparency-log literature; Merkle trees, hash chains, digital signatures, and authenticated data structures; distributed systems, consensus, asynchronous networks, and Byzantine fault tolerance; TLA+, Alloy, Lean, model checking, and formal refinement; observability, SIEM, audit trails, and digital forensics; AI governance, model cards, accountability, provenance, and reproducibility; and design science research methodology.",
+            "Draft citation anchors to resolve later: [CertificateTransparency], [MerkleTrees], [HashChains], [Ed25519], [LamportTLA], [Alloy], [Lean], [PBFT], [FLP], [AuthenticatedDataStructures], [SoftwareSupplyChainTransparency], [AIAccountability], [DesignScienceResearch], [ReproducibleSystemsResearch], [DigitalForensicsProvenance], [ObservabilityAndAudit].",
+        ],
+    ),
+    (
+        1,
+        "Appendix A. Source Materials Reviewed",
+        [
+            "This rough draft was synthesized from the ETS repository's research and dissertation materials, including the dissertation prospectus, dissertation structure notes, literature review, formal foundations, formal architecture, evidence theory, evaluation and benchmarks, reproducibility notes, theorem registry, temporal liveness theorem files, probabilistic Byzantine convergence materials, mechanized proof notes, implementation traceability, contribution summaries, glossary, formal proof index, and publication planning documents.",
+            "The research-track materials reviewed include the ETS research program, RC1 and RC2 research-paper drafts, executable RC3 research plan, asynchronous transport research, verifier federation and convergence note, TLA state-machine evolution note, temporal and Byzantine semantics note, probabilistic trust and adaptive adversaries note, TLA execution and validation note, reproducibility appendix, formal theorems, formal traceability matrix, and the IEEE-style research draft.",
+            "The formal and implementation context includes the TLA+ models for append-only logs, verifier federation, asynchronous transport, temporal Byzantine federation, probabilistic trust, liveness federation, and universal temporal liveness; Lean proof-development materials for temporal liveness, fairness, and Byzantine temporal properties; and Python tests for benchmarks, experiments, federation, probabilistic behavior, governance, and dissertation deliverables.",
+        ],
+    ),
+    (
+        1,
+        "Appendix B. Draft Claim Discipline",
+        [
+            "Publication text should use 'implemented' only when code and tests exist; 'bounded model' when TLC or deterministic simulation covers finite cases; 'fairness-scoped' when liveness depends on weak fairness and eventual removal of partition or adversarial pressure; 'statistical only' when a result comes from a limited probabilistic model such as Beta-Bernoulli verifier reliability; 'pending' when formal or executable evidence is planned but absent; and 'not claimed' for Byzantine consensus, semantic truth, universal completeness, and Internet-scale adversarial correctness.",
+            "A final dissertation revision should add a table mapping each major claim to the exact source artifact, command, test, model, theorem, or experiment that supports it. Claims without support should remain framed as future work or research agenda items.",
+        ],
+    ),
+]
+
+
+def strip_md(text: str) -> str:
+    return re.sub(r"`([^`]+)`", r"\1", text)
+
+
+def build_markdown() -> str:
+    lines: list[str] = [
+        f"# {TITLE}",
+        "",
+        f"## {SUBTITLE}",
+        "",
+        f"**Author:** {AUTHOR}",
+        "",
+        f"**Status:** {DATE}",
+        "",
+        "**Note:** This is a rough dissertation draft synthesized from the local ETS research corpus. It is not a final committee-ready manuscript.",
+        "",
+    ]
+    for level, heading, paragraphs in SECTIONS:
+        prefix = "#" * level
+        lines.append(f"{prefix} {heading}")
+        lines.append("")
+        for paragraph in paragraphs:
+            lines.append(paragraph)
+            lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def set_cell_shading(cell, fill: str) -> None:
+    tc_pr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:fill"), fill)
+    tc_pr.append(shd)
+
+
+def configure_styles(doc: Document) -> None:
+    section = doc.sections[0]
+    section.top_margin = Inches(1)
+    section.bottom_margin = Inches(1)
+    section.left_margin = Inches(1)
+    section.right_margin = Inches(1)
+    section.header_distance = Inches(0.492)
+    section.footer_distance = Inches(0.492)
+
+    normal = doc.styles["Normal"]
+    normal.font.name = "Calibri"
+    normal.font.size = Pt(11)
+    normal.paragraph_format.space_before = Pt(0)
+    normal.paragraph_format.space_after = Pt(8)
+    normal.paragraph_format.line_spacing = 1.333
+    normal.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+
+    for name, size, color, before, after in [
+        ("Heading 1", 16, "2E74B5", 18, 10),
+        ("Heading 2", 13, "2E74B5", 12, 6),
+        ("Heading 3", 12, "1F4D78", 8, 4),
+    ]:
+        style = doc.styles[name]
+        style.font.name = "Calibri"
+        style.font.size = Pt(size)
+        style.font.color.rgb = RGBColor.from_string(color)
+        style.paragraph_format.space_before = Pt(before)
+        style.paragraph_format.space_after = Pt(after)
+
+    if "Dissertation Meta" not in doc.styles:
+        meta = doc.styles.add_style("Dissertation Meta", WD_STYLE_TYPE.PARAGRAPH)
+        meta.font.name = "Calibri"
+        meta.font.size = Pt(11)
+        meta.font.color.rgb = RGBColor(85, 85, 85)
+        meta.paragraph_format.space_after = Pt(6)
+
+
+def add_footer(doc: Document) -> None:
+    section = doc.sections[0]
+    footer = section.footer.paragraphs[0]
+    footer.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    footer.style = doc.styles["Dissertation Meta"]
+    footer.add_run("ETS PhD Dissertation Rough Draft")
+
+
+def add_title_page(doc: Document) -> None:
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.space_after = Pt(12)
+    run = p.add_run(TITLE)
+    run.bold = True
+    run.font.name = "Calibri"
+    run.font.size = Pt(24)
+    run.font.color.rgb = RGBColor.from_string("0B2545")
+
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.space_after = Pt(24)
+    run = p.add_run(SUBTITLE)
+    run.font.name = "Calibri"
+    run.font.size = Pt(15)
+    run.font.color.rgb = RGBColor.from_string("1F4D78")
+
+    for label, value in [
+        ("Author", AUTHOR),
+        ("Document status", DATE),
+        ("Prepared from", "ETS local research, dissertation, formal-model, and reproducibility materials"),
+        ("Preset", "narrative_proposal: Calibri 11 pt, justified body, 1.333 line spacing, 1 inch margins"),
+    ]:
+        p = doc.add_paragraph(style="Dissertation Meta")
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.add_run(f"{label}: ").bold = True
+        p.add_run(value)
+
+    doc.add_page_break()
+
+
+def add_source_table(doc: Document) -> None:
+    doc.add_heading("Draft Artifact Map", level=2)
+    table = doc.add_table(rows=1, cols=3)
+    table.autofit = False
+    table.style = "Table Grid"
+    headers = ["Area", "Representative ETS artifacts", "Draft use"]
+    for cell, text in zip(table.rows[0].cells, headers):
+        cell.text = text
+        set_cell_shading(cell, "F4F6F9")
+        for paragraph in cell.paragraphs:
+            for run in paragraph.runs:
+                run.bold = True
+    rows = [
+        ("Theory", "PROSPECTUS.md; FORMAL_FOUNDATIONS.md; EVIDENCE_THEORY.md", "Core argument and bounded epistemic vocabulary"),
+        ("Architecture", "FORMAL_ARCHITECTURE.md; RFC drafts; implementation traceability", "Layered ETS protocol model"),
+        ("Formal methods", "TLA+ models; theorem registry; proof index; Lean notes", "Safety, liveness, fairness, and non-claim boundaries"),
+        ("Evaluation", "EVALUATION_AND_BENCHMARKS.md; reproducibility appendix; tests", "Experiment design and reproducibility criteria"),
+    ]
+    widths = [Inches(1.25), Inches(2.85), Inches(2.4)]
+    for row in rows:
+        cells = table.add_row().cells
+        for idx, value in enumerate(row):
+            cells[idx].text = value
+            cells[idx].width = widths[idx]
+            for paragraph in cells[idx].paragraphs:
+                paragraph.paragraph_format.space_after = Pt(3)
+    doc.add_paragraph()
+
+
+def build_docx() -> None:
+    doc = Document()
+    configure_styles(doc)
+    add_footer(doc)
+    add_title_page(doc)
+
+    for idx, (level, heading, paragraphs) in enumerate(SECTIONS):
+        if heading.startswith("Chapter ") and idx > 1:
+            doc.add_section(WD_SECTION.NEW_PAGE)
+        doc.add_heading(strip_md(heading), level=level)
+        for paragraph in paragraphs:
+            p = doc.add_paragraph(strip_md(paragraph))
+            p.style = doc.styles["Normal"]
+    add_source_table(doc)
+    doc.save(DOCX_PATH)
+
+
+def main() -> None:
+    MD_PATH.write_text(build_markdown(), encoding="utf-8")
+    build_docx()
+    word_count = len(re.findall(r"\b[\w'-]+\b", MD_PATH.read_text(encoding="utf-8")))
+    print(f"Wrote {MD_PATH}")
+    print(f"Wrote {DOCX_PATH}")
+    print(f"Approximate markdown word count: {word_count}")
+
+
+if __name__ == "__main__":
+    main()
