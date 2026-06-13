@@ -14,9 +14,7 @@ EXTENDS Naturals, TLC
 (* - does not model arbitrary Byzantine scheduling.                         *)
 (***************************************************************************)
 
-CONSTANT
-    \* @type: Int;
-    MaxRounds
+MaxRounds == 2
 
 VARIABLE
     \* @type: Int;

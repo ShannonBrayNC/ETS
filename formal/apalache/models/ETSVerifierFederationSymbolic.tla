@@ -8,13 +8,9 @@ EXTENDS Naturals, FiniteSets, TLC
 (* minimizing unsupported symbolic complexity.                              *)
 (***************************************************************************)
 
-CONSTANT
-    \* @type: Set(Str);
-    Verifiers,
-    \* @type: Set(Str);
-    Roots,
-    \* @type: Int;
-    Threshold
+Verifiers == {"verifier-a", "verifier-b", "verifier-c"}
+Roots == {"root-a", "root-b"}
+Threshold == 2
 
 VARIABLE
     \* @type: Str -> Str;
