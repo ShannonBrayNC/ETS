@@ -28,7 +28,10 @@ TypeOK ==
     /\ Threshold \in 1..Cardinality(Verifiers)
 
 VotesFor(root) == {v \in votes : v.root = root}
-VerifierSetFor(root) == {v.verifier : v \in VotesFor(root)}
+VerifierSetFor(root) ==
+    {verifier \in Verifiers :
+        \E submittedVote \in VotesFor(root) :
+            submittedVote.verifier = verifier}
 VoteCount(root) == Cardinality(VerifierSetFor(root))
 
 QuorumFor(root) == VoteCount(root) >= Threshold
@@ -84,15 +87,27 @@ CastVote(verifier, root) ==
             conflictDetected \/
             (\E r1, r2 \in RootIds :
                 /\ r1 # r2
-                /\ Cardinality({submittedVote.verifier : submittedVote \in nextVotes /\ submittedVote.root = r1}) >= Threshold
-                /\ Cardinality({submittedVote.verifier : submittedVote \in nextVotes /\ submittedVote.root = r2}) >= Threshold)
+                /\ Cardinality({v \in Verifiers :
+                    \E submittedVote \in nextVotes :
+                        /\ submittedVote.verifier = v
+                        /\ submittedVote.root = r1}) >= Threshold
+                /\ Cardinality({v \in Verifiers :
+                    \E submittedVote \in nextVotes :
+                        /\ submittedVote.verifier = v
+                        /\ submittedVote.root = r2}) >= Threshold)
         /\ acceptedRoot' =
             IF acceptedRoot # "None" THEN acceptedRoot
             ELSE IF ~conflictDetected' THEN
                 CHOOSE r \in RootIds \cup {"None"} :
                     \/ r = "None" /\ ~(\E candidate \in RootIds :
-                        Cardinality({submittedVote.verifier : submittedVote \in nextVotes /\ submittedVote.root = candidate}) >= Threshold)
-                    \/ r \in RootIds /\ Cardinality({submittedVote.verifier : submittedVote \in nextVotes /\ submittedVote.root = r}) >= Threshold
+                        Cardinality({v \in Verifiers :
+                            \E submittedVote \in nextVotes :
+                                /\ submittedVote.verifier = v
+                                /\ submittedVote.root = candidate}) >= Threshold)
+                    \/ r \in RootIds /\ Cardinality({v \in Verifiers :
+                        \E submittedVote \in nextVotes :
+                            /\ submittedVote.verifier = v
+                            /\ submittedVote.root = r}) >= Threshold
             ELSE "None"
 
 Next ==
