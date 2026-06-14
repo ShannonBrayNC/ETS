@@ -10,9 +10,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
-
 try:
-    from ets import __version__
+    from ets.version import __version__
 except ImportError:  # pragma: no cover - defensive console-script fallback
     from importlib.metadata import PackageNotFoundError, version
 
