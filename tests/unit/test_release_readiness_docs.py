@@ -13,6 +13,7 @@ def test_release_gate_docs_exist() -> None:
         "docs/release/PUBLIC_RELEASE_CHECKLIST.md",
         "docs/release/ALPHA_RELEASE_GATE.md",
         "docs/release/ALPHA_RELEASE_NOTES_TEMPLATE.md",
+        "docs/research/claim-traceability-manifest.json",
         "scripts/verify-ets-release-readiness.ps1",
     ]
     for path in required:
