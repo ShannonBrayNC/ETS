@@ -6,8 +6,8 @@ import html
 import json
 from typing import Literal
 
-from ets import __version__
 from ets.core import EvidenceProofBundle
+from ets.version import __version__
 
 CertificateFormat = Literal["json", "markdown", "html"]
 
@@ -49,6 +49,20 @@ def _certificate_summary(bundle: EvidenceProofBundle) -> dict[str, object]:
         "signature_key_id": bundle.tree_head.public_key_id,
         "signature_present": bundle.tree_head.signature is not None,
         "verifier_version": __version__,
+        "what_this_verifies": [
+            "The event metadata hash matches the event payload in this certificate bundle.",
+            "The event leaf is included in the referenced Merkle tree head "
+            "when proof_valid is true.",
+            "The certificate summarizes ETS metadata and hashes without exposing "
+            "raw evidence bytes.",
+        ],
+        "what_this_does_not_verify": [
+            "It does not verify authenticity, legality, completeness, or real-world "
+            "truth of the underlying evidence.",
+            "It does not verify election correctness, ballot validity, tabulation "
+            "accuracy, or official results.",
+            "It does not replace human, legal, compliance, or domain expert review.",
+        ],
         "warnings": _warnings(bundle),
     }
 
@@ -63,6 +77,10 @@ def _warnings(bundle: EvidenceProofBundle) -> list[str]:
 
 
 def _markdown_certificate(summary: dict[str, object]) -> str:
+    verifies = summary["what_this_verifies"]
+    non_verifies = summary["what_this_does_not_verify"]
+    verify_items = verifies if isinstance(verifies, list) else []
+    non_verify_items = non_verifies if isinstance(non_verifies, list) else []
     lines = [
         "# ETS Verification Certificate",
         "",
@@ -74,6 +92,12 @@ def _markdown_certificate(summary: dict[str, object]) -> str:
         f"- Tree size: `{summary['log_tree_size']}`",
         f"- Proof status: `{summary['proof_reason']}`",
         f"- Signature present: `{summary['signature_present']}`",
+        "",
+        "## What This Verifies",
+        *[f"- {item}" for item in verify_items if isinstance(item, str)],
+        "",
+        "## What This Does Not Verify",
+        *[f"- {item}" for item in non_verify_items if isinstance(item, str)],
     ]
     warnings = summary["warnings"]
     if isinstance(warnings, list) and warnings:
@@ -87,14 +111,24 @@ def _html_certificate(summary: dict[str, object]) -> str:
     rows = "\n".join(
         f"<tr><th>{html.escape(str(key))}</th><td>{html.escape(str(value))}</td></tr>"
         for key, value in summary.items()
-        if key != "warnings"
+        if key not in {"warnings", "what_this_verifies", "what_this_does_not_verify"}
     )
     warnings = summary["warnings"]
     warning_items = ""
     if isinstance(warnings, list):
         warning_items = "".join(f"<li>{html.escape(str(item))}</li>" for item in warnings)
+    verifies = summary["what_this_verifies"]
+    non_verifies = summary["what_this_does_not_verify"]
+    verifies_items = ""
+    non_verifies_items = ""
+    if isinstance(verifies, list):
+        verifies_items = "".join(f"<li>{html.escape(str(item))}</li>" for item in verifies)
+    if isinstance(non_verifies, list):
+        non_verifies_items = "".join(f"<li>{html.escape(str(item))}</li>" for item in non_verifies)
     return (
         "<!doctype html><html><head><meta charset=\"utf-8\"><title>ETS Verification "
         "Certificate</title></head><body><h1>ETS Verification Certificate</h1>"
-        f"<table>{rows}</table><h2>Warnings</h2><ul>{warning_items}</ul></body></html>"
+        f"<table>{rows}</table><h2>What This Verifies</h2><ul>{verifies_items}</ul>"
+        f"<h2>What This Does Not Verify</h2><ul>{non_verifies_items}</ul>"
+        f"<h2>Warnings</h2><ul>{warning_items}</ul></body></html>"
     )

@@ -66,8 +66,14 @@ def test_report_certificate_formats_do_not_include_raw_metadata_values():
     html_certificate = create_certificate(bundle, "html")
 
     assert '"event_id": "evt_sdk_001"' in json_certificate
+    assert '"what_this_verifies"' in json_certificate
+    assert '"what_this_does_not_verify"' in json_certificate
     assert "# ETS Verification Certificate" in markdown_certificate
+    assert "## What This Verifies" in markdown_certificate
+    assert "## What This Does Not Verify" in markdown_certificate
     assert "<html>" in html_certificate
+    assert "What This Verifies" in html_certificate
+    assert "What This Does Not Verify" in html_certificate
     assert '"metadata"' not in json_certificate
     assert '"case"' not in json_certificate
 
