@@ -14,6 +14,7 @@ ETS is the **Evidence Transparency System**. These formal artifacts support rest
 | `formal/alloy/ETSCausalModel.als` | Models causal evidence relationships, tenant/workspace association, append-only uniqueness, and omission relative to an expected set. | Structural/causal model |
 | `docs/research/FORMAL_THEOREMS.md` | States implementation-facing theorem obligations, assumptions, and non-theorems. | Theorem appendix |
 | `docs/research/FORMAL_TRACEABILITY_MATRIX.md` | Maps formal claims to code and tests. | Traceability control |
+| `docs/research/claim-traceability-manifest.json` | Machine-readable claim map for dissertation and publication gates, including models, tests, workflows, release notes, risk labels, and issue references. | Traceability control |
 
 ## TLA+ Claim Map
 

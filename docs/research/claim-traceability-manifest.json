@@ -1,0 +1,226 @@
+{
+  "manifest_version": "ets.claim-traceability.v0.1",
+  "product": "Evidence Transparency System",
+  "scope": "dissertation and research publication claim traceability",
+  "generated_for": "v0.1.0-alpha research gate",
+  "claim_boundary": "ETS verifies submitted evidence material and proof artifacts within documented protocol boundaries. It does not prove real-world truth, legal sufficiency, election correctness, perfect completeness, production trust-service readiness, universal Byzantine consensus, or universal asynchronous liveness.",
+  "required_review_labels": [
+    "research",
+    "phd-level",
+    "requires-human-review",
+    "approval-required"
+  ],
+  "claims": [
+    {
+      "id": "ETS-CLAIM-001",
+      "statement": "ETS supports deterministic canonical hashing for EvidenceEvent v1 payloads using supported JSON-native values.",
+      "status": "implemented",
+      "claim_boundary": "Hash determinism applies to the submitted event payload and supported canonicalization profile only.",
+      "formal_models": [],
+      "implementation": [
+        "ets/core/canonical_json.py",
+        "ets/core/models.py"
+      ],
+      "tests": [
+        "tests/unit/test_canonical_json.py",
+        "tests/spec/test_vectors.py"
+      ],
+      "workflows": [
+        ".github/workflows/ci.yml"
+      ],
+      "release_notes": [
+        "docs/release/ALPHA_RELEASE_NOTES_TEMPLATE.md",
+        "docs/release/v0.1.0-alpha-release-notes.md"
+      ],
+      "risk_labels": [
+        "research",
+        "phd-level"
+      ],
+      "issues": [
+        67,
+        73
+      ]
+    },
+    {
+      "id": "ETS-CLAIM-002",
+      "statement": "ETS supports append-only log behavior and inclusion proof verification for supplied proof material.",
+      "status": "implemented",
+      "claim_boundary": "Inclusion verification proves membership in a stated tree head, not raw evidence authenticity or real-world truth.",
+      "formal_models": [
+        "formal/tla/ETSLog.tla",
+        "formal/alloy/ETSCausalModel.als"
+      ],
+      "implementation": [
+        "ets/core/log.py",
+        "ets/core/merkle.py",
+        "ets/core/proofs.py"
+      ],
+      "tests": [
+        "tests/unit/test_append_log.py",
+        "tests/unit/test_inclusion_proofs.py",
+        "tests/unit/test_merkle.py"
+      ],
+      "workflows": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/tla.yml"
+      ],
+      "release_notes": [
+        "docs/release/ALPHA_RELEASE_NOTES_TEMPLATE.md",
+        "docs/release/v0.1.0-alpha-release-notes.md"
+      ],
+      "risk_labels": [
+        "research",
+        "phd-level",
+        "requires-human-review"
+      ],
+      "issues": [
+        67,
+        70,
+        73
+      ]
+    },
+    {
+      "id": "ETS-CLAIM-003",
+      "statement": "ETS can flag omission suspicion only relative to an external expected-event policy.",
+      "status": "implemented",
+      "claim_boundary": "Omission suspicion does not prove the external expectation set is complete or authoritative.",
+      "formal_models": [
+        "formal/tla/ETSLog.tla",
+        "formal/alloy/ETSCausalModel.als"
+      ],
+      "implementation": [
+        "ets/experiments/omission_detection.py"
+      ],
+      "tests": [
+        "tests/unit/test_experiments.py"
+      ],
+      "workflows": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/benchmarks.yml",
+        ".github/workflows/tla.yml"
+      ],
+      "release_notes": [
+        "docs/release/ALPHA_RELEASE_NOTES_TEMPLATE.md"
+      ],
+      "risk_labels": [
+        "research",
+        "phd-level",
+        "requires-human-review"
+      ],
+      "issues": [
+        67,
+        74
+      ]
+    },
+    {
+      "id": "ETS-CLAIM-004",
+      "statement": "ETS replay, benchmark, and experiment artifacts can be reproduced from deterministic commands, seeds, and committed manifests.",
+      "status": "bounded model",
+      "claim_boundary": "Reproducibility covers artifact shape and bounded execution, not production throughput or universal protocol correctness.",
+      "formal_models": [
+        "formal/tla/ETSAsyncNetwork.tla",
+        "formal/tla/ETSLiveness.tla"
+      ],
+      "implementation": [
+        "ets/experiments/replay_runner.py",
+        "ets/benchmarks/run_benchmarks.py",
+        "experiments/scenarios/sprint11-replay-manifest.json"
+      ],
+      "tests": [
+        "tests/unit/test_benchmarks.py",
+        "tests/research/test_research_platform_artifacts.py"
+      ],
+      "workflows": [
+        ".github/workflows/benchmarks.yml",
+        ".github/workflows/tla.yml",
+        ".github/workflows/apalache.yml"
+      ],
+      "release_notes": [
+        "docs/research/REPRODUCIBILITY_APPENDIX.md",
+        "docs/research/reproducibility-matrix.md"
+      ],
+      "risk_labels": [
+        "research",
+        "phd-level",
+        "requires-human-review",
+        "approval-required"
+      ],
+      "issues": [
+        67,
+        70,
+        74
+      ]
+    },
+    {
+      "id": "ETS-CLAIM-005",
+      "statement": "ETS formal and mechanized proof artifacts are dissertation research evidence only when tied to exact tool runs, bounds, commits, and retained outputs.",
+      "status": "requires human review",
+      "claim_boundary": "Formal artifacts are not a universal refinement proof unless that proof is separately completed and reviewed.",
+      "formal_models": [
+        "formal/tla/ETSLog.tla",
+        "formal/tla/ETSVerifierFederation.tla",
+        "formal/tla/ETSAsyncTransport.tla",
+        "formal/apalache/models/ETSLivenessProgressSymbolic.tla"
+      ],
+      "implementation": [
+        "docs/dissertation/EVIDENCE_CAPTURE_REPORT.md",
+        "docs/dissertation/FORMAL_PROOF_INDEX.md"
+      ],
+      "tests": [
+        "tests/unit/test_dissertation_gate_artifacts.py",
+        "tests/research/test_research_platform_artifacts.py"
+      ],
+      "workflows": [
+        ".github/workflows/tla.yml",
+        ".github/workflows/apalache.yml",
+        ".github/workflows/lean-proofs.yml"
+      ],
+      "release_notes": [
+        "docs/research/FORMAL_MODEL_CLAIMS.md",
+        "docs/research/FORMAL_TRACEABILITY_MATRIX.md"
+      ],
+      "risk_labels": [
+        "research",
+        "phd-level",
+        "requires-human-review",
+        "approval-required"
+      ],
+      "issues": [
+        66,
+        67,
+        70,
+        73
+      ]
+    },
+    {
+      "id": "ETS-CLAIM-006",
+      "statement": "ETS publication or committee-facing claims require advisor or human review before external circulation.",
+      "status": "approval required",
+      "claim_boundary": "Automation may prepare evidence and drafts, but cannot approve dissertation direction, author list, venue selection, or external publication.",
+      "formal_models": [],
+      "implementation": [
+        "docs/dissertation/ADVISOR_COMMITTEE_READINESS_GATE.md",
+        "docs/dissertation/PUBLICATION_SPRINT_PLAN.md"
+      ],
+      "tests": [
+        "tests/unit/test_dissertation_gate_artifacts.py"
+      ],
+      "workflows": [],
+      "release_notes": [
+        "docs/release/PUBLIC_RELEASE_CHECKLIST.md",
+        "docs/release/ALPHA_RELEASE_GATE.md"
+      ],
+      "risk_labels": [
+        "research",
+        "phd-level",
+        "requires-human-review",
+        "approval-required"
+      ],
+      "issues": [
+        66,
+        73,
+        74
+      ]
+    }
+  ]
+}
