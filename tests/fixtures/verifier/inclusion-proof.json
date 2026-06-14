@@ -1,0 +1,15 @@
+{
+  "audit_path": [
+    {
+      "hash": "768d57051770d6fe1368b313380ce7fc09003b6b2856c17ad89d9c409e9f9f9b",
+      "position": "right"
+    }
+  ],
+  "generated_at_utc": "2026-05-18T12:31:00Z",
+  "hash_alg": "sha256",
+  "leaf_hash": "b5da9afeba6edeb29653ec6933b0cc1bf60844b07ef701d56c241b758fcac441",
+  "leaf_index": 0,
+  "root_hash": "22fbab28f7bc21320b3e49ce71dcbc01dda2ba01ce576476c4f996d82b8196cd",
+  "schema_version": "ets.inclusion_proof.v1",
+  "tree_size": 2
+}
