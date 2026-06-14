@@ -8,6 +8,11 @@ EXTENDS Naturals, Sequences, FiniteSets, TLC
 (* security. It checks state-machine obligations around append-only growth, *)
 (* verifier root disagreement, and omission suspicion relative to an        *)
 (* externally supplied expected-event set.                                  *)
+(*                                                                         *)
+(* Non-goals: this model does not prove real-world truth, legal             *)
+(* sufficiency, election correctness, SHA-256 security, hosted identity     *)
+(* correctness, cloud durability, or completeness without an external       *)
+(* expected-event policy and observation process.                           *)
 (***************************************************************************)
 
 CONSTANTS MaxEntries, MaxRoot, Verifiers, ExpectedEvents

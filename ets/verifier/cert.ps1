@@ -1,3 +1,118 @@
+# scripts/apply-ets-certificate-claim-safety-sprint.ps1
+# Purpose: Complete ETS sprint recommendation:
+# Update certificate wording to avoid overclaiming and harden verifier/certificate version imports.
+# Run from the root of ShannonBrayNC/ETS with PowerShell 7+.
+
+[CmdletBinding()]
+param(
+    [switch]$SkipChecks,
+    [switch]$SkipTag
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+function Assert-RepoRoot {
+    if (-not (Test-Path "README.md") -or -not (Test-Path "ets") -or -not (Test-Path "docs")) {
+        throw "Run this script from the root of the ETS repository."
+    }
+}
+
+function Write-Utf8NoNewline {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][string]$Content
+    )
+
+    $parent = Split-Path -Parent $Path
+    if ($parent) {
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
+
+    Set-Content -Path $Path -Value $Content -Encoding UTF8 -NoNewline
+    Write-Host "Wrote $Path"
+}
+
+function Update-FileText {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][scriptblock]$Transform
+    )
+
+    if (-not (Test-Path $Path)) {
+        throw "Required file not found: $Path"
+    }
+
+    $original = Get-Content -Raw -Path $Path
+    $updated = & $Transform $original
+
+    if ($null -eq $updated -or $updated.Length -eq 0) {
+        throw "Transform produced empty content for $Path"
+    }
+
+    if ($updated -ne $original) {
+        Set-Content -Path $Path -Value $updated -Encoding UTF8 -NoNewline
+        Write-Host "Updated $Path"
+    }
+    else {
+        Write-Host "No change needed $Path"
+    }
+}
+
+Assert-RepoRoot
+
+# 1. Centralize version resolution so console scripts do not depend on `from ets import __version__`.
+$versionPy = @'
+"""Version helpers for ETS."""
+
+from __future__ import annotations
+
+from importlib.metadata import PackageNotFoundError, version
+
+
+def get_version() -> str:
+    """Return the installed ETS package version with a source-tree fallback."""
+
+    try:
+        return version("ets")
+    except PackageNotFoundError:  # pragma: no cover - source tree before install
+        return "0.1.0"
+
+
+__version__ = get_version()
+
+__all__ = ["__version__", "get_version"]
+'@
+
+Write-Utf8NoNewline -Path "ets/version.py" -Content $versionPy
+
+# 2. Ensure package __init__ delegates to version helper.
+$initPy = @'
+"""Evidence Transparency System package."""
+
+from ets.version import __version__
+
+__all__ = ["__version__", "api", "core", "verifier"]
+'@
+
+Write-Utf8NoNewline -Path "ets/__init__.py" -Content $initPy
+
+# 3. If src/ets exists in the working tree, make it safe too.
+if (Test-Path "src/ets") {
+    Write-Utf8NoNewline -Path "src/ets/version.py" -Content $versionPy
+    Write-Utf8NoNewline -Path "src/ets/__init__.py" -Content $initPy
+}
+
+# 4. Update CLI version import.
+Update-FileText -Path "ets/verifier/cli.py" -Transform {
+    param($text)
+
+    $text = $text -replace "from ets import __version__", "from ets.version import __version__"
+    return $text
+}
+
+# 5. Replace certificate generator with claim-safe implementation.
+$certificatePy = @'
 """Human-readable verification certificate generation."""
 
 from __future__ import annotations
@@ -19,19 +134,12 @@ WHAT_THIS_VERIFIES = [
 ]
 
 WHAT_THIS_DOES_NOT_VERIFY = [
-    "This certificate does not verify election correctness.",
     "The real-world truth of the underlying evidence.",
     "The authenticity of raw evidence bytes outside ETS.",
     "The completeness of all expected evidence.",
-    (
-        "The identity, authority, or legal capacity of the original submitter "
-        "unless separately attested."
-    ),
+    "The identity, authority, or legal capacity of the original submitter unless separately attested.",
     "The continued availability or custody of raw evidence bytes outside ETS.",
-    (
-        "Election correctness, vote totals, ballot validity, official results, "
-        "or the vote of record."
-    ),
+    "Election correctness, vote totals, ballot validity, official results, or the vote of record.",
     "Legal sufficiency, regulatory acceptance, or court admissibility.",
 ]
 
@@ -86,10 +194,7 @@ def _warnings(bundle: EvidenceProofBundle) -> list[str]:
     if not bundle.verification_result.valid:
         warnings.append("Inclusion proof verification failed.")
     warnings.append(
-        
-            "Certificate verifies supplied ETS proof material only; it does not "
-            "prove real-world truth, completeness, or legal sufficiency."
-        
+        "Certificate verifies supplied ETS proof material only; it does not prove real-world truth, completeness, or legal sufficiency."
     )
     return warnings
 
@@ -161,8 +266,57 @@ def _html_certificate(summary: dict[str, object]) -> str:
         f"<h2>What This Does Not Verify</h2><ul>{does_not_verify}</ul>"
         f"<h2>Warnings</h2><ul>{warning_items}</ul></body></html>"
     )
+'@
 
+Write-Utf8NoNewline -Path "ets/reports/certificate.py" -Content $certificatePy
 
+# 6. Add certificate claim-safety documentation.
+$claimDoc = @'
+# ETS Certificate Claim Safety
 
+ETS verification certificates are protocol verification reports. They are not legal opinions, official records, or assertions that the underlying real-world event is true.
 
+## Required Certificate Sections
 
+Every human-readable certificate format must include:
+
+- `What This Verifies`
+- `What This Does Not Verify`
+- `Warnings` when any local-mode, unsigned, failed, or claim-boundary condition applies
+
+JSON certificates must include:
+
+- `what_this_verifies`
+- `what_this_does_not_verify`
+- `warnings`
+
+## What Certificates May Claim
+
+Certificates may claim that ETS reproduced protocol-level checks from supplied proof material:
+
+- event hash reproduction;
+- inclusion proof verification;
+- tree-head field reporting;
+- signature presence reporting;
+- verifier version reporting;
+- warnings and claim boundaries.
+
+## What Certificates Must Not Claim
+
+Certificates must not claim:
+
+- real-world truth;
+- raw evidence authenticity;
+- evidence completeness;
+- submitter legal authority;
+- election correctness;
+- vote totals, ballot validity, official results, or vote of record;
+- legal sufficiency, regulatory acceptance, or court admissibility.
+
+## Required Regression Checks
+
+The certificate source, tests, and verifier CLI must prevent reintroduction of:
+
+``
+
+'@
