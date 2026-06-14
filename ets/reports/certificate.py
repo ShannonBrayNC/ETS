@@ -6,7 +6,15 @@ import html
 import json
 from typing import Literal
 
-from ets import __version__
+try:
+    from ets import __version__
+except ImportError:  # pragma: no cover - defensive console-script fallback
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        __version__ = version("ets")
+    except PackageNotFoundError:
+        __version__ = "0.1.0"
 from ets.core import EvidenceProofBundle
 
 CertificateFormat = Literal["json", "markdown", "html"]
@@ -98,3 +106,4 @@ def _html_certificate(summary: dict[str, object]) -> str:
         "Certificate</title></head><body><h1>ETS Verification Certificate</h1>"
         f"<table>{rows}</table><h2>Warnings</h2><ul>{warning_items}</ul></body></html>"
     )
+
