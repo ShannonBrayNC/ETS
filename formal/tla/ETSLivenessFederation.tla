@@ -1,5 +1,5 @@
 --------------------------- MODULE ETSLivenessFederation ---------------------------
-EXTENDS Naturals, TLC
+EXTENDS Naturals, FiniteSets, TLC
 
 (***************************************************************************)
 (* ETSLivenessFederation models bounded liveness and fairness semantics     *)
@@ -44,7 +44,7 @@ TypeOK ==
     /\ federationState \in States
     /\ Threshold \in 1..Cardinality(Verifiers)
 
-VotesFor(root) == {v.verifier : v \in deliveredVotes /\ v.root = root}
+VotesFor(root) == {v.verifier : v \in {vote \in deliveredVotes : vote.root = root}}
 VoteCount(root) == Cardinality(VotesFor(root))
 Quorum(root) == VoteCount(root) >= Threshold
 
@@ -80,21 +80,27 @@ SubmitVote(verifier, root) ==
 
 DeliverVote(vote) ==
     LET nextDelivered == deliveredVotes \cup {vote} IN
-    LET nextAccepted ==
-        IF \E r1, r2 \in Roots :
+    LET nextQuorumFor(root) ==
+        Cardinality({v.verifier : v \in {item \in nextDelivered : item.root = root}}) >= Threshold
+    IN
+    LET nextConflictingQuorums ==
+        \E r1, r2 \in Roots :
             /\ r1 # r2
-            /\ Cardinality({v.verifier : v \in nextDelivered /\ v.root = r1}) >= Threshold
-            /\ Cardinality({v.verifier : v \in nextDelivered /\ v.root = r2}) >= Threshold
+            /\ nextQuorumFor(r1)
+            /\ nextQuorumFor(r2)
+    IN
+    LET nextAccepted ==
+        IF nextConflictingQuorums
         THEN "None"
-        ELSE IF \E r \in Roots : Cardinality({v.verifier : v \in nextDelivered /\ v.root = r}) >= Threshold
-        THEN CHOOSE r \in Roots : Cardinality({v.verifier : v \in nextDelivered /\ v.root = r}) >= Threshold
+        ELSE IF \E r \in Roots : nextQuorumFor(r)
+        THEN CHOOSE r \in Roots : nextQuorumFor(r)
         ELSE "None" IN
         /\ vote \in pendingVotes
         /\ deliveredVotes' = nextDelivered
         /\ pendingVotes' = pendingVotes \ {vote}
         /\ acceptedRoot' = nextAccepted
         /\ federationState' =
-            IF ConflictingQuorums THEN "Conflict"
+            IF nextConflictingQuorums THEN "Conflict"
             ELSE IF nextAccepted # "None" THEN "Converged"
             ELSE "Converging"
         /\ UNCHANGED round
