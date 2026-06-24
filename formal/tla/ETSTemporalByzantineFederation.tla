@@ -115,6 +115,7 @@ Observe(verifier, root, partitionFlag) ==
     LET obs == [verifier |-> verifier, root |-> root, time |-> now, partition |-> partitionFlag] IN
     LET nextObservations == observations \cup {obs} IN
     LET nextFresh == {item \in nextObservations : now >= item.time /\ now - item.time <= FreshnessWindow} IN
+    LET nextPartitionObserved == \E item \in nextFresh : item.partition = TRUE IN
     LET nextEquivocators ==
         {v \in Verifiers :
             \E o1, o2 \in nextFresh :
@@ -128,7 +129,7 @@ Observe(verifier, root, partitionFlag) ==
         /\ gossipLog' = gossipLog
         /\ byzantineSuspicions' = byzantineSuspicions \cup nextEquivocators
         /\ acceptedRoot' =
-            IF partitionFlag THEN NoRoot
+            IF nextPartitionObserved THEN NoRoot
             ELSE IF \E r \in RootIds :
                 Cardinality({o.verifier : o \in {item \in nextFresh : item.root = r}}) >= Threshold THEN
                 CHOOSE r \in RootIds :
@@ -140,7 +141,7 @@ Observe(verifier, root, partitionFlag) ==
                 /\ Cardinality({o.verifier : o \in {item \in nextFresh : item.root = r1}}) >= Threshold
                 /\ Cardinality({o.verifier : o \in {item \in nextFresh : item.root = r2}}) >= Threshold
             THEN "Conflict"
-            ELSE IF partitionFlag THEN "Partitioned"
+            ELSE IF nextPartitionObserved THEN "Partitioned"
             ELSE IF \E r \in RootIds :
                 Cardinality({o.verifier : o \in {item \in nextFresh : item.root = r}}) >= Threshold THEN "Converged"
             ELSE "Converging"
