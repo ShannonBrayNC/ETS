@@ -17,6 +17,8 @@ EXTENDS Naturals, FiniteSets, TLC
 CONSTANTS Verifiers, ByzantineVerifiers, MaxRoot, MaxTime, FreshnessWindow, Threshold
 
 RootIds == 0..MaxRoot
+NoRoot == MaxRoot + 1
+AcceptedRootIds == 0..NoRoot
 Times == 0..MaxTime
 
 Observation == [verifier: Verifiers, root: RootIds, time: Times, partition: BOOLEAN]
@@ -26,7 +28,7 @@ VARIABLES now, observations, acceptedRoot, federationState, byzantineSuspicions,
 TypeOK ==
     /\ now \in Times
     /\ observations \subseteq Observation
-    /\ acceptedRoot \in RootIds \/ acceptedRoot = "None"
+    /\ acceptedRoot \in AcceptedRootIds
     /\ federationState \in {"Converging", "Converged", "Partitioned", "Conflict", "Stale"}
     /\ byzantineSuspicions \subseteq Verifiers
     /\ gossipLog \subseteq Observation
@@ -57,10 +59,10 @@ VerifierEquivocated(v) ==
 PartitionObserved == \E obs \in FreshObservations : obs.partition = TRUE
 
 AcceptedRootRequiresFreshQuorum ==
-    IF acceptedRoot = "None" THEN TRUE ELSE FreshQuorumFor(acceptedRoot)
+    IF acceptedRoot = NoRoot THEN TRUE ELSE FreshQuorumFor(acceptedRoot)
 
 NoAcceptedRootDuringConflict ==
-    ConflictingFreshQuorums => acceptedRoot = "None"
+    ConflictingFreshQuorums => acceptedRoot = NoRoot
 
 NoAcceptedRootDuringPartition ==
     PartitionObserved => federationState # "Converged"
@@ -73,8 +75,8 @@ GossipOnlyPublishesObservedRoots ==
 
 ConvergedImpliesFreshQuorumNoConflict ==
     IF federationState = "Converged" THEN
-        /\ acceptedRoot # "None"
-        /\ IF acceptedRoot = "None" THEN FALSE ELSE FreshQuorumFor(acceptedRoot)
+        /\ acceptedRoot # NoRoot
+        /\ FreshQuorumFor(acceptedRoot)
         /\ ~ConflictingFreshQuorums
         /\ ~PartitionObserved
     ELSE TRUE
@@ -89,7 +91,7 @@ StaleStateMeansNoFreshQuorum ==
 Init ==
     /\ now = 0
     /\ observations = {}
-    /\ acceptedRoot = "None"
+    /\ acceptedRoot = NoRoot
     /\ federationState = "Converging"
     /\ byzantineSuspicions = {}
     /\ gossipLog = {}
@@ -100,12 +102,12 @@ AdvanceTime ==
     /\ observations' = observations
     /\ gossipLog' = gossipLog
     /\ byzantineSuspicions' = byzantineSuspicions
-    /\ acceptedRoot' = IF acceptedRoot # "None" /\ FreshQuorumFor(acceptedRoot)
+    /\ acceptedRoot' = IF acceptedRoot # NoRoot /\ FreshQuorumFor(acceptedRoot)
                        THEN acceptedRoot
-                       ELSE "None"
+                       ELSE NoRoot
     /\ federationState' = IF ConflictingFreshQuorums THEN "Conflict"
                           ELSE IF PartitionObserved THEN "Partitioned"
-                          ELSE IF acceptedRoot' # "None" THEN "Converged"
+                          ELSE IF acceptedRoot' # NoRoot THEN "Converged"
                           ELSE IF ~AnyFreshQuorum THEN "Stale"
                           ELSE "Converging"
 
@@ -126,12 +128,12 @@ Observe(verifier, root, partitionFlag) ==
         /\ gossipLog' = gossipLog
         /\ byzantineSuspicions' = byzantineSuspicions \cup nextEquivocators
         /\ acceptedRoot' =
-            IF partitionFlag THEN "None"
+            IF partitionFlag THEN NoRoot
             ELSE IF \E r \in RootIds :
                 Cardinality({o.verifier : o \in {item \in nextFresh : item.root = r}}) >= Threshold THEN
                 CHOOSE r \in RootIds :
                     Cardinality({o.verifier : o \in {item \in nextFresh : item.root = r}}) >= Threshold
-            ELSE "None"
+            ELSE NoRoot
         /\ federationState' =
             IF \E r1, r2 \in RootIds :
                 /\ r1 # r2
