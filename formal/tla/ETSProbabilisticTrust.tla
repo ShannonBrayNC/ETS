@@ -33,7 +33,8 @@ TypeOK ==
     /\ AcceptThreshold \in 1..Cardinality(Verifiers)
     /\ DegradedThreshold \in 0..AcceptThreshold
 
-VisibleVotesFor(root) == {obs.verifier : obs \in observations /\ obs.root = root /\ obs.verifier \in visible}
+VisibleVotesFor(root) ==
+    {obs.verifier : obs \in {item \in observations : item.root = root /\ item.verifier \in visible}}
 ConfidenceFor(root) == Cardinality(VisibleVotesFor(root))
 
 RootAccepted(root) == ConfidenceFor(root) >= AcceptThreshold
@@ -77,22 +78,22 @@ Init ==
 NextAcceptedRoot(nextObservations, nextVisible) ==
     IF \E r1, r2 \in Roots :
         /\ r1 # r2
-        /\ Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r1 /\ obs.verifier \in nextVisible}) >= AcceptThreshold
-        /\ Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r2 /\ obs.verifier \in nextVisible}) >= AcceptThreshold
+        /\ Cardinality({obs.verifier : obs \in {item \in nextObservations : item.root = r1 /\ item.verifier \in nextVisible}}) >= AcceptThreshold
+        /\ Cardinality({obs.verifier : obs \in {item \in nextObservations : item.root = r2 /\ item.verifier \in nextVisible}}) >= AcceptThreshold
     THEN "None"
-    ELSE IF \E r \in Roots : Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r /\ obs.verifier \in nextVisible}) >= AcceptThreshold
-    THEN CHOOSE r \in Roots : Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r /\ obs.verifier \in nextVisible}) >= AcceptThreshold
+    ELSE IF \E r \in Roots : Cardinality({obs.verifier : obs \in {item \in nextObservations : item.root = r /\ item.verifier \in nextVisible}}) >= AcceptThreshold
+    THEN CHOOSE r \in Roots : Cardinality({obs.verifier : obs \in {item \in nextObservations : item.root = r /\ item.verifier \in nextVisible}}) >= AcceptThreshold
     ELSE "None"
 
 NextConfidence(nextAcceptedRoot, nextObservations, nextVisible) ==
     IF nextAcceptedRoot = "None" THEN 0
-    ELSE Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = nextAcceptedRoot /\ obs.verifier \in nextVisible})
+    ELSE Cardinality({obs.verifier : obs \in {item \in nextObservations : item.root = nextAcceptedRoot /\ item.verifier \in nextVisible}})
 
 NextConflict(nextObservations, nextVisible) ==
     \E r1, r2 \in Roots :
         /\ r1 # r2
-        /\ Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r1 /\ obs.verifier \in nextVisible}) >= AcceptThreshold
-        /\ Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r2 /\ obs.verifier \in nextVisible}) >= AcceptThreshold
+        /\ Cardinality({obs.verifier : obs \in {item \in nextObservations : item.root = r1 /\ item.verifier \in nextVisible}}) >= AcceptThreshold
+        /\ Cardinality({obs.verifier : obs \in {item \in nextObservations : item.root = r2 /\ item.verifier \in nextVisible}}) >= AcceptThreshold
 
 Observe(verifier, root) ==
     LET nextObservations == observations \cup {[verifier |-> verifier, root |-> root]} IN
