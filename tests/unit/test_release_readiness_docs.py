@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,10 +17,19 @@ def test_release_gate_docs_exist() -> None:
         "docs/research/README.md",
         "docs/research/non-claims.md",
         "docs/research/claim-traceability-manifest.json",
+        "scripts/verify-branch-protection-runbook.py",
         "scripts/verify-ets-release-readiness.ps1",
     ]
     for path in required:
         assert (ROOT / path).exists(), path
+
+
+def test_branch_protection_runbook_matches_workflow_contexts() -> None:
+    subprocess.run(
+        [sys.executable, "scripts/verify-branch-protection-runbook.py"],
+        cwd=ROOT,
+        check=True,
+    )
 
 
 def test_public_release_checklist_has_required_gates() -> None:

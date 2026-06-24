@@ -23,6 +23,7 @@ $requiredFiles = @(
     "docs/reports/CERTIFICATE_CLAIM_SAFETY.md",
     "docs/demo/election-rc-walkthrough.md",
     "docs/ip",
+    "scripts/verify-branch-protection-runbook.py",
     "tests/unit/test_release_readiness_docs.py"
 )
 
@@ -99,6 +100,7 @@ if (Test-Path "docs/demo/election-rc-walkthrough.md") {
 }
 
 if (Test-Path ".\.venv\Scripts\python.exe") {
+    & ".\.venv\Scripts\python.exe" "scripts/verify-branch-protection-runbook.py"
     & ".\.venv\Scripts\python.exe" -c "from ets.version import __version__; print(__version__)"
     if (Test-Path ".\.venv\Scripts\ets-verify.exe") {
         & ".\.venv\Scripts\ets-verify.exe" --version
