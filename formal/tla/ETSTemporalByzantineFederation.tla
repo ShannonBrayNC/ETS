@@ -126,14 +126,16 @@ Observe(verifier, root, partitionFlag) ==
         /\ byzantineSuspicions' = byzantineSuspicions \cup nextEquivocators
         /\ acceptedRoot' =
             IF partitionFlag THEN "None"
-            ELSE IF \E r \in RootIds : Cardinality({o.verifier : o \in nextFresh /\ o.root = r}) >= Threshold THEN
-                CHOOSE r \in RootIds : Cardinality({o.verifier : o \in nextFresh /\ o.root = r}) >= Threshold
+            ELSE IF \E r \in RootIds :
+                Cardinality({o.verifier : o \in {item \in nextFresh : item.root = r}}) >= Threshold THEN
+                CHOOSE r \in RootIds :
+                    Cardinality({o.verifier : o \in {item \in nextFresh : item.root = r}}) >= Threshold
             ELSE "None"
         /\ federationState' =
             IF \E r1, r2 \in RootIds :
                 /\ r1 # r2
-                /\ Cardinality({o.verifier : o \in nextFresh /\ o.root = r1}) >= Threshold
-                /\ Cardinality({o.verifier : o \in nextFresh /\ o.root = r2}) >= Threshold
+                /\ Cardinality({o.verifier : o \in {item \in nextFresh : item.root = r1}}) >= Threshold
+                /\ Cardinality({o.verifier : o \in {item \in nextFresh : item.root = r2}}) >= Threshold
             THEN "Conflict"
             ELSE IF partitionFlag THEN "Partitioned"
             ELSE IF acceptedRoot' # "None" THEN "Converged"
