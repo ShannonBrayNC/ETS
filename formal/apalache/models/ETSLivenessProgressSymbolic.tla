@@ -14,9 +14,17 @@ EXTENDS Naturals, TLC
 (* - does not model arbitrary Byzantine scheduling.                         *)
 (***************************************************************************)
 
-CONSTANT MaxRounds
+MaxRounds == 2
 
-VARIABLES round, pending, delivered, terminal
+VARIABLE
+    \* @type: Int;
+    round,
+    \* @type: Bool;
+    pending,
+    \* @type: Bool;
+    delivered,
+    \* @type: Bool;
+    terminal
 
 TypeOK ==
     /\ round \in 0..MaxRounds
@@ -39,7 +47,7 @@ Deliver ==
 
 Defer ==
     /\ pending
-    /\ round < MaxRounds
+    /\ round + 1 < MaxRounds
     /\ round' = round + 1
     /\ pending' = pending
     /\ delivered' = delivered
@@ -47,11 +55,11 @@ Defer ==
 
 Timeout ==
     /\ pending
-    /\ round = MaxRounds
+    /\ round + 1 = MaxRounds
     /\ pending' = FALSE
     /\ delivered' = delivered
     /\ terminal' = TRUE
-    /\ round' = round
+    /\ round' = MaxRounds
 
 StutterTerminal ==
     /\ terminal

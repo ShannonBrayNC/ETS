@@ -8,9 +8,15 @@ EXTENDS Naturals, FiniteSets, Sequences, TLC
 (* semantics suitable for initial SMT-backed checking.                     *)
 (***************************************************************************)
 
-CONSTANTS Messages
+Messages == 1..3
 
-VARIABLES pending, delivered, replayDetected
+VARIABLE
+    \* @type: Set(Int);
+    pending,
+    \* @type: Set(Int);
+    delivered,
+    \* @type: Bool;
+    replayDetected
 
 TypeOK ==
     /\ pending \subseteq Messages
@@ -19,7 +25,7 @@ TypeOK ==
 
 Init ==
     /\ pending = Messages
-    /\ delivered = {}
+    /\ delivered = Messages \ Messages
     /\ replayDetected = FALSE
 
 Deliver(msg) ==

@@ -12,7 +12,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from ets import __version__
 from ets.api.audit import audit_event
 from ets.api.auth import (
     AuthContext,
@@ -69,6 +68,7 @@ from ets.core.signing import (
     verify_tree_head_signature,
 )
 from ets.reports.certificate import CertificateFormat, create_certificate
+from ets.version import __version__
 
 DEFAULT_LOG_ID = "ets-local-dev"
 MAX_EVENT_BODY_BYTES = 256 * 1024
@@ -1190,3 +1190,4 @@ try:
     app.openapi()
 except ValidationError as exc:  # pragma: no cover - startup guard
     raise RuntimeError("ETS API OpenAPI schema generation failed") from exc
+

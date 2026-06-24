@@ -187,3 +187,14 @@ ETS does not prove:
 
 Those claims require external controls, policy definitions, operational review,
 or legal analysis.
+
+## Traceability Control
+
+Each theorem or bounded model claim in this appendix must be traceable through:
+
+- `docs/research/FORMAL_MODEL_CLAIMS.md`
+- `docs/research/FORMAL_TRACEABILITY_MATRIX.md`
+- the referenced TLA+ or Alloy artifact, where applicable
+- implementation code and tests, where available
+
+Claims without formal, implementation, or test evidence must be marked `pending` or `not claimed`.

@@ -17,6 +17,8 @@ EXTENDS Naturals, FiniteSets, TLC
 CONSTANTS Verifiers, ByzantineVerifiers, MaxRoot, MaxTime, FreshnessWindow, Threshold
 
 RootIds == 0..MaxRoot
+NoRoot == MaxRoot + 1
+AcceptedRootIds == 0..NoRoot
 Times == 0..MaxTime
 
 Observation == [verifier: Verifiers, root: RootIds, time: Times, partition: BOOLEAN]
@@ -26,7 +28,7 @@ VARIABLES now, observations, acceptedRoot, federationState, byzantineSuspicions,
 TypeOK ==
     /\ now \in Times
     /\ observations \subseteq Observation
-    /\ acceptedRoot \in RootIds \cup {"None"}
+    /\ acceptedRoot \in AcceptedRootIds
     /\ federationState \in {"Converging", "Converged", "Partitioned", "Conflict", "Stale"}
     /\ byzantineSuspicions \subseteq Verifiers
     /\ gossipLog \subseteq Observation
@@ -54,29 +56,36 @@ VerifierEquivocated(v) ==
         /\ o2.verifier = v
         /\ o1.root # o2.root
 
+VerifierObservedEquivocated(v) ==
+    \E o1, o2 \in observations :
+        /\ o1.verifier = v
+        /\ o2.verifier = v
+        /\ o1.root # o2.root
+
 PartitionObserved == \E obs \in FreshObservations : obs.partition = TRUE
 
 AcceptedRootRequiresFreshQuorum ==
-    acceptedRoot # "None" => FreshQuorumFor(acceptedRoot)
+    IF acceptedRoot = NoRoot THEN TRUE ELSE FreshQuorumFor(acceptedRoot)
 
 NoAcceptedRootDuringConflict ==
-    ConflictingFreshQuorums => acceptedRoot = "None"
+    ConflictingFreshQuorums => acceptedRoot = NoRoot
 
 NoAcceptedRootDuringPartition ==
     PartitionObserved => federationState # "Converged"
 
 ByzantineSuspicionsJustified ==
-    \A v \in byzantineSuspicions : VerifierEquivocated(v) \/ v \in ByzantineVerifiers
+    \A v \in byzantineSuspicions : VerifierObservedEquivocated(v) \/ v \in ByzantineVerifiers
 
 GossipOnlyPublishesObservedRoots ==
     gossipLog \subseteq observations
 
 ConvergedImpliesFreshQuorumNoConflict ==
-    federationState = "Converged" =>
-        /\ acceptedRoot # "None"
+    IF federationState = "Converged" THEN
+        /\ acceptedRoot # NoRoot
         /\ FreshQuorumFor(acceptedRoot)
         /\ ~ConflictingFreshQuorums
         /\ ~PartitionObserved
+    ELSE TRUE
 
 ConflictStateReflectsConflictOrEquivocation ==
     federationState = "Conflict" =>
@@ -88,30 +97,50 @@ StaleStateMeansNoFreshQuorum ==
 Init ==
     /\ now = 0
     /\ observations = {}
-    /\ acceptedRoot = "None"
+    /\ acceptedRoot = NoRoot
     /\ federationState = "Converging"
     /\ byzantineSuspicions = {}
     /\ gossipLog = {}
 
 AdvanceTime ==
-    /\ now < MaxTime
-    /\ now' = now + 1
-    /\ observations' = observations
-    /\ gossipLog' = gossipLog
-    /\ byzantineSuspicions' = byzantineSuspicions
-    /\ acceptedRoot' = IF acceptedRoot # "None" /\ FreshQuorumFor(acceptedRoot)
-                       THEN acceptedRoot
-                       ELSE "None"
-    /\ federationState' = IF ConflictingFreshQuorums THEN "Conflict"
-                          ELSE IF PartitionObserved THEN "Partitioned"
-                          ELSE IF acceptedRoot' # "None" THEN "Converged"
-                          ELSE IF ~AnyFreshQuorum THEN "Stale"
-                          ELSE "Converging"
+    LET nextNow == now + 1 IN
+    LET nextFresh == {item \in observations : nextNow >= item.time /\ nextNow - item.time <= FreshnessWindow} IN
+    LET nextFreshQuorumFor(root) ==
+        Cardinality({item.verifier : item \in {obs \in nextFresh : obs.root = root}}) >= Threshold
+    IN
+    LET nextAnyFreshQuorum == \E root \in RootIds : nextFreshQuorumFor(root) IN
+    LET nextConflictingFreshQuorums ==
+        \E r1, r2 \in RootIds :
+            /\ r1 # r2
+            /\ nextFreshQuorumFor(r1)
+            /\ nextFreshQuorumFor(r2)
+    IN
+    LET nextPartitionObserved == \E item \in nextFresh : item.partition = TRUE IN
+        /\ now < MaxTime
+        /\ now' = nextNow
+        /\ observations' = observations
+        /\ gossipLog' = gossipLog
+        /\ byzantineSuspicions' = byzantineSuspicions
+        /\ acceptedRoot' = IF acceptedRoot # NoRoot /\ nextFreshQuorumFor(acceptedRoot)
+                           THEN acceptedRoot
+                           ELSE NoRoot
+        /\ federationState' = IF nextConflictingFreshQuorums THEN "Conflict"
+                              ELSE IF nextPartitionObserved THEN "Partitioned"
+                              ELSE IF acceptedRoot' # NoRoot THEN "Converged"
+                              ELSE IF ~nextAnyFreshQuorum THEN "Stale"
+                              ELSE "Converging"
 
 Observe(verifier, root, partitionFlag) ==
     LET obs == [verifier |-> verifier, root |-> root, time |-> now, partition |-> partitionFlag] IN
     LET nextObservations == observations \cup {obs} IN
     LET nextFresh == {item \in nextObservations : now >= item.time /\ now - item.time <= FreshnessWindow} IN
+    LET nextPartitionObserved == \E item \in nextFresh : item.partition = TRUE IN
+    LET nextConflictingFreshQuorums ==
+        \E r1, r2 \in RootIds :
+            /\ r1 # r2
+            /\ Cardinality({o.verifier : o \in {item \in nextFresh : item.root = r1}}) >= Threshold
+            /\ Cardinality({o.verifier : o \in {item \in nextFresh : item.root = r2}}) >= Threshold
+    IN
     LET nextEquivocators ==
         {v \in Verifiers :
             \E o1, o2 \in nextFresh :
@@ -125,18 +154,18 @@ Observe(verifier, root, partitionFlag) ==
         /\ gossipLog' = gossipLog
         /\ byzantineSuspicions' = byzantineSuspicions \cup nextEquivocators
         /\ acceptedRoot' =
-            IF partitionFlag THEN "None"
-            ELSE IF \E r \in RootIds : Cardinality({o.verifier : o \in nextFresh /\ o.root = r}) >= Threshold THEN
-                CHOOSE r \in RootIds : Cardinality({o.verifier : o \in nextFresh /\ o.root = r}) >= Threshold
-            ELSE "None"
+            IF nextConflictingFreshQuorums THEN NoRoot
+            ELSE IF nextPartitionObserved THEN NoRoot
+            ELSE IF \E r \in RootIds :
+                Cardinality({o.verifier : o \in {item \in nextFresh : item.root = r}}) >= Threshold THEN
+                CHOOSE r \in RootIds :
+                    Cardinality({o.verifier : o \in {item \in nextFresh : item.root = r}}) >= Threshold
+            ELSE NoRoot
         /\ federationState' =
-            IF \E r1, r2 \in RootIds :
-                /\ r1 # r2
-                /\ Cardinality({o.verifier : o \in nextFresh /\ o.root = r1}) >= Threshold
-                /\ Cardinality({o.verifier : o \in nextFresh /\ o.root = r2}) >= Threshold
-            THEN "Conflict"
-            ELSE IF partitionFlag THEN "Partitioned"
-            ELSE IF acceptedRoot' # "None" THEN "Converged"
+            IF nextConflictingFreshQuorums THEN "Conflict"
+            ELSE IF nextPartitionObserved THEN "Partitioned"
+            ELSE IF \E r \in RootIds :
+                Cardinality({o.verifier : o \in {item \in nextFresh : item.root = r}}) >= Threshold THEN "Converged"
             ELSE "Converging"
         /\ now' = now
 

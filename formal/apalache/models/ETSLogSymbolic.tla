@@ -10,12 +10,15 @@ EXTENDS Naturals, Sequences, FiniteSets, TLC
 (* and accepted log state remains bounded and typed.                        *)
 (***************************************************************************)
 
-CONSTANT EventIds
+EventIds == 1..3
 
-VARIABLES log
+VARIABLE
+    \* @type: Seq(Int);
+    log
 
 TypeOK ==
-    /\ log \in Seq(EventIds)
+    /\ Len(log) \in 0..3
+    /\ \A i \in DOMAIN log : log[i] \in EventIds
 
 NoDuplicateEvents ==
     \A i, j \in DOMAIN log : i # j => log[i] # log[j]
@@ -25,11 +28,17 @@ Init ==
 
 AppendEvent(event) ==
     /\ event \in EventIds
+    /\ Len(log) < 3
     /\ event \notin {log[i] : i \in DOMAIN log}
     /\ log' = Append(log, event)
 
+FullLogStutter ==
+    /\ Len(log) = 3
+    /\ UNCHANGED log
+
 Next ==
-    \E event \in EventIds : AppendEvent(event)
+    \/ \E event \in EventIds : AppendEvent(event)
+    \/ FullLogStutter
 
 Spec == Init /\ [][Next]_log
 

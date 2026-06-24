@@ -13,11 +13,12 @@ EXTENDS Naturals, FiniteSets, Sequences, TLC
 (* attempted.                                                               *)
 (***************************************************************************)
 
-CONSTANTS Nodes, MaxMessageId, MaxDelay, MaxTime, Topology
+CONSTANTS Nodes, MaxMessageId, MaxDelay, MaxTime
 
 MessageIds == 1..MaxMessageId
 Times == 0..MaxTime
 DelayValues == 0..MaxDelay
+Topology == {pair \in Nodes \X Nodes : pair[1] # pair[2]}
 
 Message == [id: MessageIds, src: Nodes, dst: Nodes, seq: MessageIds, createdAt: Times, delay: DelayValues]
 
@@ -35,7 +36,8 @@ TypeOK ==
 Connected(src, dst) == <<src, dst>> \in Topology
 
 DeliveredMessageIds == {delivered[i].id : i \in DOMAIN delivered}
-DeliveredSequencesFor(dst) == {delivered[i].seq : i \in DOMAIN delivered /\ delivered[i].dst = dst}
+LostMessageIds == {msg.id : msg \in lost}
+DeliveredSequencesFor(dst) == {delivered[i].seq : i \in {j \in DOMAIN delivered : delivered[j].dst = dst}}
 
 NoDuplicateDelivery ==
     \A i, j \in DOMAIN delivered : i # j => delivered[i].id # delivered[j].id
@@ -75,6 +77,7 @@ Send(id, src, dst, seq, delay) ==
         /\ Connected(src, dst)
         /\ id \notin {m.id : m \in inFlight}
         /\ id \notin DeliveredMessageIds
+        /\ id \notin LostMessageIds
         /\ msg \notin lost
         /\ inFlight' = inFlight \cup {msg}
         /\ UNCHANGED <<now, delivered, lost, replaySuspicions, reorderSuspicions>>
@@ -86,8 +89,10 @@ Deliver(msg) ==
     /\ delivered' = Append(delivered, msg)
     /\ lost' = lost
     /\ replaySuspicions' = replaySuspicions
-    /\ reorderSuspicions' = reorderSuspicions \cup
-        {msg.dst : \E i \in DOMAIN delivered : delivered[i].dst = msg.dst /\ delivered[i].seq > msg.seq}
+    /\ reorderSuspicions' = reorderSuspicions \cup (
+        IF \E i \in DOMAIN delivered : delivered[i].dst = msg.dst /\ delivered[i].seq > msg.seq
+        THEN {msg.dst}
+        ELSE {})
     /\ UNCHANGED now
 
 Lose(msg) ==
