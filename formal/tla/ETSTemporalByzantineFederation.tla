@@ -57,7 +57,7 @@ VerifierEquivocated(v) ==
 PartitionObserved == \E obs \in FreshObservations : obs.partition = TRUE
 
 AcceptedRootRequiresFreshQuorum ==
-    acceptedRoot # "None" => FreshQuorumFor(acceptedRoot)
+    IF acceptedRoot = "None" THEN TRUE ELSE FreshQuorumFor(acceptedRoot)
 
 NoAcceptedRootDuringConflict ==
     ConflictingFreshQuorums => acceptedRoot = "None"
@@ -72,11 +72,12 @@ GossipOnlyPublishesObservedRoots ==
     gossipLog \subseteq observations
 
 ConvergedImpliesFreshQuorumNoConflict ==
-    federationState = "Converged" =>
+    IF federationState = "Converged" THEN
         /\ acceptedRoot # "None"
-        /\ FreshQuorumFor(acceptedRoot)
+        /\ IF acceptedRoot = "None" THEN FALSE ELSE FreshQuorumFor(acceptedRoot)
         /\ ~ConflictingFreshQuorums
         /\ ~PartitionObserved
+    ELSE TRUE
 
 ConflictStateReflectsConflictOrEquivocation ==
     federationState = "Conflict" =>
