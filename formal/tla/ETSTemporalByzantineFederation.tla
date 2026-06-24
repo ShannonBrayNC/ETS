@@ -56,6 +56,12 @@ VerifierEquivocated(v) ==
         /\ o2.verifier = v
         /\ o1.root # o2.root
 
+VerifierObservedEquivocated(v) ==
+    \E o1, o2 \in observations :
+        /\ o1.verifier = v
+        /\ o2.verifier = v
+        /\ o1.root # o2.root
+
 PartitionObserved == \E obs \in FreshObservations : obs.partition = TRUE
 
 AcceptedRootRequiresFreshQuorum ==
@@ -68,7 +74,7 @@ NoAcceptedRootDuringPartition ==
     PartitionObserved => federationState # "Converged"
 
 ByzantineSuspicionsJustified ==
-    \A v \in byzantineSuspicions : VerifierEquivocated(v) \/ v \in ByzantineVerifiers
+    \A v \in byzantineSuspicions : VerifierObservedEquivocated(v) \/ v \in ByzantineVerifiers
 
 GossipOnlyPublishesObservedRoots ==
     gossipLog \subseteq observations
