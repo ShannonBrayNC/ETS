@@ -80,6 +80,7 @@ SubmitVote(verifier, root) ==
 
 DeliverVote(vote) ==
     LET nextDelivered == deliveredVotes \cup {vote} IN
+    LET nextPending == pendingVotes \ {vote} IN
     LET nextQuorumFor(root) ==
         Cardinality({v.verifier : v \in {item \in nextDelivered : item.root = root}}) >= Threshold
     IN
@@ -97,11 +98,12 @@ DeliverVote(vote) ==
         ELSE "None" IN
         /\ vote \in pendingVotes
         /\ deliveredVotes' = nextDelivered
-        /\ pendingVotes' = pendingVotes \ {vote}
+        /\ pendingVotes' = nextPending
         /\ acceptedRoot' = nextAccepted
         /\ federationState' =
             IF nextConflictingQuorums THEN "Conflict"
             ELSE IF nextAccepted # "None" THEN "Converged"
+            ELSE IF nextPending = {} THEN "Stale"
             ELSE "Converging"
         /\ UNCHANGED round
 
