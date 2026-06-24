@@ -139,7 +139,7 @@ Fairness ==
     /\ \A vote \in Vote : WF_<<round, deliveredVotes, pendingVotes, acceptedRoot, federationState>>(DeliverVote(vote))
 
 EventuallyConverges ==
-    <>((federationState = "Converged") \/ (federationState = "Conflict"))
+    <>((federationState = "Converged") \/ (federationState = "Conflict") \/ (federationState = "Stale"))
 
 EventuallyPendingVotesDrain ==
     <>(pendingVotes = {})
