@@ -73,10 +73,13 @@ Init ==
     /\ federationState = "Converging"
 
 SubmitVote(verifier, root) ==
-    /\ verifier \in Verifiers
-    /\ root \in Roots
-    /\ pendingVotes' = pendingVotes \cup {[verifier |-> verifier, root |-> root]}
-    /\ UNCHANGED <<round, deliveredVotes, acceptedRoot, federationState>>
+    LET vote == [verifier |-> verifier, root |-> root] IN
+        /\ verifier \in Verifiers
+        /\ root \in Roots
+        /\ round < MaxRounds
+        /\ vote \notin deliveredVotes \cup pendingVotes
+        /\ pendingVotes' = pendingVotes \cup {vote}
+        /\ UNCHANGED <<round, deliveredVotes, acceptedRoot, federationState>>
 
 DeliverVote(vote) ==
     LET nextDelivered == deliveredVotes \cup {vote} IN
@@ -119,12 +122,16 @@ AdvanceRound ==
         ELSE federationState
 
 Partition ==
+    /\ federationState = "Converging"
     /\ federationState' = "Partitioned"
     /\ UNCHANGED <<round, deliveredVotes, pendingVotes, acceptedRoot>>
 
 HealPartition ==
     /\ federationState = "Partitioned"
-    /\ federationState' = "Converging"
+    /\ federationState' =
+        IF acceptedRoot # "None" THEN "Converged"
+        ELSE IF pendingVotes = {} THEN "Stale"
+        ELSE "Converging"
     /\ UNCHANGED <<round, deliveredVotes, pendingVotes, acceptedRoot>>
 
 Next ==
