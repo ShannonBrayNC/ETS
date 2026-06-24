@@ -73,7 +73,7 @@ jobs:
           run_tlc ETSLivenessFederation.tla ETSLivenessFederation.cfg
           run_tlc ETSAsyncTransport.tla ETSAsyncTransport.cfg
           run_tlc ETSTemporalLivenessTheorems.tla ETSTemporalLivenessTheorems.cfg
-          run_tlc ETSUniversalTemporalLiveness.tla ETSTemporalLivenessTheorems.cfg
+          run_tlc ETSUniversalTemporalLiveness.tla ETSUniversalTemporalLiveness.cfg
 
       - name: Publish TLC summary
         run: |
