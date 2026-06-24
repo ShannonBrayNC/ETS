@@ -87,8 +87,10 @@ Deliver(msg) ==
     /\ delivered' = Append(delivered, msg)
     /\ lost' = lost
     /\ replaySuspicions' = replaySuspicions
-    /\ reorderSuspicions' = reorderSuspicions \cup
-        {msg.dst : \E i \in DOMAIN delivered : delivered[i].dst = msg.dst /\ delivered[i].seq > msg.seq}
+    /\ reorderSuspicions' = reorderSuspicions \cup (
+        IF \E i \in DOMAIN delivered : delivered[i].dst = msg.dst /\ delivered[i].seq > msg.seq
+        THEN {msg.dst}
+        ELSE {})
     /\ UNCHANGED now
 
 Lose(msg) ==
