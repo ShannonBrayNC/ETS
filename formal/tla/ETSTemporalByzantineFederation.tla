@@ -97,19 +97,32 @@ Init ==
     /\ gossipLog = {}
 
 AdvanceTime ==
-    /\ now < MaxTime
-    /\ now' = now + 1
-    /\ observations' = observations
-    /\ gossipLog' = gossipLog
-    /\ byzantineSuspicions' = byzantineSuspicions
-    /\ acceptedRoot' = IF acceptedRoot # NoRoot /\ FreshQuorumFor(acceptedRoot)
-                       THEN acceptedRoot
-                       ELSE NoRoot
-    /\ federationState' = IF ConflictingFreshQuorums THEN "Conflict"
-                          ELSE IF PartitionObserved THEN "Partitioned"
-                          ELSE IF acceptedRoot' # NoRoot THEN "Converged"
-                          ELSE IF ~AnyFreshQuorum THEN "Stale"
-                          ELSE "Converging"
+    LET nextNow == now + 1 IN
+    LET nextFresh == {item \in observations : nextNow >= item.time /\ nextNow - item.time <= FreshnessWindow} IN
+    LET nextFreshQuorumFor(root) ==
+        Cardinality({item.verifier : item \in {obs \in nextFresh : obs.root = root}}) >= Threshold
+    IN
+    LET nextAnyFreshQuorum == \E root \in RootIds : nextFreshQuorumFor(root) IN
+    LET nextConflictingFreshQuorums ==
+        \E r1, r2 \in RootIds :
+            /\ r1 # r2
+            /\ nextFreshQuorumFor(r1)
+            /\ nextFreshQuorumFor(r2)
+    IN
+    LET nextPartitionObserved == \E item \in nextFresh : item.partition = TRUE IN
+        /\ now < MaxTime
+        /\ now' = nextNow
+        /\ observations' = observations
+        /\ gossipLog' = gossipLog
+        /\ byzantineSuspicions' = byzantineSuspicions
+        /\ acceptedRoot' = IF acceptedRoot # NoRoot /\ nextFreshQuorumFor(acceptedRoot)
+                           THEN acceptedRoot
+                           ELSE NoRoot
+        /\ federationState' = IF nextConflictingFreshQuorums THEN "Conflict"
+                              ELSE IF nextPartitionObserved THEN "Partitioned"
+                              ELSE IF acceptedRoot' # NoRoot THEN "Converged"
+                              ELSE IF ~nextAnyFreshQuorum THEN "Stale"
+                              ELSE "Converging"
 
 Observe(verifier, root, partitionFlag) ==
     LET obs == [verifier |-> verifier, root |-> root, time |-> now, partition |-> partitionFlag] IN
