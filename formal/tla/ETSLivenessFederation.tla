@@ -139,6 +139,7 @@ Spec == Init /\ [][Next]_<<round, deliveredVotes, pendingVotes, acceptedRoot, fe
 Fairness ==
     /\ WF_<<round, deliveredVotes, pendingVotes, acceptedRoot, federationState>>(AdvanceRound)
     /\ \A vote \in Vote : WF_<<round, deliveredVotes, pendingVotes, acceptedRoot, federationState>>(DeliverVote(vote))
+    /\ WF_<<round, deliveredVotes, pendingVotes, acceptedRoot, federationState>>(HealPartition)
 
 EventuallyConverges ==
     <>((federationState = "Converged") \/ (federationState = "Conflict") \/ (federationState = "Stale"))
