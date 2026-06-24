@@ -36,7 +36,7 @@ TypeOK ==
 Connected(src, dst) == <<src, dst>> \in Topology
 
 DeliveredMessageIds == {delivered[i].id : i \in DOMAIN delivered}
-DeliveredSequencesFor(dst) == {delivered[i].seq : i \in DOMAIN delivered /\ delivered[i].dst = dst}
+DeliveredSequencesFor(dst) == {delivered[i].seq : i \in {j \in DOMAIN delivered : delivered[j].dst = dst}}
 
 NoDuplicateDelivery ==
     \A i, j \in DOMAIN delivered : i # j => delivered[i].id # delivered[j].id
