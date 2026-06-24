@@ -36,6 +36,7 @@ TypeOK ==
 Connected(src, dst) == <<src, dst>> \in Topology
 
 DeliveredMessageIds == {delivered[i].id : i \in DOMAIN delivered}
+LostMessageIds == {msg.id : msg \in lost}
 DeliveredSequencesFor(dst) == {delivered[i].seq : i \in {j \in DOMAIN delivered : delivered[j].dst = dst}}
 
 NoDuplicateDelivery ==
@@ -76,6 +77,7 @@ Send(id, src, dst, seq, delay) ==
         /\ Connected(src, dst)
         /\ id \notin {m.id : m \in inFlight}
         /\ id \notin DeliveredMessageIds
+        /\ id \notin LostMessageIds
         /\ msg \notin lost
         /\ inFlight' = inFlight \cup {msg}
         /\ UNCHANGED <<now, delivered, lost, replaySuspicions, reorderSuspicions>>
