@@ -26,7 +26,7 @@ VARIABLES now, observations, acceptedRoot, federationState, byzantineSuspicions,
 TypeOK ==
     /\ now \in Times
     /\ observations \subseteq Observation
-    /\ acceptedRoot = "None" \/ acceptedRoot \in RootIds
+    /\ acceptedRoot \in RootIds \/ acceptedRoot = "None"
     /\ federationState \in {"Converging", "Converged", "Partitioned", "Conflict", "Stale"}
     /\ byzantineSuspicions \subseteq Verifiers
     /\ gossipLog \subseteq Observation
