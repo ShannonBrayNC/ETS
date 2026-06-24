@@ -13,11 +13,12 @@ EXTENDS Naturals, FiniteSets, Sequences, TLC
 (* attempted.                                                               *)
 (***************************************************************************)
 
-CONSTANTS Nodes, MaxMessageId, MaxDelay, MaxTime, Topology
+CONSTANTS Nodes, MaxMessageId, MaxDelay, MaxTime
 
 MessageIds == 1..MaxMessageId
 Times == 0..MaxTime
 DelayValues == 0..MaxDelay
+Topology == {pair \in Nodes \X Nodes : pair[1] # pair[2]}
 
 Message == [id: MessageIds, src: Nodes, dst: Nodes, seq: MessageIds, createdAt: Times, delay: DelayValues]
 
