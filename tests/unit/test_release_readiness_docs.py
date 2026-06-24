@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -13,6 +12,8 @@ def test_release_gate_docs_exist() -> None:
         "docs/release/PUBLIC_RELEASE_CHECKLIST.md",
         "docs/release/ALPHA_RELEASE_GATE.md",
         "docs/release/ALPHA_RELEASE_NOTES_TEMPLATE.md",
+        "docs/research/README.md",
+        "docs/research/non-claims.md",
         "docs/research/claim-traceability-manifest.json",
         "scripts/verify-ets-release-readiness.ps1",
     ]
@@ -34,6 +35,23 @@ def test_public_release_checklist_has_required_gates() -> None:
     ]
     for term in required_terms:
         assert term in text
+
+
+def test_research_boundary_docs_state_non_claims() -> None:
+    docs = [
+        read("docs/research/README.md"),
+        read("docs/research/non-claims.md"),
+    ]
+    required_terms = [
+        "Evidence Transparency System",
+        "real-world truth",
+        "legal sufficiency",
+        "election correctness",
+        "external expected-event policy",
+    ]
+    for text in docs:
+        for term in required_terms:
+            assert term in text
 
 
 def test_alpha_gate_blocks_overclaims() -> None:
