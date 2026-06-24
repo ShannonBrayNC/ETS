@@ -67,6 +67,12 @@ ConflictAlertSound ==
 ConfidenceMatchesAcceptedRoot ==
     acceptedRoot # "None" => confidence = ConfidenceFor(acceptedRoot)
 
+AlertsFor(nextConfidence, nextVisible, nextAdversaryMode, nextConflict) ==
+    (IF nextConfidence < AcceptThreshold THEN {"LowConfidence"} ELSE {}) \cup
+    (IF Cardinality(nextVisible) < Cardinality(Verifiers) THEN {"EclipseSuspected"} ELSE {}) \cup
+    (IF nextAdversaryMode = "Adaptive" THEN {"AdaptivePressure"} ELSE {}) \cup
+    (IF nextConflict THEN {"ConflictingTrustedRoots"} ELSE {})
+
 Init ==
     /\ visible = Verifiers
     /\ observations = {}
@@ -105,9 +111,7 @@ Observe(verifier, root) ==
         /\ UNCHANGED <<visible, adversaryMode>>
         /\ acceptedRoot' = nextAccepted
         /\ confidence' = nextConfidence
-        /\ alerts' =
-            (IF NextConflict(nextObservations, visible) THEN alerts \cup {"ConflictingTrustedRoots"} ELSE alerts) \cup
-            (IF nextConfidence < AcceptThreshold THEN {"LowConfidence"} ELSE {})
+        /\ alerts' = AlertsFor(nextConfidence, visible, adversaryMode, NextConflict(nextObservations, visible))
 
 HideVerifier(verifier) ==
     LET nextVisible == visible \ {verifier} IN
@@ -119,7 +123,7 @@ HideVerifier(verifier) ==
         /\ UNCHANGED observations
         /\ acceptedRoot' = nextAccepted
         /\ confidence' = nextConfidence
-        /\ alerts' = alerts \cup {"EclipseSuspected", "LowConfidence"}
+        /\ alerts' = AlertsFor(nextConfidence, nextVisible, adversaryMode', NextConflict(observations, nextVisible))
 
 ShowVerifier(verifier) ==
     LET nextVisible == visible \cup {verifier} IN
@@ -130,12 +134,12 @@ ShowVerifier(verifier) ==
         /\ UNCHANGED <<observations, adversaryMode>>
         /\ acceptedRoot' = nextAccepted
         /\ confidence' = nextConfidence
-        /\ alerts' = alerts
+        /\ alerts' = AlertsFor(nextConfidence, nextVisible, adversaryMode, NextConflict(observations, nextVisible))
 
 AdaptivePressure ==
     /\ adversaryMode' = "Adaptive"
     /\ UNCHANGED <<visible, observations, acceptedRoot, confidence>>
-    /\ alerts' = alerts \cup {"AdaptivePressure"}
+    /\ alerts' = AlertsFor(confidence, visible, "Adaptive", NextConflict(observations, visible))
 
 Next ==
     \/ \E verifier \in Verifiers, root \in Roots : Observe(verifier, root)
