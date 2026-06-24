@@ -24,6 +24,9 @@ experiments.
    observation, or legal process?
 5. How can AI system events be captured so that auditability relies on
    reproducible evidence records rather than post-hoc explanations alone?
+6. How can research outputs be packaged as verifiable certificates while
+   preserving the boundary between submitted evidence records and real-world
+   completeness claims?
 
 ## Formal Systems Track
 
@@ -96,6 +99,23 @@ supports audit-chain reconstruction and independent verification of recorded
 events. It does not prove that a model behaved fairly, that an explanation is
 correct, or that unrecorded inference events did not occur.
 
+## Research Certificate Track
+
+ETS can package research outputs into verifiable certificates that bind a
+research question, generated artifact, claims, evidence references, source
+quality summaries, dispute status, review state, and proof references.
+
+Research certificates are intentionally narrow. They verify that submitted
+research evidence records and certificate metadata match ETS hashes and proof
+material. They do not prove that the conclusion is true, that all relevant
+real-world evidence was submitted, or that human review is legally sufficient.
+
+Current draft artifact:
+
+- `docs/research/research-certificate-generator.md` specifies the proposed
+  lifecycle, schema, public/private profiles, verification block, and follow-on
+  implementation decomposition.
+
 ## Experimental Science Track
 
 Experiments must produce deterministic or clearly bounded artifacts:
@@ -128,6 +148,7 @@ arbitration remain human and organizational processes.
 - IEEE-style paper draft: `docs/research/ieee/ETS_IEEE_DRAFT.md`
 - theorem appendix: `docs/research/FORMAL_THEOREMS.md`
 - reproducibility appendix: `docs/research/REPRODUCIBILITY_APPENDIX.md`
+- research certificate generator: `docs/research/research-certificate-generator.md`
 - RFCs: `docs/spec/rfc/`
 - architecture guide: `docs/architecture/INTERCONNECTED_SYSTEMS_GUIDE.md`
 - patent-preparation files: `docs/ip/`
