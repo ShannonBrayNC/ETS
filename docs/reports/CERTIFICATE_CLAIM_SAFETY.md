@@ -41,9 +41,16 @@ Certificates must not claim:
 
 ## Required Regression Checks
 
-The certificate source, tests, and verifier CLI must prevent reintroduction of:
+The certificate source, tests, and verifier CLI must prevent reintroduction of
+package-root version imports:
 
 ```python
 from ets import __version__
+```
+
+Use the dedicated version helper instead:
+
+```python
 from ets.version import __version__
+```
 

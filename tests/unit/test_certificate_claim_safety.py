@@ -39,3 +39,17 @@ def test_certificate_claim_safety_doc_exists() -> None:
     assert "What This Verifies" in text
     assert "What This Does Not Verify" in text
     assert "must not claim" in text
+    assert "from ets import __version__" in text
+    assert "from ets.version import __version__" in text
+    assert text.count("```") % 2 == 0
+
+
+def test_sprint_patch_artifacts_are_not_committed() -> None:
+    unexpected_paths = [
+        "100",
+        "ets/verifier/cert.ps1",
+        "scripts/apply-ets-certificate-claim-safety-sprint.ps1",
+        "scripts/apply-ets-release-readiness-sprint.ps1",
+    ]
+    for path in unexpected_paths:
+        assert not (ROOT / path).exists(), path
