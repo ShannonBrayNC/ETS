@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  administration: read
 
 concurrency:
   group: governance-audit-${{ github.workflow }}-${{ github.ref }}
@@ -31,5 +30,5 @@ jobs:
       - name: Verify live branch protection
         env:
           ETS_VERIFY_LIVE_BRANCH_PROTECTION: "1"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.BRANCH_PROTECTION_AUDIT_TOKEN || github.token }}
         run: python scripts/verify-branch-protection-runbook.py

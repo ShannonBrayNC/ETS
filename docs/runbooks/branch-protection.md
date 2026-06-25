@@ -75,6 +75,18 @@ Expected result:
 - `allow_deletions` is `false`.
 - The required contexts match the list in this runbook.
 
+## Scheduled Audit
+
+The `Governance Audit` workflow runs weekly and can be started manually from
+GitHub Actions. It runs `scripts/verify-branch-protection-runbook.py` with
+`ETS_VERIFY_LIVE_BRANCH_PROTECTION=1` so settings drift is caught even when no
+pull request is open.
+
+For repositories where the default `GITHUB_TOKEN` cannot read branch protection,
+configure a repository secret named `BRANCH_PROTECTION_AUDIT_TOKEN`. The token
+must be limited to repository administration read access and must not grant
+write access unless GitHub requires that shape for the selected token type.
+
 ## Recovery
 
 If a required context is stuck because a workflow job was renamed:
