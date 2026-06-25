@@ -9,6 +9,7 @@ on:
 jobs:
   tla:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -35,56 +36,26 @@ jobs:
           test -f docs/research/ASYNC_TRANSPORT_RESEARCH.md
           test -f docs/dissertation/TEMPORAL_LIVENESS_THEOREMS.md
           test -f docs/dissertation/UNIVERSAL_TEMPORAL_LIVENESS.md
+          test -f scripts/run-tlc-models.sh
 
-      - name: Execute TLC models
-        working-directory: formal/tla
-        run: |
-          set -euo pipefail
+      - name: Execute bounded TLC evidence capture
+        env:
+          TLC_TIMEOUT_SECONDS: "180"
+          TLC_FAIL_ON_TIMEOUT: "false"
+          TLC_OUTPUT_DIR: artifacts/tlc
+        run: bash scripts/run-tlc-models.sh
 
-          run_tlc() {
-            local model="$1"
-            local config="$2"
-            local label="${model%.tla}"
-
-            echo "Running TLC $label" | tee -a "$GITHUB_STEP_SUMMARY"
-            set +e
-            timeout 180s java -cp ../../tools/tla2tools.jar tlc2.TLC "$model" -config "$config" -deadlock
-            local status=$?
-            set -e
-
-            if [ "$status" -eq 0 ]; then
-              echo "- $label: passed" >> "$GITHUB_STEP_SUMMARY"
-              return 0
-            fi
-
-            if [ "$status" -eq 124 ]; then
-              echo "- $label: timed out after 180 seconds; deferred to the full TLC validation follow-up gate" >> "$GITHUB_STEP_SUMMARY"
-              return 0
-            fi
-
-            echo "- $label: failed with exit code $status" >> "$GITHUB_STEP_SUMMARY"
-            return "$status"
-          }
-
-          run_tlc ETSLog.tla ETSLog.cfg
-          run_tlc ETSVerifierFederation.tla ETSVerifierFederation.cfg
-          run_tlc ETSTemporalByzantineFederation.tla ETSTemporalByzantineFederation.cfg
-          run_tlc ETSProbabilisticTrust.tla ETSProbabilisticTrust.cfg
-          run_tlc ETSLivenessFederation.tla ETSLivenessFederation.cfg
-          run_tlc ETSAsyncTransport.tla ETSAsyncTransport.cfg
-          run_tlc ETSTemporalLivenessTheorems.tla ETSTemporalLivenessTheorems.cfg
-          run_tlc ETSUniversalTemporalLiveness.tla ETSUniversalTemporalLiveness.cfg
+      - name: Upload TLC evidence artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tlc-evidence-artifacts
+          path: artifacts/tlc/
+          if-no-files-found: warn
 
       - name: Publish TLC summary
+        if: success()
         run: |
           echo "TLC formal model execution completed successfully." >> $GITHUB_STEP_SUMMARY
-          echo "Validated models:" >> $GITHUB_STEP_SUMMARY
-          echo "- ETSLog" >> $GITHUB_STEP_SUMMARY
-          echo "- ETSVerifierFederation" >> $GITHUB_STEP_SUMMARY
-          echo "- ETSTemporalByzantineFederation" >> $GITHUB_STEP_SUMMARY
-          echo "- ETSProbabilisticTrust" >> $GITHUB_STEP_SUMMARY
-          echo "- ETSLivenessFederation" >> $GITHUB_STEP_SUMMARY
-          echo "- ETSAsyncTransport" >> $GITHUB_STEP_SUMMARY
-          echo "- ETSTemporalLivenessTheorems" >> $GITHUB_STEP_SUMMARY
-          echo "- ETSUniversalTemporalLiveness" >> $GITHUB_STEP_SUMMARY
+          echo "Validated models are listed in artifacts/tlc/summary.md." >> $GITHUB_STEP_SUMMARY
           echo "Universal temporal liveness is modeled as conditional bounded eventual classification under explicit fairness assumptions." >> $GITHUB_STEP_SUMMARY
