@@ -1,0 +1,63 @@
+name: Full TLC Evidence Capture
+
+on:
+  workflow_dispatch:
+    inputs:
+      timeout_seconds:
+        description: Per-model TLC timeout in seconds
+        required: true
+        default: "1800"
+      fail_on_timeout:
+        description: Treat a TLC timeout as a failing full evidence result
+        required: true
+        type: choice
+        options:
+          - "true"
+          - "false"
+        default: "true"
+
+jobs:
+  full-tlc-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Download TLC
+        run: |
+          mkdir -p tools
+          curl -L https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar -o tools/tla2tools.jar
+
+      - name: Validate full TLC target set
+        run: |
+          test -f scripts/run-tlc-models.sh
+          test -f formal/tla/ETSLog.tla
+          test -f formal/tla/ETSVerifierFederation.tla
+          test -f formal/tla/ETSTemporalByzantineFederation.tla
+          test -f formal/tla/ETSProbabilisticTrust.tla
+          test -f formal/tla/ETSLivenessFederation.tla
+          test -f formal/tla/ETSAsyncTransport.tla
+          test -f formal/tla/ETSTemporalLivenessTheorems.tla
+          test -f formal/tla/ETSUniversalTemporalLiveness.tla
+
+      - name: Execute full TLC evidence capture
+        env:
+          TLC_TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
+          TLC_FAIL_ON_TIMEOUT: ${{ inputs.fail_on_timeout }}
+          TLC_OUTPUT_DIR: artifacts/tlc-full
+        run: bash scripts/run-tlc-models.sh
+
+      - name: Upload full TLC evidence artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-tlc-evidence-artifacts
+          path: artifacts/tlc-full/
+          if-no-files-found: error
