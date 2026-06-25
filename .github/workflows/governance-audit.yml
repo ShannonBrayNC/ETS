@@ -30,5 +30,11 @@ jobs:
       - name: Verify live branch protection
         env:
           ETS_VERIFY_LIVE_BRANCH_PROTECTION: "1"
-          GITHUB_TOKEN: ${{ secrets.BRANCH_PROTECTION_AUDIT_TOKEN || github.token }}
-        run: python scripts/verify-branch-protection-runbook.py
+          BRANCH_PROTECTION_AUDIT_TOKEN: ${{ secrets.BRANCH_PROTECTION_AUDIT_TOKEN }}
+        run: |
+          if [ -z "$BRANCH_PROTECTION_AUDIT_TOKEN" ]; then
+            echo "::error::Configure repository secret BRANCH_PROTECTION_AUDIT_TOKEN with branch-protection read access before scheduled governance audits can pass."
+            exit 1
+          fi
+
+          GITHUB_TOKEN="$BRANCH_PROTECTION_AUDIT_TOKEN" python scripts/verify-branch-protection-runbook.py

@@ -86,6 +86,13 @@ For repositories where the default `GITHUB_TOKEN` cannot read branch protection,
 configure a repository secret named `BRANCH_PROTECTION_AUDIT_TOKEN`. The token
 must be limited to repository administration read access and must not grant
 write access unless GitHub requires that shape for the selected token type.
+The scheduled audit fails fast when this secret is missing, because falling back
+to the default Actions token hides the governance gap and returns `403 Resource
+not accessible by integration`.
+
+After configuring the secret, run the workflow manually once from GitHub Actions
+and confirm `Branch protection drift audit` passes before relying on the
+weekly schedule.
 
 ## Recovery
 
