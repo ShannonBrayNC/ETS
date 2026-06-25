@@ -28,7 +28,7 @@ failure_count=0
 first_entry=true
 
 json_escape() {
-  python -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"
+  python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"
 }
 
 for entry in "${targets[@]}"; do
