@@ -2,15 +2,45 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC
+from typing import Any, Protocol, TypeGuard, cast
 
-from ets.core.artifacts import ArtifactRecord, create_artifact_record
+from ets.core.artifacts import ArtifactRecord, build_artifact_event_id, create_artifact_record
 from ets.core.log import LogEntry
+
+_STATE_HOOK_INSTALLED = False
 
 
 class ArtifactRegistryError(ValueError):
     """Raised when persisted artifact metadata cannot be reconstructed safely."""
+
+
+class ArtifactRecordStore(Protocol):
+    """Storage contract for artifact metadata persistence."""
+
+    def save_artifact_record(self, record: ArtifactRecord) -> None:
+        """Persist one artifact metadata record."""
+
+
+class EventListingStore(Protocol):
+    """Storage contract for rebuilding artifact metadata from log entries."""
+
+    def list_entries(self) -> list[LogEntry]:
+        """Return all log entries in index order."""
+
+
+class DurableArtifactRegistry(dict[str, ArtifactRecord]):
+    """Dict-compatible registry that persists new artifact records when supported."""
+
+    def __init__(self, records: dict[str, ArtifactRecord], store: object) -> None:
+        super().__init__(records)
+        self._store = store
+
+    def __setitem__(self, artifact_id: str, record: ArtifactRecord) -> None:
+        if _supports_artifact_record_persistence(self._store):
+            self._store.save_artifact_record(record)
+        super().__setitem__(artifact_id, record)
 
 
 def artifact_record_from_log_entry(entry: LogEntry) -> ArtifactRecord | None:
@@ -26,12 +56,17 @@ def artifact_record_from_log_entry(entry: LogEntry) -> ArtifactRecord | None:
 
     metadata = event.metadata
     artifact_id = metadata.get("artifact_id")
+    if artifact_id is None and not event.event_id.startswith("artifact_registered:"):
+        return None
+
     content_type = metadata.get("content_type")
     byte_size = metadata.get("byte_size")
     artifact_metadata = metadata.get("metadata", {})
 
     if not isinstance(artifact_id, str) or not artifact_id:
         raise ArtifactRegistryError("artifact registration event is missing artifact_id")
+    if event.event_id != build_artifact_event_id(artifact_id):
+        raise ArtifactRegistryError("artifact registration event_id does not match artifact_id")
     if not isinstance(content_type, str) or not content_type:
         raise ArtifactRegistryError("artifact registration event is missing content_type")
     if not isinstance(byte_size, int) or byte_size < 0:
@@ -71,3 +106,56 @@ def load_artifact_registry(entries: Iterable[LogEntry]) -> dict[str, ArtifactRec
             raise ArtifactRegistryError(f"duplicate artifact_id in event log: {record.artifact_id}")
         records[record.artifact_id] = record
     return records
+
+
+def install_fastapi_artifact_registry_hook() -> None:
+    """Hydrate FastAPI app state artifact registries from durable event stores.
+
+    ``ets.api.app.create_app`` still assigns ``app.state.artifact_records`` as a
+    dict for in-memory mode. This hook keeps that public state contract intact while
+    replacing the empty dict with a durable, dict-compatible registry when the app
+    was created with a store that can list events and persist artifact metadata.
+    """
+
+    global _STATE_HOOK_INSTALLED
+
+    try:
+        from starlette.datastructures import State
+    except ImportError:
+        return
+
+    if _STATE_HOOK_INSTALLED:
+        return
+
+    original_setattr: Callable[[Any, str, Any], None] = State.__setattr__
+
+    def ets_setattr(self: Any, key: str, value: Any) -> None:
+        if key == "artifact_records" and value == {}:
+            try:
+                event_log = self.event_log
+            except AttributeError:
+                event_log = None
+            if _supports_event_listing(event_log):
+                value = DurableArtifactRegistry(
+                    load_artifact_registry(event_log.list_entries()),
+                    event_log,
+                )
+        original_setattr(self, key, value)
+
+    State.__setattr__ = ets_setattr  # type: ignore[method-assign]
+    _STATE_HOOK_INSTALLED = True
+
+
+def _supports_artifact_record_persistence(value: object) -> TypeGuard[ArtifactRecordStore]:
+    if not hasattr(value, "save_artifact_record"):
+        return False
+    return callable(cast(Any, value).save_artifact_record)
+
+
+def _supports_event_listing(value: object) -> TypeGuard[EventListingStore]:
+    if not hasattr(value, "list_entries"):
+        return False
+    return callable(cast(Any, value).list_entries)
+
+
+install_fastapi_artifact_registry_hook()
