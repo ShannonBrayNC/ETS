@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterable
 from datetime import UTC
 from typing import Any, Protocol, TypeGuard, cast
 
-from ets.core.artifacts import ArtifactRecord, create_artifact_record
+from ets.core.artifacts import ArtifactRecord, build_artifact_event_id, create_artifact_record
 from ets.core.log import LogEntry
 
 _STATE_HOOK_INSTALLED = False
@@ -56,12 +56,17 @@ def artifact_record_from_log_entry(entry: LogEntry) -> ArtifactRecord | None:
 
     metadata = event.metadata
     artifact_id = metadata.get("artifact_id")
+    if artifact_id is None and not event.event_id.startswith("artifact_registered:"):
+        return None
+
     content_type = metadata.get("content_type")
     byte_size = metadata.get("byte_size")
     artifact_metadata = metadata.get("metadata", {})
 
     if not isinstance(artifact_id, str) or not artifact_id:
         raise ArtifactRegistryError("artifact registration event is missing artifact_id")
+    if event.event_id != build_artifact_event_id(artifact_id):
+        raise ArtifactRegistryError("artifact registration event_id does not match artifact_id")
     if not isinstance(content_type, str) or not content_type:
         raise ArtifactRegistryError("artifact registration event is missing content_type")
     if not isinstance(byte_size, int) or byte_size < 0:
