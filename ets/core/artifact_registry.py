@@ -6,7 +6,7 @@ from datetime import UTC
 from typing import Iterable
 
 from ets.core.artifacts import ArtifactRecord, create_artifact_record
-from ets.core.events import LogEntry
+from ets.core.log import LogEntry
 
 
 class ArtifactRegistryError(ValueError):
