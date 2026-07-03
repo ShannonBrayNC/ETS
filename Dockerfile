@@ -13,4 +13,4 @@ ENV ETS_SIGNING_MODE=local_unsigned
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "ets.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "ets.api.container_entrypoint"]
