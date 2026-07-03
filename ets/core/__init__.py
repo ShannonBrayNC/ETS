@@ -8,6 +8,11 @@ from ets.core.anchors import (
     build_anchor_export,
     verify_anchor_export,
 )
+from ets.core.artifact_registry import (
+    ArtifactRegistryError,
+    artifact_record_from_log_entry,
+    load_artifact_registry,
+)
 from ets.core.artifacts import (
     ArtifactRecord,
     build_artifact_event_id,
@@ -52,6 +57,7 @@ from ets.core.tree_head import SignedTreeHead
 __all__ = [
     "EMPTY_TREE_ROOT",
     "ArtifactRecord",
+    "ArtifactRegistryError",
     "AnchorExport",
     "AnchorTarget",
     "AnchorVerificationResult",
@@ -76,6 +82,7 @@ __all__ = [
     "StorageValidationError",
     "VerificationResult",
     "VerifierVote",
+    "artifact_record_from_log_entry",
     "audit_path_for_leaf",
     "anchor_export_payload",
     "assess_federation",
@@ -92,6 +99,7 @@ __all__ = [
     "generate_consistency_proof",
     "generate_inclusion_proof",
     "hash_artifact_bytes",
+    "load_artifact_registry",
     "merkle_root",
     "normalize_artifact_metadata",
     "recompute_block_hash",
