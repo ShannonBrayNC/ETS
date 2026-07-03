@@ -7,7 +7,6 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import RLock
-from typing import Any
 
 from pydantic import ValidationError
 
