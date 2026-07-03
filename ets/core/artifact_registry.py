@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import UTC
-from typing import Iterable
 
 from ets.core.artifacts import ArtifactRecord, create_artifact_record
 from ets.core.log import LogEntry
