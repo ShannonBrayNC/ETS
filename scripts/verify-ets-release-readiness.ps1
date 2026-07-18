@@ -24,6 +24,9 @@ $requiredFiles = @(
     "docs/demo/election-rc-walkthrough.md",
     "docs/ip",
     "scripts/verify-branch-protection-runbook.py",
+    "scripts/verify-ets-release-readiness.ps1",
+    "scripts/verify-ets-certificate-claim-safety.ps1",
+    "scripts/verify-ets-formal-traceability.ps1",
     "tests/unit/test_release_readiness_docs.py"
 )
 
@@ -99,12 +102,51 @@ if (Test-Path "docs/demo/election-rc-walkthrough.md") {
     }
 }
 
-if (Test-Path ".\.venv\Scripts\python.exe") {
-    & ".\.venv\Scripts\python.exe" "scripts/verify-branch-protection-runbook.py"
-    & ".\.venv\Scripts\python.exe" -c "from ets.version import __version__; print(__version__)"
-    if (Test-Path ".\.venv\Scripts\ets-verify.exe") {
-        & ".\.venv\Scripts\ets-verify.exe" --version
+function Get-RepoPython {
+    $candidates = @(
+        ".\.venv\Scripts\python.exe",
+        "./.venv/bin/python",
+        "python"
+    )
+
+    foreach ($candidate in $candidates) {
+        $command = Get-Command $candidate -ErrorAction SilentlyContinue
+        if ($command) {
+            return $command.Source
+        }
     }
+
+    return $null
+}
+
+$python = Get-RepoPython
+if ($python) {
+    & $python "scripts/verify-branch-protection-runbook.py"
+    & $python -c "from ets.version import __version__; print(__version__)"
+} else {
+    $failures.Add("Python was not found; cannot run release readiness import checks.")
+}
+
+$verifierCandidates = @(
+    ".\.venv\Scripts\ets-verify.exe",
+    "./.venv/bin/ets-verify",
+    "ets-verify"
+)
+$verifier = $null
+foreach ($candidate in $verifierCandidates) {
+    $command = Get-Command $candidate -ErrorAction SilentlyContinue
+    if ($command) {
+        $verifier = $command.Source
+        break
+    }
+}
+
+if ($verifier) {
+    & $verifier --version
+} elseif ($python) {
+    & $python -m ets.verifier.cli --version
+} else {
+    $failures.Add("ets-verify was not found; cannot run verifier version check.")
 }
 
 if ($failures.Count -gt 0) {

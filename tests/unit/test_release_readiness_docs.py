@@ -92,3 +92,19 @@ def test_release_notes_template_has_non_claims() -> None:
     ]
     for term in required_terms:
         assert term in text
+
+
+def test_release_readiness_script_is_cross_platform_and_self_guarding() -> None:
+    text = read("scripts/verify-ets-release-readiness.ps1")
+    required_terms = [
+        "scripts/verify-ets-release-readiness.ps1",
+        "scripts/verify-ets-certificate-claim-safety.ps1",
+        "scripts/verify-ets-formal-traceability.ps1",
+        "./.venv/bin/python",
+        "python",
+        "./.venv/bin/ets-verify",
+        "python -m ets.verifier.cli",
+        "Python was not found",
+    ]
+    for term in required_terms:
+        assert term in text
