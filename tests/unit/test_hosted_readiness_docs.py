@@ -120,3 +120,85 @@ def test_azure_signer_and_telemetry_doc_preserves_hosted_boundaries() -> None:
     ]
     for term in required_terms:
         assert term in text
+
+
+def test_hosted_readiness_sprint_3_records_azure_deployment_adapter_scope() -> None:
+    text = read("docs/sprints/SPRINT-HOSTED-READINESS-3.md")
+
+    required_terms = [
+        "Azure Deployment Adapter",
+        "AzureManagedIdentitySignerAdapter",
+        "Managed Identity",
+        "Bicep",
+        "App Configuration",
+        "Key Vault",
+        "Application Insights",
+        "CI-provided configuration only",
+        "tests\\integration\\test_hosted_azure_adapter.py",
+    ]
+    for term in required_terms:
+        assert term in text
+
+
+def test_azure_deployment_adapter_doc_defines_signalforge_boundary() -> None:
+    text = read("docs/security/AZURE_DEPLOYMENT_ADAPTER.md")
+
+    required_terms = [
+        "Requires Human Review",
+        "Trust label: Real Analysis",
+        "SignalForge owns Azure resource provisioning",
+        "AzureManagedIdentitySignerAdapter",
+        "ETS_AZURE_MANAGED_IDENTITY_ENABLED=true",
+        "ETS_AZURE_KEY_VAULT_URL",
+        "GitHub Actions secrets",
+        "Do not commit real vault URLs",
+        "infra/azure/ets-hosted.bicep",
+        "User Assigned Managed Identity",
+        "Application Insights",
+        "Hosted integration tests",
+    ]
+    for term in required_terms:
+        assert term in text
+
+
+def test_azure_bicep_reference_uses_managed_identity_and_no_secret_values() -> None:
+    text = read("infra/azure/ets-hosted.bicep")
+
+    required_terms = [
+        "Microsoft.ManagedIdentity/userAssignedIdentities",
+        "Microsoft.KeyVault/vaults",
+        "enableRbacAuthorization: true",
+        "enablePurgeProtection: true",
+        "Microsoft.AppConfiguration/configurationStores",
+        "disableLocalAuth: true",
+        "Microsoft.Insights/components",
+        "ETS_AZURE_MANAGED_IDENTITY_ENABLED",
+        "ETS_AZURE_KEY_VAULT_URL",
+        "ETS_AZURE_KEY_NAME",
+        "ETS_AZURE_KEY_VERSION",
+    ]
+    for term in required_terms:
+        assert term in text
+
+    prohibited_terms = [
+        "clientSecret",
+        "password",
+        "privateKey",
+        "tenant.example",
+    ]
+    for term in prohibited_terms:
+        assert term not in text
+
+
+def test_env_example_has_placeholder_only_azure_signer_configuration() -> None:
+    text = read(".env.example")
+
+    required_terms = [
+        "ETS_AZURE_MANAGED_IDENTITY_ENABLED=false",
+        "ETS_AZURE_KEY_VAULT_URL=",
+        "ETS_AZURE_KEY_NAME=",
+        "ETS_AZURE_KEY_VERSION=",
+        "Do not commit real vault URLs",
+    ]
+    for term in required_terms:
+        assert term in text
