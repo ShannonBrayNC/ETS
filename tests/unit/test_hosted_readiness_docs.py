@@ -81,3 +81,42 @@ def test_hosted_auth_signing_incident_runbook_preserves_evidence_boundaries() ->
     ]
     for term in required_terms:
         assert term in text
+
+
+def test_hosted_readiness_sprint_2_records_azure_signer_and_telemetry_scope() -> None:
+    text = read("docs/sprints/SPRINT-HOSTED-READINESS-2.md")
+
+    required_terms = [
+        "Azure Signer And Hosted Telemetry",
+        "AzureKeyVaultTreeHeadSigner",
+        "JWKS refresh/cache behavior",
+        "Application Insights-compatible",
+        "unknown key ID",
+        "ETS_AUTH_REQUIRED",
+        "Signing failures emit",
+        "tests\\unit\\test_hosted_telemetry.py",
+    ]
+    for term in required_terms:
+        assert term in text
+
+
+def test_azure_signer_and_telemetry_doc_preserves_hosted_boundaries() -> None:
+    text = read("docs/security/AZURE_SIGNER_AND_TELEMETRY.md")
+
+    required_terms = [
+        "Requires Human Review",
+        "Trust label: Real Analysis",
+        "AzureKeyVaultTreeHeadSigner",
+        "Managed Identity",
+        "private key material remains in Key Vault or Managed HSM",
+        "public_key_id",
+        "JWKS Refresh And Cache Behavior",
+        "unknown key ID",
+        "ets.auth.rejected",
+        "ets.signing.failed",
+        "severityLevel",
+        "Telemetry must not include bearer tokens",
+        "raw evidence payloads",
+    ]
+    for term in required_terms:
+        assert term in text

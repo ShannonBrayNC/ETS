@@ -446,3 +446,70 @@ def test_production_jwks_auth_rejects_unsupported_jwk_use_fail_closed() -> None:
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "ETS_AUTH_REQUIRED"
+
+
+def test_production_jwks_auth_refreshes_cached_keys_for_rotation() -> None:
+    old_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    new_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    initial_jwks = {"keys": [rsa_public_jwk(old_key.public_key(), kid="old-key")]}
+    rotated_jwks = {"keys": [rsa_public_jwk(new_key.public_key(), kid="new-key")]}
+    loads = 0
+
+    def load_jwks() -> dict[str, object]:
+        nonlocal loads
+        loads += 1
+        return rotated_jwks
+
+    policy = ProductionJWKSAuthPolicy(
+        initial_jwks,
+        issuer="https://issuer.example",
+        audience="ets-api",
+        jwks_loader=load_jwks,
+    )
+    client = TestClient(create_app(auth_policy=policy, auth_mode="production_jwks"))
+    token = make_rs256_token(
+        {
+            "sub": "alice",
+            "iss": "https://issuer.example",
+            "aud": "ets-api",
+            "exp": 4_102_444_800,
+        },
+        new_key,
+        kid="new-key",
+    )
+
+    response = client.get("/api/v1/events", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert loads == 1
+
+
+def test_production_jwks_auth_fails_closed_when_refresh_fails_for_unknown_key() -> None:
+    old_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    new_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    def load_jwks() -> dict[str, object]:
+        raise RuntimeError("jwks unavailable")
+
+    policy = ProductionJWKSAuthPolicy(
+        {"keys": [rsa_public_jwk(old_key.public_key(), kid="old-key")]},
+        issuer="https://issuer.example",
+        audience="ets-api",
+        jwks_loader=load_jwks,
+    )
+    client = TestClient(create_app(auth_policy=policy, auth_mode="production_jwks"))
+    token = make_rs256_token(
+        {
+            "sub": "alice",
+            "iss": "https://issuer.example",
+            "aud": "ets-api",
+            "exp": 4_102_444_800,
+        },
+        new_key,
+        kid="new-key",
+    )
+
+    response = client.get("/api/v1/events", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "ETS_AUTH_REQUIRED"

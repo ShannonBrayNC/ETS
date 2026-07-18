@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
 from urllib.request import urlopen
@@ -111,17 +112,15 @@ class ProductionJWKSAuthPolicy(AuthPolicy):
         *,
         issuer: str | None = None,
         audience: str | None = None,
+        jwks_loader: Callable[[], dict[str, Any]] | None = None,
+        cache_ttl_seconds: int = 300,
     ) -> None:
-        keys = jwks.get("keys")
-        if not isinstance(keys, list) or not keys:
-            raise RuntimeError("JWKS must contain at least one key")
-        self._keys = {
-            _required_str(key.get("kid"), "kid"): key for key in keys if isinstance(key, dict)
-        }
-        if not self._keys:
-            raise RuntimeError("JWKS must contain at least one key with a kid")
+        self._keys = _keys_from_jwks(jwks)
         self._issuer = issuer
         self._audience = audience
+        self._jwks_loader = jwks_loader
+        self._cache_ttl_seconds = cache_ttl_seconds
+        self._cache_expires_at = int(time.time()) + cache_ttl_seconds
 
     @classmethod
     def from_json(
@@ -141,9 +140,10 @@ class ProductionJWKSAuthPolicy(AuthPolicy):
         issuer: str | None = None,
         audience: str | None = None,
     ) -> ProductionJWKSAuthPolicy:
-        with urlopen(jwks_url, timeout=5) as response:
-            jwks = cast(dict[str, Any], json.loads(response.read().decode("utf-8")))
-        return cls(jwks, issuer=issuer, audience=audience)
+        def load_jwks() -> dict[str, Any]:
+            return _load_jwks_from_url(jwks_url)
+
+        return cls(load_jwks(), issuer=issuer, audience=audience, jwks_loader=load_jwks)
 
     def authenticate(self, request: Request) -> AuthContext:
         authorization = request.headers.get("Authorization", "")
@@ -167,9 +167,7 @@ class ProductionJWKSAuthPolicy(AuthPolicy):
         if header.get("alg") != "RS256" or header.get("typ") != "JWT":
             raise AuthError("unsupported bearer token header")
         kid = _required_str(header.get("kid"), "kid")
-        jwk = self._keys.get(kid)
-        if jwk is None:
-            raise AuthError("bearer token key not trusted")
+        jwk = self._trusted_key(kid)
 
         signing_input = f"{parts[0]}.{parts[1]}".encode("ascii")
         signature = _decode_segment(parts[2], "bearer token signature")
@@ -182,6 +180,28 @@ class ProductionJWKSAuthPolicy(AuthPolicy):
         claims = _decode_json_object(parts[1], "bearer token claims")
         _validate_registered_claims(claims, issuer=self._issuer, audience=self._audience)
         return claims
+
+    def _trusted_key(self, kid: str) -> dict[str, Any]:
+        now = int(time.time())
+        if self._jwks_loader is not None and now >= self._cache_expires_at:
+            self._refresh_keys(now)
+
+        jwk = self._keys.get(kid)
+        if jwk is None and self._jwks_loader is not None:
+            self._refresh_keys(now)
+            jwk = self._keys.get(kid)
+        if jwk is None:
+            raise AuthError("bearer token key not trusted")
+        return jwk
+
+    def _refresh_keys(self, now: int | None = None) -> None:
+        if self._jwks_loader is None:
+            return
+        try:
+            self._keys = _keys_from_jwks(self._jwks_loader())
+            self._cache_expires_at = (now or int(time.time())) + self._cache_ttl_seconds
+        except Exception as exc:
+            raise AuthError("could not refresh JWKS") from exc
 
 
 def make_hs256_token(claims: dict[str, Any], secret: str) -> str:
@@ -290,6 +310,23 @@ def _audience_matches(value: Any, expected: str) -> bool:
     if isinstance(value, list):
         return expected in value
     return False
+
+
+def _keys_from_jwks(jwks: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    keys = jwks.get("keys")
+    if not isinstance(keys, list) or not keys:
+        raise RuntimeError("JWKS must contain at least one key")
+    trusted_keys = {
+        _required_str(key.get("kid"), "kid"): key for key in keys if isinstance(key, dict)
+    }
+    if not trusted_keys:
+        raise RuntimeError("JWKS must contain at least one key with a kid")
+    return trusted_keys
+
+
+def _load_jwks_from_url(jwks_url: str) -> dict[str, Any]:
+    with urlopen(jwks_url, timeout=5) as response:
+        return cast(dict[str, Any], json.loads(response.read().decode("utf-8")))
 
 
 def _rsa_public_key_from_jwk(jwk: dict[str, Any]) -> rsa.RSAPublicKey:

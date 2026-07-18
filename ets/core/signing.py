@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Protocol
+from urllib.parse import urlparse
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
@@ -47,6 +49,55 @@ class Ed25519TreeHeadSigner:
             }
         )
 
+
+
+class AzureKeyVaultTreeHeadSigner:
+    """Tree-head signer abstraction for Azure Key Vault or Managed HSM adapters.
+
+    The adapter is injected so the ETS core never stores Azure credentials, client
+    IDs, tenant IDs, access tokens, or private key material. Production deployments
+    should supply an adapter that signs the canonical payload through Managed
+    Identity.
+    """
+
+    signature_alg = Ed25519TreeHeadSigner.signature_alg
+
+    def __init__(
+        self,
+        *,
+        vault_url: str,
+        key_name: str,
+        key_version: str,
+        sign_payload: Callable[[bytes], bytes],
+    ) -> None:
+        parsed = urlparse(vault_url)
+        if parsed.scheme != "https" or not parsed.netloc:
+            raise RuntimeError("Azure signer vault_url must be an HTTPS URL")
+        if not key_name:
+            raise RuntimeError("Azure signer key_name is required")
+        if not key_version:
+            raise RuntimeError("Azure signer key_version is required")
+        self._vault_url = vault_url.rstrip("/")
+        self._key_name = key_name
+        self._key_version = key_version
+        self._sign_payload = sign_payload
+
+    @property
+    def public_key_id(self) -> str:
+        return f"{self._vault_url}/keys/{self._key_name}/{self._key_version}"
+
+    def sign(self, tree_head: SignedTreeHead) -> SignedTreeHead:
+        payload = tree_head_signature_payload(tree_head)
+        signature = self._sign_payload(payload).hex()
+        if not signature:
+            raise RuntimeError("Azure signer returned an empty signature")
+        return tree_head.model_copy(
+            update={
+                "signature_alg": self.signature_alg,
+                "signature": signature,
+                "public_key_id": self.public_key_id,
+            }
+        )
 
 def tree_head_signature_payload(tree_head: SignedTreeHead) -> bytes:
     """Return canonical bytes signed by tree-head signers."""
