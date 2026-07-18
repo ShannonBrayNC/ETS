@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -80,15 +81,15 @@ class ProductionJWTAuthPolicy(AuthPolicy):
 
         signing_input = f"{parts[0]}.{parts[1]}".encode("ascii")
         expected = hmac.new(self._secret, signing_input, hashlib.sha256).digest()
-        actual = _b64decode(parts[2])
+        actual = _decode_segment(parts[2], "bearer token signature")
         if not hmac.compare_digest(expected, actual):
             raise AuthError("invalid bearer token signature")
 
-        header = json.loads(_b64decode(parts[0]))
+        header = _decode_json_object(parts[0], "bearer token header")
         if header.get("alg") != "HS256" or header.get("typ") != "JWT":
             raise AuthError("unsupported bearer token header")
 
-        claims = cast(dict[str, Any], json.loads(_b64decode(parts[1])))
+        claims = _decode_json_object(parts[1], "bearer token claims")
         now = int(time.time())
         exp = claims.get("exp")
         if not isinstance(exp, int) or exp <= now:
@@ -161,7 +162,8 @@ class ProductionJWKSAuthPolicy(AuthPolicy):
         parts = token.split(".")
         if len(parts) != 3:
             raise AuthError("invalid bearer token")
-        header = cast(dict[str, Any], json.loads(_b64decode(parts[0])))
+
+        header = _decode_json_object(parts[0], "bearer token header")
         if header.get("alg") != "RS256" or header.get("typ") != "JWT":
             raise AuthError("unsupported bearer token header")
         kid = _required_str(header.get("kid"), "kid")
@@ -170,14 +172,14 @@ class ProductionJWKSAuthPolicy(AuthPolicy):
             raise AuthError("bearer token key not trusted")
 
         signing_input = f"{parts[0]}.{parts[1]}".encode("ascii")
-        signature = _b64decode(parts[2])
+        signature = _decode_segment(parts[2], "bearer token signature")
         public_key = _rsa_public_key_from_jwk(jwk)
         try:
             public_key.verify(signature, signing_input, padding.PKCS1v15(), hashes.SHA256())
         except Exception as exc:
             raise AuthError("invalid bearer token signature") from exc
 
-        claims = cast(dict[str, Any], json.loads(_b64decode(parts[1])))
+        claims = _decode_json_object(parts[1], "bearer token claims")
         _validate_registered_claims(claims, issuer=self._issuer, audience=self._audience)
         return claims
 
@@ -232,6 +234,23 @@ def _b64decode(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + padding)
 
 
+def _decode_segment(value: str, label: str) -> bytes:
+    try:
+        return _b64decode(value)
+    except (binascii.Error, ValueError) as exc:
+        raise AuthError(f"invalid {label}") from exc
+
+
+def _decode_json_object(value: str, label: str) -> dict[str, Any]:
+    try:
+        decoded = json.loads(_decode_segment(value, label))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise AuthError(f"invalid {label}") from exc
+    if not isinstance(decoded, dict):
+        raise AuthError(f"invalid {label}")
+    return cast(dict[str, Any], decoded)
+
+
 def _optional_str(value: Any, field_name: str) -> str | None:
     if value is None:
         return None
@@ -274,7 +293,11 @@ def _audience_matches(value: Any, expected: str) -> bool:
 
 
 def _rsa_public_key_from_jwk(jwk: dict[str, Any]) -> rsa.RSAPublicKey:
-    if jwk.get("kty") != "RSA" or jwk.get("alg") not in {None, "RS256"}:
+    if (
+        jwk.get("kty") != "RSA"
+        or jwk.get("alg") not in {None, "RS256"}
+        or jwk.get("use") not in {None, "sig"}
+    ):
         raise AuthError("unsupported JWKS key")
     n = int.from_bytes(_b64decode(_required_str(jwk.get("n"), "n")), "big")
     e = int.from_bytes(_b64decode(_required_str(jwk.get("e"), "e")), "big")
