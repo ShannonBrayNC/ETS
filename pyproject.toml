@@ -24,7 +24,10 @@ ets-verify = "ets.verifier.cli:main"
 
 [project.optional-dependencies]
 dev = [
+    "click>=8.3.3,<9",
     "httpx>=0.28,<1",
+    "msgpack>=1.2.1,<2",
+    "pip-audit>=2.10,<3",
     "pytest>=9.0.3,<10",
     "ruff>=0.8,<1",
     "mypy>=1.13,<2",
