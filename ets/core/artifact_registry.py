@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from datetime import UTC
 from typing import Any, Protocol, TypeGuard, cast
 
 from ets.core.artifacts import ArtifactRecord, build_artifact_event_id, create_artifact_record
 from ets.core.log import LogEntry
-
-_STATE_HOOK_INSTALLED = False
 
 
 class ArtifactRegistryError(ValueError):
@@ -108,43 +106,6 @@ def load_artifact_registry(entries: Iterable[LogEntry]) -> dict[str, ArtifactRec
     return records
 
 
-def install_fastapi_artifact_registry_hook() -> None:
-    """Hydrate FastAPI app state artifact registries from durable event stores.
-
-    ``ets.api.app.create_app`` still assigns ``app.state.artifact_records`` as a
-    dict for in-memory mode. This hook keeps that public state contract intact while
-    replacing the empty dict with a durable, dict-compatible registry when the app
-    was created with a store that can list events and persist artifact metadata.
-    """
-
-    global _STATE_HOOK_INSTALLED
-
-    try:
-        from starlette.datastructures import State
-    except ImportError:
-        return
-
-    if _STATE_HOOK_INSTALLED:
-        return
-
-    original_setattr: Callable[[Any, str, Any], None] = State.__setattr__
-
-    def ets_setattr(self: Any, key: str, value: Any) -> None:
-        if key == "artifact_records" and value == {}:
-            try:
-                event_log = self.event_log
-            except AttributeError:
-                event_log = None
-            if _supports_event_listing(event_log):
-                value = DurableArtifactRegistry(
-                    load_artifact_registry(event_log.list_entries()),
-                    event_log,
-                )
-        original_setattr(self, key, value)
-
-    State.__setattr__ = ets_setattr  # type: ignore[method-assign]
-    _STATE_HOOK_INSTALLED = True
-
 
 def _supports_artifact_record_persistence(value: object) -> TypeGuard[ArtifactRecordStore]:
     if not hasattr(value, "save_artifact_record"):
@@ -158,4 +119,3 @@ def _supports_event_listing(value: object) -> TypeGuard[EventListingStore]:
     return callable(cast(Any, value).list_entries)
 
 
-install_fastapi_artifact_registry_hook()
