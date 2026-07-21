@@ -16,8 +16,9 @@ obtained.
 ## Tenant And Workspace Isolation
 
 Local mode can scope requests with `X-ETS-Tenant` and `X-ETS-Workspace`.
-`production_jwt` mode uses bearer-token `tenant_id` and `workspace_id` claims as
-the authoritative request scope. Header values must match token claims.
+`production_jwt` and `production_jwks` modes use bearer-token `tenant_id` and
+`workspace_id` claims as the authoritative request scope. Header values must
+match token claims.
 
 ## Metadata Sensitivity
 
@@ -52,8 +53,12 @@ Supported modes:
 - `local_header`: development only.
 - `local_api_key`: shared local key via `X-ETS-API-Key`.
 - `production_jwt`: HS256 bearer validation with required `exp`.
+- `production_jwks`: RS256 bearer validation against configured JWKS with
+  optional issuer and audience checks.
 
-External OIDC/JWKS and Entra ID validation are production roadmap items.
+Hosted alpha deployments should prefer `production_jwks`. OIDC discovery,
+Entra-specific configuration, managed key rotation, and deployment-owner
+operations remain production hardening work.
 
 ## Authorization Model
 
@@ -88,7 +93,8 @@ metadata. Audit logs should be treated as sensitive operational records.
 Minimum production-like profile:
 
 - `ETS_STORAGE_PROVIDER=sqlite` for alpha durability, PostgreSQL in future.
-- `ETS_AUTH_MODE=production_jwt`.
+- `ETS_AUTH_MODE=production_jwks` with `ETS_AUTH_ISSUER` and
+  `ETS_AUTH_AUDIENCE` configured.
 - `ETS_SIGNING_MODE=ed25519` or `production`.
 - Redaction profile selected intentionally.
 - HTTPS termination, rate limiting, backup/restore, and log retention configured
@@ -96,7 +102,8 @@ Minimum production-like profile:
 
 ## Production Gaps
 
-- OIDC/JWKS validation.
+- OIDC discovery and Entra deployment integration.
+- Managed JWKS ownership and key rotation runbooks.
 - Managed signing keys and rotation.
 - Compact consistency proofs.
 - PostgreSQL provider.
