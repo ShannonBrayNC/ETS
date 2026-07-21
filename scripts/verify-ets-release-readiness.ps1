@@ -24,6 +24,9 @@ $requiredFiles = @(
     "docs/demo/election-rc-walkthrough.md",
     "docs/ip",
     "scripts/verify-branch-protection-runbook.py",
+    "scripts/verify-ets-release-readiness.ps1",
+    "scripts/verify-ets-certificate-claim-safety.ps1",
+    "scripts/verify-ets-formal-traceability.ps1",
     "tests/unit/test_release_readiness_docs.py"
 )
 
@@ -37,8 +40,8 @@ foreach ($path in $requiredFiles) {
 
 function Assert-Contains {
     param(
-        [Parameter(Mandatory=$true)][string]$Path,
-        [Parameter(Mandatory=$true)][string[]]$Terms
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string[]]$Terms
     )
 
     if (-not (Test-Path $Path)) {
@@ -50,6 +53,43 @@ function Assert-Contains {
         if ($text -notmatch [regex]::Escape($term)) {
             $failures.Add("$Path missing required term: $term")
         }
+    }
+}
+
+function Get-RepoPython {
+    $candidates = @(
+        ".\.venv\Scripts\python.exe",
+        ".\.venv\bin\python",
+        ".\.venv312\Scripts\python.exe",
+        ".\.venv312\bin\python"
+    )
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return (Resolve-Path $candidate).Path
+        }
+    }
+
+    foreach ($commandName in @("python", "python3", "py")) {
+        $command = Get-Command $commandName -ErrorAction SilentlyContinue
+        if ($null -ne $command) {
+            return $command.Source
+        }
+    }
+
+    throw "Unable to locate a Python interpreter for ETS release validation."
+}
+
+function Invoke-CheckedCommand {
+    param(
+        [Parameter(Mandatory = $true)][string]$Executable,
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    & $Executable @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Description failed with exit code $LASTEXITCODE."
     }
 }
 
@@ -99,20 +139,52 @@ if (Test-Path "docs/demo/election-rc-walkthrough.md") {
     }
 }
 
-if (Test-Path ".\.venv\Scripts\python.exe") {
-    & ".\.venv\Scripts\python.exe" "scripts/verify-branch-protection-runbook.py"
-    & ".\.venv\Scripts\python.exe" -c "from ets.version import __version__; print(__version__)"
-    if (Test-Path ".\.venv\Scripts\ets-verify.exe") {
-        & ".\.venv\Scripts\ets-verify.exe" --version
-    }
-}
-
 if ($failures.Count -gt 0) {
     Write-Host "ETS release readiness verification failed:" -ForegroundColor Red
     foreach ($failure in $failures) {
         Write-Host " - $failure" -ForegroundColor Red
     }
     exit 1
+}
+
+$python = Get-RepoPython
+
+Invoke-CheckedCommand `
+    -Executable $python `
+    -Arguments @("scripts/verify-branch-protection-runbook.py") `
+    -Description "Branch protection runbook verification"
+
+Invoke-CheckedCommand `
+    -Executable $python `
+    -Arguments @("-c", "from ets.version import __version__; print(__version__)") `
+    -Description "ETS version import verification"
+
+$verifierCandidates = @(
+    ".\.venv\Scripts\ets-verify.exe",
+    ".\.venv\bin\ets-verify",
+    ".\.venv312\Scripts\ets-verify.exe",
+    ".\.venv312\bin\ets-verify"
+)
+
+$verifier = $null
+foreach ($candidate in $verifierCandidates) {
+    if (Test-Path $candidate) {
+        $verifier = (Resolve-Path $candidate).Path
+        break
+    }
+}
+
+if ($null -ne $verifier) {
+    Invoke-CheckedCommand `
+        -Executable $verifier `
+        -Arguments @("--version") `
+        -Description "ETS verifier executable validation"
+}
+else {
+    Invoke-CheckedCommand `
+        -Executable $python `
+        -Arguments @("-m", "ets.verifier.cli", "--version") `
+        -Description "ETS verifier module validation"
 }
 
 Write-Host "ETS release readiness verification passed." -ForegroundColor Green
