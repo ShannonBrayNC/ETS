@@ -1,252 +1,125 @@
-"""Inclusion proof generation and verification."""
+"""Deterministic Merkle tree construction for ETS.
+
+This follows the RFC 6962 (Certificate Transparency) Merkle Tree Hash (MTH)
+construction:
+
+  * Leaf and internal-node hashes are domain-separated with a one-byte
+    prefix (0x00 for leaves, 0x01 for internal nodes), so a node hash can
+    never be replayed as a leaf hash or vice versa.
+  * Trees with an odd number of nodes at a level are NOT balanced by
+    duplicating the final node. Instead, the tree is split unevenly: the
+    left subtree always has a power-of-two number of leaves. This avoids
+    the classic "duplicate leaf" ambiguity (the same issue behind
+    CVE-2012-2459 in early Bitcoin merkle trees), where two different
+    leaf sequences could otherwise produce the same root.
+"""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import Literal
+import hashlib
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+LEAF_HASH_PREFIX = b"\x00"
+NODE_HASH_PREFIX = b"\x01"
 
-from ets.core.log import LogEntry
-from ets.core.merkle import (
-    audit_path_for_leaf,
-    compute_root_from_audit_path,
-    merkle_root,
-    split_point,
-)
+EMPTY_TREE_ROOT = hashlib.sha256(b"").hexdigest()
 
 
-class AuditPathStep(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+def leaf_hash_for_event_hash(event_hash: str) -> str:
+    """Hash a canonical event hash into the tree leaf namespace."""
 
-    position: Literal["left", "right"]
-    hash: str = Field(min_length=64, max_length=64)
-
-    @field_validator("hash")
-    @classmethod
-    def require_hash_hex(cls, value: str) -> str:
-        bytes.fromhex(value)
-        return value
+    _require_sha256_hex(event_hash, "event_hash")
+    return hashlib.sha256(LEAF_HASH_PREFIX + bytes.fromhex(event_hash)).hexdigest()
 
 
-class InclusionProof(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+def merkle_root(leaf_hashes: list[str]) -> str:
+    """Return the ETS Merkle tree hash (RFC 6962 MTH) for leaf hashes."""
 
-    schema_version: str = "ets.inclusion_proof.v1"
-    tree_size: int = Field(ge=1)
-    leaf_index: int = Field(ge=0)
-    leaf_hash: str = Field(min_length=64, max_length=64)
-    root_hash: str = Field(min_length=64, max_length=64)
-    audit_path: list[AuditPathStep]
-    hash_alg: str = "sha256"
-    generated_at_utc: datetime
+    for leaf_hash in leaf_hashes:
+        _require_sha256_hex(leaf_hash, "leaf_hash")
 
-    @field_validator("leaf_hash", "root_hash")
-    @classmethod
-    def require_hash_hex(cls, value: str) -> str:
-        bytes.fromhex(value)
-        return value
+    if not leaf_hashes:
+        return EMPTY_TREE_ROOT
 
-    @field_validator("generated_at_utc")
-    @classmethod
-    def require_utc_datetime(cls, value: datetime) -> datetime:
-        if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError("generated_at_utc must be timezone-aware")
-        return value.astimezone(UTC)
+    return _subtree_hash(leaf_hashes)
 
 
-class VerificationResult(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+def audit_path_for_leaf(leaf_hashes: list[str], leaf_index: int) -> list[dict[str, str]]:
+    """Return the Merkle audit path for a zero-based leaf index."""
 
-    valid: bool
-    reason: str
-    root_hash: str | None = None
-    leaf_hash: str | None = None
-    tree_size: int | None = None
-    verified_at_utc: datetime
-
-
-class ConsistencyProof(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
-
-    schema_version: str = "ets.consistency_proof.v1"
-    previous_tree_size: int = Field(ge=0)
-    latest_tree_size: int = Field(ge=0)
-    previous_root_hash: str = Field(min_length=64, max_length=64)
-    latest_root_hash: str = Field(min_length=64, max_length=64)
-    leaf_hashes: list[str]
-    hash_alg: str = "sha256"
-    generated_at_utc: datetime
-
-    @field_validator("previous_root_hash", "latest_root_hash", "leaf_hashes")
-    @classmethod
-    def require_hash_hex(cls, value: str | list[str]) -> str | list[str]:
-        values = value if isinstance(value, list) else [value]
-        for item in values:
-            bytes.fromhex(item)
-        return value
-
-    @field_validator("generated_at_utc")
-    @classmethod
-    def require_utc_datetime(cls, value: datetime) -> datetime:
-        if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError("generated_at_utc must be timezone-aware")
-        return value.astimezone(UTC)
-
-
-def generate_inclusion_proof(
-    entries: list[LogEntry],
-    leaf_index: int,
-    generated_at_utc: datetime | None = None,
-) -> InclusionProof:
-    """Generate an inclusion proof from append-only log entries."""
-
-    if leaf_index < 0 or leaf_index >= len(entries):
+    if leaf_index < 0 or leaf_index >= len(leaf_hashes):
         raise IndexError("leaf_index is outside the tree")
 
-    leaf_hashes = [entry.leaf_hash for entry in entries]
-    generated_at = generated_at_utc or datetime.now(UTC)
+    for leaf_hash in leaf_hashes:
+        _require_sha256_hex(leaf_hash, "leaf_hash")
 
-    return InclusionProof(
-        tree_size=len(leaf_hashes),
-        leaf_index=leaf_index,
-        leaf_hash=leaf_hashes[leaf_index],
-        root_hash=merkle_root(leaf_hashes),
-        audit_path=[
-            AuditPathStep.model_validate(step)
-            for step in audit_path_for_leaf(leaf_hashes, leaf_index)
-        ],
-        generated_at_utc=generated_at,
-    )
+    return _subtree_path(leaf_hashes, leaf_index)
 
 
-def generate_consistency_proof(
-    entries: list[LogEntry],
-    previous_tree_size: int,
-    generated_at_utc: datetime | None = None,
-) -> ConsistencyProof:
-    """Generate a linear consistency proof for the ETS Merkle tree."""
+def compute_root_from_audit_path(leaf_hash: str, audit_path: list[dict[str, str]]) -> str:
+    """Reconstruct a Merkle root from a leaf hash and an ordered audit path."""
 
-    latest_size = len(entries)
-    if previous_tree_size < 0 or previous_tree_size > latest_size:
-        raise ValueError("previous_tree_size must be between 0 and latest tree size")
+    _require_sha256_hex(leaf_hash, "leaf_hash")
+    current = leaf_hash
+    for step in audit_path:
+        position = step.get("position")
+        sibling_hash = step.get("hash")
+        if sibling_hash is None:
+            raise ValueError("audit path step is missing hash")
+        _require_sha256_hex(sibling_hash, "audit_path.hash")
 
-    leaf_hashes = [entry.leaf_hash for entry in entries]
-    generated_at = generated_at_utc or datetime.now(UTC)
-    return ConsistencyProof(
-        previous_tree_size=previous_tree_size,
-        latest_tree_size=latest_size,
-        previous_root_hash=merkle_root(leaf_hashes[:previous_tree_size]),
-        latest_root_hash=merkle_root(leaf_hashes),
-        leaf_hashes=leaf_hashes,
-        generated_at_utc=generated_at,
-    )
+        if position == "left":
+            current = _hash_pair(sibling_hash, current)
+        elif position == "right":
+            current = _hash_pair(current, sibling_hash)
+        else:
+            raise ValueError("audit path position must be left or right")
 
-
-def verify_inclusion_proof(proof: InclusionProof) -> VerificationResult:
-    """Verify a self-contained ETS inclusion proof."""
-
-    verified_at = datetime.now(UTC)
-
-    if proof.hash_alg != "sha256":
-        return _invalid(proof, verified_at, "unsupported hash algorithm")
-
-    if proof.leaf_index >= proof.tree_size:
-        return _invalid(proof, verified_at, "leaf index is outside tree size")
-
-    if proof.tree_size == 1 and proof.audit_path:
-        return _invalid(proof, verified_at, "single-leaf tree must not have an audit path")
-
-    expected_positions = _expected_audit_path_positions(proof.tree_size, proof.leaf_index)
-    actual_positions = [step.position for step in proof.audit_path]
-    if actual_positions != expected_positions:
-        return _invalid(proof, verified_at, "audit path does not match leaf index")
-
-    try:
-        path = [step.model_dump() for step in proof.audit_path]
-        computed_root = compute_root_from_audit_path(proof.leaf_hash, path)
-    except ValueError as ex:
-        return _invalid(proof, verified_at, str(ex))
-
-    if computed_root != proof.root_hash:
-        return _invalid(proof, verified_at, "computed root does not match proof root")
-
-    return VerificationResult(
-        valid=True,
-        reason="ok",
-        root_hash=proof.root_hash,
-        leaf_hash=proof.leaf_hash,
-        tree_size=proof.tree_size,
-        verified_at_utc=verified_at,
-    )
+    return current
 
 
-def verify_consistency_proof(proof: ConsistencyProof) -> VerificationResult:
-    verified_at = datetime.now(UTC)
+def split_point(tree_size: int) -> int:
+    """Return the RFC 6962 split point: the largest power of two < tree_size."""
 
-    if proof.hash_alg != "sha256":
-        return VerificationResult(
-            valid=False,
-            reason="unsupported hash algorithm",
-            root_hash=proof.latest_root_hash,
-            tree_size=proof.latest_tree_size,
-            verified_at_utc=verified_at,
-        )
-    if proof.previous_tree_size > proof.latest_tree_size:
-        return _invalid_consistency(proof, verified_at, "tree size regressed")
-    if len(proof.leaf_hashes) != proof.latest_tree_size:
-        return _invalid_consistency(
-            proof,
-            verified_at,
-            "leaf hash count does not match latest size",
-        )
-    if merkle_root(proof.leaf_hashes[: proof.previous_tree_size]) != proof.previous_root_hash:
-        return _invalid_consistency(proof, verified_at, "previous root does not match leaves")
-    if merkle_root(proof.leaf_hashes) != proof.latest_root_hash:
-        return _invalid_consistency(proof, verified_at, "latest root does not match leaves")
-    return VerificationResult(
-        valid=True,
-        reason="ok",
-        root_hash=proof.latest_root_hash,
-        tree_size=proof.latest_tree_size,
-        verified_at_utc=verified_at,
-    )
+    if tree_size < 2:
+        raise ValueError("split_point requires tree_size >= 2")
+    k = 1
+    while k * 2 < tree_size:
+        k *= 2
+    return k
 
 
-def _expected_audit_path_positions(tree_size: int, leaf_index: int) -> list[str]:
-    if tree_size <= 1:
+def _subtree_hash(leaves: list[str]) -> str:
+    if len(leaves) == 1:
+        return leaves[0]
+    k = split_point(len(leaves))
+    left = _subtree_hash(leaves[:k])
+    right = _subtree_hash(leaves[k:])
+    return _hash_pair(left, right)
+
+
+def _subtree_path(leaves: list[str], index: int) -> list[dict[str, str]]:
+    if len(leaves) == 1:
         return []
-
-    k = split_point(tree_size)
-    if leaf_index < k:
-        return _expected_audit_path_positions(k, leaf_index) + ["right"]
-    return _expected_audit_path_positions(tree_size - k, leaf_index - k) + ["left"]
-
-
-def _invalid(
-    proof: InclusionProof,
-    verified_at_utc: datetime,
-    reason: str,
-) -> VerificationResult:
-    return VerificationResult(
-        valid=False,
-        reason=reason,
-        root_hash=proof.root_hash,
-        leaf_hash=proof.leaf_hash,
-        tree_size=proof.tree_size,
-        verified_at_utc=verified_at_utc,
-    )
+    k = split_point(len(leaves))
+    if index < k:
+        path = _subtree_path(leaves[:k], index)
+        path.append({"position": "right", "hash": _subtree_hash(leaves[k:])})
+    else:
+        path = _subtree_path(leaves[k:], index - k)
+        path.append({"position": "left", "hash": _subtree_hash(leaves[:k])})
+    return path
 
 
-def _invalid_consistency(
-    proof: ConsistencyProof,
-    verified_at_utc: datetime,
-    reason: str,
-) -> VerificationResult:
-    return VerificationResult(
-        valid=False,
-        reason=reason,
-        root_hash=proof.latest_root_hash,
-        tree_size=proof.latest_tree_size,
-        verified_at_utc=verified_at_utc,
-    )
+def _hash_pair(left_hex: str, right_hex: str) -> str:
+    return hashlib.sha256(
+        NODE_HASH_PREFIX + bytes.fromhex(left_hex) + bytes.fromhex(right_hex)
+    ).hexdigest()
+
+
+def _require_sha256_hex(value: str, field_name: str) -> None:
+    if len(value) != 64:
+        raise ValueError(f"{field_name} must be a SHA-256 hex digest")
+    try:
+        bytes.fromhex(value)
+    except ValueError as ex:
+        raise ValueError(f"{field_name} must be hex encoded") from ex
