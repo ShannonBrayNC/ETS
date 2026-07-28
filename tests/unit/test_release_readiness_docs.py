@@ -11,6 +11,16 @@ def read(path: str) -> str:
 
 def test_release_gate_docs_exist() -> None:
     required = [
+        "README.md",
+        "PATENT_NOTICE.md",
+        "SECURITY.md",
+        "CONTRIBUTING.md",
+        "LICENSE",
+        "NOTICE",
+        ".github/dependabot.yml",
+        ".github/pull_request_template.md",
+        ".github/ISSUE_TEMPLATE/bug_report.md",
+        ".github/ISSUE_TEMPLATE/security_boundary.md",
         "docs/release/PUBLIC_RELEASE_CHECKLIST.md",
         "docs/release/ALPHA_RELEASE_GATE.md",
         "docs/release/ALPHA_RELEASE_NOTES_TEMPLATE.md",
@@ -42,7 +52,8 @@ def test_public_release_checklist_has_required_gates() -> None:
         "Formal traceability",
         "Reproducibility matrix",
         "Certificate claim-safety",
-        "IP review",
+        "IP review boundary",
+        "Public contribution guardrails",
         "Election demo boundary",
         "No production overclaim",
     ]
@@ -67,6 +78,26 @@ def test_research_boundary_docs_state_non_claims() -> None:
             assert term in text
 
 
+def test_public_guardrails_state_patent_and_sensitive_data_boundary() -> None:
+    docs = [
+        read("PATENT_NOTICE.md"),
+        read("SECURITY.md"),
+        read("CONTRIBUTING.md"),
+        read(".github/pull_request_template.md"),
+    ]
+    required_terms = [
+        "USPTO receipts",
+        "application numbers",
+        "prior-art matrices",
+        "attorney-review",
+        "real PII",
+        "official election data",
+    ]
+    for text in docs:
+        for term in required_terms:
+            assert term in text
+
+
 def test_alpha_gate_blocks_overclaims() -> None:
     text = read("docs/release/ALPHA_RELEASE_GATE.md")
     blocked_terms = [
@@ -77,6 +108,7 @@ def test_alpha_gate_blocks_overclaims() -> None:
         "completeness without external expected-event policy",
         "Byzantine consensus",
         "Internet-scale adversarial liveness",
+        "patent allowance",
     ]
     for term in blocked_terms:
         assert term in text
@@ -90,7 +122,8 @@ def test_release_notes_template_has_non_claims() -> None:
         "Legal sufficiency",
         "Election correctness",
         "Production trust-service readiness",
-        "Patent filing or allowance",
+        "Patent allowance",
+        "freedom to operate",
     ]
     for term in required_terms:
         assert term in text
@@ -107,6 +140,7 @@ def test_release_readiness_script_is_cross_platform_and_self_guarding() -> None:
         "verify-ets-certificate-claim-safety.ps1",
         "verify-ets-formal-traceability.ps1",
         'Arguments @("-m", "ets.verifier.cli", "--version")',
+        "forbiddenPublicPaths",
     ]
     for term in required_terms:
         assert term in text
