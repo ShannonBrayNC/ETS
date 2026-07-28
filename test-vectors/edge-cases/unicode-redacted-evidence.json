@@ -1,0 +1,25 @@
+{
+  "schema_version": "ets.event.v0.1",
+  "event_id": "evt-ets-v01-edge-unicode-redacted-001",
+  "tenant_id": "example-tenant",
+  "workspace_id": "unicode-lab",
+  "evidence_id": "evd-ets-v01-unicode-redacted-001",
+  "event_type": "redacted_human_evidence",
+  "subject_ref": "Unicode normalization and redaction handling: café Δ доказ",
+  "content_hash_alg": "sha256",
+  "content_hash": "sha256:5a35d858550708ce3a0e39b36459de12349844e19effda79973ca73347c6983e",
+  "metadata": {
+    "source_system": "example-human-intake",
+    "redaction_notes": [
+      "name_redacted",
+      "location_generalized"
+    ],
+    "unicode_sample": "café Δ доказ 🔒",
+    "claim_boundary": "redacted metadata example; raw evidence bytes are not embedded"
+  },
+  "created_at_utc": "2026-07-28T00:10:00Z",
+  "actor_id": "human:example-reviewer",
+  "correlation_id": "corr-ets-v01-unicode-redacted-001",
+  "external_refs": [],
+  "redaction_profile": "public-redacted-vector"
+}
