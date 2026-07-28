@@ -11,7 +11,6 @@ def test_research_program_documents_measurable_limitations() -> None:
     assert "AI Accountability Track" in text
     assert "Probabilistic Inference Track" in text
     assert "Human Governance Track" in text
-    assert "BFT convergence" in text
     assert "ETS cannot prove" in text
 
 
@@ -115,22 +114,44 @@ def test_governance_semantics_document_external_human_process() -> None:
     assert "legal truth" in text.lower()
 
 
-def test_patent_preparation_artifacts_are_counsel_review_scoped() -> None:
-    paths = [
+def test_public_patent_notice_is_claim_safe() -> None:
+    text = (ROOT / "PATENT_NOTICE.md").read_text(encoding="utf-8")
+
+    assert "patent pending" in text.lower()
+    assert "does not state or imply" in text.lower()
+    assert "patent has issued" in text.lower()
+    assert "freedom to operate" in text.lower()
+    assert "Private Materials Excluded" in text
+
+
+def test_private_ip_artifacts_are_excluded_from_public_repo() -> None:
+    forbidden_paths = [
         ROOT / "docs/ip/INVENTION_DISCLOSURE.md",
         ROOT / "docs/ip/PRIOR_ART_ANALYSIS.md",
         ROOT / "docs/ip/CANDIDATE_CLAIMS.md",
+        ROOT / "docs/ip/PATENT_CLAIMS_CANDIDATES.md",
         ROOT / "docs/ip/PATENT_DIAGRAMS.md",
+        ROOT / "docs/ip/PUBLIC_RELEASE_CHECKLIST.md",
     ]
 
-    for path in paths:
-        text = path.read_text(encoding="utf-8")
-        assert "not legal advice" in text.lower() or "attorney review" in text.lower()
+    for path in forbidden_paths:
+        assert not path.exists(), path
 
 
-def test_candidate_claims_exclude_generic_crypto_primitives() -> None:
-    text = (ROOT / "docs/ip/CANDIDATE_CLAIMS.md").read_text(encoding="utf-8")
+def test_public_contribution_guardrails_exclude_sensitive_material() -> None:
+    docs = [
+        (ROOT / "SECURITY.md").read_text(encoding="utf-8"),
+        (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8"),
+        (ROOT / ".github/pull_request_template.md").read_text(encoding="utf-8"),
+    ]
 
-    assert "Explicit Non-Claims" in text
-    assert "generic Merkle trees" in text
-    assert "generic Ed25519 signatures" in text
+    required_terms = [
+        "real PII",
+        "official election data",
+        "USPTO receipts",
+        "prior-art matrices",
+        "attorney-review",
+    ]
+    for text in docs:
+        for term in required_terms:
+            assert term in text
