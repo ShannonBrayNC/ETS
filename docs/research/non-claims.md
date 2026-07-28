@@ -21,7 +21,7 @@ ETS does not claim to prove:
 - cloud durability;
 - key custody or private-key non-compromise;
 - regulatory acceptance;
-- patent filing, patent allowance, or legal strategy.
+- patent allowance, claim scope, freedom to operate, or legal strategy.
 
 ## Election Demo Boundary
 
@@ -48,3 +48,8 @@ Use:
 
 > ETS does not prove real-world truth, legal sufficiency, election correctness,
 > or completeness without external policy and observation.
+
+Use:
+
+> ETS is patent pending. Private filing records, claim strategy, and
+> attorney-review materials are maintained outside the public repository.
