@@ -1,0 +1,94 @@
+{
+  "schema_version": "ets.test_vectors.v0.1",
+  "canonicalization_profile": {
+    "name": "ets-json-c14n-v0.1",
+    "rules": [
+      "UTF-8 JSON serialization",
+      "object keys sorted lexicographically",
+      "no insignificant whitespace",
+      "future server-generated proof fields excluded from hashable EvidenceEvent payloads"
+    ]
+  },
+  "hash_alg": "sha256",
+  "leaf_hash_rule": "sha256(bytes.fromhex(event_hash_hex))",
+  "vectors": [
+    {
+      "vector_id": "ets-v0.1-valid-basic-001",
+      "category": "valid",
+      "path": "valid/event-basic.json",
+      "expected": {
+        "valid": true,
+        "event_hash": "sha256:59702f45c716d77b633b2d1f08bbff0b8c78be4c1577bb014f612883798f4062",
+        "leaf_hash": "sha256:258cc440c5a3fb2f34b2de864a60b5f662899d9620a1c964f73b5261c04a0f1b",
+        "proof_verified": true,
+        "policy_route": "archive_or_review"
+      }
+    },
+    {
+      "vector_id": "ets-v0.1-valid-policy-review-001",
+      "category": "valid",
+      "path": "valid/event-policy-review.json",
+      "expected": {
+        "valid": true,
+        "event_hash": "sha256:6095fb72ecd4659d67834f50c2290d8ce20570ed46d592246e7354025730b407",
+        "leaf_hash": "sha256:6eac4837eb35cdcce9721553dc96a87d030d67fe12f18f8b159d9a5d1d255e4d",
+        "proof_verified": true,
+        "policy_route": "human_review"
+      }
+    },
+    {
+      "vector_id": "ets-v0.1-edge-unicode-redacted-001",
+      "category": "edge-case",
+      "path": "edge-cases/unicode-redacted-evidence.json",
+      "expected": {
+        "valid": true,
+        "event_hash": "sha256:f00298addbcb38fbe7ae6b75cdab1d705dc98216f08fd6d59a0d5ca993c50883",
+        "leaf_hash": "sha256:e5c19227bc9816a183b205bf5a0185ba652d3194c8442c53d22be274269467b9",
+        "proof_verified": true,
+        "policy_route": "human_review"
+      }
+    },
+    {
+      "vector_id": "ets-v0.1-edge-external-refs-001",
+      "category": "edge-case",
+      "path": "edge-cases/external-refs-and-claim-boundary.json",
+      "expected": {
+        "valid": true,
+        "event_hash": "sha256:ef24a7cc89179a5d6cb021fb0c12c6802d466d986850c4294feba52886cc1e4f",
+        "leaf_hash": "sha256:3c49d34f7e07cdf1e394081cdae7d80b4e670aca89206688912f1d67b4b49972",
+        "proof_verified": true,
+        "policy_route": "human_review"
+      }
+    },
+    {
+      "vector_id": "ets-v0.1-invalid-missing-schema-version-001",
+      "category": "invalid",
+      "path": "invalid/missing-schema-version.json",
+      "expected": {
+        "valid": false,
+        "error_code": "missing_required_field",
+        "field": "schema_version"
+      }
+    },
+    {
+      "vector_id": "ets-v0.1-invalid-bad-content-hash-001",
+      "category": "invalid",
+      "path": "invalid/bad-content-hash.json",
+      "expected": {
+        "valid": false,
+        "error_code": "invalid_hash_format",
+        "field": "content_hash"
+      }
+    },
+    {
+      "vector_id": "ets-v0.1-invalid-server-proof-field-001",
+      "category": "invalid",
+      "path": "invalid/server-proof-field-present.json",
+      "expected": {
+        "valid": false,
+        "error_code": "forbidden_server_generated_field",
+        "field": "server_generated_proof"
+      }
+    }
+  ]
+}
