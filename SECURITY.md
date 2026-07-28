@@ -30,8 +30,7 @@ Include:
 
 Do not submit real secrets, real PII, live credentials, private keys, production
 customer evidence, official election data, legally sensitive evidence, medical
-records, financial records, or restricted incident records through public issues
-or pull requests.
+records, financial records, or restricted incident records through public issues or pull requests.
 
 Use synthetic fixtures only. If a bug requires sensitive reproduction material,
 describe the structure of the data without exposing the data itself.
