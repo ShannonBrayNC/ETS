@@ -10,6 +10,15 @@ $ErrorActionPreference = "Stop"
 
 $requiredFiles = @(
     "README.md",
+    "PATENT_NOTICE.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "NOTICE",
+    ".github/dependabot.yml",
+    ".github/pull_request_template.md",
+    ".github/ISSUE_TEMPLATE/bug_report.md",
+    ".github/ISSUE_TEMPLATE/security_boundary.md",
     "ets/spec/protocol.md",
     "docs/release/PUBLIC_RELEASE_CHECKLIST.md",
     "docs/release/ALPHA_RELEASE_GATE.md",
@@ -22,7 +31,6 @@ $requiredFiles = @(
     "docs/research/REPRODUCIBILITY_APPENDIX.md",
     "docs/reports/CERTIFICATE_CLAIM_SAFETY.md",
     "docs/demo/election-rc-walkthrough.md",
-    "docs/ip",
     "scripts/verify-branch-protection-runbook.py",
     "scripts/verify-ets-release-readiness.ps1",
     "scripts/verify-ets-certificate-claim-safety.ps1",
@@ -30,11 +38,26 @@ $requiredFiles = @(
     "tests/unit/test_release_readiness_docs.py"
 )
 
+$forbiddenPublicPaths = @(
+    "docs/ip/INVENTION_DISCLOSURE.md",
+    "docs/ip/PRIOR_ART_ANALYSIS.md",
+    "docs/ip/CANDIDATE_CLAIMS.md",
+    "docs/ip/PATENT_CLAIMS_CANDIDATES.md",
+    "docs/ip/PATENT_DIAGRAMS.md",
+    "docs/ip/PUBLIC_RELEASE_CHECKLIST.md"
+)
+
 $failures = New-Object System.Collections.Generic.List[string]
 
 foreach ($path in $requiredFiles) {
     if (-not (Test-Path $path)) {
         $failures.Add("Missing required release gate artifact: $path")
+    }
+}
+
+foreach ($path in $forbiddenPublicPaths) {
+    if (Test-Path $path) {
+        $failures.Add("Patent-sensitive artifact must not be published from this repo path: $path")
     }
 }
 
@@ -93,13 +116,27 @@ function Invoke-CheckedCommand {
     }
 }
 
+Assert-Contains -Path "PATENT_NOTICE.md" -Terms @(
+    "patent pending",
+    "Private Materials Excluded",
+    "This repository does not include"
+)
+
+Assert-Contains -Path "SECURITY.md" -Terms @(
+    "Do not submit real secrets",
+    "real PII",
+    "official election data",
+    "public issues or pull requests"
+)
+
 Assert-Contains -Path "docs/release/PUBLIC_RELEASE_CHECKLIST.md" -Terms @(
     "Evidence Transparency System",
     "Research boundary",
     "Formal traceability",
     "Reproducibility matrix",
     "Certificate claim-safety",
-    "IP review",
+    "IP review boundary",
+    "Public contribution guardrails",
     "Election demo boundary",
     "No production overclaim",
     "ETS does not prove real-world truth"
@@ -110,6 +147,7 @@ Assert-Contains -Path "docs/release/ALPHA_RELEASE_GATE.md" -Terms @(
     "Required Artifacts",
     "Required Validation Commands",
     "Alpha Boundary",
+    "Public IP Boundary",
     "Tagging Rule",
     "Do not create a public release"
 )
@@ -120,13 +158,19 @@ Assert-Contains -Path "docs/release/ALPHA_RELEASE_NOTES_TEMPLATE.md" -Terms @(
     "Validation Commands",
     "real-world truth",
     "election correctness",
-    "Production trust-service readiness"
+    "Production trust-service readiness",
+    "Patent allowance"
 )
 
 if (Test-Path "README.md") {
     $readme = Get-Content -Raw -Path "README.md"
     if ($readme -notmatch "Evidence Transparency System") {
         $failures.Add("README.md must use Evidence Transparency System public naming.")
+    }
+    foreach ($term in @("Patent Notice", "Claim Boundaries", "Public Repository Boundary")) {
+        if ($readme -notmatch [regex]::Escape($term)) {
+            $failures.Add("README.md missing public release guardrail: $term")
+        }
     }
 }
 
