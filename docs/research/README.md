@@ -36,8 +36,9 @@ boundaries:
   vote of record.
 - Formal models are bounded or assumption-scoped unless a stronger claim is
   explicitly mapped in `FORMAL_TRACEABILITY_MATRIX.md`.
-- Patent and IP artifacts are technical preparation material for counsel review,
-  not legal advice or filed claims.
+- Patent-pending status may be stated through `PATENT_NOTICE.md`, but private
+  patent filings, claim charts, USPTO receipts, and attorney-review materials
+  must remain outside this public repository.
 
 ## Release Gate
 
