@@ -5,6 +5,7 @@ This directory contains public-safe implementation guidance for ETS vertical int
 ## Current guides
 
 - [ETS Vertical Implementation Guide](ETS_VERTICAL_IMPLEMENTATION_GUIDE.md) - detailed implementation guide across AI governance, DevSecOps, enterprise compliance, healthcare, insurance, finance, civic/public-sector, emergency/sensor, legal/HR, and Lantern ecosystem integrations.
+- [Building Transparency in Election Systems with ETS](ELECTION_TRANSPARENCY_IMPLEMENTATION_GUIDE.md) - public-safe implementation guide for election-adjacent transparency layers, expected-event policies, evidence manifests, proof bundles, certificates, and Python examples.
 
 ## Boundary
 
