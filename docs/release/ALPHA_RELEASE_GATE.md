@@ -11,6 +11,13 @@ The alpha release is blocked unless every required gate below passes.
 | Artifact | Required |
 |---|---|
 | `README.md` | Yes |
+| `PATENT_NOTICE.md` | Yes |
+| `SECURITY.md` | Yes |
+| `CONTRIBUTING.md` | Yes |
+| `.github/dependabot.yml` | Yes |
+| `.github/pull_request_template.md` | Yes |
+| `.github/ISSUE_TEMPLATE/bug_report.md` | Yes |
+| `.github/ISSUE_TEMPLATE/security_boundary.md` | Yes |
 | `ets/spec/protocol.md` | Yes |
 | `docs/research/README.md` | Yes |
 | `docs/research/non-claims.md` | Yes |
@@ -20,7 +27,6 @@ The alpha release is blocked unless every required gate below passes.
 | `docs/research/REPRODUCIBILITY_APPENDIX.md` | Yes |
 | `docs/reports/CERTIFICATE_CLAIM_SAFETY.md` | Yes |
 | `docs/demo/election-rc-walkthrough.md` | Yes |
-| `docs/ip` | Yes |
 | `scripts/verify-ets-release-readiness.ps1` | Yes |
 
 ## Required Validation Commands
@@ -43,7 +49,8 @@ The alpha release may claim:
 - verification bundle reproduction;
 - certificate generation from supplied proof material;
 - fictional demo workflows for evidence/audit storytelling;
-- formal and reproducibility documentation at stated maturity levels.
+- formal and reproducibility documentation at stated maturity levels;
+- patent-pending status for ETS when using the approved public notice language.
 
 The alpha release must not claim:
 
@@ -56,7 +63,13 @@ The alpha release must not claim:
 - completeness without external expected-event policy and independent observation;
 - Byzantine consensus;
 - Internet-scale adversarial liveness;
-- patent filing, patent allowance, or legal strategy unless counsel-approved.
+- patent allowance, patent claim scope, freedom to operate, or legal strategy.
+
+## Public IP Boundary
+
+The public repository must exclude provisional/nonprovisional filing drafts,
+USPTO receipts, application numbers, confirmation numbers, candidate claims,
+prior-art matrices, attorney-review records, and assignment strategy.
 
 ## Tagging Rule
 
