@@ -1,0 +1,35 @@
+{
+  "schema_version": "ets.event.v0.1",
+  "event_id": "evt-ets-v01-edge-external-refs-001",
+  "tenant_id": "example-tenant",
+  "workspace_id": "external-refs-lab",
+  "evidence_id": "evd-ets-v01-external-refs-001",
+  "event_type": "cross_application_evidence_reference",
+  "subject_ref": "Cross-application evidence reference example",
+  "content_hash_alg": "sha256",
+  "content_hash": "sha256:35532e7f61f86822ca4546f7f5f676b0de23623d51bd5927422a89701766d6b6",
+  "metadata": {
+    "source_system": "example-devsecops-pipeline",
+    "policy_context": "release_gate",
+    "requested_action": "approve_release_candidate",
+    "claim_boundary": "ETS verifies references and proof material before routing"
+  },
+  "created_at_utc": "2026-07-28T00:15:00Z",
+  "actor_id": "system:example-ci",
+  "correlation_id": "corr-ets-v01-external-refs-001",
+  "external_refs": [
+    {
+      "type": "git_commit",
+      "ref": "example:abcdef1234567890"
+    },
+    {
+      "type": "build",
+      "ref": "example-build-42"
+    },
+    {
+      "type": "ticket",
+      "ref": "example-ticket-123"
+    }
+  ],
+  "redaction_profile": "public-test-vector"
+}
