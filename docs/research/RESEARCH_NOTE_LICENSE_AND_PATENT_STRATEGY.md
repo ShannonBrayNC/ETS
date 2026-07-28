@@ -1,9 +1,9 @@
-# Research Note: Apache 2.0 and Patent-Aware ETS Strategy
+# Research Note: Apache 2.0 and Public ETS Release Posture
 
 ## Purpose
 
-This note documents why ETS moved from an MIT placeholder license to an
-Apache License 2.0 release posture during the alpha research stage.
+This note documents why ETS uses an Apache License 2.0 public release posture
+during the alpha research stage.
 
 The decision is architectural, not merely administrative.
 
@@ -20,8 +20,8 @@ verification ecosystem involving:
 - reproducible audit workflows;
 - protocol interoperability.
 
-As distributed protocol ecosystems mature, ambiguity around patent rights,
-contribution rights, and derivative implementations becomes a deployment risk.
+As distributed protocol ecosystems mature, ambiguity around contribution rights,
+patent grants, and derivative implementations becomes a deployment risk.
 
 ## Why MIT Was Insufficient
 
@@ -34,26 +34,25 @@ However, MIT does not provide:
 - a formal contribution framework;
 - downstream patent retaliation clauses.
 
-Because ETS may eventually include patent-reviewed protocol concepts,
-continuing under MIT would create strategic ambiguity between:
-
-- public protocol publication,
-- independent implementations,
-- commercial adoption,
-- and future intellectual property review.
-
 ## Why Apache 2.0 Fits ETS
 
 Apache 2.0 was selected because it:
 
-- includes an explicit patent grant;
+- includes an explicit patent grant from contributors for their contributions;
 - allows open implementation and interoperability;
 - supports ecosystem growth;
 - reduces downstream uncertainty for adopters;
 - aligns with protocol-oriented infrastructure projects;
-- permits defensive publication while preserving attribution;
-- creates a cleaner relationship between open protocol publication and
-  patent-reviewed implementation concepts.
+- supports public collaboration while preserving attribution.
+
+## Public Patent Notice Boundary
+
+ETS is patent pending. The public repository may state that status using the
+language in `PATENT_NOTICE.md`.
+
+The public repository must not include private patent filings, USPTO receipts,
+application numbers, confirmation numbers, claim charts, prior-art matrices,
+attorney-review materials, assignment strategy, or legal strategy.
 
 ## Important Clarification
 
@@ -66,28 +65,12 @@ ETS does not claim novelty in:
 - canonical JSON;
 - distributed consensus generally.
 
-Potential novelty candidates, if any survive review, would arise from:
-
-- protocol integration semantics;
-- omission-suspicion workflows;
-- verifier federation behavior;
-- operational evidence lifecycle orchestration;
-- AI accountability evidence reconstruction;
-- selective disclosure verification semantics.
-
-These areas still require:
-
-- prior art review;
-- academic scrutiny;
-- formalization;
-- implementation validation;
-- legal review.
+Public research documents must continue to avoid exaggerated claims and must not
+state patent allowance, claim scope, legal strategy, or freedom to operate.
 
 ## Research Integrity Requirement
 
-ETS research documents must continue to avoid exaggerated claims.
-
-The project should repeatedly distinguish between:
+ETS research documents must continue to distinguish between:
 
 - cryptographic verification of submitted evidence;
 - and unverifiable assumptions about real-world completeness.
@@ -111,9 +94,9 @@ This distinction is central to the scientific credibility of ETS.
 
 The Apache 2.0 transition is not merely a licensing update.
 
-It is the first deliberate architectural signal that ETS intends to operate as:
+It is a public architectural signal that ETS intends to operate as:
 
-- a research protocol,
-- a federated verification framework,
-- an interoperable evidence ecosystem,
-- and potentially a standards-track transparency architecture.
+- a research protocol;
+- a federated verification framework;
+- an interoperable evidence ecosystem;
+- and a standards-track transparency architecture candidate.
