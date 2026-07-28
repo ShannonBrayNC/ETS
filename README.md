@@ -152,6 +152,9 @@ scenario matrix, API routes, and public-safe demo boundary.
 
 Public-safe implementation guides live under [docs/implementation](docs/implementation/README.md):
 
+- [ETS Developer Quickstart: 15-Minute Proof Pipeline](docs/implementation/ETS_DEVELOPER_QUICKSTART.md)
+- [ETS Security Hardening Guide](docs/implementation/ETS_SECURITY_HARDENING_GUIDE.md)
+- [ETS Certificate and Public Verifier Guide](docs/implementation/ETS_CERTIFICATE_PUBLIC_VERIFIER_GUIDE.md)
 - [ETS Vertical Implementation Guide](docs/implementation/ETS_VERTICAL_IMPLEMENTATION_GUIDE.md)
 - [Building Transparency in Election Systems with ETS](docs/implementation/ELECTION_TRANSPARENCY_IMPLEMENTATION_GUIDE.md)
 
