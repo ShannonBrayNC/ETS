@@ -6,6 +6,7 @@
 - Product name: Evidence Transparency System
 - Acronym: ETS
 - Release type: public alpha / research preview
+- Patent notice: ETS is patent pending; private filing records are maintained outside the public repository.
 
 ## What This Release Demonstrates
 
@@ -30,7 +31,7 @@
 - Production trust-service readiness.
 - Byzantine consensus.
 - Internet-scale adversarial liveness.
-- Patent filing or allowance.
+- Patent allowance, claim scope, freedom to operate, or legal strategy.
 
 ## Validation Commands
 
@@ -44,6 +45,9 @@
 
 ## Required Links
 
+- `PATENT_NOTICE.md`
+- `SECURITY.md`
+- `CONTRIBUTING.md`
 - `docs/release/PUBLIC_RELEASE_CHECKLIST.md`
 - `docs/release/ALPHA_RELEASE_GATE.md`
 - `docs/research/non-claims.md`
