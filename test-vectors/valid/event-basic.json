@@ -1,0 +1,35 @@
+{
+  "schema_version": "ets.event.v0.1",
+  "event_id": "evt-ets-v01-valid-basic-001",
+  "tenant_id": "example-tenant",
+  "workspace_id": "protocol-lab",
+  "evidence_id": "evd-ets-v01-basic-001",
+  "event_type": "architecture_snapshot",
+  "subject_ref": "public-safe ETS protocol example",
+  "content_hash_alg": "sha256",
+  "content_hash": "sha256:7a343926b8361082551f6f21e2b24ea9663c070dc2d07bf00405651294447cd1",
+  "metadata": {
+    "source_system": "example-client",
+    "claim_boundary": "submitted-event metadata and content hash only",
+    "stores_raw_evidence": false,
+    "drawing_refs": [
+      "FIG. 1",
+      "FIG. 2",
+      "FIG. 3"
+    ]
+  },
+  "created_at_utc": "2026-07-28T00:00:00Z",
+  "actor_id": "did:example:ets-protocol-reviewer",
+  "correlation_id": "corr-ets-v01-basic-001",
+  "external_refs": [
+    {
+      "type": "repo",
+      "ref": "ShannonBrayNC/ETS"
+    },
+    {
+      "type": "spec",
+      "ref": "spec/ets-core-protocol.md"
+    }
+  ],
+  "redaction_profile": "public-test-vector"
+}
