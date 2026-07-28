@@ -34,6 +34,7 @@ and raw evidence bytes are outside the ETS storage boundary.
 - `ets/sdk` - local SDK facade for core verification and append flows
 - `ets/reports` - JSON, Markdown, and HTML verification certificates
 - `ets/explorer` - future UI for browsing and verification
+- `ets/lab` - Python testing lab with a local FastAPI UI and runnable scenarios
 - `ets/spec` - protocol docs and whitepaper
 - `docs/operations` - deployment, backup, restore, and anchoring runbooks
 - `ets/demos` - example use cases
@@ -125,6 +126,26 @@ Run the Sprint 6 external-anchor demo:
 ```powershell
 npm run demo:anchor
 ```
+
+## Run the Python Testing Lab
+
+The Python testing lab breaks ETS into visible components and runnable local
+demos: full pipeline, canonical hash determinism, Merkle inclusion proof,
+tamper detection, policy-gated routing, civic/election-adjacent claim boundary,
+and tree-head progression.
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn ets.lab.app:app --reload --port 8100
+```
+
+Then open:
+
+```text
+http://localhost:8100/lab
+```
+
+See [docs/lab/PYTHON_TESTING_LAB.md](docs/lab/PYTHON_TESTING_LAB.md) for the
+scenario matrix, API routes, and public-safe demo boundary.
 
 ## Run the Local API
 
