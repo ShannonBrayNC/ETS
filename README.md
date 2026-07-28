@@ -8,6 +8,15 @@ provable digital evidence.
 Earlier prototype notes sometimes used "Evidence Trust System." The public
 protocol name for the alpha line is Evidence Transparency System.
 
+## Patent Notice
+
+ETS — Evidence Transparency System is patent pending.
+
+This repository contains public implementation, protocol, research, and demo
+materials. Patent filings, invention disclosures, claim charts, USPTO receipts,
+assignment records, attorney-review materials, and filing strategy records are
+maintained separately in a private IP repository.
+
 ## v0.1.0-alpha Status
 
 ETS is preparing for a `v0.1.0-alpha` merge. This release is suitable for local
@@ -31,7 +40,6 @@ and raw evidence bytes are outside the ETS storage boundary.
 - `docs/architecture` - architecture notes
 - `docs/security` - security notes and roadmap
 - `docs/research` - formal systems, reproducibility, and publication artifacts
-- `docs/ip` - patent-aware technical preparation material for counsel review
 
 ## Canonical Package Layout
 
@@ -57,6 +65,34 @@ RC validation. External anchor export and deterministic anchor verification are
 available for deployment-hardening experiments. Hosted identity operations,
 cloud publication automation, and key rotation runbooks still need
 deployment-owner review.
+
+## Claim Boundaries
+
+ETS verifies submitted-event metadata, content hashes, inclusion proofs,
+tree-head progression, verification certificates, and reproducible proof
+material within defined protocol boundaries.
+
+ETS does not prove real-world truth, legal sufficiency, official chain of
+custody, election correctness, vote totals, ballot validity, or completeness
+without an external expected-event policy and observation process.
+
+Election-adjacent demos are evidence/audit demonstrations only. They are not
+voting software, tabulation software, voter registration software,
+ballot-marking software, ballot-counting software, election correctness systems,
+or the vote of record.
+
+## Public Repository Boundary
+
+This public repository must not contain:
+
+- USPTO receipts, application numbers, confirmation numbers, or payment records;
+- provisional, nonprovisional, or PCT filing drafts;
+- invention disclosures, candidate claim charts, prior-art matrices, attorney
+  work product, or assignment strategy;
+- production customer evidence, real PII, live credentials, private keys, or
+  restricted evidence packets.
+
+Use the private IP archive for patent filings and attorney-review materials.
 
 ## Setup on Windows PowerShell 7+
 
@@ -257,16 +293,3 @@ Verify an exported election proof bundle:
 
 This demo is an evidence/audit workflow only. It is not voting software,
 tabulation software, or the vote of record.
-
-## Patent-Aware Release Preparation
-
-Patent preparation artifacts are in [docs/ip](docs/ip). They are technical
-review materials for counsel, not legal advice and not filed claims:
-
-- [invention disclosure](docs/ip/INVENTION_DISCLOSURE.md)
-- [prior art analysis](docs/ip/PRIOR_ART_ANALYSIS.md)
-- [candidate claim areas](docs/ip/CANDIDATE_CLAIMS.md)
-- [patent preparation diagrams](docs/ip/PATENT_DIAGRAMS.md)
-
-Do not tag a public release until the public release checklist and IP review
-gate are complete.
