@@ -1,8 +1,8 @@
 # ETS Research Boundary
 
 ETS is the **Evidence Transparency System**. The research documentation in this
-folder supports alpha-stage protocol, verification, reproducibility, and formal
-model review.
+folder supports alpha-stage protocol, verification, reproducibility, formal
+model review, and public-safe comparison against adjacent protocols.
 
 ## Research Scope
 
@@ -12,7 +12,13 @@ This folder contains:
 - reproducibility guidance;
 - research notes for verifier federation and temporal behavior;
 - publication-oriented drafts and appendices;
+- technical comparison of similar transparency, provenance, timestamping,
+  supply-chain, policy, and audit protocols;
 - traceability artifacts connecting claims to models, code, and tests.
+
+## Current research documents
+
+- [ETS Protocol Comparison Living Document](ETS_PROTOCOL_COMPARISON_LIVING_DOCUMENT.md) - full technical comparison of adjacent protocols, including Certificate Transparency, Trillian/Tessera-style logs, Sigstore/Rekor, SCITT, C2PA, OpenTimestamps, W3C PROV, in-toto/SLSA-style supply-chain metadata, OPA, SIEM/audit platforms, and blockchain chain-of-custody systems.
 
 ## Claim Boundary
 
