@@ -11,4 +11,4 @@ This directory contains public-safe implementation guidance for ETS vertical int
 
 These guides use fictional, local-only, non-PII examples. Do not add production customer evidence, official election data, medical records, financial records, legal records, secrets, credentials, USPTO receipts, application numbers, claim charts, prior-art matrices, attorney-review notes, or assignment strategy to this directory.
 
-ETS verifies submitted-event metadata, hashes, inclusion proofs, tree-head material, verification certificates, and policy-routing records. ETS does not prove real-world truth, legal sufficiency, election correctness, raw evidence authenticity, or completeness without an external expected-event policy and observation process.
+ETS verifies submitted-event metadata, hashes, inclusion proofs, tree-head material, verification certificates, and policy-routing records. ETS does not prove real-world truth, legal sufficiency, election correctness, raw evidence authenticity, official chain of custody, vote totals, ballot validity, or completeness without an external expected-event policy and observation process.
