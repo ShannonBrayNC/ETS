@@ -21,7 +21,7 @@ from ets.core.merkle import merkle_root
 from ets.core.proofs import InclusionProof, verify_consistency_proof, verify_inclusion_proof
 from ets.reports.certificate import create_certificate
 
-JsonValue = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
+JsonValue = object
 LabStatus = Literal["passed", "failed", "informational"]
 
 
