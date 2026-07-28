@@ -1,8 +1,9 @@
+# ruff: noqa: E501
 """Scenario engine for the ETS interactive Python testing lab."""
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Literal
@@ -34,6 +35,15 @@ class LabComponent:
     role: str
     demo_capability: str
 
+    def to_public_dict(self) -> dict[str, str]:
+        return {
+            "component_id": self.component_id,
+            "name": self.name,
+            "figure": self.figure,
+            "role": self.role,
+            "demo_capability": self.demo_capability,
+        }
+
 
 @dataclass(frozen=True)
 class LabScenario:
@@ -45,6 +55,15 @@ class LabScenario:
     capability: str
     expected_result: str
 
+    def to_public_dict(self) -> dict[str, JsonValue]:
+        return {
+            "scenario_id": self.scenario_id,
+            "title": self.title,
+            "figure_refs": list(self.figure_refs),
+            "capability": self.capability,
+            "expected_result": self.expected_result,
+        }
+
 
 @dataclass(frozen=True)
 class LabStep:
@@ -53,6 +72,9 @@ class LabStep:
     name: str
     status: LabStatus
     detail: str
+
+    def to_public_dict(self) -> dict[str, str]:
+        return {"name": self.name, "status": self.status, "detail": self.detail}
 
 
 @dataclass(frozen=True)
@@ -75,7 +97,7 @@ class LabRunResult:
             "title": self.title,
             "status": self.status,
             "summary": self.summary,
-            "steps": [asdict(step) for step in self.steps],
+            "steps": [step.to_public_dict() for step in self.steps],
             "outputs": self.outputs,
             "claim_boundary": self.claim_boundary,
         }
@@ -203,22 +225,13 @@ CLAIM_BOUNDARY = (
 def list_components() -> list[dict[str, str]]:
     """Return public component metadata for the UI."""
 
-    return [asdict(component) for component in COMPONENTS]
+    return [component.to_public_dict() for component in COMPONENTS]
 
 
 def list_scenarios() -> list[dict[str, JsonValue]]:
     """Return public scenario metadata for the UI."""
 
-    return [
-        {
-            "scenario_id": scenario.scenario_id,
-            "title": scenario.title,
-            "figure_refs": list(scenario.figure_refs),
-            "capability": scenario.capability,
-            "expected_result": scenario.expected_result,
-        }
-        for scenario in SCENARIOS
-    ]
+    return [scenario.to_public_dict() for scenario in SCENARIOS]
 
 
 def run_lab_scenario(scenario_id: str) -> LabRunResult:
@@ -268,7 +281,7 @@ def _run_full_pipeline() -> LabRunResult:
             LabStep("Generate proof", "passed", f"Audit path length {len(proof.audit_path)}."),
             LabStep("Verify proof", "passed" if verification.valid else "failed", verification.reason),
             LabStep("Generate certificate", "passed", "Markdown certificate generated with claim boundaries."),
-            LabStep("Policy route", "passed", routing["decision"]),
+            LabStep("Policy route", "passed", str(routing["decision"])),
         ],
         outputs={
             "event_id": entry.event.event_id,
@@ -321,6 +334,7 @@ def _run_inclusion_proof() -> LabRunResult:
     entry = entries[2]
     proof = generate_inclusion_proof(entries, entry.log_index)
     verification = verify_inclusion_proof(proof)
+    proof_dump = proof.model_dump(mode="json")
     return LabRunResult(
         scenario_id="inclusion-proof",
         title="Merkle inclusion proof",
@@ -337,7 +351,7 @@ def _run_inclusion_proof() -> LabRunResult:
             "tree_size": proof.tree_size,
             "leaf_index": proof.leaf_index,
             "root_hash": proof.root_hash,
-            "audit_path": proof.model_dump(mode="json")["audit_path"],
+            "audit_path": proof_dump["audit_path"],
             "verification": verification.model_dump(mode="json"),
         },
         claim_boundary=CLAIM_BOUNDARY,
@@ -381,9 +395,9 @@ def _run_policy_routing() -> LabRunResult:
         status="passed",
         summary="The lab mapped verified and invalid evidence states to policy outcomes.",
         steps=[
-            LabStep("Verified sensitive evidence", "passed", verified_sensitive["decision"]),
-            LabStep("Verified automation evidence", "passed", verified_automation["decision"]),
-            LabStep("Invalid proof material", "passed", invalid["decision"]),
+            LabStep("Verified sensitive evidence", "passed", str(verified_sensitive["decision"])),
+            LabStep("Verified automation evidence", "passed", str(verified_automation["decision"])),
+            LabStep("Invalid proof material", "passed", str(invalid["decision"])),
         ],
         outputs={
             "verified_sensitive": verified_sensitive,
