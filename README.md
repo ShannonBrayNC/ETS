@@ -41,6 +41,7 @@ and raw evidence bytes are outside the ETS storage boundary.
 - `docs/architecture` - architecture notes
 - `docs/security` - security notes and roadmap
 - `docs/research` - formal systems, reproducibility, and publication artifacts
+- `docs/implementation` - public-safe implementation guides and vertical examples
 
 ## Canonical Package Layout
 
@@ -146,6 +147,16 @@ http://localhost:8100/lab
 
 See [docs/lab/PYTHON_TESTING_LAB.md](docs/lab/PYTHON_TESTING_LAB.md) for the
 scenario matrix, API routes, and public-safe demo boundary.
+
+## Implementation Guides
+
+Public-safe implementation guides live under [docs/implementation](docs/implementation/README.md):
+
+- [ETS Vertical Implementation Guide](docs/implementation/ETS_VERTICAL_IMPLEMENTATION_GUIDE.md)
+- [Building Transparency in Election Systems with ETS](docs/implementation/ELECTION_TRANSPARENCY_IMPLEMENTATION_GUIDE.md)
+
+These guides use fictional, local-only, non-PII examples and preserve the ETS
+claim boundary.
 
 ## Run the Local API
 
