@@ -130,7 +130,8 @@ arbitration remain human and organizational processes.
 - reproducibility appendix: `docs/research/REPRODUCIBILITY_APPENDIX.md`
 - RFCs: `docs/spec/rfc/`
 - architecture guide: `docs/architecture/INTERCONNECTED_SYSTEMS_GUIDE.md`
-- patent-preparation files: `docs/ip/`
+- public patent notice: `PATENT_NOTICE.md`
+- public release checklist: `docs/release/PUBLIC_RELEASE_CHECKLIST.md`
 
 ## Limitations
 
