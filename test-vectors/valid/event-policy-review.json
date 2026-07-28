@@ -1,0 +1,35 @@
+{
+  "schema_version": "ets.event.v0.1",
+  "event_id": "evt-ets-v01-valid-policy-review-001",
+  "tenant_id": "example-tenant",
+  "workspace_id": "ai-governance-lab",
+  "evidence_id": "evd-ets-v01-policy-review-001",
+  "event_type": "ai_workflow_recommendation",
+  "subject_ref": "sample AI recommendation requiring human review",
+  "content_hash_alg": "sha256",
+  "content_hash": "sha256:52854988ef647769178f37577718a1cb42a91e1d66dc643effd44d24a08dc92b",
+  "metadata": {
+    "source_system": "example-ai-agent",
+    "requested_action": "create_downstream_work_item",
+    "evidence_states": [
+      "hash_verified",
+      "included"
+    ],
+    "sensitivity": "review_before_execution",
+    "claim_boundary": "ETS verifies submitted-event evidence state, not real-world truth"
+  },
+  "created_at_utc": "2026-07-28T00:05:00Z",
+  "actor_id": "agent:example-ai-agent",
+  "correlation_id": "corr-ets-v01-policy-review-001",
+  "external_refs": [
+    {
+      "type": "workflow",
+      "ref": "example-workflow-001"
+    },
+    {
+      "type": "policy",
+      "ref": "test-policy-human-review-required"
+    }
+  ],
+  "redaction_profile": "public-test-vector"
+}
