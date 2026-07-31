@@ -1,0 +1,25 @@
+{
+  "schema_version": "ets.merkle_test_vectors.v1",
+  "protocol_version": "ets.v0.1",
+  "merkle_profile": "ets.merkle.rfc6962_sha256.v1",
+  "hash_algorithm": "sha256",
+  "digest_encoding": "lowercase_hex",
+  "leaf_input_encoding": "raw_sha256_digest",
+  "domain_separation": {
+    "leaf_prefix_hex": "00",
+    "node_prefix_hex": "01"
+  },
+  "leaf_hashes": [
+    "0000000000000000000000000000000000000000000000000000000000000000",
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "2222222222222222222222222222222222222222222222222222222222222222",
+    "3333333333333333333333333333333333333333333333333333333333333333"
+  ],
+  "roots": {
+    "empty": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "single_leaf": "0000000000000000000000000000000000000000000000000000000000000000",
+    "two_leaves": "a7b6a88afe611b23a8bb9836e3cd13ba706cb05d6de647d92bf05bb0aace72ee",
+    "three_leaves": "5e02fbbdb83c92dac50c2f1461e135b45e6e7b7dc78fec5f4ada10413fb20d02",
+    "four_leaves": "4cbfa20fd0506f9f071f52240028815b5659e185ebf74009657d38756069c174"
+  }
+}

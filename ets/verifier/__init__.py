@@ -18,6 +18,7 @@ from ets.core import (
     VerificationResult,
     canonical_sha256,
 )
+from ets.core.merkle import leaf_hash_for_event_hash
 from ets.core.proofs import verify_consistency_proof, verify_inclusion_proof
 
 
@@ -94,6 +95,25 @@ def verify_bundle(bundle: EvidenceProofBundle | Mapping[str, Any]) -> Verificati
         return VerificationResult(
             valid=False,
             reason="bundle event hash does not match event",
+            root_hash=parsed_bundle.inclusion_proof.root_hash,
+            leaf_hash=parsed_bundle.leaf_hash,
+            tree_size=parsed_bundle.inclusion_proof.tree_size,
+            verified_at_utc=parsed_bundle.verification_result.verified_at_utc,
+        )
+    expected_leaf_hash = leaf_hash_for_event_hash(event_hash)
+    if expected_leaf_hash != parsed_bundle.leaf_hash:
+        return VerificationResult(
+            valid=False,
+            reason="bundle leaf hash does not match event hash",
+            root_hash=parsed_bundle.inclusion_proof.root_hash,
+            leaf_hash=parsed_bundle.leaf_hash,
+            tree_size=parsed_bundle.inclusion_proof.tree_size,
+            verified_at_utc=parsed_bundle.verification_result.verified_at_utc,
+        )
+    if parsed_bundle.inclusion_proof.leaf_hash != parsed_bundle.leaf_hash:
+        return VerificationResult(
+            valid=False,
+            reason="bundle leaf hash does not match inclusion proof leaf",
             root_hash=parsed_bundle.inclusion_proof.root_hash,
             leaf_hash=parsed_bundle.leaf_hash,
             tree_size=parsed_bundle.inclusion_proof.tree_size,

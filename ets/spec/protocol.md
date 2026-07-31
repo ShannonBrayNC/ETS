@@ -51,20 +51,31 @@ from the event contract and excludes future server-generated proof fields.
 Events are appended in zero-based index order. Each append computes:
 
 - `event_hash = SHA-256(canonical_json(event.hashable_payload()))`
-- `leaf_hash = SHA-256(bytes.fromhex(event_hash))`
+- `leaf_hash = SHA-256(0x00 || bytes.fromhex(event_hash))`
 
 Duplicate `event_id` values are rejected in Sprint 01. Historical entries are
 immutable and can be retrieved by index or event ID.
 
 ## Merkle Tree
 
-ETS uses SHA-256 hex digests for leaves and internal nodes.
+ETS uses the `ets.merkle.rfc6962_sha256.v1` profile. It follows the RFC 6962
+Merkle Tree Hash construction and represents digests as lowercase hexadecimal
+strings at JSON and Python boundaries.
 
 - Empty tree root is `SHA-256(b"")`.
-- Single-leaf root is the leaf hash.
-- Parent hash is `SHA-256(left || right)` where `left` and `right` are decoded
-  SHA-256 digest bytes.
-- Odd levels duplicate the final node before parent hashing.
+- Event hashes are decoded from hexadecimal to their raw 32-byte SHA-256 digest
+  before leaf hashing.
+- Leaf hash is `SHA-256(0x00 || event_hash_bytes)`.
+- Single-leaf root is that already domain-separated leaf hash.
+- Parent hash is `SHA-256(0x01 || left || right)` where `left` and `right` are
+  raw 32-byte child hashes.
+- Trees are recursively split at the largest power of two smaller than the tree
+  size. Odd nodes are not duplicated.
+
+The proof schemas `ets.inclusion_proof.v1`, `ets.consistency_proof.v1`, and
+`ets.proof_bundle.v1` are bound to this profile. See
+`docs/decisions/ADR-0002-rfc6962-merkle-domain-separation.md` for the decision,
+reference hashes, and migration rules.
 
 ## Inclusion Proof v1
 

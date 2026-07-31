@@ -7,7 +7,11 @@ They are intentionally small, deterministic, and fictional. They are safe for re
 ## Files
 
 - `event-vectors.json` covers canonical JSON serialization, event hashing, leaf hashing, and one tamper case.
-- `../merkle-vectors.json` covers empty, single-leaf, two-leaf, three-leaf, and four-leaf Merkle roots.
+- `merkle-vectors.json` covers empty, single-leaf, two-leaf, three-leaf, and four-leaf Merkle roots.
+
+Both files declare the `ets.merkle.rfc6962_sha256.v1` profile. Hash strings are
+lowercase hexadecimal transport values; formulas operate on decoded raw digest
+bytes.
 
 ## Canonical JSON rules
 
@@ -29,3 +33,9 @@ If vectors must change intentionally:
 2. Update this README with the reason.
 3. Update tests in `tests/spec/test_vectors.py`.
 4. Call out the compatibility impact in release notes.
+
+Verify the checked-in hashes using the independent reference implementation:
+
+```powershell
+python scripts/verify_rfc6962_vectors.py
+```

@@ -80,6 +80,26 @@ def test_golden_bundle_cli_rejects_tampered_event_hash(tmp_path, capsys) -> None
     assert '"valid": false' in capsys.readouterr().out
 
 
+def test_golden_bundle_rejects_leaf_not_bound_to_event_hash() -> None:
+    bundle = _golden_bundle().model_copy(update={"leaf_hash": "0" * 64})
+
+    result = verify_bundle(bundle.model_dump(mode="json"))
+
+    assert result.valid is False
+    assert result.reason == "bundle leaf hash does not match event hash"
+
+
+def test_golden_bundle_rejects_proof_leaf_not_bound_to_bundle() -> None:
+    bundle = _golden_bundle()
+    tampered_proof = bundle.inclusion_proof.model_copy(update={"leaf_hash": "0" * 64})
+    tampered_bundle = bundle.model_copy(update={"inclusion_proof": tampered_proof})
+
+    result = verify_bundle(tampered_bundle.model_dump(mode="json"))
+
+    assert result.valid is False
+    assert result.reason == "bundle leaf hash does not match inclusion proof leaf"
+
+
 def test_golden_certificates_include_expected_status() -> None:
     bundle = _golden_bundle()
 

@@ -20,12 +20,13 @@ import hashlib
 
 LEAF_HASH_PREFIX = b"\x00"
 NODE_HASH_PREFIX = b"\x01"
+MERKLE_PROFILE = "ets.merkle.rfc6962_sha256.v1"
 
 EMPTY_TREE_ROOT = hashlib.sha256(b"").hexdigest()
 
 
 def leaf_hash_for_event_hash(event_hash: str) -> str:
-    """Hash a canonical event hash into the tree leaf namespace."""
+    """Hash the raw 32-byte event digest into the RFC 6962 leaf namespace."""
 
     _require_sha256_hex(event_hash, "event_hash")
     return hashlib.sha256(LEAF_HASH_PREFIX + bytes.fromhex(event_hash)).hexdigest()

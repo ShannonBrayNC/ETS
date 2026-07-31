@@ -5,9 +5,11 @@ election evidence ledger.
 
 ETS reuses the canonical core Merkle implementation:
 
-- leaf hash: SHA-256 over the packet event hash bytes;
-- parent hash: SHA-256 over left child bytes followed by right child bytes;
-- odd levels duplicate the last node;
+- profile: `ets.merkle.rfc6962_sha256.v1`;
+- leaf hash: SHA-256 over `0x00` followed by the raw packet event-hash bytes;
+- parent hash: SHA-256 over `0x01`, the raw left child hash, and the raw right
+  child hash;
+- odd tree sizes use the RFC 6962 power-of-two split and never duplicate a node;
 - proof verification is possible from exported proof data alone.
 
 ## Root Manifest

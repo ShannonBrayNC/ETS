@@ -11,7 +11,7 @@ from ets.core.merkle import (
     merkle_root,
 )
 
-VECTOR_PATH = Path("ets/spec/test-vectors/merkle-vectors.json")
+VECTOR_PATH = Path("ets/spec/test-vectors/v0.1/merkle-vectors.json")
 
 
 def test_empty_tree_root_is_explicit():
@@ -27,9 +27,11 @@ def test_single_leaf_root_is_leaf_hash():
 def test_even_and_odd_tree_roots_match_vectors():
     vectors = json.loads(VECTOR_PATH.read_text(encoding="utf-8"))
 
-    assert merkle_root(vectors["leaves"][:2]) == vectors["roots"]["two_leaves"]
-    assert merkle_root(vectors["leaves"][:3]) == vectors["roots"]["three_leaves"]
-    assert merkle_root(vectors["leaves"]) == vectors["roots"]["four_leaves"]
+    leaves = vectors["leaf_hashes"]
+
+    assert merkle_root(leaves[:2]) == vectors["roots"]["two_leaves"]
+    assert merkle_root(leaves[:3]) == vectors["roots"]["three_leaves"]
+    assert merkle_root(leaves) == vectors["roots"]["four_leaves"]
 
 
 def test_audit_path_reconstructs_root_for_odd_tree():

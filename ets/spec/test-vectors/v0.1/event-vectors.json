@@ -1,5 +1,7 @@
 {
-  "schema_version": "ets.test_vectors.v0.1",
+  "schema_version": "ets.event_test_vectors.v1",
+  "protocol_version": "ets.v0.1",
+  "merkle_profile": "ets.merkle.rfc6962_sha256.v1",
   "description": "Frozen ETS v0.1 canonical event hashing vectors for local conformance checks.",
   "canonical_json_rules": {
     "encoding": "utf-8",
@@ -37,7 +39,7 @@
   "expected": {
     "canonical_json": "{\"actor_id\":\"actor_demo\",\"content_hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"content_hash_alg\":\"sha256\",\"correlation_id\":\"corr_vector_001\",\"created_at_utc\":\"2026-05-18T12:30:00Z\",\"event_id\":\"evt_vector_001\",\"event_type\":\"evidence.registered\",\"evidence_id\":\"evidence_vector_001\",\"external_refs\":{\"ticket\":\"DEMO-001\"},\"metadata\":{\"case\":\"alpha\",\"sequence\":1,\"tags\":[\"rc\",\"vector\"]},\"redaction_profile\":\"none\",\"schema_version\":\"ets.event.v1\",\"source_system\":\"ets-fixture\",\"subject_ref\":\"case:demo-001\",\"tenant_id\":\"tenant_demo\",\"workspace_id\":\"workspace_alpha\"}",
     "event_hash": "8391362faa622c58c3d9e8e9d9f0001b4f01c6bb58e113bf6927b3dae3c9dfa8",
-    "leaf_hash": "aa78241e1e3086504c792717577120f757bd5a4b519bbc9ac7fb56881507cc14"
+    "leaf_hash": "35c8cb9455f8cdfe2cdb82a2cf34e7be27012172d16358aa63245a85d269696c"
   },
   "negative_vectors": [
     {

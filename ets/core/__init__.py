@@ -40,7 +40,7 @@ from ets.core.hash_chain import (
     verify_chain,
 )
 from ets.core.log import DuplicateEventError, EventNotFoundError, InMemoryAppendOnlyLog, LogEntry
-from ets.core.merkle import EMPTY_TREE_ROOT, audit_path_for_leaf, merkle_root
+from ets.core.merkle import EMPTY_TREE_ROOT, MERKLE_PROFILE, audit_path_for_leaf, merkle_root
 from ets.core.models import EvidenceEvent
 from ets.core.proofs import (
     ConsistencyProof,
@@ -56,6 +56,7 @@ from ets.core.tree_head import SignedTreeHead
 
 __all__ = [
     "EMPTY_TREE_ROOT",
+    "MERKLE_PROFILE",
     "ArtifactRecord",
     "ArtifactRegistryError",
     "AnchorExport",
