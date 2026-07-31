@@ -45,6 +45,9 @@ testing, protocol review, and non-production experimentation.
 - Out-of-scope artifact access returns a generic `404` response to avoid existence disclosure.
 - Raw artifact payload bytes are not persisted in the artifact registry.
 - Secret scanning and dependency auditing run in CI.
+- Freeze-candidate dependency audits are hardened for Python and Explorer UI.
+- Hosted-auth documentation is aligned around the implemented JWKS alpha profile.
+- Repository text handling is normalized with Git LF line-ending rules.
 
 ### Validation
 
