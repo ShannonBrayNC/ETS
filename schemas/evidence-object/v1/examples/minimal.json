@@ -1,0 +1,20 @@
+{
+  "schema_id": "https://lanternprotocol.org/schemas/ets/evidence-object/v1",
+  "identity": {
+    "evidence_id": "ev:minimal:001",
+    "version": 1,
+    "namespace": "urn:lantern:demo",
+    "evidence_type": "generic",
+    "schema_version": "ets.evidence-object.v1"
+  },
+  "created_at": "2026-08-01T19:00:00Z",
+  "claims": [],
+  "assertions": [],
+  "contexts": [],
+  "relationships": [],
+  "integrity": [],
+  "verifications": [],
+  "policy_refs": [],
+  "lifecycle": [],
+  "extensions": {}
+}
