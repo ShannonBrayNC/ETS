@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Ets.Evidence.Canonicalization;
+using Xunit;
 
 namespace Ets.Evidence.Tests;
 
