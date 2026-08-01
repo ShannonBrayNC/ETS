@@ -8,19 +8,25 @@ from pathlib import Path
 from ets.evidence_object import EvidenceObject
 
 OUTPUT = Path("schemas/evidence-object/v1/evidence-object.schema.json")
+SCHEMA_ID = "https://lanternprotocol.org/schemas/ets/evidence-object/v1"
 
 
-def main() -> None:
+def generated_schema() -> dict[str, object]:
+    """Return the reproducible normative schema artifact."""
+
     schema = EvidenceObject.model_json_schema(
         by_alias=True,
         ref_template="#/$defs/{model}",
     )
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
-    schema["$id"] = "https://lanternprotocol.org/schemas/ets/evidence-object/v1"
-    schema["title"] = "ETS Evidence Object v1"
+    schema["$id"] = SCHEMA_ID
+    return schema
+
+
+def main() -> None:
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(
-        json.dumps(schema, indent=2, sort_keys=True) + "\n",
+        json.dumps(generated_schema(), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
 
