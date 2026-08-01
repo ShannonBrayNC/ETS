@@ -57,3 +57,40 @@ jobs:
 
       - name: Build Explorer
         run: npm run build
+
+  secret-scan:
+    name: Gitleaks secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out full repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan repository history for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker-federation:
+    name: Docker federation health check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose configuration
+        run: docker compose config --quiet
+
+      - name: Build and validate six-node federation
+        shell: pwsh
+        run: ./scripts/validate-docker-federation.ps1 -StartupSeconds 30
+
+      - name: Capture federation diagnostics on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Ensure federation teardown
+        if: always()
+        run: docker compose down --volumes --remove-orphans
