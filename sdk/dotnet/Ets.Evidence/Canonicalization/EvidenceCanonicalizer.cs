@@ -4,10 +4,16 @@ using System.Text.Json;
 
 namespace Ets.Evidence.Canonicalization;
 
+/// <summary>Provides deterministic canonical JSON serialization and hashing for Evidence Objects.</summary>
 public static class EvidenceCanonicalizer
 {
+    /// <summary>Identifies the canonical JSON and SHA-256 hashing profile implemented here.</summary>
     public const string HashProfile = "ets.evidence-object.canonical-json.sha256.v1";
 
+    /// <summary>Canonicalizes a JSON document into deterministic UTF-8 bytes.</summary>
+    /// <param name="json">The JSON document to canonicalize.</param>
+    /// <returns>The canonical UTF-8 representation.</returns>
+    /// <exception cref="JsonException">Thrown when the input is invalid or contains an unsupported value.</exception>
     public static byte[] Canonicalize(string json)
     {
         using JsonDocument document = JsonDocument.Parse(json);
@@ -20,6 +26,10 @@ public static class EvidenceCanonicalizer
         return stream.ToArray();
     }
 
+    /// <summary>Computes the lowercase SHA-256 digest of a canonicalized JSON document.</summary>
+    /// <param name="json">The JSON document to canonicalize and hash.</param>
+    /// <returns>The lowercase hexadecimal SHA-256 digest.</returns>
+    /// <exception cref="JsonException">Thrown when the input cannot be canonicalized.</exception>
     public static string Sha256(string json)
     {
         byte[] digest = SHA256.HashData(Canonicalize(json));
