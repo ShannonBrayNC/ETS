@@ -1,0 +1,80 @@
+{
+  "schema_id": "https://lanternprotocol.org/schemas/ets/evidence-object/v1",
+  "identity": {
+    "evidence_id": "ev:edge:sensor-07:20260801T190100Z",
+    "version": 1,
+    "namespace": "urn:lantern:edge:demo",
+    "evidence_type": "sensor-observation",
+    "schema_version": "ets.evidence-object.v1"
+  },
+  "created_at": "2026-08-01T19:01:00Z",
+  "claims": [
+    {
+      "claim_id": "claim:temperature",
+      "subject": "urn:device:sensor-07",
+      "predicate": "observed_temperature_celsius",
+      "value": 24.75,
+      "confidence": 0.98,
+      "source_ref": "urn:device:sensor-07"
+    }
+  ],
+  "assertions": [
+    {
+      "assertion_id": "assertion:sensor-07",
+      "claim_id": "claim:temperature",
+      "actor_ref": "urn:device:sensor-07",
+      "asserted_at": "2026-08-01T19:01:00Z",
+      "signature_ref": "urn:signature:edge:001",
+      "policy_ref": "urn:policy:edge-observation:v1"
+    }
+  ],
+  "provenance": {
+    "collected_by": "urn:agent:ets-edge-01",
+    "source_system": "ets-edge",
+    "device_ref": "urn:device:sensor-07",
+    "workflow_ref": "urn:workflow:environmental-monitoring"
+  },
+  "contexts": [
+    {
+      "context_type": "site",
+      "context_ref": "urn:site:lab-a",
+      "attributes": {
+        "zone": "north"
+      }
+    }
+  ],
+  "relationships": [],
+  "integrity": [
+    {
+      "algorithm": "sha256",
+      "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "scope": "sensor-payload",
+      "profile": "ets.content.sha256.v1"
+    }
+  ],
+  "verifications": [],
+  "policy_refs": [
+    "urn:policy:edge-observation:v1"
+  ],
+  "privacy": {
+    "classification": "internal",
+    "owner_ref": "urn:org:lantern",
+    "contains_pii": false,
+    "encryption_required": true,
+    "retention_policy_ref": "urn:retention:telemetry:90d",
+    "legal_hold": false
+  },
+  "lifecycle": [
+    {
+      "state": "observed",
+      "occurred_at": "2026-08-01T19:01:00Z",
+      "actor_ref": "urn:device:sensor-07"
+    }
+  ],
+  "extensions": {
+    "lantern": {
+      "offline_sequence": 42,
+      "sync_state": "pending"
+    }
+  }
+}
