@@ -1,0 +1,7 @@
+{
+  "profile": "ets.evidence-object.canonical-json.sha256.v1",
+  "fixture": "../examples/software-release.json",
+  "algorithm": "sha256",
+  "canonical_byte_length": 1536,
+  "expected_hash": "c3378adcf58919d899800a73b1b17942b69dd22e98010bfc553a23a17dfe80df"
+}
