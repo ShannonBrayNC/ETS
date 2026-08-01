@@ -5,7 +5,6 @@ from pathlib import Path
 
 from ets.evidence_object import EvidenceObject, canonical_bytes, object_hash
 
-
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / "schemas/evidence-object/v1/examples/software-release.json"
 VECTOR = ROOT / "schemas/evidence-object/v1/vectors/software-release.sha256.json"
