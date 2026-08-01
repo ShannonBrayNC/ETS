@@ -1,0 +1,6 @@
+{
+  "profile": "ets.evidence-object.canonical-json.sha256.v1",
+  "example": "../examples/minimal.json",
+  "canonical_byte_length": 408,
+  "expected_hash": "03c5af30e94ae9fb30b021ae5b87f0431f11cb3bae3a682ef8a9da8807259bc5"
+}
