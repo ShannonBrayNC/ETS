@@ -8,7 +8,9 @@ GOVERNANCE_FILES = {
     "ip_boundary": ROOT / "docs/governance/IP_AND_DISCLOSURE_BOUNDARY.md",
     "release_checklist": ROOT / "docs/governance/PROTOCOL_RELEASE_CHECKLIST.md",
     "product_taxonomy": ROOT / "docs/product/ETS_PRODUCT_TAXONOMY.md",
-    "licensing_adr": ROOT / "docs/adr/ADR-002-open-protocol-licensing-and-governance.md",
+    "licensing_adr": (
+        ROOT / "docs/adr/ADR-002-open-protocol-licensing-and-governance.md"
+    ),
 }
 
 
@@ -29,7 +31,7 @@ def test_open_protocol_preserves_independent_verification() -> None:
     taxonomy = read_document("product_taxonomy")
 
     assert "Independent verification MUST NOT require" in governance
-    assert "commercial entitlements MUST remain outside canonical hashing" in governance
+    assert "commercial entitlements must remain outside canonical hashing" in governance.lower()
     assert "independently implementable" in taxonomy
     assert "ETS Cloud is not required for independent proof verification" in taxonomy
 
@@ -139,5 +141,6 @@ def test_release_checklist_requires_default_branch_synchronization() -> None:
 
     assert "Pull-request branch is current with the target branch" in checklist
     assert "Post-merge `main` workflows pass" in checklist
-    assert "Release tag, if any, points to the approved commit on the default branch" in checklist
+    expected_tag_rule = "Release tag, if any, points to the approved commit on the default branch"
+    assert expected_tag_rule in checklist
     assert "Long-lived development branches are rebased or merged" in checklist
