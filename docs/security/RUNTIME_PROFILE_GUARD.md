@@ -1,6 +1,6 @@
 # Runtime profile guard
 
-ETS container startup now validates the selected runtime profile before launching the API process.
+ETS validates the selected runtime profile before launching the API process, including direct calls to `create_app_from_env()` and container startup.
 
 Local demo settings are intentionally visible:
 
@@ -8,11 +8,13 @@ Local demo settings are intentionally visible:
 - `ETS_AUTH_MODE=local_header`
 - `ETS_SIGNING_MODE=local_unsigned`
 
-These settings are useful for laptop demos, but they are not a hosted profile. Container startup must set an explicit demo override when these local settings are used:
+These settings are useful for laptop demos, but they are not a hosted profile. Startup must set an explicit demo override when any local-only setting is used:
 
 ```bash
 ETS_ALLOW_INSECURE_LOCAL=1
 ```
+
+Without that override, the environment bootstrap fails before storage, signing, and authentication policies are constructed.
 
 Hosted examples should use durable storage, signed tree heads, and token validation, for example:
 
@@ -20,4 +22,4 @@ Hosted examples should use durable storage, signed tree heads, and token validat
 - `ETS_SIGNING_MODE=ed25519`
 - `ETS_AUTH_MODE=production_jwks`
 
-The runtime guard is intentionally small so it can be reused by container startup and, in a follow-up change, by `create_app_from_env()` directly.
+The guard is shared by the API package bootstrap and the container entrypoint so alternate startup paths cannot silently bypass the same runtime policy.
