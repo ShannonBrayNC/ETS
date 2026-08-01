@@ -1,107 +1,125 @@
 # ETS v0.1.0-alpha Release Readiness Assessment
 
-## Executive Summary
+## Executive summary
 
 Current recommendation:
-☑ Ready for Technical Alpha
-☐ Ready for Beta
-☐ Ready for Production
+
+- Ready for Technical Alpha: **Yes, subject to final merged-main evidence**
+- Ready for Beta: **No**
+- Ready for Production: **No**
 
 Release recommendation:
-Proceed with alpha after Release Hardening PR is merged.
 
----
+Proceed to the final alpha tag decision only after PR #156 merges to `main`, the freeze branch is rebased onto that merge commit, all required workflows pass on one exact candidate commit, and the release validation record is updated with those run URLs.
 
 ## Scope
 
-This assessment covers:
+This assessment covers engineering, protocol semantics, security, documentation, validation, CI/CD, and research/non-claim boundaries for `v0.1.0-alpha`.
 
-- Engineering
-- Security
-- Documentation
-- Validation
-- CI/CD
-- Research boundaries
+## Engineering assessment
 
----
+Status: **PASS for technical alpha**
 
-## Engineering Assessment
+Completed:
 
-Status: PASS
-
-Highlights:
-- 310+ automated tests
-- Ruff clean
-- mypy clean
-- SQLite persistence validated
-- Artifact scope enforcement complete
-- Cross-platform release validation
+- 313 automated Python tests on the runtime and Merkle hardening candidate.
+- Ruff and mypy validation.
+- SQLite persistence and restart behavior.
+- Durable artifact registry reconstruction.
+- Artifact scope and tenant/workspace enforcement.
+- FastAPI API, verifier CLI, SDK helpers, certificates, and Explorer workflow.
+- RFC 6962 domain-separated Merkle semantics with active v0.2 vectors.
+- Six-node Docker federation build and health validation.
 
 Remaining engineering risks:
-(list)
 
----
+- RC consistency-proof behavior remains alpha behavior rather than final production-grade consistency auditing.
+- SQLite is not the final horizontally scaled hosted storage architecture.
+- Production key discovery, rotation automation, multi-region operation, and hosted tenancy controls remain incomplete.
+- Edge appliance durability, offline synchronization, and operator UX are deferred.
 
-## Security Assessment
+## Security assessment
 
-Status: PASS
-
-Completed:
-- tenant/workspace isolation
-- explicit registry initialization
-- dependency audit
-- secret scanning
-- runtime profile validation
-
-Remaining risks:
-(list)
-
----
-
-## Documentation Assessment
-
-Status: PASS
+Status: **PASS for controlled alpha use**
 
 Completed:
-- README
-- CHANGELOG
-- Release checklist
-- Research boundaries
-- Non-claims
 
-Remaining documentation work:
-(list)
+- Implicit all-local startup fails closed unless `ETS_ALLOW_INSECURE_LOCAL=1` is explicitly set.
+- Local/demo authorization is confined to explicit profiles, including the Docker demonstration federation.
+- Hosted JWT/JWKS posture is documented.
+- Python dependency audit passes.
+- Explorer dependency audit passes at moderate severity.
+- Full-history Gitleaks scan passes.
+- Raw evidence bytes remain outside the default ETS storage boundary.
 
----
+Remaining security risks:
 
-## CI/CD Assessment
+- Local unsigned tree heads are not production trust anchors.
+- Local header and API-key authentication are demonstration/development modes only.
+- Production signing-key custody, rotation, revocation, and discovery require deployment-owner controls.
+- Production authorization, rate limiting, audit operations, and incident response require additional hardening.
 
-Status: PASS
+## Documentation assessment
+
+Status: **IN PROGRESS for final freeze**
 
 Completed:
-- PR validation
-- push validation
-- release tag validation
-- release readiness gate
 
----
+- README, security model, local-versus-production trust guidance, protocol documentation, ADR-001, release checklist, validation record, and research/non-claim boundaries.
 
-## Known Limitations
+Required before tag decision:
 
-(list)
+- Remove obsolete PR and commit references from all release documents.
+- Finalize the release notes against the merged candidate.
+- Confirm the OpenAPI artifact is regenerated and reproducible.
+- Confirm package, API, UI, certificate, CHANGELOG, and documentation version naming is consistent.
+- Record final workflow URLs and exact candidate SHA.
 
----
+## CI/CD assessment
 
-## Deferred Work (Beta)
+Status: **PASS on the current PR candidate; final merged-main evidence pending**
 
-(list)
+Passing gates include:
 
----
+- CI and release readiness
+- Security Audit: Python audit, Explorer audit/build, Gitleaks, Docker federation
+- Formal Specs / TLC
+- Apalache symbolic verification
+- Lean mechanized proofs
+- Benchmarks
 
-## Final Recommendation
+The release decision must use workflows run against one exact commit after PR #156 is merged and the freeze changes are complete.
 
-Proceed with:
+## Known limitations
 
-rc/v0.1.0-alpha.1
+- This alpha is for protocol review, local validation, SDK/API exploration, controlled demonstrations, and limited pilots.
+- ETS stores evidence metadata and cryptographic hashes by default, not raw evidence bytes.
+- Local unsigned operation does not create a production trust anchor.
+- RC consistency proofs must not be represented as final production-grade consistency auditing.
+- SQLite is acceptable for alpha validation and controlled demos, not final hosted production storage.
+- Hosted identity, signing, key management, tenancy, scaling, retention operations, and disaster recovery require further work.
 
-after Release Hardening PR is merged.
+## Deferred work
+
+Deferred to beta or later:
+
+- Production hosted control plane and multi-tenant operations.
+- Automated signing-key lifecycle and external trust-anchor integration.
+- Final consistency-proof protocol and cross-log auditing.
+- ETS Edge appliance, durable offline runtime, adapters, synchronization, and operator interface.
+- Production SLOs, observability, backup/restore, disaster recovery, and compliance operations.
+
+## Final recommendation
+
+**Conditional GO for technical alpha freeze.**
+
+Do not create `v0.1.0-alpha` until:
+
+1. PR #156 is independently approved and merged to `main`.
+2. The freeze branch is based on the resulting `main` commit.
+3. All required validation gates pass on one exact freeze commit.
+4. The OpenAPI artifact and release documents are current and reproducible.
+5. The validation record contains the exact SHA and workflow URLs.
+6. An independent approval is submitted on the freeze PR.
+
+No recommendation is made for beta or production deployment.
