@@ -1,7 +1,7 @@
 """Stable ETS Core exception hierarchy.
 
 Verification failures caused by untrusted evidence should normally be returned
-as structured verification results. These exceptions are reserved for
+as structured VerificationResult values. These exceptions are reserved for
 programmer errors, invalid configuration, unavailable backends, resource
 limits, and internal invariant failures.
 """
@@ -49,7 +49,7 @@ class VerificationOnlyProfileError(ProfileError):
     def __init__(self, profile_id: str) -> None:
         self.profile_id = profile_id
         super().__init__(
-            "Protocol profile is verification-only and cannot generate data: "
+            f"Protocol profile is verification-only and cannot generate data: "
             f"{profile_id}"
         )
 
