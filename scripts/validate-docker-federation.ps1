@@ -11,7 +11,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 docker compose up --build -d
 try {
     Start-Sleep -Seconds $StartupSeconds
-    $ports = @(8001, 8002, 8003, 8011, 8012, 8021)
+    $ports = @(8101, 8102, 8103, 8201, 8202, 8301)
     foreach ($port in $ports) {
         $health = Invoke-RestMethod "http://127.0.0.1:$port/health"
         if ($health.status -ne "ok") {
