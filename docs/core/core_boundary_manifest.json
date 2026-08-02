@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "normative_modules": [
+    "ets.core.api",
+    "ets.core.canonical_json",
+    "ets.core.errors",
+    "ets.core.models",
+    "ets.core.profiles",
+    "ets.core.results"
+  ],
+  "public_api": [
+    "EvidenceEvent",
+    "ProfileKind",
+    "ProtocolProfile",
+    "VerificationReason",
+    "VerificationResult",
+    "VerificationStatus",
+    "VerifiedComponent",
+    "canonical_sha256",
+    "canonicalize",
+    "get_profile",
+    "list_profiles",
+    "resolve_profile"
+  ],
+  "forbidden_import_prefixes": [
+    "azure",
+    "boto3",
+    "celery",
+    "fastapi",
+    "httpx",
+    "redis",
+    "requests",
+    "sqlalchemy",
+    "sqlite3",
+    "starlette",
+    "uvicorn",
+    "ets.api",
+    "ets.cloud",
+    "ets.edge",
+    "ets.explorer",
+    "ets.portal",
+    "ets.reports"
+  ]
+}
