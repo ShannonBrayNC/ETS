@@ -1,144 +1,104 @@
 # ETS Core Verification Model
 
-Status: proposed normative behavior for C1
+Status: C1 contract aligned to the merged verification-result implementation
 
-## 1. Verification status
+## 1. Verification statuses
 
-`VerificationStatus` is a closed, versioned enumeration:
+`VerificationStatus` is a closed enumeration:
 
-- `VALID` — all required checks for the requested operation passed.
-- `INVALID` — material is well-formed and supported, but one or more cryptographic or structural checks failed.
-- `MALFORMED` — material cannot be interpreted under its declared schema/profile.
-- `UNSUPPORTED` — a required profile, algorithm, version, or feature is not implemented or permitted.
+- `VALID` — every required check for the requested operation passed.
+- `INVALID` — material is well formed and supported, but a cryptographic or structural check failed.
+- `MALFORMED` — material cannot be interpreted under its declared structure or profile.
+- `UNSUPPORTED` — a required profile, algorithm, version, or feature is unavailable or prohibited.
 - `UNKNOWN` — the supplied information is insufficient to reach a cryptographic conclusion.
 
-Lifecycle or policy terms such as expired, revoked, disputed, superseded, trusted, or compliant SHALL NOT be overloaded into cryptographic status. They are structured facts or external policy conclusions layered above the core result.
+Lifecycle and policy terms such as expired, revoked, superseded, trusted, admissible, or compliant are not cryptographic statuses.
 
-## 2. Stable reason codes
+## 2. Stable C1 reason codes
 
-### Success
+The merged `VerificationReason` enumeration contains:
 
-- `VERIFIED`
-
-### Canonicalization and schema
-
-- `INVALID_CANONICAL_FORM`
-- `SCHEMA_VALIDATION_FAILED`
-- `DUPLICATE_JSON_KEY`
-- `UNSUPPORTED_VALUE_TYPE`
-- `NON_FINITE_NUMBER`
-- `INVALID_UTF8`
-- `REQUIRED_FIELD_MISSING`
-- `UNEXPECTED_FIELD`
-
-### Profiles and versions
-
+- `OK`
+- `CANONICALIZATION_FAILED`
+- `SCHEMA_INVALID`
 - `PROFILE_REQUIRED`
-- `UNSUPPORTED_PROFILE`
+- `PROFILE_UNKNOWN`
 - `PROFILE_CONFLICT`
-- `UNSUPPORTED_PROTOCOL_VERSION`
-- `DOWNGRADE_REJECTED`
-- `PROFILE_NOT_ALLOWED_FOR_PRODUCTION`
-
-### Digests and Merkle proofs
-
-- `DIGEST_LENGTH_INVALID`
-- `DIGEST_ENCODING_INVALID`
-- `CONTENT_DIGEST_MISMATCH`
-- `EVENT_DIGEST_MISMATCH`
-- `LEAF_DIGEST_MISMATCH`
-- `MERKLE_ROOT_MISMATCH`
-- `PROOF_PATH_INVALID`
-- `LEAF_INDEX_OUT_OF_RANGE`
+- `PROFILE_GENERATION_FORBIDDEN`
+- `DIGEST_MALFORMED`
+- `DIGEST_MISMATCH`
+- `PROOF_MALFORMED`
+- `PROOF_INVALID`
 - `TREE_SIZE_INVALID`
-- `CONSISTENCY_PROOF_INVALID`
-- `TREE_SIZE_REGRESSION`
-
-### Tree heads and signatures
-
-- `TREE_HEAD_PAYLOAD_INVALID`
-- `SIGNATURE_REQUIRED`
-- `SIGNATURE_ENCODING_INVALID`
+- `ROOT_MISMATCH`
+- `SIGNATURE_MISSING`
+- `SIGNATURE_MALFORMED`
 - `SIGNATURE_INVALID`
-- `PUBLIC_KEY_REQUIRED`
-- `PUBLIC_KEY_INVALID`
-- `KEY_ID_MISMATCH`
 - `SIGNATURE_PROFILE_UNSUPPORTED`
+- `BUNDLE_LINKAGE_INVALID`
+- `RESOURCE_LIMIT_EXCEEDED`
+- `INTERNAL_ERROR`
 
-### Bundles and linkage
+Adding, renaming, or changing the meaning of a reason code requires a manifest update, protocol-impact review, and compatibility analysis.
 
-- `BUNDLE_VERSION_UNSUPPORTED`
-- `BUNDLE_COMPONENT_MISSING`
-- `BUNDLE_COMPONENT_CONFLICT`
-- `EVENT_PROOF_LINK_MISMATCH`
-- `TREE_HEAD_PROOF_LINK_MISMATCH`
-- `CERTIFICATE_BUNDLE_LINK_MISMATCH`
+## 3. Verified components
 
-### Resource and implementation limits
+`VerifiedComponent` contains:
 
-- `INPUT_LIMIT_EXCEEDED`
-- `PROOF_DEPTH_LIMIT_EXCEEDED`
-- `IMPLEMENTATION_LIMIT`
+- `CANONICALIZATION`
+- `EVENT`
+- `DIGEST`
+- `INCLUSION_PROOF`
+- `CONSISTENCY_PROOF`
+- `TREE_HEAD`
+- `SIGNATURE`
+- `BUNDLE`
+- `CERTIFICATE`
 
-## 3. Result shape
+## 4. Result shape
 
 ```python
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class VerificationResult:
     status: VerificationStatus
     reason: VerificationReason
-    component: str
-    profile_id: str | None
-    protocol_version: str | None
-    summary: str
-    details: Mapping[str, JsonValue]
+    component: VerifiedComponent
+    profile_id: str | None = None
+    protocol_version: str | None = None
+    summary: str = ""
+    details: Mapping[str, object] = field(default_factory=dict)
 ```
 
-`details` SHALL be deterministic for normative fields. Diagnostic-only fields such as elapsed time SHALL NOT affect equality, serialized conformance output, or hashes.
+The constructor defensively copies `details` into an immutable mapping. `to_dict()` serializes status, reason, component, profile, version, summary, and details deterministically. The `valid` property is true only when status is `VALID`.
 
-## 4. State machine
+## 5. State model
 
 ```text
 RECEIVED
-  ├─ cannot parse/validate ───────────────> MALFORMED
-  ├─ profile/version unavailable ─────────> UNSUPPORTED
-  ├─ required material absent ────────────> UNKNOWN or MALFORMED
+  ├─ cannot parse or validate ───────────> MALFORMED
+  ├─ profile or feature unavailable ─────> UNSUPPORTED
+  ├─ required external material absent ──> UNKNOWN
   └─ supported and well formed
           ↓
       CRYPTOGRAPHIC CHECKS
-          ├─ mismatch/failure ────────────> INVALID
+          ├─ mismatch or failure ─────────> INVALID
           └─ all required checks pass ────> VALID
 ```
 
-The distinction between `UNKNOWN` and `MALFORMED` is schema-driven: omission of an optional external trust input may be `UNKNOWN`; omission of a required artifact field is `MALFORMED`.
-
-## 5. Composition
-
-Bundle verification SHALL evaluate components in a documented stable order:
-
-1. bundle/schema and profile declarations;
-2. event/object canonical hash;
-3. leaf binding;
-4. inclusion proof;
-5. tree-head payload;
-6. tree-head signature when required;
-7. consistency linkage when supplied;
-8. certificate linkage when supplied.
-
-The overall result SHALL be the first terminal non-valid result in this normative order, while component results MAY also be returned for diagnostics.
+Missing fields required by an artifact schema are `MALFORMED`; missing optional external trust or verification inputs may be `UNKNOWN`.
 
 ## 6. Exceptions versus results
 
-Untrusted artifact invalidity returns a result. Exceptions are limited to:
+Normal invalidity of untrusted material returns `VerificationResult`. Exceptions are reserved for:
 
 - programmer contract violations;
 - unknown direct configuration requested by the caller;
-- unavailable mandatory cryptographic backend;
-- internal invariant violation; or
-- operating-system/resource failure outside pure verification.
+- unavailable mandatory cryptographic backends;
+- resource or operating-system failures; and
+- internal invariant violations.
 
-No exception message is normative. Status and reason codes are normative.
+Exception text is diagnostic. Verification status and reason values are the machine-readable contract.
 
 ## 7. Security and claims
 
-`VALID` means the declared cryptographic checks passed for the supplied material and profile. It does not mean the evidence is true, complete, authorized, admissible, current, trusted, or compliant.
+`VALID` means that the declared checks passed for the supplied material and profile. It does not mean the evidence is true, complete, authorized, admissible, current, trusted, or compliant.
