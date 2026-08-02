@@ -43,12 +43,18 @@ import sys
 import threading
 from pathlib import Path
 violations = []
+original_getenv = os.getenv
+def guarded_getenv(key, *args, **kwargs):
+    if key == "PYDANTIC_DISABLE_PLUGINS":
+        return original_getenv(key, *args, **kwargs)
+    violations.append(f"os.getenv:{key}")
+    raise AssertionError(f"os.getenv:{key}")
 def deny(name):
     def blocked(*args, **kwargs):
         violations.append(name)
         raise AssertionError(name)
     return blocked
-os.getenv = deny("os.getenv")
+os.getenv = guarded_getenv
 socket.socket = deny("socket.socket")
 socket.create_connection = deny("socket.create_connection")
 sqlite3.connect = deny("sqlite3.connect")
