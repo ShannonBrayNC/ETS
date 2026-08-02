@@ -9,67 +9,6 @@ components.
 from __future__ import annotations
 
 from importlib import import_module
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ets.core.anchors import (
-        AnchorExport,
-        AnchorTarget,
-        AnchorVerificationResult,
-        anchor_export_payload,
-        build_anchor_export,
-        verify_anchor_export,
-    )
-    from ets.core.artifact_registry import (
-        ArtifactRegistryError,
-        artifact_record_from_log_entry,
-        load_artifact_registry,
-    )
-    from ets.core.artifacts import (
-        ArtifactRecord,
-        build_artifact_event_id,
-        build_artifact_reference_uri,
-        create_artifact_record,
-        decode_artifact_base64,
-        hash_artifact_bytes,
-        normalize_artifact_metadata,
-    )
-    from ets.core.bundle import EvidenceProofBundle
-    from ets.core.canonical_json import canonical_sha256, canonicalize
-    from ets.core.federation import (
-        FederationAssessment,
-        FederationConflict,
-        FederationObservation,
-        assess_federation,
-    )
-    from ets.core.hash_chain import (
-        GENESIS_BLOCK_HASH,
-        ChainVerificationResult,
-        HashChainBlock,
-        build_block,
-        export_block,
-        recompute_block_hash,
-        verify_chain,
-    )
-    from ets.core.log import (
-        DuplicateEventError,
-        EventNotFoundError,
-        InMemoryAppendOnlyLog,
-        LogEntry,
-    )
-    from ets.core.merkle import EMPTY_TREE_ROOT, audit_path_for_leaf, merkle_root
-    from ets.core.models import EvidenceEvent
-    from ets.core.proofs import (
-        ConsistencyProof,
-        InclusionProof,
-        VerificationResult,
-        generate_consistency_proof,
-        generate_inclusion_proof,
-    )
-    from ets.core.quorum import QuorumDecision, VerifierVote, decide_quorum
-    from ets.core.sqlite_store import SQLiteEventStore
-    from ets.core.storage import EventStore, StorageValidationError
-    from ets.core.tree_head import SignedTreeHead
 
 _EXPORTS: dict[str, tuple[str, str]] = {
     "EMPTY_TREE_ROOT": ("ets.core.merkle", "EMPTY_TREE_ROOT"),
