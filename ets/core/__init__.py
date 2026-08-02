@@ -38,7 +38,10 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "StorageValidationError": ("ets.core.storage", "StorageValidationError"),
     "VerificationResult": ("ets.core.proofs", "VerificationResult"),
     "VerifierVote": ("ets.core.quorum", "VerifierVote"),
-    "artifact_record_from_log_entry": ("ets.core.artifact_registry", "artifact_record_from_log_entry"),
+    "artifact_record_from_log_entry": (
+        "ets.core.artifact_registry",
+        "artifact_record_from_log_entry",
+    ),
     "audit_path_for_leaf": ("ets.core.merkle", "audit_path_for_leaf"),
     "anchor_export_payload": ("ets.core.anchors", "anchor_export_payload"),
     "assess_federation": ("ets.core.federation", "assess_federation"),
