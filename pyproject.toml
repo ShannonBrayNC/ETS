@@ -38,6 +38,12 @@ dev = [
 include = ["ets*"]
 exclude = ["ets.core.ets_core*"]
 
+[tool.setuptools.package-data]
+ets = ["py.typed"]
+
+
+
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
