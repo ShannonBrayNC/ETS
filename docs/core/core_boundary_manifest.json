@@ -2,25 +2,41 @@
   "schema_version": 1,
   "normative_modules": [
     "ets.core.api",
+    "ets.core.bundle",
     "ets.core.canonical_json",
     "ets.core.errors",
+    "ets.core.log",
+    "ets.core.merkle",
     "ets.core.models",
     "ets.core.profiles",
-    "ets.core.results"
+    "ets.core.proofs",
+    "ets.core.results",
+    "ets.core.tree_head"
   ],
   "public_api": [
+    "DuplicateEventError",
+    "EventNotFoundError",
     "EvidenceEvent",
+    "EvidenceProofBundle",
+    "InMemoryAppendOnlyLog",
+    "InclusionProof",
+    "LogEntry",
     "ProfileKind",
     "ProtocolProfile",
+    "SignedTreeHead",
     "VerificationReason",
     "VerificationResult",
     "VerificationStatus",
     "VerifiedComponent",
     "canonical_sha256",
     "canonicalize",
+    "generate_inclusion_proof",
     "get_profile",
+    "leaf_hash_for_event_hash",
     "list_profiles",
-    "resolve_profile"
+    "merkle_root",
+    "resolve_profile",
+    "verify_inclusion_proof"
   ],
   "forbidden_import_prefixes": [
     "azure",
