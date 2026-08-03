@@ -11,7 +11,7 @@ requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "ETS Contributors" }]
 dependencies = [
-    "cryptography>=48.0.1,<49",
+    "cryptography>=50.0.0,<51",
     "fastapi>=0.136,<0.137",
     "idna>=3.15,<4",
     "jinja2>=3.1,<4",
@@ -40,9 +40,6 @@ exclude = ["ets.core.ets_core*"]
 
 [tool.setuptools.package-data]
 ets = ["py.typed"]
-
-
-
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
