@@ -1,0 +1,59 @@
+{
+  "event": {
+    "actor_id": null,
+    "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "content_hash_alg": "sha256",
+    "correlation_id": null,
+    "created_at_utc": "2026-05-18T12:30:00Z",
+    "event_id": "evt_cli_golden_001",
+    "event_type": "evidence.registered",
+    "evidence_id": "evidence_cli_golden_001",
+    "external_refs": null,
+    "metadata": {
+      "fixture": "cli-golden",
+      "sequence": 1,
+      "trust_label": "Fictional Simulation"
+    },
+    "redaction_profile": null,
+    "schema_version": "ets.event.v1",
+    "source_system": "ets-cli-fixture",
+    "subject_ref": "fixture:cli-golden-001",
+    "tenant_id": "tenant_fixture",
+    "workspace_id": "workspace_verifier"
+  },
+  "event_hash": "ab6db54e43c53fb97befb09212b5461e5946a2d34f71f7bc278a413b0edd46b3",
+  "inclusion_proof": {
+    "audit_path": [
+      {
+        "hash": "768d57051770d6fe1368b313380ce7fc09003b6b2856c17ad89d9c409e9f9f9b",
+        "position": "right"
+      }
+    ],
+    "generated_at_utc": "2026-05-18T12:31:00Z",
+    "hash_alg": "sha256",
+    "leaf_hash": "1cbe9231f6f7aa008e9c683d04d5592d00db526a99e250c0ebfddffd7b01ea4e",
+    "leaf_index": 0,
+    "root_hash": "2d21aa0447c30f590522dcba0b1633206ca8b1a98bfebf698f9543889fe9f3f8",
+    "schema_version": "ets.inclusion_proof.v1",
+    "tree_size": 2
+  },
+  "leaf_hash": "1cbe9231f6f7aa008e9c683d04d5592d00db526a99e250c0ebfddffd7b01ea4e",
+  "schema_version": "ets.proof_bundle.v1",
+  "tree_head": {
+    "created_at_utc": "2026-05-18T12:31:00Z",
+    "log_id": "ets-cli-golden-fixture",
+    "public_key_id": null,
+    "root_hash": "2d21aa0447c30f590522dcba0b1633206ca8b1a98bfebf698f9543889fe9f3f8",
+    "signature": null,
+    "signature_alg": null,
+    "tree_size": 2
+  },
+  "verification_result": {
+    "leaf_hash": "1cbe9231f6f7aa008e9c683d04d5592d00db526a99e250c0ebfddffd7b01ea4e",
+    "reason": "ok",
+    "root_hash": "2d21aa0447c30f590522dcba0b1633206ca8b1a98bfebf698f9543889fe9f3f8",
+    "tree_size": 2,
+    "valid": true,
+    "verified_at_utc": "2026-06-14T03:11:39.795706Z"
+  }
+}

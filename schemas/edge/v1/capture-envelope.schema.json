@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shannonbraync.github.io/ets/schemas/edge/v1/capture-envelope.schema.json",
+  "title": "ETS Edge Capture Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "capture_id",
+    "node_id",
+    "adapter_id",
+    "source",
+    "received_at_utc",
+    "content_digest",
+    "evidence_reference"
+  ],
+  "properties": {
+    "schema_version": { "const": "ets.edge.capture.v1" },
+    "capture_id": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "node_id": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "adapter_id": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "adapter_version": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "identifier"],
+      "properties": {
+        "system": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "identifier": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "tenant_id": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "workspace_id": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "sequence": { "type": ["integer", "string"], "minLength": 1 },
+        "idempotency_key": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "observed_at_utc": { "type": ["string", "null"], "format": "date-time" },
+    "received_at_utc": { "type": "string", "format": "date-time" },
+    "clock_quality": {
+      "type": "string",
+      "enum": ["synchronized", "estimated", "degraded", "unknown"]
+    },
+    "media_type": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "content_length": { "type": "integer", "minimum": 0 },
+    "content_digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "value": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "profile": { "const": "ets.content.sha256.v1" }
+      }
+    },
+    "evidence_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["retention_mode"],
+      "properties": {
+        "uri": { "type": ["string", "null"], "maxLength": 4096 },
+        "retention_mode": {
+          "type": "string",
+          "enum": ["source_retained", "external_store", "not_retained", "managed_store"]
+        },
+        "store_profile": { "type": ["string", "null"], "maxLength": 200 }
+      }
+    },
+    "transformation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "input_format": { "type": "string", "maxLength": 200 },
+        "output_event_type": { "type": "string", "maxLength": 200 },
+        "lossless": { "type": "boolean" },
+        "notes": { "type": "string", "maxLength": 2000 }
+      }
+    },
+    "correlation_id": { "type": ["string", "null"], "maxLength": 200 },
+    "metadata": { "type": "object" },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "classification": { "type": "string", "maxLength": 100 },
+        "redaction_profile": { "type": "string", "maxLength": 100 },
+        "contains_raw_evidence": { "const": false }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" }
+    }
+  }
+}

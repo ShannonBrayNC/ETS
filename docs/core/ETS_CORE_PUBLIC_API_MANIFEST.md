@@ -1,115 +1,97 @@
 # ETS Core Public API Manifest
 
-Status: proposed for C1 implementation
+Status: C1.1 implementation contract
 
-Only names listed in this manifest are candidates for the supported C1 API. Existing imports not listed here remain compatibility or internal surfaces until separately approved.
-
-## Stability classes
-
-- `stable`: semantic compatibility required within the major version.
-- `experimental`: may change in minor releases; explicit opt-in import path.
-- `deprecated`: supported temporarily with warnings and migration guidance.
-- `internal`: no compatibility promise.
+This manifest freezes the first supported `ets.core.api` facade. Symbols not listed here are compatibility, implementation, experimental, or product surfaces unless separately approved.
 
 ## Stable public facade
 
-Target import path:
-
 ```python
 from ets.core.api import (
-    CanonicalizationProfile,
-    HashProfile,
-    MerkleProfile,
-    ProtocolProfile,
     EvidenceEvent,
-    InclusionProof,
-    ConsistencyProof,
-    SignedTreeHead,
-    EvidenceProofBundle,
-    VerificationStatus,
+    ProfileKind,
+    ProtocolProfile,
     VerificationReason,
     VerificationResult,
-    canonicalize,
+    VerificationStatus,
+    VerifiedComponent,
     canonical_sha256,
+    canonicalize,
     get_profile,
     list_profiles,
-    merkle_root,
-    generate_inclusion_proof,
-    verify_inclusion_proof,
-    generate_consistency_proof,
-    verify_consistency_proof,
-    verify_signed_tree_head,
-    verify_bundle,
+    resolve_profile,
 )
 ```
 
-## Public contracts
+The exact ordered `__all__` value is:
 
-### `canonicalize(value, *, profile=...) -> bytes`
+```text
+EvidenceEvent
+ProfileKind
+ProtocolProfile
+VerificationReason
+VerificationResult
+VerificationStatus
+VerifiedComponent
+canonical_sha256
+canonicalize
+get_profile
+list_profiles
+resolve_profile
+```
 
-Returns canonical bytes or raises `CanonicalizationError` when the caller supplies a value outside the profile domain.
+## Contract behavior
 
-### `canonical_sha256(value, *, profile=...) -> str`
+### Canonicalization
 
-Returns lowercase hexadecimal SHA-256 over canonical bytes.
+- `canonicalize(value) -> bytes` returns deterministic UTF-8 JSON bytes for supported JSON-native values.
+- `canonical_sha256(value) -> str` returns a lowercase SHA-256 hexadecimal digest over those bytes.
 
-### `get_profile(profile_id) -> ProtocolProfile`
+### Profiles
 
-Returns an immutable registered profile. Unknown identifiers raise `UnknownProfileError` for direct configuration use. Verification APIs convert unknown artifact profiles into structured `UNSUPPORTED_PROFILE` results.
+- `get_profile(profile_id)` is the specification-facing lookup name.
+- `resolve_profile(profile_id, *, allow_verification_only=True)` remains available as the explicit implementation-facing lookup.
+- `list_profiles(...)` returns immutable profile records in stable identifier order.
+- Unknown profiles raise `UnknownProfileError` in direct configuration use.
+- Verification-only profiles cannot be used for production generation when `allow_verification_only=False`.
 
-### `list_profiles(*, production=True, verification=True) -> tuple[ProtocolProfile, ...]`
+### Verification results
 
-Returns profiles in stable identifier order.
+`VerificationStatus`, `VerificationReason`, `VerifiedComponent`, and `VerificationResult` are immutable machine-readable contracts. Normal invalidity is represented as data rather than an exception.
 
-### `merkle_root(leaves, *, profile=...) -> bytes`
+## Deferred public contracts
 
-Pure root construction over ordered leaf inputs.
+The following remain required by later C1 work packages but are not exported by C1.1 until their pure, profile-aware contracts and structured verification behavior are implemented and independently reviewed:
 
-### Proof generation
+- inclusion and consistency proof models;
+- Merkle root and proof-generation functions;
+- signed tree-head verification;
+- portable evidence-proof bundle verification.
 
-Generation APIs accept trusted, validated local data and may raise programmer/configuration exceptions. They SHALL emit explicit profile identifiers.
-
-### Proof verification
-
-Verification APIs accept untrusted portable material and return `VerificationResult`. Invalid proof material is a normal result, not an exception.
-
-## Stable models
-
-Public protocol models SHALL be immutable or treated as immutable, serializable without application services, and independent of Pydantic/FastAPI transport behavior at the public contract boundary.
+Their absence from C1.1 is deliberate and does not authorize consumers to import internal implementations.
 
 ## Excluded from the stable facade
 
-The following SHALL NOT be exported by `ets.core.api` during C1:
+The facade must not export:
 
 - SQLite or in-memory stores;
 - append-only log service implementations;
-- artifact registry and raw-artifact convenience APIs;
-- federation and quorum policy;
-- external anchoring transports;
-- report rendering;
-- HTTP/API models;
-- authentication and authorization;
+- artifact registries;
+- federation or quorum policy;
+- anchoring transports;
+- reports and templates;
+- FastAPI or transport models;
+- authentication or authorization;
 - environment settings;
-- Azure or hosted signer adapters;
-- Edge capture and synchronization;
-- portal or UI models;
-- AI-derived analysis;
-- Evidence Graph or trust-policy evaluation.
+- Azure adapters;
+- Edge or Cloud runtime behavior;
+- portals, billing, AI, or trust-policy evaluation.
 
-## Import compatibility
+## Compatibility and versioning
 
-`ets.core.__init__` may retain transitional re-exports during C1, but:
-
-1. it SHALL be documented as a compatibility facade;
-2. new consumers SHALL use `ets.core.api`;
-3. import-boundary tests SHALL freeze `ets.core.api.__all__`;
-4. removal of compatibility exports requires deprecation and migration evidence; and
-5. package import SHALL have no storage, network, environment, or logging side effects.
-
-## Versioning
-
-- Adding a backward-compatible stable function: minor version.
-- Adding a new optional profile: minor version when no existing result changes.
-- Changing canonical bytes, hash preimages, proof semantics, or result meanings: new protocol profile and normally a major version.
-- Removing or renaming a stable symbol: major version after deprecation.
-- Security disabling of a profile: security advisory plus explicit verification policy; historical verification requirements must be documented.
+- `ets.core.__init__` remains a transitional compatibility facade.
+- New consumers use `ets.core.api`.
+- The exact ordered `ets.core.api.__all__` is CI-enforced.
+- Adding a backward-compatible stable symbol requires a minor release and manifest update.
+- Removing or renaming a stable symbol requires a major release after deprecation.
+- Changing canonical bytes, profile semantics, proof semantics, or result meanings requires a new versioned protocol contract.

@@ -1,8 +1,8 @@
 name: Governance Audit
 
+# Scheduled governance audits are paused while the dissertation-only program is
+# active. Keep manual dispatch available for an explicit security/governance review.
 on:
-  schedule:
-    - cron: "17 9 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -33,7 +33,7 @@ jobs:
           BRANCH_PROTECTION_AUDIT_TOKEN: ${{ secrets.BRANCH_PROTECTION_AUDIT_TOKEN }}
         run: |
           if [ -z "$BRANCH_PROTECTION_AUDIT_TOKEN" ]; then
-            echo "::error::Configure repository secret BRANCH_PROTECTION_AUDIT_TOKEN with branch-protection read access before scheduled governance audits can pass."
+            echo "::error::Configure repository secret BRANCH_PROTECTION_AUDIT_TOKEN with branch-protection read access before governance audits can pass."
             exit 1
           fi
 
