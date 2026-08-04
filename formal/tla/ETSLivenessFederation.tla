@@ -1,5 +1,5 @@
 --------------------------- MODULE ETSLivenessFederation ---------------------------
-EXTENDS Naturals, TLC
+EXTENDS Naturals, FiniteSets, TLC
 
 (***************************************************************************)
 (* ETSLivenessFederation models bounded liveness and fairness semantics     *)
@@ -44,7 +44,7 @@ TypeOK ==
     /\ federationState \in States
     /\ Threshold \in 1..Cardinality(Verifiers)
 
-VotesFor(root) == {v.verifier : v \in deliveredVotes /\ v.root = root}
+VotesFor(root) == {v.verifier : v \in {vote \in deliveredVotes : vote.root = root}}
 VoteCount(root) == Cardinality(VotesFor(root))
 Quorum(root) == VoteCount(root) >= Threshold
 
@@ -73,29 +73,40 @@ Init ==
     /\ federationState = "Converging"
 
 SubmitVote(verifier, root) ==
-    /\ verifier \in Verifiers
-    /\ root \in Roots
-    /\ pendingVotes' = pendingVotes \cup {[verifier |-> verifier, root |-> root]}
-    /\ UNCHANGED <<round, deliveredVotes, acceptedRoot, federationState>>
+    LET vote == [verifier |-> verifier, root |-> root] IN
+        /\ verifier \in Verifiers
+        /\ root \in Roots
+        /\ round < MaxRounds
+        /\ vote \notin deliveredVotes \cup pendingVotes
+        /\ pendingVotes' = pendingVotes \cup {vote}
+        /\ UNCHANGED <<round, deliveredVotes, acceptedRoot, federationState>>
 
 DeliverVote(vote) ==
     LET nextDelivered == deliveredVotes \cup {vote} IN
-    LET nextAccepted ==
-        IF \E r1, r2 \in Roots :
+    LET nextPending == pendingVotes \ {vote} IN
+    LET nextQuorumFor(root) ==
+        Cardinality({v.verifier : v \in {item \in nextDelivered : item.root = root}}) >= Threshold
+    IN
+    LET nextConflictingQuorums ==
+        \E r1, r2 \in Roots :
             /\ r1 # r2
-            /\ Cardinality({v.verifier : v \in nextDelivered /\ v.root = r1}) >= Threshold
-            /\ Cardinality({v.verifier : v \in nextDelivered /\ v.root = r2}) >= Threshold
+            /\ nextQuorumFor(r1)
+            /\ nextQuorumFor(r2)
+    IN
+    LET nextAccepted ==
+        IF nextConflictingQuorums
         THEN "None"
-        ELSE IF \E r \in Roots : Cardinality({v.verifier : v \in nextDelivered /\ v.root = r}) >= Threshold
-        THEN CHOOSE r \in Roots : Cardinality({v.verifier : v \in nextDelivered /\ v.root = r}) >= Threshold
+        ELSE IF \E r \in Roots : nextQuorumFor(r)
+        THEN CHOOSE r \in Roots : nextQuorumFor(r)
         ELSE "None" IN
         /\ vote \in pendingVotes
         /\ deliveredVotes' = nextDelivered
-        /\ pendingVotes' = pendingVotes \ {vote}
+        /\ pendingVotes' = nextPending
         /\ acceptedRoot' = nextAccepted
         /\ federationState' =
-            IF ConflictingQuorums THEN "Conflict"
+            IF nextConflictingQuorums THEN "Conflict"
             ELSE IF nextAccepted # "None" THEN "Converged"
+            ELSE IF nextPending = {} THEN "Stale"
             ELSE "Converging"
         /\ UNCHANGED round
 
@@ -111,12 +122,16 @@ AdvanceRound ==
         ELSE federationState
 
 Partition ==
+    /\ federationState = "Converging"
     /\ federationState' = "Partitioned"
     /\ UNCHANGED <<round, deliveredVotes, pendingVotes, acceptedRoot>>
 
 HealPartition ==
     /\ federationState = "Partitioned"
-    /\ federationState' = "Converging"
+    /\ federationState' =
+        IF acceptedRoot # "None" THEN "Converged"
+        ELSE IF pendingVotes = {} THEN "Stale"
+        ELSE "Converging"
     /\ UNCHANGED <<round, deliveredVotes, pendingVotes, acceptedRoot>>
 
 Next ==
@@ -131,9 +146,10 @@ Spec == Init /\ [][Next]_<<round, deliveredVotes, pendingVotes, acceptedRoot, fe
 Fairness ==
     /\ WF_<<round, deliveredVotes, pendingVotes, acceptedRoot, federationState>>(AdvanceRound)
     /\ \A vote \in Vote : WF_<<round, deliveredVotes, pendingVotes, acceptedRoot, federationState>>(DeliverVote(vote))
+    /\ WF_<<round, deliveredVotes, pendingVotes, acceptedRoot, federationState>>(HealPartition)
 
 EventuallyConverges ==
-    <>((federationState = "Converged") \/ (federationState = "Conflict"))
+    <>((federationState = "Converged") \/ (federationState = "Conflict") \/ (federationState = "Stale"))
 
 EventuallyPendingVotesDrain ==
     <>(pendingVotes = {})

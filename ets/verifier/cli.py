@@ -10,7 +10,20 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from ets import __version__
+try:
+    from ets.version import __version__
+except ImportError:  # pragma: no cover - defensive console-script fallback
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        __version__ = version("ets")
+    except PackageNotFoundError:
+        __version__ = "0.1.0"
+
+
+
+
+
 from ets.core import EvidenceProofBundle
 from ets.election import ElectionInclusionProofBundle, verify_election_inclusion_bundle
 from ets.reports import CertificateFormat, create_certificate

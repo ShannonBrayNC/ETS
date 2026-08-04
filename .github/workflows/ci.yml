@@ -4,14 +4,64 @@ on:
   pull_request:
     branches:
       - main
+  push:
+    branches:
+      - main
+    tags:
+      - "rc/v*"
+      - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  python:
-    name: Python test, lint, and type check
+  release-readiness:
+    name: Release readiness gate
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: python -m pip install -e ".[dev]"
+
+      - name: Verify release readiness artifacts
+        shell: pwsh
+        run: ./scripts/verify-ets-release-readiness.ps1
+
+      - name: Test release readiness docs
+        run: pytest tests/unit/test_release_readiness_docs.py
+
+  python:
+    name: Python test, lint, and type check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Runner diagnostics
+        run: |
+          echo "runner.os=${{ runner.os }}"
+          echo "runner.arch=${{ runner.arch }}"
+          echo "github.workflow=${{ github.workflow }}"
+          echo "github.ref=${{ github.ref }}"
+          echo "github.sha=${{ github.sha }}"
+          echo "github.event_name=${{ github.event_name }}"
+          git --version
+
       - name: Check out repository
         uses: actions/checkout@v4
         with:
@@ -43,11 +93,21 @@ jobs:
         with:
           name: pytest-results
           path: test-results/pytest.xml
+          if-no-files-found: warn
 
       - name: Dependency vulnerability scan
         run: |
+          mkdir -p test-results
           python -m pip install pip-audit
-          pip-audit
+          pip-audit --progress-spinner off --format json --output test-results/pip-audit.json .
+
+      - name: Upload dependency audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-results
+          path: test-results/pip-audit.json
+          if-no-files-found: warn
 
       - name: Secret scan
         uses: gitleaks/gitleaks-action@v2
@@ -57,8 +117,21 @@ jobs:
   frontend:
     name: Explorer frontend build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
+      - name: Runner diagnostics
+        run: |
+          echo "runner.os=${{ runner.os }}"
+          echo "runner.arch=${{ runner.arch }}"
+          echo "github.workflow=${{ github.workflow }}"
+          echo "github.ref=${{ github.ref }}"
+          echo "github.sha=${{ github.sha }}"
+          echo "github.event_name=${{ github.event_name }}"
+          git --version
+          node --version || true
+          npm --version || true
+
       - name: Check out repository
         uses: actions/checkout@v4
         with:

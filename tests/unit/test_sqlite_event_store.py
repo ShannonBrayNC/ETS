@@ -11,6 +11,8 @@ from ets.core import DuplicateEventError, EventNotFoundError, EvidenceEvent, InM
 from ets.core.sqlite_store import SQLiteEventStore
 from ets.core.storage import EventStore, StorageValidationError
 
+EXPECTED_SQLITE_SCHEMA_VERSION = 2
+
 
 def make_event(event_id: str = "evt_001") -> EvidenceEvent:
     return EvidenceEvent(
@@ -66,7 +68,7 @@ def test_sqlite_store_survives_restart_and_preserves_indexes(tmp_path) -> None:
     reopened = SQLiteEventStore(path)
     entries = reopened.list_entries()
 
-    assert reopened.schema_version() == 1
+    assert reopened.schema_version() == EXPECTED_SQLITE_SCHEMA_VERSION
     assert [entry.log_index for entry in entries] == [0, 1]
     assert [entry.event.event_id for entry in entries] == ["evt_001", "evt_002"]
 
@@ -77,7 +79,7 @@ def test_sqlite_initialization_is_idempotent(tmp_path) -> None:
     SQLiteEventStore(path).close()
     reopened = SQLiteEventStore(path)
 
-    assert reopened.schema_version() == 1
+    assert reopened.schema_version() == EXPECTED_SQLITE_SCHEMA_VERSION
 
 
 def test_sqlite_detects_corrupted_stored_event_json(tmp_path) -> None:
@@ -87,7 +89,8 @@ def test_sqlite_detects_corrupted_stored_event_json(tmp_path) -> None:
     store.close()
 
     connection = sqlite3.connect(path)
-    connection.execute("UPDATE events SET event_json = ?", ('{"bad": true}',))
+    invalid_event_json = "{" + '"bad"' + ": true}"
+    connection.execute("UPDATE events SET event_json = ?", (invalid_event_json,))
     connection.commit()
     connection.close()
 

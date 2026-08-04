@@ -1,7 +1,8 @@
-"""SQLite-backed ETS event store."""
+"""SQLite-backed ETS event and artifact metadata store."""
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,13 +10,14 @@ from threading import RLock
 
 from pydantic import ValidationError
 
+from ets.core.artifacts import ArtifactRecord, create_artifact_record
 from ets.core.canonical_json import canonical_sha256
 from ets.core.log import DuplicateEventError, EventNotFoundError, LogEntry
 from ets.core.merkle import leaf_hash_for_event_hash
 from ets.core.models import EvidenceEvent
 from ets.core.storage import StorageValidationError
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class SQLiteEventStore:
@@ -102,6 +104,95 @@ class SQLiteEventStore:
             ).fetchall()
         return [self._row_to_entry(row) for row in rows]
 
+    def save_artifact_record(self, record: ArtifactRecord) -> None:
+        """Persist artifact metadata without storing raw artifact bytes."""
+
+        metadata_json = json.dumps(record.metadata, sort_keys=True, separators=(",", ":"))
+        timestamp = record.ingestion_timestamp_utc.astimezone(UTC).isoformat().replace(
+            "+00:00", "Z"
+        )
+        with self._lock:
+            try:
+                self._connection.execute(
+                    """
+                    INSERT INTO artifact_records (
+                        artifact_id,
+                        artifact_hash,
+                        reference_uri,
+                        content_type,
+                        byte_size,
+                        metadata_json,
+                        ingestion_timestamp_utc,
+                        event_id,
+                        log_index
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.artifact_id,
+                        record.artifact_hash,
+                        record.reference_uri,
+                        record.content_type,
+                        record.byte_size,
+                        metadata_json,
+                        timestamp,
+                        record.event_id,
+                        record.log_index,
+                    ),
+                )
+                self._connection.commit()
+            except sqlite3.IntegrityError as exc:
+                raise DuplicateEventError(
+                    f"artifact_id already exists: {record.artifact_id}"
+                ) from exc
+
+    def get_artifact_record(self, artifact_id: str) -> ArtifactRecord:
+        """Read one artifact metadata record and fail closed on corruption."""
+
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT
+                    artifact_id,
+                    artifact_hash,
+                    reference_uri,
+                    content_type,
+                    byte_size,
+                    metadata_json,
+                    ingestion_timestamp_utc,
+                    event_id,
+                    log_index
+                FROM artifact_records
+                WHERE artifact_id = ?
+                """,
+                (artifact_id,),
+            ).fetchone()
+        if row is None:
+            raise EventNotFoundError(f"artifact_id not found: {artifact_id}")
+        return self._row_to_artifact_record(row)
+
+    def list_artifact_records(self) -> list[ArtifactRecord]:
+        """Return persisted artifact metadata in append order."""
+
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT
+                    artifact_id,
+                    artifact_hash,
+                    reference_uri,
+                    content_type,
+                    byte_size,
+                    metadata_json,
+                    ingestion_timestamp_utc,
+                    event_id,
+                    log_index
+                FROM artifact_records
+                ORDER BY log_index ASC, artifact_id ASC
+                """
+            ).fetchall()
+        return [self._row_to_artifact_record(row) for row in rows]
+
     def schema_version(self) -> int:
         with self._lock:
             row = self._connection.execute(
@@ -132,6 +223,19 @@ class SQLiteEventStore:
                     leaf_hash TEXT NOT NULL,
                     created_at_utc TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS artifact_records (
+                    artifact_id TEXT PRIMARY KEY,
+                    artifact_hash TEXT NOT NULL,
+                    reference_uri TEXT NOT NULL,
+                    content_type TEXT NOT NULL,
+                    byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
+                    metadata_json TEXT NOT NULL,
+                    ingestion_timestamp_utc TEXT NOT NULL,
+                    event_id TEXT NOT NULL UNIQUE,
+                    log_index INTEGER NOT NULL,
+                    FOREIGN KEY(event_id) REFERENCES events(event_id)
+                );
                 """
             )
             self._connection.execute(
@@ -161,3 +265,34 @@ class SQLiteEventStore:
             event_hash=str(row["event_hash"]),
             leaf_hash=str(row["leaf_hash"]),
         )
+
+    def _row_to_artifact_record(self, row: sqlite3.Row) -> ArtifactRecord:
+        try:
+            metadata = json.loads(str(row["metadata_json"]))
+        except json.JSONDecodeError as exc:
+            raise StorageValidationError("stored artifact metadata failed JSON parsing") from exc
+        if not isinstance(metadata, dict):
+            raise StorageValidationError("stored artifact metadata must be a JSON object")
+
+        timestamp = _parse_utc_timestamp(str(row["ingestion_timestamp_utc"]))
+        return create_artifact_record(
+            artifact_id=str(row["artifact_id"]),
+            artifact_hash=str(row["artifact_hash"]),
+            reference_uri=str(row["reference_uri"]),
+            content_type=str(row["content_type"]),
+            byte_size=int(row["byte_size"]),
+            metadata=metadata,
+            ingestion_timestamp_utc=timestamp,
+            event_id=str(row["event_id"]),
+            log_index=int(row["log_index"]),
+        )
+
+
+def _parse_utc_timestamp(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise StorageValidationError("stored timestamp failed datetime parsing") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise StorageValidationError("stored timestamp must be timezone-aware")
+    return parsed.astimezone(UTC)

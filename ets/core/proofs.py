@@ -8,7 +8,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ets.core.log import LogEntry
-from ets.core.merkle import audit_path_for_leaf, compute_root_from_audit_path, merkle_root
+from ets.core.merkle import (
+    audit_path_for_leaf,
+    compute_root_from_audit_path,
+    merkle_root,
+    split_point,
+)
 
 
 class AuditPathStep(BaseModel):
@@ -120,7 +125,7 @@ def generate_consistency_proof(
     previous_tree_size: int,
     generated_at_utc: datetime | None = None,
 ) -> ConsistencyProof:
-    """Generate a linear consistency proof for duplicate-last ETS Merkle trees."""
+    """Generate a linear consistency proof for the ETS Merkle tree."""
 
     latest_size = len(entries)
     if previous_tree_size < 0 or previous_tree_size > latest_size:
@@ -209,16 +214,13 @@ def verify_consistency_proof(proof: ConsistencyProof) -> VerificationResult:
 
 
 def _expected_audit_path_positions(tree_size: int, leaf_index: int) -> list[str]:
-    positions: list[str] = []
-    level_size = tree_size
-    index = leaf_index
+    if tree_size <= 1:
+        return []
 
-    while level_size > 1:
-        positions.append("right" if index % 2 == 0 else "left")
-        index //= 2
-        level_size = (level_size + 1) // 2
-
-    return positions
+    k = split_point(tree_size)
+    if leaf_index < k:
+        return _expected_audit_path_positions(k, leaf_index) + ["right"]
+    return _expected_audit_path_positions(tree_size - k, leaf_index - k) + ["left"]
 
 
 def _invalid(

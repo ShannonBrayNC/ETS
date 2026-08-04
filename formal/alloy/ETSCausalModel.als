@@ -1,5 +1,11 @@
 module ETSCausalModel
 
+// This model is structural and causal. It supports reasoning about modeled
+// event relationships, tenant/workspace association, append-only uniqueness,
+// and omission relative to an external expected set.
+// It does not prove real-world truth, legal sufficiency, election correctness,
+// cryptographic hash security, hosted identity correctness, or completeness
+// without an external expected-event policy and observation process.
 sig Event {
   id: one EventId,
   previous: lone Event,

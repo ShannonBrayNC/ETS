@@ -15,6 +15,7 @@ EXTENDS Naturals, FiniteSets, TLC
 CONSTANTS Verifiers, MaxRoot, Threshold
 
 RootIds == 0..MaxRoot
+NoRoot == MaxRoot + 1
 RootView == [root: RootIds]
 Vote == [verifier: Verifiers, root: RootIds]
 
@@ -22,13 +23,16 @@ VARIABLES votes, acceptedRoot, conflictDetected, equivocationSuspicions
 
 TypeOK ==
     /\ votes \subseteq Vote
-    /\ acceptedRoot \in RootIds \cup {"None"}
+    /\ acceptedRoot \in RootIds \cup {NoRoot}
     /\ conflictDetected \in BOOLEAN
     /\ equivocationSuspicions \subseteq Verifiers
     /\ Threshold \in 1..Cardinality(Verifiers)
 
 VotesFor(root) == {v \in votes : v.root = root}
-VerifierSetFor(root) == {v.verifier : v \in VotesFor(root)}
+VerifierSetFor(root) ==
+    {verifier \in Verifiers :
+        \E submittedVote \in VotesFor(root) :
+            submittedVote.verifier = verifier}
 VoteCount(root) == Cardinality(VerifierSetFor(root))
 
 QuorumFor(root) == VoteCount(root) >= Threshold
@@ -47,7 +51,7 @@ VerifierEquivocated(verifier) ==
         /\ v1.root # v2.root
 
 AcceptedRootHasQuorum ==
-    acceptedRoot # "None" => QuorumFor(acceptedRoot)
+    acceptedRoot # NoRoot => QuorumFor(acceptedRoot)
 
 NoConflictingAcceptedRoots ==
     ~(\E r1, r2 \in RootIds :
@@ -63,7 +67,7 @@ EquivocationSuspicionsAreJustified ==
 
 Init ==
     /\ votes = {}
-    /\ acceptedRoot = "None"
+    /\ acceptedRoot = NoRoot
     /\ conflictDetected = FALSE
     /\ equivocationSuspicions = {}
 
@@ -81,19 +85,31 @@ CastVote(verifier, root) ==
                     /\ v2.verifier = v
                     /\ v1.root # v2.root}
         /\ conflictDetected' =
-            conflictDetected \/
+            (conflictDetected \/
             (\E r1, r2 \in RootIds :
                 /\ r1 # r2
-                /\ Cardinality({vote.verifier : vote \in nextVotes /\ vote.root = r1}) >= Threshold
-                /\ Cardinality({vote.verifier : vote \in nextVotes /\ vote.root = r2}) >= Threshold)
+                /\ Cardinality({v \in Verifiers :
+                    \E submittedVote \in nextVotes :
+                        /\ submittedVote.verifier = v
+                        /\ submittedVote.root = r1}) >= Threshold
+                /\ Cardinality({v \in Verifiers :
+                    \E submittedVote \in nextVotes :
+                        /\ submittedVote.verifier = v
+                        /\ submittedVote.root = r2}) >= Threshold))
         /\ acceptedRoot' =
-            IF acceptedRoot # "None" THEN acceptedRoot
+            IF acceptedRoot # NoRoot THEN acceptedRoot
             ELSE IF ~conflictDetected' THEN
-                CHOOSE r \in RootIds \cup {"None"} :
-                    \/ r = "None" /\ ~(\E candidate \in RootIds :
-                        Cardinality({vote.verifier : vote \in nextVotes /\ vote.root = candidate}) >= Threshold)
-                    \/ r \in RootIds /\ Cardinality({vote.verifier : vote \in nextVotes /\ vote.root = r}) >= Threshold
-            ELSE "None"
+                CHOOSE r \in RootIds \cup {NoRoot} :
+                    \/ r = NoRoot /\ ~(\E candidate \in RootIds :
+                        Cardinality({v \in Verifiers :
+                            \E submittedVote \in nextVotes :
+                                /\ submittedVote.verifier = v
+                                /\ submittedVote.root = candidate}) >= Threshold)
+                    \/ r \in RootIds /\ Cardinality({v \in Verifiers :
+                        \E submittedVote \in nextVotes :
+                            /\ submittedVote.verifier = v
+                            /\ submittedVote.root = r}) >= Threshold
+            ELSE NoRoot
 
 Next ==
     \E verifier \in Verifiers, root \in RootIds : CastVote(verifier, root)

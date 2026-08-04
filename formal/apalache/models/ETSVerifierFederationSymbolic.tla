@@ -8,9 +8,15 @@ EXTENDS Naturals, FiniteSets, TLC
 (* minimizing unsupported symbolic complexity.                              *)
 (***************************************************************************)
 
-CONSTANTS Verifiers, Roots, Threshold
+Verifiers == {"verifier-a", "verifier-b", "verifier-c"}
+Roots == {"root-a", "root-b"}
+Threshold == 2
 
-VARIABLES votes, accepted
+VARIABLE
+    \* @type: Str -> Str;
+    votes,
+    \* @type: Bool;
+    accepted
 
 TypeOK ==
     /\ votes \in [Verifiers -> Roots \cup {"NONE"}]
@@ -33,20 +39,27 @@ Init ==
     /\ accepted = FALSE
 
 CastVote(v, root) ==
+    /\ ~accepted
     /\ v \in Verifiers
     /\ root \in Roots
     /\ votes' = [votes EXCEPT ![v] = root]
     /\ accepted' = accepted
 
 AcceptRoot ==
+    /\ ~accepted
     /\ HasQuorum
     /\ ~ConflictingRoots
     /\ accepted' = TRUE
     /\ votes' = votes
 
+AcceptedStutter ==
+    /\ accepted
+    /\ UNCHANGED <<votes, accepted>>
+
 Next ==
     \/ \E v \in Verifiers, root \in Roots : CastVote(v, root)
     \/ AcceptRoot
+    \/ AcceptedStutter
 
 AcceptedRequiresQuorum ==
     accepted => HasQuorum

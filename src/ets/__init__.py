@@ -1,4 +1,5 @@
-"""ETS reference prototype package."""
+"""Evidence Transparency System package."""
 
-__all__ = ["__version__"]
-__version__ = "0.4.0-rc4"
+from ets.version import __version__
+
+__all__ = ["__version__", "api", "core", "verifier"]

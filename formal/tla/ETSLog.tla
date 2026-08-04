@@ -8,6 +8,11 @@ EXTENDS Naturals, Sequences, FiniteSets, TLC
 (* security. It checks state-machine obligations around append-only growth, *)
 (* verifier root disagreement, and omission suspicion relative to an        *)
 (* externally supplied expected-event set.                                  *)
+(*                                                                         *)
+(* Non-goals: this model does not prove real-world truth, legal             *)
+(* sufficiency, election correctness, SHA-256 security, hosted identity     *)
+(* correctness, cloud durability, or completeness without an external       *)
+(* expected-event policy and observation process.                           *)
 (***************************************************************************)
 
 CONSTANTS MaxEntries, MaxRoot, Verifiers, ExpectedEvents
@@ -19,6 +24,8 @@ RootIds == 0..MaxRoot
 TreeSizes == 0..MaxEntries
 
 Observation == [verifier: Verifiers, treeSize: TreeSizes, root: RootIds]
+
+SeqRange(seq) == {seq[i] : i \in DOMAIN seq}
 
 TypeOK ==
     /\ log \in Seq(EventIds)
@@ -42,7 +49,7 @@ MissingSuspicionsRequireExpectation ==
     missingSuspicions \subseteq ExpectedEvents
 
 MissingSuspicionsAreAbsentAtDetectionBoundary ==
-    \A event \in missingSuspicions : event \notin Range(log)
+    \A event \in missingSuspicions : event \notin SeqRange(log)
 
 RootConflictExists ==
     \E o1, o2 \in observedRoots :
@@ -61,7 +68,7 @@ Init ==
 AppendEntry(event) ==
     /\ Len(log) < MaxEntries
     /\ event \in EventIds
-    /\ event \notin Range(log)
+    /\ event \notin SeqRange(log)
     /\ log' = Append(log, event)
     /\ observedRoots' = observedRoots
     /\ forkDetected' = forkDetected
@@ -76,15 +83,16 @@ ObserveRoot(verifier, treeSize, root) ==
         /\ root \in RootIds
         /\ log' = log
         /\ observedRoots' = nextObserved
-        /\ forkDetected' = forkDetected \/
+        /\ forkDetected' =
+            (forkDetected \/
             (\E prior \in observedRoots :
                 /\ prior.treeSize = treeSize
-                /\ prior.root # root)
+                /\ prior.root # root))
         /\ missingSuspicions' = missingSuspicions
 
 DetectMissing(event) ==
     /\ event \in ExpectedEvents
-    /\ event \notin Range(log)
+    /\ event \notin SeqRange(log)
     /\ log' = log
     /\ observedRoots' = observedRoots
     /\ forkDetected' = forkDetected

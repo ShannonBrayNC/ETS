@@ -33,7 +33,8 @@ TypeOK ==
     /\ AcceptThreshold \in 1..Cardinality(Verifiers)
     /\ DegradedThreshold \in 0..AcceptThreshold
 
-VisibleVotesFor(root) == {obs.verifier : obs \in observations /\ obs.root = root /\ obs.verifier \in visible}
+VisibleVotesFor(root) ==
+    {obs.verifier : obs \in {item \in observations : item.root = root /\ item.verifier \in visible}}
 ConfidenceFor(root) == Cardinality(VisibleVotesFor(root))
 
 RootAccepted(root) == ConfidenceFor(root) >= AcceptThreshold
@@ -66,6 +67,12 @@ ConflictAlertSound ==
 ConfidenceMatchesAcceptedRoot ==
     acceptedRoot # "None" => confidence = ConfidenceFor(acceptedRoot)
 
+AlertsFor(nextConfidence, nextVisible, nextAdversaryMode, nextConflict) ==
+    (IF nextConfidence < AcceptThreshold THEN {"LowConfidence"} ELSE {}) \cup
+    (IF Cardinality(nextVisible) < Cardinality(Verifiers) THEN {"EclipseSuspected"} ELSE {}) \cup
+    (IF nextAdversaryMode = "Adaptive" THEN {"AdaptivePressure"} ELSE {}) \cup
+    (IF nextConflict THEN {"ConflictingTrustedRoots"} ELSE {})
+
 Init ==
     /\ visible = Verifiers
     /\ observations = {}
@@ -77,22 +84,22 @@ Init ==
 NextAcceptedRoot(nextObservations, nextVisible) ==
     IF \E r1, r2 \in Roots :
         /\ r1 # r2
-        /\ Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r1 /\ obs.verifier \in nextVisible}) >= AcceptThreshold
-        /\ Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r2 /\ obs.verifier \in nextVisible}) >= AcceptThreshold
+        /\ Cardinality({obs.verifier : obs \in {item \in nextObservations : item.root = r1 /\ item.verifier \in nextVisible}}) >= AcceptThreshold
+        /\ Cardinality({obs.verifier : obs \in {item \in nextObservations : item.root = r2 /\ item.verifier \in nextVisible}}) >= AcceptThreshold
     THEN "None"
-    ELSE IF \E r \in Roots : Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r /\ obs.verifier \in nextVisible}) >= AcceptThreshold
-    THEN CHOOSE r \in Roots : Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r /\ obs.verifier \in nextVisible}) >= AcceptThreshold
+    ELSE IF \E r \in Roots : Cardinality({obs.verifier : obs \in {item \in nextObservations : item.root = r /\ item.verifier \in nextVisible}}) >= AcceptThreshold
+    THEN CHOOSE r \in Roots : Cardinality({obs.verifier : obs \in {item \in nextObservations : item.root = r /\ item.verifier \in nextVisible}}) >= AcceptThreshold
     ELSE "None"
 
 NextConfidence(nextAcceptedRoot, nextObservations, nextVisible) ==
     IF nextAcceptedRoot = "None" THEN 0
-    ELSE Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = nextAcceptedRoot /\ obs.verifier \in nextVisible})
+    ELSE Cardinality({obs.verifier : obs \in {item \in nextObservations : item.root = nextAcceptedRoot /\ item.verifier \in nextVisible}})
 
 NextConflict(nextObservations, nextVisible) ==
     \E r1, r2 \in Roots :
         /\ r1 # r2
-        /\ Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r1 /\ obs.verifier \in nextVisible}) >= AcceptThreshold
-        /\ Cardinality({obs.verifier : obs \in nextObservations /\ obs.root = r2 /\ obs.verifier \in nextVisible}) >= AcceptThreshold
+        /\ Cardinality({obs.verifier : obs \in {item \in nextObservations : item.root = r1 /\ item.verifier \in nextVisible}}) >= AcceptThreshold
+        /\ Cardinality({obs.verifier : obs \in {item \in nextObservations : item.root = r2 /\ item.verifier \in nextVisible}}) >= AcceptThreshold
 
 Observe(verifier, root) ==
     LET nextObservations == observations \cup {[verifier |-> verifier, root |-> root]} IN
@@ -104,9 +111,7 @@ Observe(verifier, root) ==
         /\ UNCHANGED <<visible, adversaryMode>>
         /\ acceptedRoot' = nextAccepted
         /\ confidence' = nextConfidence
-        /\ alerts' =
-            (IF NextConflict(nextObservations, visible) THEN alerts \cup {"ConflictingTrustedRoots"} ELSE alerts) \cup
-            (IF nextConfidence < AcceptThreshold THEN {"LowConfidence"} ELSE {})
+        /\ alerts' = AlertsFor(nextConfidence, visible, adversaryMode, NextConflict(nextObservations, visible))
 
 HideVerifier(verifier) ==
     LET nextVisible == visible \ {verifier} IN
@@ -118,7 +123,7 @@ HideVerifier(verifier) ==
         /\ UNCHANGED observations
         /\ acceptedRoot' = nextAccepted
         /\ confidence' = nextConfidence
-        /\ alerts' = alerts \cup {"EclipseSuspected", "LowConfidence"}
+        /\ alerts' = AlertsFor(nextConfidence, nextVisible, adversaryMode', NextConflict(observations, nextVisible))
 
 ShowVerifier(verifier) ==
     LET nextVisible == visible \cup {verifier} IN
@@ -129,12 +134,12 @@ ShowVerifier(verifier) ==
         /\ UNCHANGED <<observations, adversaryMode>>
         /\ acceptedRoot' = nextAccepted
         /\ confidence' = nextConfidence
-        /\ alerts' = alerts
+        /\ alerts' = AlertsFor(nextConfidence, nextVisible, adversaryMode, NextConflict(observations, nextVisible))
 
 AdaptivePressure ==
     /\ adversaryMode' = "Adaptive"
     /\ UNCHANGED <<visible, observations, acceptedRoot, confidence>>
-    /\ alerts' = alerts \cup {"AdaptivePressure"}
+    /\ alerts' = AlertsFor(confidence, visible, "Adaptive", NextConflict(observations, visible))
 
 Next ==
     \/ \E verifier \in Verifiers, root \in Roots : Observe(verifier, root)
