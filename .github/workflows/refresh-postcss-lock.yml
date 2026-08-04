@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/security-audit-alignment
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
