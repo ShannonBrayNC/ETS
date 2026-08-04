@@ -1,0 +1,38 @@
+{
+  "canonicalization": [
+    {"canonical_hex":"7b7d","id":"canonical-0","input":{},"sha256":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"},
+    {"canonical_hex":"5b5d","id":"canonical-1","input":[],"sha256":"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"},
+    {"canonical_hex":"7b2261223a312c2262223a327d","id":"canonical-2","input":{"a":1,"b":2},"sha256":"43258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777"},
+    {"canonical_hex":"7b22636f6e74726f6c223a225c6e222c2274657874223a22c3a9227d","id":"canonical-3","input":{"control":"\n","text":"é"},"sha256":"85ce70a550b1525f87cd6949c5f28cfb3a4d3cbf095e0142167b47f1cf62387c"},
+    {"canonical_hex":"7b226172726179223a5b332c322c315d2c226e6573746564223a7b2261223a6e756c6c2c227a223a66616c73657d7d","id":"canonical-4","input":{"array":[3,2,1],"nested":{"a":null,"z":false}},"sha256":"97b5a3f2ed35ed14dd5995e0c1698bd6df1a3a4148123e814231068247089409"}
+  ],
+  "compatibility": {
+    "consistency_proof": {"follow_up_issue":194,"rfc6962_compact":false,"status":"alpha-linear-witness"},
+    "legacy_alpha": {"generation_allowed":false,"profile_id":"ets.protocol.event.v1.alpha-unprefixed","verification_allowed":true}
+  },
+  "event_hashes": [
+    {
+      "canonical_hex":"7b226163746f725f6964223a6e756c6c2c22636f6e74656e745f68617368223a2230303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030222c22636f6e74656e745f686173685f616c67223a22736861323536222c22636f7272656c6174696f6e5f6964223a22636f72722d31222c22637265617465645f61745f757463223a22323032362d30382d30325432313a30303a30305a222c226576656e745f6964223a226576742d30303031222c226576656e745f74797065223a2263617074757265222c2265766964656e63655f6964223a2265766964656e63652d61222c2265787465726e616c5f72656673223a6e756c6c2c226d65746164617461223a7b2261223a312c2262223a327d2c22726564616374696f6e5f70726f66696c65223a6e756c6c2c22736368656d615f76657273696f6e223a226574732e6576656e742e7631222c22736f757263655f73797374656d223a2273656e736f722d61222c227375626a6563745f726566223a6e756c6c2c2274656e616e745f6964223a2274656e616e742d61222c22776f726b73706163655f6964223a22776f726b73706163652d61227d",
+      "event_hash":"e02a0c7d228d31706829522a3427a576d4fe78cb4c37cc99d6b108524e6ddaeb",
+      "id":"event-minimal-1",
+      "payload":{"actor_id":null,"content_hash":"0000000000000000000000000000000000000000000000000000000000000000","content_hash_alg":"sha256","correlation_id":"corr-1","created_at_utc":"2026-08-02T21:00:00Z","event_id":"evt-0001","event_type":"capture","evidence_id":"evidence-a","external_refs":null,"metadata":{"a":1,"b":2},"redaction_profile":null,"schema_version":"ets.event.v1","source_system":"sensor-a","subject_ref":null,"tenant_id":"tenant-a","workspace_id":"workspace-a"}
+    }
+  ],
+  "merkle_roots": [
+    {"leaf_hashes":[],"root_hash":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","tree_size":0},
+    {"leaf_hashes":["e92348a95c75e943f06588e8f4e6c73d17fbe56595c75169aafbb8086ad75adf"],"root_hash":"e92348a95c75e943f06588e8f4e6c73d17fbe56595c75169aafbb8086ad75adf","tree_size":1},
+    {"leaf_hashes":["e92348a95c75e943f06588e8f4e6c73d17fbe56595c75169aafbb8086ad75adf","bedfee2326ebe91108b504355a3726bfd498ad8ec1925b4a4800463ee709557b"],"root_hash":"6de3c59a3e329a98770e8c038c0ddc766ec1043d9f69b53330a6e20da76fe934","tree_size":2}
+  ],
+  "negative": [
+    {"expected_reason":"profile_unknown","expected_status":"unsupported","id":"unknown-profile","input":{"profile_id":"ets.protocol.unknown.v1"},"operation":"profile-resolution"},
+    {"expected_reason":"profile_conflict","expected_status":"invalid","id":"profile-conflict","input":{"inner_profile":"ets.protocol.event.v1.alpha-unprefixed","outer_profile":"ets.protocol.event.v1.rfc6962-sha256"},"operation":"artifact-verification"},
+    {"expected_reason":"digest_mismatch","expected_status":"invalid","id":"digest-mismatch","input":{"actual":"1111111111111111111111111111111111111111111111111111111111111111","expected":"0000000000000000000000000000000000000000000000000000000000000000"},"operation":"digest-verification"},
+    {"expected_reason":"digest_malformed","expected_status":"malformed","id":"malformed-digest","input":{"digest":"xyz"},"operation":"digest-verification"},
+    {"expected_reason":"profile_generation_forbidden","expected_status":"unsupported","id":"legacy-generation","input":{"profile_id":"ets.protocol.event.v1.alpha-unprefixed"},"operation":"profile-generation"},
+    {"expected_reason":"signature_missing","expected_status":"unknown","id":"missing-signature","input":{"signature":null},"operation":"tree-head-verification"},
+    {"expected_reason":"bundle_linkage_invalid","expected_status":"malformed","id":"bundle-component-missing","input":{"missing":"inclusion_proof"},"operation":"bundle-verification"}
+  ],
+  "schema_version":"ets.conformance.v1",
+  "source_profile":"ets.protocol.event.v1.rfc6962-sha256",
+  "vector_set":"ets-core-c1.5-2026.1"
+}
