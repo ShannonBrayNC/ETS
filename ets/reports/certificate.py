@@ -86,19 +86,13 @@ def _warnings(bundle: EvidenceProofBundle) -> list[str]:
     if not bundle.verification_result.valid:
         warnings.append("Inclusion proof verification failed.")
     warnings.append(
-        
-            "Certificate verifies supplied ETS proof material only; it does not "
-            "prove real-world truth, completeness, or legal sufficiency."
-        
+        "Certificate verifies supplied ETS proof material only; it does not "
+        "prove real-world truth, completeness, or legal sufficiency."
     )
     return warnings
 
 
 def _markdown_certificate(summary: dict[str, object]) -> str:
-    verifies = summary["what_this_verifies"]
-    non_verifies = summary["what_this_does_not_verify"]
-    verify_items = verifies if isinstance(verifies, list) else []
-    non_verify_items = non_verifies if isinstance(non_verifies, list) else []
     lines = [
         "# ETS Verification Certificate",
         "",
@@ -165,8 +159,3 @@ def _html_certificate(summary: dict[str, object]) -> str:
         f"<h2>What This Does Not Verify</h2><ul>{does_not_verify}</ul>"
         f"<h2>Warnings</h2><ul>{warning_items}</ul></body></html>"
     )
-
-
-
-
-
