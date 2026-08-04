@@ -1,0 +1,41 @@
+name: Refresh PostCSS Lock
+
+on:
+  push:
+    branches:
+      - fix/security-audit-alignment
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out maintenance branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/security-audit-alignment
+          fetch-depth: 0
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ets/explorer-ui/package-lock.json
+
+      - name: Refresh patched PostCSS lock entry
+        working-directory: ets/explorer-ui
+        run: |
+          npm update postcss --package-lock-only --ignore-scripts
+          node -e "const lock=require('./package-lock.json'); const version=lock.packages['node_modules/postcss'].version; if (version !== '8.5.23') throw new Error('Expected postcss 8.5.23, got ' + version)"
+
+      - name: Commit generated lock and remove maintenance workflow
+        run: |
+          rm .github/workflows/refresh-postcss-lock.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ets/explorer-ui/package-lock.json .github/workflows/refresh-postcss-lock.yml
+          git commit -m "Upgrade PostCSS lock to patched 8.5.23"
+          git push origin HEAD:fix/security-audit-alignment
