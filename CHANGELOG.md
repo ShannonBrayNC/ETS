@@ -49,7 +49,7 @@ testing, protocol review, and non-production experimentation.
 - Hosted-auth documentation is aligned around the implemented JWKS alpha profile.
 - Repository text handling is normalized with Git LF line-ending rules.
 
-### Validation
+### Validation commands
 
 Run from the repository root:
 
@@ -58,6 +58,7 @@ python -m ruff check .
 python -m mypy
 python -m pytest
 python -m ets.verifier.cli --version
+ets-verify --version
 
 pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\verify-ets-release-readiness.ps1
@@ -98,20 +99,17 @@ The release candidate must also pass the GitHub Actions CI workflow on:
   as stable.
 - Consumers should pin the exact release tag and retain validation artifacts.
 
-### Explicit non-claims
+### Non-claims
 
-ETS does not prove:
-
-- real-world truth;
-- evidence completeness;
-- legal sufficiency or legal admissibility;
-- election correctness;
-- vote tabulation correctness;
-- that submitted evidence is authentic at its original source;
-- production trust-service readiness;
-- Byzantine consensus;
-- Internet-scale adversarial liveness;
-- patent filing, patent allowance, or freedom to operate.
+- ETS does not claim production readiness.
+- ETS does not provide legal certification.
+- ETS does not prove election correctness, ballot validity, tabulation accuracy, or official election results.
+- ETS is not voting software or tabulation software.
+- ETS does not prove real-world truth or evidence completeness.
+- ETS does not establish legal sufficiency or legal admissibility.
+- ETS does not prove that submitted evidence is authentic at its original source.
+- ETS does not establish Byzantine consensus or Internet-scale adversarial liveness.
+- ETS does not establish patent filing, patent allowance, or freedom to operate.
 
 ### Release evidence
 
