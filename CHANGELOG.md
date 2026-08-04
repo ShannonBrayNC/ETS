@@ -3,7 +3,7 @@
 All notable ETS changes are tracked here. ETS follows Semantic Versioning. Releases in
 the `0.x` series are unstable and may include breaking changes.
 
-## 0.1.0-alpha — Unreleased
+## [v0.1.0-alpha] — Unreleased
 
 ### Release status
 
