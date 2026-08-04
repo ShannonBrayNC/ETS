@@ -12,14 +12,14 @@
     ],
     "generated_at_utc": "2026-05-18T12:31:00Z",
     "hash_alg": "sha256",
-    "leaf_hash": "7f05726789961faec3b7f5cf5dad3473842428b847a4b3c8fe5dffbecce5ccde",
+    "leaf_hash": "9f5c3fb1a033e4d8091c6d85693913d930946973aabc593141ae0d83b79b342a",
     "leaf_index": 0,
-    "root_hash": "2f9c770e5ed0186139c3c4e784cf117d97e27288a4c0cd09ced128b14c7a09af",
+    "root_hash": "e23957dd953dcb38947873373a731c9a27e5f022bf3106a8a5ec692a06a32dbb",
     "schema_version": "ets.inclusion_proof.v1",
     "tree_size": 2
   },
   "jurisdiction": "Fictional County",
-  "leaf_hash": "7f05726789961faec3b7f5cf5dad3473842428b847a4b3c8fe5dffbecce5ccde",
+  "leaf_hash": "9f5c3fb1a033e4d8091c6d85693913d930946973aabc593141ae0d83b79b342a",
   "payload_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
   "privacy_class": "public",
   "root_manifest": {
@@ -31,7 +31,7 @@
     "generated_at_utc": "2026-05-18T12:31:00Z",
     "hash_alg": "sha256",
     "jurisdiction": "Fictional County",
-    "merkle_root": "2f9c770e5ed0186139c3c4e784cf117d97e27288a4c0cd09ced128b14c7a09af",
+    "merkle_root": "e23957dd953dcb38947873373a731c9a27e5f022bf3106a8a5ec692a06a32dbb",
     "milestone": "fictional-rc-demo",
     "schema_version": "ets.election.root_manifest.v1",
     "tree_size": 2
