@@ -43,7 +43,7 @@ def FairTerminalRule (s : FairState) : Prop :=
 Valid terminal states cannot remain unresolved.
 -/
 def FairTerminalClassified (s : FairState) : Prop :=
-  s.terminal = true -> s.outcome != FairOutcome.unresolved ∨ s.executed = true
+  s.terminal = true -> s.outcome ≠ FairOutcome.unresolved ∨ s.executed = true
 
 /--
 Mechanized theorem:
@@ -67,11 +67,9 @@ if timeout classification occurs, the outcome is not unresolved.
 theorem timeoutIsClassified
   (s : FairState)
   (h : s.outcome = FairOutcome.timedOut) :
-  s.outcome != FairOutcome.unresolved := by
+  s.outcome ≠ FairOutcome.unresolved := by
 
-  intro hbad
-  rw [h] at hbad
-  contradiction
+  simpa [h]
 
 /--
 Mechanized theorem:
@@ -93,7 +91,7 @@ theorem terminalStateHasFairClassification
   (s : FairState)
   (hc : FairTerminalClassified s)
   (ht : s.terminal = true) :
-  s.outcome != FairOutcome.unresolved ∨ s.executed = true := by
+  s.outcome ≠ FairOutcome.unresolved ∨ s.executed = true := by
 
   exact hc ht
 
