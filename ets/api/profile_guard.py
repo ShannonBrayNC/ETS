@@ -42,15 +42,26 @@ def validate_runtime_profile(
     signing_mode: str,
     allow_insecure_local: bool,
 ) -> None:
-    """Fail closed when local/demo settings are used without an explicit override."""
+    """Reject the implicit all-local profile unless it is explicitly authorized.
 
-    reasons = insecure_profile_reasons(
-        storage_provider=storage_provider,
-        auth_mode=auth_mode,
-        signing_mode=signing_mode,
+    Mixed profiles remain available so callers can intentionally exercise durable
+    storage, signed tree heads, or production authentication independently. Each
+    selected provider still performs its own required-configuration validation.
+    """
+
+    all_local = (
+        storage_provider in LOCAL_STORAGE_PROVIDERS
+        and auth_mode in LOCAL_AUTH_MODES
+        and signing_mode in LOCAL_SIGNING_MODES
     )
-    if reasons and not allow_insecure_local:
-        joined = "; ".join(reasons)
+    if all_local and not allow_insecure_local:
+        joined = "; ".join(
+            insecure_profile_reasons(
+                storage_provider=storage_provider,
+                auth_mode=auth_mode,
+                signing_mode=signing_mode,
+            )
+        )
         raise RuntimeError(
             "ETS local/demo runtime profile is disabled unless "
             "ETS_ALLOW_INSECURE_LOCAL=1 is set: "

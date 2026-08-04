@@ -1,0 +1,40 @@
+{
+  "election_id": "fictional-election-2026",
+  "event_hash": "8de47d762af38ef7219fe402f638f76658a5c7d2d03f1b99c8fbb11218a3f032",
+  "event_id": "election_fixture_evt_001",
+  "event_type": "observer_note_registered",
+  "inclusion_proof": {
+    "audit_path": [
+      {
+        "hash": "77303e7b8b88d0a2954daf1705330727393b87618c02cbc16f65fa5165d12bd2",
+        "position": "right"
+      }
+    ],
+    "generated_at_utc": "2026-05-18T12:31:00Z",
+    "hash_alg": "sha256",
+    "leaf_hash": "9f5c3fb1a033e4d8091c6d85693913d930946973aabc593141ae0d83b79b342a",
+    "leaf_index": 0,
+    "root_hash": "e23957dd953dcb38947873373a731c9a27e5f022bf3106a8a5ec692a06a32dbb",
+    "schema_version": "ets.inclusion_proof.v1",
+    "tree_size": 2
+  },
+  "jurisdiction": "Fictional County",
+  "leaf_hash": "9f5c3fb1a033e4d8091c6d85693913d930946973aabc593141ae0d83b79b342a",
+  "payload_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "privacy_class": "public",
+  "root_manifest": {
+    "election_id": "fictional-election-2026",
+    "event_ids": [
+      "election_fixture_evt_001",
+      "election_fixture_evt_002"
+    ],
+    "generated_at_utc": "2026-05-18T12:31:00Z",
+    "hash_alg": "sha256",
+    "jurisdiction": "Fictional County",
+    "merkle_root": "e23957dd953dcb38947873373a731c9a27e5f022bf3106a8a5ec692a06a32dbb",
+    "milestone": "fictional-rc-demo",
+    "schema_version": "ets.election.root_manifest.v1",
+    "tree_size": 2
+  },
+  "schema_version": "ets.election.inclusion_bundle.v1"
+}

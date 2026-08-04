@@ -1,0 +1,72 @@
+name: Dissertation Program Control
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "config/dissertation-work-queue.json"
+      - "config/dissertation-work-queue.schema.json"
+      - "docs/dissertation/**"
+      - "docs/requirements/ETS_DISSERTATION_PUBLICATION_REQUIREMENTS.md"
+      - "scripts/dissertation_queue.py"
+      - "tests/unit/test_dissertation_work_queue.py"
+      - ".github/workflows/dissertation-program.yml"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: dissertation-program-control
+  cancel-in-progress: false
+
+jobs:
+  queue-control:
+    name: Validate queue and select next hourly chunk
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate dissertation queue
+        run: python scripts/dissertation_queue.py validate
+
+      - name: Run queue contract tests
+        run: |
+          python -m pip install pytest
+          pytest tests/unit/test_dissertation_work_queue.py
+
+      - name: Select next bounded work chunk
+        run: python scripts/dissertation_queue.py next --json | tee dissertation-next-work.json
+
+      - name: Publish control summary
+        shell: bash
+        run: |
+          {
+            echo "## ETS Dissertation Program"
+            echo
+            echo "Queue validation passed for commit \`${GITHUB_SHA}\`."
+            echo
+            echo '```json'
+            cat dissertation-next-work.json
+            echo '```'
+            echo
+            echo "This read-only control job does not mark scholarly work complete."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Retain next-work control artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dissertation-next-work
+          path: dissertation-next-work.json
+          if-no-files-found: error
+          retention-days: 30

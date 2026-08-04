@@ -54,6 +54,10 @@ from ets.core import (
     normalize_artifact_metadata,
     verify_anchor_export,
 )
+from ets.core.artifact_registry import (
+    DurableArtifactRegistry,
+    load_artifact_registry,
+)
 from ets.core.merkle import merkle_root
 from ets.core.proofs import (
     generate_consistency_proof,
@@ -248,7 +252,14 @@ def create_app(
     app.state.redaction_profile = redaction_profile
     app.state.auth_mode = auth_mode
     app.state.signing_mode = signing_mode
-    app.state.artifact_records = {}
+
+
+    app.state.artifact_records = DurableArtifactRegistry(
+        load_artifact_registry(event_log.list_entries()),
+        event_log,
+    )
+
+
     app.state.anchor_history = []
     app.state.metrics = {
         "append_count": 0,
@@ -480,6 +491,7 @@ def create_app(
         )
         return result
 
+
     @app.get("/api/v1/events", response_model=EventListResponse, tags=["events"])
     def list_events(
         request: Request,
@@ -629,16 +641,37 @@ def create_app(
         response_model=EvidenceProofBundle,
         tags=["artifacts"],
     )
-    def get_artifact_proof(artifact_id: str, request: Request) -> EvidenceProofBundle:
-        record = _get_artifact_record(request, artifact_id)
+    def get_artifact_proof(
+        artifact_id: str,
+        request: Request,
+    ) -> EvidenceProofBundle:
+        context = _authenticate(request, request_auth_policy)
+        scope = _scope_from_request(request, context)
+        record = _get_scoped_artifact_record(request, artifact_id, scope)
+
         return get_proof_bundle(record.event_id, request)
+
 
     @app.post("/evidence/verify", tags=["artifacts"])
     async def verify_artifact(request: Request) -> dict[str, object]:
-        _authenticate(request, request_auth_policy)
-        payload = _validate_json_body(ArtifactVerificationRequest, await request.body())
-        record = _get_artifact_record(request, payload.artifact_id)
-        artifact_hash = hash_artifact_bytes(decode_artifact_base64(payload.artifact_base64))
+        context = _authenticate(request, request_auth_policy)
+        scope = _scope_from_request(request, context)
+
+        payload = _validate_json_body(
+            ArtifactVerificationRequest,
+            await request.body(),
+        )
+
+        record = _get_scoped_artifact_record(
+            request,
+            payload.artifact_id,
+            scope,
+        )
+
+        artifact_hash = hash_artifact_bytes(
+            decode_artifact_base64(payload.artifact_base64)
+        )
+
         valid = artifact_hash == record.artifact_hash
         _increment_metric(
             request,
@@ -651,6 +684,7 @@ def create_app(
             "expected_artifact_hash": record.artifact_hash,
             "reason": "ok" if valid else "artifact hash does not match registered hash",
         }
+
 
     @app.get("/api/v1/events/{event_id}", response_model=EventReadResponse, tags=["events"])
     def get_event(event_id: str, request: Request) -> EventReadResponse:
@@ -668,15 +702,28 @@ def create_app(
         )
         return _entry_response(entry)
 
+
     @app.get("/evidence/{event_id}")
     def get_lab_evidence(
         event_id: str,
         request: Request,
     ) -> EventReadResponse | ArtifactReadResponse:
-        artifact_records: dict[str, ArtifactRecord] = request.app.state.artifact_records
+        artifact_records: dict[str, ArtifactRecord] = (
+            request.app.state.artifact_records
+        )
+
         if event_id in artifact_records:
-            return _artifact_response(artifact_records[event_id])
+            context = _authenticate(request, request_auth_policy)
+            scope = _scope_from_request(request, context)
+            record = _get_scoped_artifact_record(
+                request,
+                event_id,
+                scope,
+            )
+            return _artifact_response(record)
+
         return get_event(event_id, request)
+
 
     @app.get("/api/v1/events/by-index/{index}", response_model=EventReadResponse, tags=["events"])
     def get_event_by_index(index: int, request: Request) -> EventReadResponse:
@@ -1198,6 +1245,18 @@ def _increment_metric(request: Request, name: str) -> None:
     if isinstance(metrics, dict) and name in metrics:
         metrics[name] += 1
 
+def _get_scoped_artifact_record(
+    request: Request,
+    artifact_id: str,
+    scope: TenantScope,
+) -> ArtifactRecord:
+    record = _get_artifact_record(request, artifact_id)
+
+    event_log: EventStore = request.app.state.event_log
+    entry = event_log.get_by_event_id(record.event_id)
+
+    _ensure_entry_matches_scope(entry, scope)
+    return record
 
 app = create_app_from_env()
 
@@ -1206,4 +1265,3 @@ try:
     app.openapi()
 except ValidationError as exc:  # pragma: no cover - startup guard
     raise RuntimeError("ETS API OpenAPI schema generation failed") from exc
-

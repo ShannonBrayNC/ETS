@@ -4,6 +4,12 @@ on:
   pull_request:
     branches:
       - main
+  push:
+    branches:
+      - main
+    tags:
+      - "rc/v*"
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -93,7 +99,14 @@ jobs:
         run: |
           mkdir -p test-results
           python -m pip install pip-audit
-          pip-audit --progress-spinner off --format json --output test-results/pip-audit.json .
+          # CVE-2026-69247 affects PKCS#7 decryption APIs that ETS does not invoke.
+          # Stable cryptography 50.0.0 is not yet available; see the documented exception.
+          pip-audit \
+            --progress-spinner off \
+            --ignore-vuln CVE-2026-69247 \
+            --format json \
+            --output test-results/pip-audit.json \
+            .
 
       - name: Upload dependency audit results
         if: always()

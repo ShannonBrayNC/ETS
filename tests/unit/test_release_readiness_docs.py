@@ -19,6 +19,8 @@ def test_release_gate_docs_exist() -> None:
         "docs/research/claim-traceability-manifest.json",
         "scripts/verify-branch-protection-runbook.py",
         "scripts/verify-ets-release-readiness.ps1",
+        "scripts/verify-ets-certificate-claim-safety.ps1",
+        "scripts/verify-ets-formal-traceability.ps1",
     ]
     for path in required:
         assert (ROOT / path).exists(), path
@@ -97,14 +99,14 @@ def test_release_notes_template_has_non_claims() -> None:
 def test_release_readiness_script_is_cross_platform_and_self_guarding() -> None:
     text = read("scripts/verify-ets-release-readiness.ps1")
     required_terms = [
-        "scripts/verify-ets-release-readiness.ps1",
-        "scripts/verify-ets-certificate-claim-safety.ps1",
-        "scripts/verify-ets-formal-traceability.ps1",
-        "./.venv/bin/python",
-        "python",
-        "./.venv/bin/ets-verify",
-        "python -m ets.verifier.cli",
-        "Python was not found",
+        "function Get-RepoPython",
+        ".\\.venv\\Scripts\\python.exe",
+        ".\\.venv\\bin\\python",
+        "Get-Command $commandName -ErrorAction SilentlyContinue",
+        "function Invoke-CheckedCommand",
+        "verify-ets-certificate-claim-safety.ps1",
+        "verify-ets-formal-traceability.ps1",
+        'Arguments @("-m", "ets.verifier.cli", "--version")',
     ]
     for term in required_terms:
         assert term in text

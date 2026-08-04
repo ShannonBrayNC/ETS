@@ -1,0 +1,22 @@
+{
+  "actor_id": null,
+  "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "content_hash_alg": "sha256",
+  "correlation_id": null,
+  "created_at_utc": "2026-05-18T12:30:00Z",
+  "event_id": "evt_cli_golden_001",
+  "event_type": "evidence.registered",
+  "evidence_id": "evidence_cli_golden_001",
+  "external_refs": null,
+  "metadata": {
+    "fixture": "cli-golden",
+    "sequence": 1,
+    "trust_label": "Fictional Simulation"
+  },
+  "redaction_profile": null,
+  "schema_version": "ets.event.v1",
+  "source_system": "ets-cli-fixture",
+  "subject_ref": "fixture:cli-golden-001",
+  "tenant_id": "tenant_fixture",
+  "workspace_id": "workspace_verifier"
+}

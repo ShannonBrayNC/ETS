@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ShannonBrayNC/ETS/config/dissertation-work-queue.schema.json",
+  "title": "ETS Dissertation Work Queue",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "program",
+    "execution",
+    "allowed_statuses",
+    "sprints",
+    "tasks"
+  ],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schema_version": {"const": "ets.dissertation.queue.v1"},
+    "program": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "issue", "mode", "other_autonomous_work_paused", "active_sprint", "default_branch", "repository"],
+      "properties": {
+        "id": {"const": "ETS-DISSERTATION"},
+        "issue": {"type": "integer", "minimum": 1},
+        "mode": {"const": "dissertation_only"},
+        "other_autonomous_work_paused": {"const": true},
+        "active_sprint": {"type": "string", "pattern": "^D[0-7]$"},
+        "default_branch": {"type": "string", "minLength": 1},
+        "repository": {"const": "ShannonBrayNC/ETS"}
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cadence", "max_tasks_per_pass", "target_minutes_per_pass", "lease_minutes", "allow_overlapping_passes", "selection_order", "completion_requires_evidence", "auto_merge_policy", "external_publication_allowed"],
+      "properties": {
+        "cadence": {"const": "PT1H"},
+        "max_tasks_per_pass": {"const": 1},
+        "target_minutes_per_pass": {"type": "integer", "minimum": 10, "maximum": 50},
+        "lease_minutes": {"type": "integer", "minimum": 10, "maximum": 59},
+        "allow_overlapping_passes": {"const": false},
+        "selection_order": {
+          "type": "array",
+          "prefixItems": [
+            {"const": "priority"},
+            {"const": "sprint_order"},
+            {"const": "task_order"},
+            {"const": "id"}
+          ],
+          "items": false,
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "completion_requires_evidence": {"const": true},
+        "auto_merge_policy": {"type": "string", "minLength": 1},
+        "external_publication_allowed": {"const": false}
+      }
+    },
+    "allowed_statuses": {
+      "type": "array",
+      "minItems": 7,
+      "uniqueItems": true,
+      "items": {"type": "string"}
+    },
+    "sprints": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "order", "name"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^D[0-7]$"},
+          "order": {"type": "integer", "minimum": 0, "maximum": 7},
+          "name": {"type": "string", "minLength": 5}
+        }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/task"}
+    }
+  },
+  "$defs": {
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sprint",
+        "task_order",
+        "priority",
+        "title",
+        "status",
+        "automation_eligible",
+        "approval_required",
+        "dependencies",
+        "issue_refs",
+        "requirement_refs",
+        "outputs",
+        "acceptance_criteria",
+        "validation",
+        "claim_risk",
+        "completion_evidence"
+      ],
+      "properties": {
+        "id": {"type": "string", "pattern": "^D[0-7]-[0-9]{3}$"},
+        "sprint": {"type": "string", "pattern": "^D[0-7]$"},
+        "task_order": {"type": "integer", "minimum": 1},
+        "priority": {"type": "integer", "minimum": 0, "maximum": 3},
+        "title": {"type": "string", "minLength": 8},
+        "status": {"enum": ["planned", "ready", "in_progress", "blocked", "human_review", "completed", "cancelled"]},
+        "automation_eligible": {"type": "boolean"},
+        "approval_required": {"type": "boolean"},
+        "dependencies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^D[0-7]-[0-9]{3}$"}
+        },
+        "issue_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "integer", "minimum": 1}
+        },
+        "requirement_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^D[0-7]-R[0-9]+$"}
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 3}
+        },
+        "acceptance_criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 10}
+        },
+        "validation": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 3}
+        },
+        "claim_risk": {"enum": ["low", "medium", "high", "critical", "approval_gate"]},
+        "completion_evidence": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 3}
+        }
+      }
+    }
+  }
+}
