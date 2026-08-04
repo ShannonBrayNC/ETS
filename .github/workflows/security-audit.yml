@@ -30,7 +30,11 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: Audit Python dependencies
-        run: python -m pip_audit
+        run: |
+          # CVE-2026-69247 affects PKCS#7 decryption APIs that ETS does not invoke.
+          # Stable cryptography 50.0.0 is not yet available.
+          # Governance record: docs/security/DEPENDENCY_AUDIT_EXCEPTIONS.md
+          python -m pip_audit --ignore-vuln CVE-2026-69247
 
   explorer-dependency-audit:
     name: Explorer dependency audit
