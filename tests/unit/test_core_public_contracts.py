@@ -7,18 +7,29 @@ from ets.core import api
 from ets.core.profiles import EVENT_RFC6962_V1
 
 EXPECTED_PUBLIC_API = [
+    "DuplicateEventError",
+    "EventNotFoundError",
     "EvidenceEvent",
+    "EvidenceProofBundle",
+    "InMemoryAppendOnlyLog",
+    "InclusionProof",
+    "LogEntry",
     "ProfileKind",
     "ProtocolProfile",
+    "SignedTreeHead",
     "VerificationReason",
     "VerificationResult",
     "VerificationStatus",
     "VerifiedComponent",
     "canonical_sha256",
     "canonicalize",
+    "generate_inclusion_proof",
     "get_profile",
+    "leaf_hash_for_event_hash",
     "list_profiles",
+    "merkle_root",
     "resolve_profile",
+    "verify_inclusion_proof",
 ]
 
 
@@ -26,10 +37,9 @@ def test_supported_api_manifest_is_exact() -> None:
     assert api.__all__ == EXPECTED_PUBLIC_API
 
 
-def test_public_api_excludes_product_and_storage_symbols() -> None:
+def test_public_api_excludes_product_and_persistent_storage_symbols() -> None:
     prohibited = {
         "SQLiteEventStore",
-        "InMemoryAppendOnlyLog",
         "ArtifactRegistry",
         "FederationPolicy",
         "QuorumPolicy",
