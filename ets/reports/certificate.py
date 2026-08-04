@@ -93,6 +93,11 @@ def _warnings(bundle: EvidenceProofBundle) -> list[str]:
 
 
 def _markdown_certificate(summary: dict[str, object]) -> str:
+    verifies = summary["what_this_verifies"]
+    does_not_verify = summary["what_this_does_not_verify"]
+    verify_items = verifies if isinstance(verifies, list) else []
+    non_verify_items = does_not_verify if isinstance(does_not_verify, list) else []
+
     lines = [
         "# ETS Verification Certificate",
         "",
@@ -107,10 +112,7 @@ def _markdown_certificate(summary: dict[str, object]) -> str:
         "",
         "## What This Verifies",
     ]
-
-    verifies = summary["what_this_verifies"]
-    if isinstance(verifies, list):
-        lines.extend(f"- {item}" for item in verifies)
+    lines.extend(f"- {item}" for item in verify_items)
 
     lines.extend(
         [
@@ -118,10 +120,7 @@ def _markdown_certificate(summary: dict[str, object]) -> str:
             "## What This Does Not Verify",
         ]
     )
-
-    does_not_verify = summary["what_this_does_not_verify"]
-    if isinstance(does_not_verify, list):
-        lines.extend(f"- {item}" for item in does_not_verify)
+    lines.extend(f"- {item}" for item in non_verify_items)
 
     warnings = summary["warnings"]
     if isinstance(warnings, list) and warnings:
