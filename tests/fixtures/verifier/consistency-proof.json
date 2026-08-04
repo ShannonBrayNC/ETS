@@ -1,13 +1,13 @@
 {
   "generated_at_utc": "2026-05-18T12:31:00Z",
   "hash_alg": "sha256",
-  "latest_root_hash": "22fbab28f7bc21320b3e49ce71dcbc01dda2ba01ce576476c4f996d82b8196cd",
+  "latest_root_hash": "2d21aa0447c30f590522dcba0b1633206ca8b1a98bfebf698f9543889fe9f3f8",
   "latest_tree_size": 2,
   "leaf_hashes": [
-    "b5da9afeba6edeb29653ec6933b0cc1bf60844b07ef701d56c241b758fcac441",
+    "1cbe9231f6f7aa008e9c683d04d5592d00db526a99e250c0ebfddffd7b01ea4e",
     "768d57051770d6fe1368b313380ce7fc09003b6b2856c17ad89d9c409e9f9f9b"
   ],
-  "previous_root_hash": "b5da9afeba6edeb29653ec6933b0cc1bf60844b07ef701d56c241b758fcac441",
+  "previous_root_hash": "1cbe9231f6f7aa008e9c683d04d5592d00db526a99e250c0ebfddffd7b01ea4e",
   "previous_tree_size": 1,
   "schema_version": "ets.consistency_proof.v1"
 }
