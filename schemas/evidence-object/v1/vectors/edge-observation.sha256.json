@@ -1,0 +1,6 @@
+{
+  "profile": "ets.evidence-object.canonical-json.sha256.v1",
+  "example": "../examples/edge-observation.json",
+  "canonical_byte_length": 1631,
+  "expected_hash": "2208bca743d67a5b83d8203406cddd80f8150dd90f688fa41090d7e1351be8e7"
+}
