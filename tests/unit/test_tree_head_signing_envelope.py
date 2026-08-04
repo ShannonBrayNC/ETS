@@ -82,3 +82,43 @@ def test_ed25519_tree_head_signer_round_trips_fixture_key() -> None:
         signed,
         "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
     )
+
+
+def test_azure_key_vault_tree_head_signer_uses_external_signing_adapter() -> None:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from ets.core.signing import AzureKeyVaultTreeHeadSigner
+
+    private_key = Ed25519PrivateKey.generate()
+    public_key_hex = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    ).hex()
+    signer = AzureKeyVaultTreeHeadSigner(
+        vault_url="https://ets-vault.vault.azure.net/",
+        key_name="ets-tree-head",
+        key_version="version-001",
+        sign_payload=private_key.sign,
+    )
+
+    signed = signer.sign(_tree_head())
+
+    assert signed.signature_alg == "ed25519"
+    assert signed.public_key_id == "https://ets-vault.vault.azure.net/keys/ets-tree-head/version-001"
+    assert signed.signature is not None
+    assert verify_tree_head_signature(signed, public_key_hex)
+
+
+def test_azure_key_vault_tree_head_signer_rejects_non_https_vault_url() -> None:
+    import pytest
+
+    from ets.core.signing import AzureKeyVaultTreeHeadSigner
+
+    with pytest.raises(RuntimeError, match="HTTPS"):
+        AzureKeyVaultTreeHeadSigner(
+            vault_url="http://ets-vault.example",
+            key_name="ets-tree-head",
+            key_version="version-001",
+            sign_payload=lambda payload: payload,
+        )

@@ -22,6 +22,7 @@ from ets.api.auth import (
     ProductionJWKSAuthPolicy,
     ProductionJWTAuthPolicy,
 )
+from ets.api.telemetry import emit_security_event
 from ets.core import (
     GENESIS_BLOCK_HASH,
     AnchorExport,
@@ -366,7 +367,14 @@ def create_app(
 
     @app.exception_handler(AuthError)
     async def auth_error_handler(request: Request, exc: AuthError) -> JSONResponse:
-        audit_event("auth_rejected", "denied", correlation_id=_correlation_id(request))
+        correlation_id = _correlation_id(request)
+        audit_event("auth_rejected", "denied", correlation_id=correlation_id)
+        emit_security_event(
+            "ets.auth.rejected",
+            severity="Warning",
+            correlation_id=correlation_id,
+            dimensions={"reason": str(exc), "auth_mode": auth_mode},
+        )
         _increment_metric(request, "auth_failure_count")
         return _error_response(
             status.HTTP_401_UNAUTHORIZED,
@@ -1053,7 +1061,15 @@ def _tree_head(log: EventStore, log_id: str, signer: TreeHeadSigner) -> SignedTr
         signature=None,
         public_key_id=None,
     )
-    return signer.sign(tree_head)
+    try:
+        return signer.sign(tree_head)
+    except Exception as exc:
+        emit_security_event(
+            "ets.signing.failed",
+            severity="Error",
+            dimensions={"reason": str(exc), "log_id": log_id},
+        )
+        raise
 
 
 def _entry_response(entry: LogEntry) -> EventReadResponse:
