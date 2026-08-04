@@ -1,7 +1,11 @@
+x-ets-local-profile: &ets-local-profile
+  ETS_ALLOW_INSECURE_LOCAL: "1"
+
 services:
   log-node-1:
     build: .
     environment:
+      <<: *ets-local-profile
       ETS_LOG_ID: log-node-1
     ports:
       - "8101:8000"
@@ -9,6 +13,7 @@ services:
   log-node-2:
     build: .
     environment:
+      <<: *ets-local-profile
       ETS_LOG_ID: log-node-2
     ports:
       - "8102:8000"
@@ -16,6 +21,7 @@ services:
   log-node-3:
     build: .
     environment:
+      <<: *ets-local-profile
       ETS_LOG_ID: log-node-3
     ports:
       - "8103:8000"
@@ -23,17 +29,23 @@ services:
   verifier-node-1:
     build: .
     command: ["python", "-m", "uvicorn", "ets.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *ets-local-profile
     ports:
       - "8201:8000"
 
   verifier-node-2:
     build: .
     command: ["python", "-m", "uvicorn", "ets.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *ets-local-profile
     ports:
       - "8202:8000"
 
   witness-node:
     build: .
     command: ["python", "-m", "uvicorn", "ets.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *ets-local-profile
     ports:
       - "8301:8000"
