@@ -32,7 +32,8 @@ jobs:
         working-directory: ets/explorer-ui
         run: |
           npm update postcss --package-lock-only --ignore-scripts
-          node -e "const lock=require('./package-lock.json'); const version=lock.packages['node_modules/postcss'].version; if (version !== '8.5.23') throw new Error('Expected postcss 8.5.23, got ' + version)"
+          node -e "const lock=require('./package-lock.json'); const version=lock.packages['node_modules/postcss'].version; const [major, minor, patch]=version.split('.').map(Number); if (major !== 8 || minor < 5 || (minor === 5 && patch < 23)) throw new Error('Expected postcss 8.5.23 or newer, got ' + version)"
+          npm audit --audit-level=moderate
 
       - name: Commit generated lock and remove maintenance workflow
         run: |
@@ -40,5 +41,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add ets/explorer-ui/package-lock.json .github/workflows/refresh-postcss-lock.yml
-          git commit -m "Upgrade PostCSS lock to patched 8.5.23"
+          git commit -m "Upgrade PostCSS lock to patched release"
           git push origin HEAD:fix/security-audit-alignment
