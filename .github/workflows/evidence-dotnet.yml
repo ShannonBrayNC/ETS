@@ -1,0 +1,47 @@
+name: Evidence Object .NET Compatibility
+
+on:
+  pull_request:
+    paths:
+      - "sdk/dotnet/**"
+      - "schemas/evidence-object/**"
+      - ".github/workflows/evidence-dotnet.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "sdk/dotnet/**"
+      - "schemas/evidence-object/**"
+      - ".github/workflows/evidence-dotnet.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  dotnet-compatibility:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore sdk/dotnet/Ets.Evidence.Tests/Ets.Evidence.Tests.csproj
+
+      - name: Build
+        run: dotnet build sdk/dotnet/Ets.Evidence.Tests/Ets.Evidence.Tests.csproj --configuration Release --no-restore
+
+      - name: Test shared vectors
+        run: dotnet test sdk/dotnet/Ets.Evidence.Tests/Ets.Evidence.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=evidence-dotnet.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-dotnet-results
+          path: "**/TestResults/*.trx"
+          if-no-files-found: warn

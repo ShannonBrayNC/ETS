@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from datetime import UTC, datetime
@@ -353,3 +354,162 @@ def test_audit_log_omits_sensitive_metadata(caplog) -> None:
     assert any(payload["operation"] == "event_appended" for payload in audit_payloads)
     assert "person@example.test" not in caplog.text
     assert "corr_001" in caplog.text
+
+
+def _token_with_header(
+    claims: dict[str, object],
+    private_key: rsa.RSAPrivateKey,
+    *,
+    kid: str,
+    header: dict[str, object],
+) -> str:
+    token = make_rs256_token(claims, private_key, kid=kid)
+    _, payload, signature = token.split(".")
+    header_b64 = base64.urlsafe_b64encode(
+        json.dumps(header, separators=(",", ":")).encode("utf-8")
+    ).rstrip(b"=").decode("ascii")
+    return f"{header_b64}.{payload}.{signature}"
+
+
+def test_production_jwks_auth_rejects_edge_case_tokens_fail_closed() -> None:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwks = {"keys": [rsa_public_jwk(private_key.public_key(), kid="auth-key-1")]}
+    client = TestClient(
+        create_app(
+            auth_policy=ProductionJWKSAuthPolicy(
+                jwks,
+                issuer="https://issuer.example",
+                audience="ets-api",
+            ),
+            auth_mode="production_jwks",
+        )
+    )
+    base_claims: dict[str, object] = {
+        "sub": "alice",
+        "iss": "https://issuer.example",
+        "aud": "ets-api",
+        "exp": 4_102_444_800,
+    }
+    cases = [
+        None,
+        "not-a-jwt",
+        "not-json.eyJleHAiOjQxMDI0NDQ4MDB9.signature",
+        make_rs256_token({**base_claims, "exp": 1}, private_key, kid="auth-key-1"),
+        make_rs256_token(
+            {**base_claims, "iss": "https://issuer.invalid"}, private_key, kid="auth-key-1"
+        ),
+        make_rs256_token(base_claims, private_key, kid="unknown-key"),
+        _token_with_header(
+            base_claims,
+            private_key,
+            kid="auth-key-1",
+            header={"alg": "HS256", "typ": "JWT", "kid": "auth-key-1"},
+        ),
+        make_rs256_token({**base_claims, "tenant_id": 42}, private_key, kid="auth-key-1"),
+        make_rs256_token({**base_claims, "nbf": 4_102_444_800}, private_key, kid="auth-key-1"),
+    ]
+
+    for token in cases:
+        headers = {} if token is None else {"Authorization": f"Bearer {token}"}
+        response = client.get("/api/v1/events", headers=headers)
+
+        assert response.status_code == 401
+        assert response.json()["error"]["code"] == "ETS_AUTH_REQUIRED"
+
+
+def test_production_jwks_auth_rejects_unsupported_jwk_use_fail_closed() -> None:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = rsa_public_jwk(private_key.public_key(), kid="auth-key-1")
+    jwk["use"] = "enc"
+    client = TestClient(
+        create_app(
+            auth_policy=ProductionJWKSAuthPolicy(
+                {"keys": [jwk]},
+                issuer="https://issuer.example",
+                audience="ets-api",
+            ),
+            auth_mode="production_jwks",
+        )
+    )
+    token = make_rs256_token(
+        {
+            "sub": "alice",
+            "iss": "https://issuer.example",
+            "aud": "ets-api",
+            "exp": 4_102_444_800,
+        },
+        private_key,
+        kid="auth-key-1",
+    )
+
+    response = client.get("/api/v1/events", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "ETS_AUTH_REQUIRED"
+
+
+def test_production_jwks_auth_refreshes_cached_keys_for_rotation() -> None:
+    old_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    new_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    initial_jwks = {"keys": [rsa_public_jwk(old_key.public_key(), kid="old-key")]}
+    rotated_jwks = {"keys": [rsa_public_jwk(new_key.public_key(), kid="new-key")]}
+    loads = 0
+
+    def load_jwks() -> dict[str, object]:
+        nonlocal loads
+        loads += 1
+        return rotated_jwks
+
+    policy = ProductionJWKSAuthPolicy(
+        initial_jwks,
+        issuer="https://issuer.example",
+        audience="ets-api",
+        jwks_loader=load_jwks,
+    )
+    client = TestClient(create_app(auth_policy=policy, auth_mode="production_jwks"))
+    token = make_rs256_token(
+        {
+            "sub": "alice",
+            "iss": "https://issuer.example",
+            "aud": "ets-api",
+            "exp": 4_102_444_800,
+        },
+        new_key,
+        kid="new-key",
+    )
+
+    response = client.get("/api/v1/events", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert loads == 1
+
+
+def test_production_jwks_auth_fails_closed_when_refresh_fails_for_unknown_key() -> None:
+    old_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    new_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    def load_jwks() -> dict[str, object]:
+        raise RuntimeError("jwks unavailable")
+
+    policy = ProductionJWKSAuthPolicy(
+        {"keys": [rsa_public_jwk(old_key.public_key(), kid="old-key")]},
+        issuer="https://issuer.example",
+        audience="ets-api",
+        jwks_loader=load_jwks,
+    )
+    client = TestClient(create_app(auth_policy=policy, auth_mode="production_jwks"))
+    token = make_rs256_token(
+        {
+            "sub": "alice",
+            "iss": "https://issuer.example",
+            "aud": "ets-api",
+            "exp": 4_102_444_800,
+        },
+        new_key,
+        kid="new-key",
+    )
+
+    response = client.get("/api/v1/events", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "ETS_AUTH_REQUIRED"

@@ -1,0 +1,74 @@
+{
+  "schema_id": "https://lanternprotocol.org/schemas/ets/evidence-object/v1",
+  "identity": {
+    "evidence_id": "ev-release-001",
+    "version": 1,
+    "namespace": "urn:lantern:ets:demo",
+    "evidence_type": "software_release",
+    "schema_version": "ets.evidence-object.v1"
+  },
+  "created_at": "2026-08-01T19:00:00Z",
+  "claims": [
+    {
+      "claim_id": "claim-build",
+      "subject": "urn:repo:lantern/ets",
+      "predicate": "build_status",
+      "object": "passed",
+      "confidence": 1.0,
+      "source_ref": "urn:ci:run:236"
+    }
+  ],
+  "assertions": [
+    {
+      "assertion_id": "assert-build",
+      "claim_id": "claim-build",
+      "actor_ref": "urn:actor:github-actions",
+      "asserted_at": "2026-08-01T19:01:00Z",
+      "policy_ref": "urn:policy:software-release:v1"
+    }
+  ],
+  "provenance": {
+    "collected_by": "urn:collector:ets-ci",
+    "source_system": "github-actions",
+    "workflow_ref": "urn:workflow:ci",
+    "repository_ref": "https://github.com/ShannonBrayNC/ETS",
+    "commit_ref": "66744aaf1044170585dc7cdc1cc7b372433e1acf",
+    "branch_ref": "feature/evidence-object-model-v1"
+  },
+  "contexts": [
+    {
+      "context_type": "release_candidate",
+      "context_ref": "urn:release:ets:v1",
+      "attributes": {
+        "stage": "sprint-2"
+      }
+    }
+  ],
+  "relationships": [],
+  "integrity": [],
+  "verifications": [],
+  "policy_refs": [
+    "urn:policy:software-release:v1"
+  ],
+  "privacy": {
+    "classification": "public",
+    "owner_ref": "urn:org:lantern-protocol",
+    "contains_pii": false,
+    "encryption_required": false,
+    "retention_policy_ref": "urn:retention:engineering",
+    "legal_hold": false
+  },
+  "lifecycle": [
+    {
+      "state": "created",
+      "occurred_at": "2026-08-01T19:00:00Z",
+      "actor_ref": "urn:actor:github-actions",
+      "reason": "CI evidence object created"
+    }
+  ],
+  "extensions": {
+    "lantern": {
+      "sprint": "evidence-object-v1"
+    }
+  }
+}

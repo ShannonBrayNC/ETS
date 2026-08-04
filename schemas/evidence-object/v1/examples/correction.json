@@ -1,0 +1,61 @@
+{
+  "schema_id": "https://lanternprotocol.org/schemas/ets/evidence-object/v1",
+  "identity": {
+    "evidence_id": "ev:case:alpha:measurement",
+    "version": 2,
+    "namespace": "urn:lantern:case:alpha",
+    "evidence_type": "corrected-measurement",
+    "schema_version": "ets.evidence-object.v1"
+  },
+  "created_at": "2026-08-01T19:05:00Z",
+  "claims": [
+    {
+      "claim_id": "claim:corrected-value",
+      "subject": "urn:case:alpha",
+      "predicate": "measurement",
+      "value": 101.2,
+      "confidence": 0.99
+    }
+  ],
+  "assertions": [
+    {
+      "assertion_id": "assertion:reviewer",
+      "claim_id": "claim:corrected-value",
+      "actor_ref": "urn:user:reviewer-01",
+      "asserted_at": "2026-08-01T19:05:00Z",
+      "policy_ref": "urn:policy:correction:v1"
+    }
+  ],
+  "contexts": [
+    {
+      "context_type": "case",
+      "context_ref": "urn:case:alpha",
+      "attributes": {}
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_id": "rel:supersedes-v1",
+      "relationship_type": "supersedes",
+      "target_evidence_ref": "ev:case:alpha:measurement@1",
+      "observed": true,
+      "confidence": 1.0
+    }
+  ],
+  "integrity": [],
+  "verifications": [],
+  "policy_refs": [
+    "urn:policy:correction:v1"
+  ],
+  "lifecycle": [
+    {
+      "state": "created",
+      "occurred_at": "2026-08-01T19:05:00Z",
+      "actor_ref": "urn:user:reviewer-01",
+      "reason": "Corrected transcription error"
+    }
+  ],
+  "corrects_ref": "ev:case:alpha:measurement@1",
+  "supersedes_ref": "ev:case:alpha:measurement@1",
+  "extensions": {}
+}
