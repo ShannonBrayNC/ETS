@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 from pathlib import Path
 
 from ets.core.canonical_json import canonical_sha256, canonicalize
-from ets.core.merkle import merkle_root
+from ets.core.merkle import leaf_hash_for_event_hash, merkle_root
+from ets.core.models import EvidenceEvent
 from ets.core.results import VerificationReason, VerificationStatus
 
 VECTOR_FILE = Path(__file__).resolve().parents[2] / "vectors/core/v1/c1_5_vectors.json"
@@ -36,6 +38,43 @@ def test_event_hash_vector_is_byte_exact() -> None:
         canonical = canonicalize(vector["payload"])
         assert canonical.hex() == vector["canonical_hex"], vector["id"]
         assert hashlib.sha256(canonical).hexdigest() == vector["event_hash"], vector["id"]
+
+
+def test_event_v1_model_matches_frozen_vector() -> None:
+    vectors = _vectors()
+    vector = vectors["event_hashes"][0]
+    payload = vector["payload"]
+    event = EvidenceEvent(
+        **{
+            **payload,
+            "created_at_utc": datetime.fromisoformat(payload["created_at_utc"]),
+        }
+    )
+
+    assert EvidenceEvent.HASHABLE_FIELDS == (
+        "event_id",
+        "tenant_id",
+        "workspace_id",
+        "evidence_id",
+        "event_type",
+        "subject_ref",
+        "content_hash",
+        "content_hash_alg",
+        "metadata",
+        "created_at_utc",
+        "schema_version",
+        "source_system",
+        "actor_id",
+        "correlation_id",
+        "external_refs",
+        "redaction_profile",
+    )
+    assert event.hashable_payload() == payload
+    assert canonicalize(event.hashable_payload()).hex() == vector["canonical_hex"]
+    assert canonical_sha256(event.hashable_payload()) == vector["event_hash"]
+    assert leaf_hash_for_event_hash(vector["event_hash"]) == (
+        "7ea017cd778f70cc29e07410ce0ede09821327ff91e36365bd777277312ecf46"
+    )
 
 
 def test_rfc6962_root_vectors_match_reference_implementation() -> None:
