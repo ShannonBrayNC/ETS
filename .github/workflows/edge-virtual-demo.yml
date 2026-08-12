@@ -6,7 +6,9 @@ on:
       - "edge-demo/**"
       - "ets/api/**"
       - "ets/core/**"
+      - "ets/edge/**"
       - "ets/explorer-ui/**"
+      - "tests/unit/test_edge_webhook_adapter.py"
       - ".github/workflows/edge-virtual-demo.yml"
   workflow_dispatch:
 
@@ -21,6 +23,18 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate Edge adapter code
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m ruff check ets/edge tests/unit/test_edge_webhook_adapter.py
+          python -m mypy ets/edge
+          python -m pytest -q tests/unit/test_edge_webhook_adapter.py
 
       - name: Build and start ETS Edge Virtual
         run: docker compose -f edge-demo/docker-compose.yml up -d --build
@@ -49,6 +63,88 @@ jobs:
           assert ready['storage'] == 'sqlite', ready
           assert ready['signing'] == 'ed25519', ready
           assert ready['auth'] == 'local_header', ready
+          PY
+
+      - name: Capture, prove, and verify an external webhook
+        run: |
+          printf '%s' '{"marker":"ETS_RAW_WEBHOOK_SECRET_9f31","action":"invoice.approved","amount":4200}' > /tmp/webhook.json
+
+          curl --fail --silent --show-error \
+            -H 'Content-Type: application/json' \
+            -H 'X-ETS-Tenant: tenant_demo' \
+            -H 'X-ETS-Workspace: workspace_alpha' \
+            -H 'X-Correlation-ID: corr-edge-webhook-ci-001' \
+            -H 'X-ETS-Actor: synthetic-business-app' \
+            --data-binary @/tmp/webhook.json \
+            http://localhost:8400/edge/v1/capture/webhook/business-app > /tmp/webhook-receipt.json
+
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          body = Path('/tmp/webhook.json').read_bytes()
+          receipt = json.loads(Path('/tmp/webhook-receipt.json').read_text())
+          assert receipt['content_hash'] == hashlib.sha256(body).hexdigest(), receipt
+          assert receipt['content_hash_alg'] == 'sha256', receipt
+          assert receipt['byte_size'] == len(body), receipt
+          Path('/tmp/webhook-event-id.txt').write_text(receipt['event_id'])
+          PY
+
+          WEBHOOK_EVENT_ID="$(cat /tmp/webhook-event-id.txt)"
+
+          curl --fail --silent --show-error \
+            -H 'X-ETS-Tenant: tenant_demo' \
+            -H 'X-ETS-Workspace: workspace_alpha' \
+            "http://localhost:8400/api/v1/events/${WEBHOOK_EVENT_ID}" > /tmp/webhook-event.json
+
+          curl --fail --silent --show-error \
+            -H 'X-ETS-Tenant: tenant_demo' \
+            -H 'X-ETS-Workspace: workspace_alpha' \
+            "http://localhost:8400/api/v1/proofs/inclusion/${WEBHOOK_EVENT_ID}" > /tmp/webhook-proof.json
+
+          curl --fail --silent --show-error \
+            -H 'Content-Type: application/json' \
+            -H 'X-ETS-Tenant: tenant_demo' \
+            -H 'X-ETS-Workspace: workspace_alpha' \
+            --data-binary @/tmp/webhook-proof.json \
+            http://localhost:8400/api/v1/verify/inclusion > /tmp/webhook-verification.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          event = json.loads(Path('/tmp/webhook-event.json').read_text())
+          verification = json.loads(Path('/tmp/webhook-verification.json').read_text())
+          assert event['event']['event_type'] == 'evidence.captured.webhook', event
+          assert event['event']['metadata']['raw_payload_retained'] is False, event
+          assert event['event']['correlation_id'] == 'corr-edge-webhook-ci-001', event
+          assert verification['valid'] is True, verification
+          PY
+
+          docker compose -f edge-demo/docker-compose.yml exec -T edge-api python - <<'PY'
+          from pathlib import Path
+
+          for database_file in Path('/var/lib/ets').glob('edge.db*'):
+              assert b'ETS_RAW_WEBHOOK_SECRET_9f31' not in database_file.read_bytes(), database_file
+          PY
+
+          printf '%s' '{"marker":"ETS_RAW_WEBHOOK_SECRET_9f31","action":"invoice.rejected","amount":4200}' > /tmp/webhook-modified.json
+          curl --fail --silent --show-error \
+            -H 'Content-Type: application/json' \
+            -H 'X-ETS-Tenant: tenant_demo' \
+            -H 'X-ETS-Workspace: workspace_alpha' \
+            --data-binary @/tmp/webhook-modified.json \
+            http://localhost:8400/edge/v1/capture/webhook/business-app > /tmp/webhook-modified-receipt.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          original = json.loads(Path('/tmp/webhook-receipt.json').read_text())
+          modified = json.loads(Path('/tmp/webhook-modified-receipt.json').read_text())
+          assert original['content_hash'] != modified['content_hash'], (original, modified)
+          assert original['event_id'] != modified['event_id'], (original, modified)
           PY
 
       - name: Append, prove, and verify a synthetic event
@@ -116,12 +212,20 @@ jobs:
             -H 'X-ETS-Workspace: workspace_alpha' \
             http://localhost:8400/api/v1/events/evt_edge_virtual_ci_001 > /tmp/restarted-event.json
 
+          WEBHOOK_EVENT_ID="$(cat /tmp/webhook-event-id.txt)"
+          curl --fail --silent --show-error \
+            -H 'X-ETS-Tenant: tenant_demo' \
+            -H 'X-ETS-Workspace: workspace_alpha' \
+            "http://localhost:8400/api/v1/events/${WEBHOOK_EVENT_ID}" > /tmp/restarted-webhook-event.json
+
           python - <<'PY'
           import json
           from pathlib import Path
 
           event = json.loads(Path('/tmp/restarted-event.json').read_text())
+          webhook = json.loads(Path('/tmp/restarted-webhook-event.json').read_text())
           assert event['event']['event_id'] == 'evt_edge_virtual_ci_001', event
+          assert webhook['event']['event_type'] == 'evidence.captured.webhook', webhook
           PY
 
       - name: Dump logs on failure

@@ -27,6 +27,27 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  edge-webhook:
+    build:
+      context: ..
+      dockerfile: edge-demo/Dockerfile.webhook
+    environment:
+      ETS_EDGE_API_URL: http://edge-api:8000
+    depends_on:
+      edge-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=2).read()"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
   edge-ui:
     build:
       context: ..
@@ -35,6 +56,8 @@ services:
         VITE_ETS_API_BASE_URL: ""
     depends_on:
       edge-api:
+        condition: service_healthy
+      edge-webhook:
         condition: service_healthy
     ports:
       - "8400:80"
