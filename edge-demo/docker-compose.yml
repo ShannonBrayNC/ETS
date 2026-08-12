@@ -1,0 +1,44 @@
+services:
+  edge-api:
+    build:
+      context: ..
+      dockerfile: edge-demo/Dockerfile.api
+    environment:
+      ETS_EDGE_DATA_DIR: /var/lib/ets
+      ETS_STORAGE_PROVIDER: sqlite
+      ETS_SQLITE_PATH: /var/lib/ets/edge.db
+      ETS_LOG_ID: ets-edge-virtual-demo
+      ETS_REDACTION_PROFILE: none
+      ETS_AUTH_MODE: local_header
+      ETS_SIGNING_MODE: ed25519
+      ETS_SIGNING_PUBLIC_KEY_ID: ets-edge-virtual-demo-key
+      ETS_ALLOW_INSECURE_LOCAL: "1"
+    volumes:
+      - ets-edge-data:/var/lib/ets
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2).read()"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  edge-ui:
+    build:
+      context: ..
+      dockerfile: edge-demo/Dockerfile.ui
+      args:
+        VITE_ETS_API_BASE_URL: ""
+    depends_on:
+      edge-api:
+        condition: service_healthy
+    ports:
+      - "8400:80"
+    restart: unless-stopped
+
+volumes:
+  ets-edge-data:
