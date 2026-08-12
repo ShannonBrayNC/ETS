@@ -5,7 +5,7 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY ets ./ets
 
-RUN python -m pip install --no-cache-dir -e ".[dev]"
+RUN python -m pip install --no-cache-dir -e ".[edge]"
 
 ENV ETS_EDGE_API_URL=http://edge-api:8000
 
