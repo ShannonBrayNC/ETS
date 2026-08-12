@@ -15,8 +15,6 @@ from pathlib import Path
 
 import uvicorn
 
-from ets.api.profile_guard import validate_environment
-
 DATA_DIR = Path(os.getenv("ETS_EDGE_DATA_DIR", "/var/lib/ets"))
 KEY_PATH = DATA_DIR / "edge-demo-signing-key.hex"
 
@@ -47,6 +45,10 @@ def main() -> None:
     os.environ.setdefault("ETS_SIGNING_PUBLIC_KEY_ID", "ets-edge-virtual-demo-key")
     os.environ.setdefault("ETS_ALLOW_INSECURE_LOCAL", "1")
     os.environ["ETS_SIGNING_PRIVATE_KEY_HEX"] = signing_key_hex
+
+    # Import the ETS API package only after the complete demo environment exists.
+    # ets.api package initialization constructs the environment-configured app.
+    from ets.api.profile_guard import validate_environment
 
     validate_environment()
     uvicorn.run("ets.api.app:app", host="0.0.0.0", port=8000)
