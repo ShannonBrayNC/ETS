@@ -1,0 +1,133 @@
+name: Edge Virtual Demo
+
+on:
+  pull_request:
+    paths:
+      - "edge-demo/**"
+      - "ets/api/**"
+      - "ets/core/**"
+      - "ets/explorer-ui/**"
+      - ".github/workflows/edge-virtual-demo.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build and start ETS Edge Virtual
+        run: docker compose -f edge-demo/docker-compose.yml up -d --build
+
+      - name: Wait for appliance readiness
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://localhost:8400/ready > /tmp/ready.json; then
+              cat /tmp/ready.json
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f edge-demo/docker-compose.yml ps
+          docker compose -f edge-demo/docker-compose.yml logs
+          exit 1
+
+      - name: Confirm durable signed demo profile
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          ready = json.loads(Path('/tmp/ready.json').read_text())
+          assert ready['status'] == 'ready', ready
+          assert ready['storage'] == 'sqlite', ready
+          assert ready['signing'] == 'ed25519', ready
+          assert ready['auth'] == 'local_header', ready
+          PY
+
+      - name: Append, prove, and verify a synthetic event
+        run: |
+          cat > /tmp/event.json <<'JSON'
+          {
+            "event_id": "evt_edge_virtual_ci_001",
+            "tenant_id": "tenant_demo",
+            "workspace_id": "workspace_alpha",
+            "evidence_id": "evidence_edge_virtual_ci_001",
+            "event_type": "evidence.registered",
+            "subject_ref": "case:edge-virtual-ci",
+            "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "content_hash_alg": "sha256",
+            "metadata": {"source": "edge-virtual-ci", "synthetic": true},
+            "created_at_utc": "2026-08-12T23:00:00Z",
+            "schema_version": "ets.event.v1",
+            "source_system": "edge-virtual-ci"
+          }
+          JSON
+
+          curl --fail --silent --show-error \
+            -H 'Content-Type: application/json' \
+            -H 'X-ETS-Tenant: tenant_demo' \
+            -H 'X-ETS-Workspace: workspace_alpha' \
+            --data-binary @/tmp/event.json \
+            http://localhost:8400/api/v1/events > /tmp/append.json
+
+          curl --fail --silent --show-error \
+            -H 'X-ETS-Tenant: tenant_demo' \
+            -H 'X-ETS-Workspace: workspace_alpha' \
+            http://localhost:8400/api/v1/proofs/inclusion/evt_edge_virtual_ci_001 > /tmp/proof.json
+
+          curl --fail --silent --show-error \
+            -H 'Content-Type: application/json' \
+            -H 'X-ETS-Tenant: tenant_demo' \
+            -H 'X-ETS-Workspace: workspace_alpha' \
+            --data-binary @/tmp/proof.json \
+            http://localhost:8400/api/v1/verify/inclusion > /tmp/verification.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          append = json.loads(Path('/tmp/append.json').read_text())
+          verification = json.loads(Path('/tmp/verification.json').read_text())
+          assert append['event_id'] == 'evt_edge_virtual_ci_001', append
+          assert append['tree_head']['signature'], append
+          assert verification['valid'] is True, verification
+          PY
+
+      - name: Restart API and prove persistence
+        run: |
+          docker compose -f edge-demo/docker-compose.yml restart edge-api
+
+          for attempt in {1..30}; do
+            if curl --fail --silent http://localhost:8400/ready > /dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          curl --fail --silent --show-error \
+            -H 'X-ETS-Tenant: tenant_demo' \
+            -H 'X-ETS-Workspace: workspace_alpha' \
+            http://localhost:8400/api/v1/events/evt_edge_virtual_ci_001 > /tmp/restarted-event.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          event = json.loads(Path('/tmp/restarted-event.json').read_text())
+          assert event['event']['event_id'] == 'evt_edge_virtual_ci_001', event
+          PY
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f edge-demo/docker-compose.yml logs
+
+      - name: Stop demo stack
+        if: always()
+        run: docker compose -f edge-demo/docker-compose.yml down -v
