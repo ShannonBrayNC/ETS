@@ -150,8 +150,6 @@ class GatewaySyslogHost:
             raise ValueError("Gateway syslog TLS host requires TLS 1.2 or newer")
         if ssl.HAS_TLSv1_3 and tls_context.maximum_version < ssl.TLSVersion.TLSv1_3:
             raise ValueError("Gateway syslog TLS host must support TLS 1.3 when available")
-        if tls_context.num_tickets != 0:
-            raise ValueError("Gateway syslog TLS host requires TLS 1.3 session tickets disabled")
         if not tls_context.options & ssl.OP_NO_COMPRESSION:
             raise ValueError("Gateway syslog TLS host requires TLS compression to be disabled")
         if not 0 <= port <= 65535:
