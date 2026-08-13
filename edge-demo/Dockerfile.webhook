@@ -10,5 +10,6 @@ RUN python -m pip install --no-cache-dir -e ".[edge]"
 ENV ETS_EDGE_API_URL=http://edge-api:8000
 
 EXPOSE 8001
+EXPOSE 5514/udp
 
 CMD ["python", "-m", "uvicorn", "ets.edge.webhook_adapter:app", "--host", "0.0.0.0", "--port", "8001"]

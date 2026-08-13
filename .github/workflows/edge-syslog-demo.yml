@@ -1,0 +1,212 @@
+name: Edge Virtual Syslog Demo
+
+on:
+  pull_request:
+    paths:
+      - "edge-demo/**"
+      - "ets/edge/**"
+      - "tests/unit/test_edge_syslog_adapter.py"
+      - ".github/workflows/edge-syslog-demo.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syslog-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate syslog adapter code
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m ruff check ets/edge tests/unit/test_edge_syslog_adapter.py
+          python -m mypy ets/edge
+          python -m pytest -q tests/unit/test_edge_syslog_adapter.py tests/unit/test_edge_webhook_adapter.py tests/unit/test_edge_sync_queue.py tests/unit/test_edge_upstream_demo.py
+
+      - name: Start local Edge Virtual topology
+        run: docker compose -f edge-demo/docker-compose.yml up -d --build
+
+      - name: Wait for API and UDP listener
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+
+          for _ in range(60):
+              try:
+                  ready = json.load(urllib.request.urlopen('http://127.0.0.1:8400/ready', timeout=2))
+                  syslog = json.load(urllib.request.urlopen('http://127.0.0.1:8400/edge/v1/syslog/status', timeout=2))
+                  if ready.get('status') == 'ready' and syslog.get('listener_state') == 'listening':
+                      break
+              except Exception:
+                  pass
+              time.sleep(1)
+          else:
+              raise SystemExit('local Edge API/syslog listener did not become ready')
+          PY
+
+      - name: Prove UDP capture and local verification while upstream is stopped
+        run: |
+          docker compose -f edge-demo/docker-compose.yml stop edge-upstream
+          python - <<'PY'
+          import socket
+          from pathlib import Path
+
+          payload = b'<34>1 2026-08-13T00:45:00Z demo-host billing-app 4242 INV42 - ETS_SYSLOG_RAW_MARKER_7a42 amount=4200'
+          Path('/tmp/syslog.dat').write_bytes(payload)
+          with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+              sock.sendto(payload, ('127.0.0.1', 5514))
+          PY
+
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+          from pathlib import Path
+
+          for _ in range(30):
+              status = json.load(urllib.request.urlopen('http://127.0.0.1:8400/edge/v1/syslog/status', timeout=2))
+              if status.get('accepted', 0) >= 1 and status.get('last_event_id'):
+                  Path('/tmp/syslog-event-id.txt').write_text(status['last_event_id'])
+                  break
+              time.sleep(1)
+          else:
+              raise SystemExit('local syslog datagram was not accepted')
+          PY
+
+          SYSLOG_EVENT_ID="$(cat /tmp/syslog-event-id.txt)"
+          curl --fail --silent --show-error -H 'X-ETS-Tenant: tenant_demo' -H 'X-ETS-Workspace: workspace_alpha' "http://127.0.0.1:8400/api/v1/events/${SYSLOG_EVENT_ID}" > /tmp/syslog-event.json
+          curl --fail --silent --show-error -H 'X-ETS-Tenant: tenant_demo' -H 'X-ETS-Workspace: workspace_alpha' "http://127.0.0.1:8400/api/v1/proofs/inclusion/${SYSLOG_EVENT_ID}" > /tmp/syslog-proof.json
+          curl --fail --silent --show-error -H 'Content-Type: application/json' -H 'X-ETS-Tenant: tenant_demo' -H 'X-ETS-Workspace: workspace_alpha' --data-binary @/tmp/syslog-proof.json http://127.0.0.1:8400/api/v1/verify/inclusion > /tmp/syslog-verification.json
+
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          payload = Path('/tmp/syslog.dat').read_bytes()
+          event = json.loads(Path('/tmp/syslog-event.json').read_text())['event']
+          verification = json.loads(Path('/tmp/syslog-verification.json').read_text())
+          assert event['event_type'] == 'evidence.captured.syslog', event
+          assert event['content_hash'] == hashlib.sha256(payload).hexdigest(), event
+          assert event['metadata']['capture_boundary'] == 'edge.syslog.rfc5424.udp.v1', event
+          assert event['metadata']['raw_payload_retained'] is False, event
+          assert 'ETS_SYSLOG_RAW_MARKER_7a42' not in json.dumps(event, sort_keys=True), event
+          assert verification['valid'] is True, verification
+          PY
+
+          docker compose -f edge-demo/docker-compose.yml exec -T edge-api python - <<'PY'
+          from pathlib import Path
+          for database_file in Path('/var/lib/ets').glob('edge.db*'):
+              assert b'ETS_SYSLOG_RAW_MARKER_7a42' not in database_file.read_bytes(), database_file
+          PY
+          docker compose -f edge-demo/docker-compose.yml exec -T edge-webhook python - <<'PY'
+          from pathlib import Path
+          for database_file in Path('/var/lib/ets').glob('edge-sync.db*'):
+              assert b'ETS_SYSLOG_RAW_MARKER_7a42' not in database_file.read_bytes(), database_file
+          PY
+
+          curl --fail --silent --show-error -X POST http://127.0.0.1:8400/edge/v1/sync/run > /tmp/offline-sync.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          sync = json.loads(Path('/tmp/offline-sync.json').read_text())
+          assert sync['attempted'] == 1, sync
+          assert sync['retryable_failure'] == 1, sync
+          assert sync['synchronized'] == 0, sync
+          assert sync['upstream_status'] == 'offline', sync
+          PY
+
+      - name: Restart ingress and replay after reconnect
+        run: |
+          docker compose -f edge-demo/docker-compose.yml restart edge-webhook
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+
+          for _ in range(30):
+              try:
+                  syslog = json.load(urllib.request.urlopen('http://127.0.0.1:8400/edge/v1/syslog/status', timeout=2))
+                  sync = json.load(urllib.request.urlopen('http://127.0.0.1:8400/edge/v1/sync/status', timeout=2))
+                  if syslog.get('listener_state') == 'listening' and sync.get('queue_depth') == 1:
+                      break
+              except Exception:
+                  pass
+              time.sleep(1)
+          else:
+              raise SystemExit('listener or durable sync queue did not recover')
+          PY
+
+          docker compose -f edge-demo/docker-compose.yml start edge-upstream
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+          for _ in range(30):
+              try:
+                  status = json.load(urllib.request.urlopen('http://127.0.0.1:8400/edge/v1/upstream/status', timeout=2))
+                  if status.get('status') == 'online':
+                      break
+              except Exception:
+                  pass
+              time.sleep(1)
+          else:
+              raise SystemExit('local upstream did not recover')
+          PY
+
+          curl --fail --silent --show-error -X POST http://127.0.0.1:8400/edge/v1/sync/run > /tmp/reconnect-sync.json
+          curl --fail --silent --show-error http://127.0.0.1:8400/edge/v1/upstream/status > /tmp/upstream-status.json
+          curl --fail --silent --show-error -X POST http://127.0.0.1:8400/edge/v1/sync/run > /tmp/repeat-sync.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          sync = json.loads(Path('/tmp/reconnect-sync.json').read_text())
+          upstream = json.loads(Path('/tmp/upstream-status.json').read_text())
+          repeat = json.loads(Path('/tmp/repeat-sync.json').read_text())
+          assert sync['attempted'] == 1, sync
+          assert sync['synchronized'] == 1, sync
+          assert upstream['accepted_records'] == 1, upstream
+          assert repeat['attempted'] == 0, repeat
+          PY
+
+      - name: Show malformed-message diagnostics without listener failure
+        run: |
+          python - <<'PY'
+          import socket
+          with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+              sock.sendto(b'<999>1 - bad-host bad-app bad-proc bad-msg - invalid-priority', ('127.0.0.1', 5514))
+          PY
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+          for _ in range(20):
+              status = json.load(urllib.request.urlopen('http://127.0.0.1:8400/edge/v1/syslog/status', timeout=2))
+              if status.get('rejected', 0) >= 1:
+                  assert status['listener_state'] == 'listening', status
+                  assert status['last_error'], status
+                  break
+              time.sleep(1)
+          else:
+              raise SystemExit('malformed-message diagnostic was not observed')
+          PY
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f edge-demo/docker-compose.yml logs
+
+      - name: Stop demo stack
+        if: always()
+        run: docker compose -f edge-demo/docker-compose.yml down -v

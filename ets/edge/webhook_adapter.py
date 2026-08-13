@@ -1,19 +1,22 @@
-"""Generic JSON webhook capture boundary and sync control for ETS Edge Virtual.
+"""Generic webhook/syslog capture boundary and sync control for ETS Edge Virtual.
 
-The adapter hashes exact received request bytes, commits an EvidenceEvent v1
-record into the local ETS API, and queues a bounded metadata/proof checkpoint
-envelope for later upstream synchronization. Raw webhook bytes are never
-included in the sync envelope.
+The ingress runtime hashes exact received bytes, commits existing EvidenceEvent
+v1 records into the local ETS API, and queues bounded metadata/proof checkpoint
+envelopes for later upstream synchronization. Raw source payload bytes are
+never included in the sync envelope.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypedDict
 from uuid import uuid4
 
 import httpx
@@ -21,19 +24,74 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict
 
 from ets.edge.sync_queue import QueueCapacityError, SyncConflictError, SyncQueue
+from ets.edge.syslog_adapter import SyslogParseError, build_syslog_capture
 
 MAX_WEBHOOK_BODY_BYTES = 1024 * 1024
 SYNC_ENVELOPE_RESERVATION_BYTES = 64 * 1024
 DEFAULT_ETS_API_URL = "http://edge-api:8000"
 DEFAULT_SYNC_DB = "/var/lib/ets/edge-sync.db"
 DEFAULT_UPSTREAM_URL = "http://edge-upstream:8002"
+DEFAULT_SYSLOG_PORT = 5514
+
+
+class _SyslogState(TypedDict):
+    listener_state: str
+    listen_host: str
+    listen_port: int
+    accepted: int
+    rejected: int
+    last_event_id: str | None
+    last_received_at: str | None
+    last_peer: str | None
+    last_error: str | None
+
 
 _SYNC_QUEUE: SyncQueue | None = None
+_SYSLOG_TRANSPORT: asyncio.DatagramTransport | None = None
+_SYSLOG_TASKS: set[asyncio.Task[None]] = set()
+_SYSLOG_STATE: _SyslogState = {
+    "listener_state": "disabled",
+    "listen_host": "0.0.0.0",
+    "listen_port": DEFAULT_SYSLOG_PORT,
+    "accepted": 0,
+    "rejected": 0,
+    "last_event_id": None,
+    "last_received_at": None,
+    "last_peer": None,
+    "last_error": None,
+}
+
+
+class _SyslogProtocol(asyncio.DatagramProtocol):
+    def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
+        task = asyncio.create_task(_capture_syslog_datagram(data, addr))
+        _SYSLOG_TASKS.add(task)
+        task.add_done_callback(_SYSLOG_TASKS.discard)
+
+    def error_received(self, exc: Exception) -> None:
+        _record_syslog_error(f"UDP listener error: {type(exc).__name__}")
+
+    def connection_lost(self, exc: Exception | None) -> None:
+        if exc is not None:
+            _record_syslog_error(f"UDP listener closed: {type(exc).__name__}")
+        if _SYSLOG_STATE["listener_state"] != "disabled":
+            _SYSLOG_STATE["listener_state"] = "stopped"
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    await _start_syslog_listener()
+    try:
+        yield
+    finally:
+        await _stop_syslog_listener()
+
 
 app = FastAPI(
-    title="ETS Edge Webhook Adapter",
-    version="0.2.0",
-    description="Local demo/pilot JSON capture and bounded synchronization boundary",
+    title="ETS Edge Ingress Adapter",
+    version="0.3.0",
+    description="Local demo/pilot webhook + RFC 5424 syslog capture and bounded sync",
+    lifespan=_lifespan,
 )
 
 
@@ -67,7 +125,16 @@ class SyncRunResponse(BaseModel):
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "component": "edge-webhook-adapter"}
+    return {
+        "status": "ok",
+        "component": "edge-webhook-adapter",
+        "syslog_listener": str(_SYSLOG_STATE["listener_state"]),
+    }
+
+
+@app.get("/edge/v1/syslog/status")
+def syslog_status() -> dict[str, object]:
+    return dict(_SYSLOG_STATE)
 
 
 @app.get("/edge/v1/sync/status")
@@ -297,6 +364,77 @@ async def capture_webhook(
     )
 
 
+async def _capture_syslog_datagram(data: bytes, addr: tuple[str, int]) -> None:
+    received_at = datetime.now(UTC)
+    tenant_id = os.getenv("ETS_EDGE_SYSLOG_TENANT", "").strip()
+    workspace_id = os.getenv("ETS_EDGE_SYSLOG_WORKSPACE", "").strip()
+    source_id = os.getenv("ETS_EDGE_SYSLOG_SOURCE_ID", "syslog-default").strip()
+    queue = _get_sync_queue()
+
+    try:
+        if not tenant_id or not workspace_id:
+            raise ValueError("syslog tenant/workspace scope is not configured")
+        queue.ensure_capacity(SYNC_ENVELOPE_RESERVATION_BYTES)
+        capture = build_syslog_capture(
+            data,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            source_id=source_id,
+            peer_host=addr[0],
+            peer_port=addr[1],
+            received_at=received_at,
+        )
+    except (SyslogParseError, QueueCapacityError, ValueError) as exc:
+        _reject_syslog(type(exc).__name__ + ": " + str(exc))
+        return
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-ETS-Tenant": tenant_id,
+        "X-ETS-Workspace": workspace_id,
+    }
+    api_url = os.getenv("ETS_EDGE_API_URL", DEFAULT_ETS_API_URL).rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{api_url}/api/v1/events",
+                headers=headers,
+                json=capture.event,
+            )
+    except httpx.HTTPError as exc:
+        _reject_syslog(f"ETS Edge API unavailable: {type(exc).__name__}")
+        return
+
+    if response.status_code != status.HTTP_201_CREATED:
+        _reject_syslog(f"ETS Edge API rejected syslog event: HTTP {response.status_code}")
+        return
+
+    try:
+        appended = response.json()
+        event_hash = str(appended["event_hash"])
+        sync_envelope = _build_sync_envelope(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            event_id=capture.event_id,
+            event_hash=event_hash,
+            log_index=int(appended["log_index"]),
+            tree_head=appended["tree_head"],
+            source_id=f"syslog:{source_id}",
+            content_hash=capture.content_hash,
+            byte_size=capture.byte_size,
+        )
+        queue.enqueue(sync_envelope)
+    except (KeyError, TypeError, ValueError, QueueCapacityError, SyncConflictError) as exc:
+        _reject_syslog(f"local evidence committed but sync queue failed: {type(exc).__name__}")
+        return
+
+    _SYSLOG_STATE["accepted"] += 1
+    _SYSLOG_STATE["last_event_id"] = capture.event_id
+    _SYSLOG_STATE["last_received_at"] = received_at.isoformat().replace("+00:00", "Z")
+    _SYSLOG_STATE["last_peer"] = f"{addr[0]}:{addr[1]}"
+    _SYSLOG_STATE["last_error"] = None
+
+
 def _build_sync_envelope(
     *,
     tenant_id: str,
@@ -355,6 +493,57 @@ def _get_sync_queue() -> SyncQueue:
         max_bytes = _positive_int_env("ETS_EDGE_SYNC_MAX_BYTES", 128 * 1024 * 1024)
         _SYNC_QUEUE = SyncQueue(path, max_items=max_items, max_bytes=max_bytes)
     return _SYNC_QUEUE
+
+
+async def _start_syslog_listener() -> None:
+    global _SYSLOG_TRANSPORT
+    if not _env_bool("ETS_EDGE_SYSLOG_ENABLED", False):
+        _SYSLOG_STATE["listener_state"] = "disabled"
+        return
+
+    host = os.getenv("ETS_EDGE_SYSLOG_HOST", "0.0.0.0").strip() or "0.0.0.0"
+    port = _positive_int_env("ETS_EDGE_SYSLOG_PORT", DEFAULT_SYSLOG_PORT)
+    if port > 65_535:
+        raise ValueError("ETS_EDGE_SYSLOG_PORT must be <= 65535")
+
+    loop = asyncio.get_running_loop()
+    transport, _protocol = await loop.create_datagram_endpoint(
+        _SyslogProtocol,
+        local_addr=(host, port),
+    )
+    _SYSLOG_TRANSPORT = transport
+    _SYSLOG_STATE["listener_state"] = "listening"
+    _SYSLOG_STATE["listen_host"] = host
+    _SYSLOG_STATE["listen_port"] = port
+    _SYSLOG_STATE["last_error"] = None
+
+
+async def _stop_syslog_listener() -> None:
+    global _SYSLOG_TRANSPORT
+    transport = _SYSLOG_TRANSPORT
+    _SYSLOG_TRANSPORT = None
+    if transport is not None:
+        transport.close()
+    if _SYSLOG_TASKS:
+        await asyncio.gather(*tuple(_SYSLOG_TASKS), return_exceptions=True)
+    if _SYSLOG_STATE["listener_state"] != "disabled":
+        _SYSLOG_STATE["listener_state"] = "stopped"
+
+
+def _reject_syslog(message: str) -> None:
+    _SYSLOG_STATE["rejected"] += 1
+    _record_syslog_error(message)
+
+
+def _record_syslog_error(message: str) -> None:
+    _SYSLOG_STATE["last_error"] = message[:512]
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _positive_int_env(name: str, default: int) -> int:
