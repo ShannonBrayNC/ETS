@@ -289,7 +289,9 @@ class GatewaySyslogHost:
                     async with asyncio.timeout(self.policy.read_idle_timeout_seconds):
                         data = await reader.read(self.policy.read_chunk_bytes)
                 except TimeoutError as exc:
-                    raise GatewaySyslogHostError("Gateway syslog connection read timed out") from exc
+                    raise GatewaySyslogHostError(
+                        "Gateway syslog connection read timed out"
+                    ) from exc
 
                 if not data:
                     framer.finish()
