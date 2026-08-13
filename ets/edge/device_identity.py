@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import secrets
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import TypedDict
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
@@ -23,19 +24,37 @@ class EdgeDeviceIdentity(TypedDict):
     hardware_attested: bool
 
 
+_IDENTITY_FIELDS = frozenset(EdgeDeviceIdentity.__annotations__)
+
+
 def load_or_create_local_api_key(path: Path, explicit_key: str | None = None) -> str:
-    """Return a durable local API key, generating at least 256 bits on first boot."""
+    """Return a durable local API key, generating at least 256 bits on first boot.
+
+    Explicit injection is a first-boot provisioning mechanism, not an implicit
+    rotation mechanism. Once a durable key exists, a conflicting injected key
+    fails closed so a restart cannot silently replace the appliance credential.
+    """
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    if explicit_key is not None:
-        key = _validate_local_api_key(explicit_key)
-        _write_private_text(path, key)
-        return key
 
     if path.exists():
-        return _validate_local_api_key(path.read_text(encoding="utf-8").strip())
+        persisted = _validate_local_api_key(path.read_text(encoding="utf-8").strip())
+        if explicit_key is not None:
+            injected = _validate_local_api_key(explicit_key)
+            if not hmac.compare_digest(
+                injected.encode("utf-8"),
+                persisted.encode("utf-8"),
+            ):
+                raise RuntimeError(
+                    "injected ETS Edge local API key conflicts with persisted credential; "
+                    "implicit rotation is not supported"
+                )
+        return persisted
 
-    key = secrets.token_urlsafe(32)
+    if explicit_key is not None:
+        key = _validate_local_api_key(explicit_key)
+    else:
+        key = secrets.token_urlsafe(32)
     _write_private_text(path, key)
     return key
 
@@ -82,22 +101,68 @@ def write_device_identity(path: Path, identity: EdgeDeviceIdentity) -> None:
 
 
 def load_device_identity(path: Path) -> EdgeDeviceIdentity:
-    """Load and minimally validate the public identity manifest."""
+    """Load and strictly validate the bounded public identity manifest."""
 
     if not path.exists():
         raise RuntimeError(f"ETS Edge device identity is missing: {path}")
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise RuntimeError("ETS Edge device identity must be a JSON object")
-    if payload.get("schema_version") != "ets.edge.device_identity.v1":
-        raise RuntimeError("unsupported ETS Edge device identity schema")
-    invalid_custody = (
-        payload.get("key_custody") != "software_volume"
-        or payload.get("hardware_attested") is not False
+    if set(payload) != _IDENTITY_FIELDS:
+        raise RuntimeError("ETS Edge device identity contains unexpected or missing fields")
+
+    string_fields = (
+        "schema_version",
+        "device_id",
+        "signing_algorithm",
+        "signing_public_key_id",
+        "signing_public_key_hex",
+        "public_key_fingerprint_sha256",
+        "key_custody",
     )
-    if invalid_custody:
+    if any(not isinstance(payload.get(name), str) for name in string_fields):
+        raise RuntimeError("ETS Edge device identity field types are invalid")
+
+    schema_version = payload["schema_version"]
+    device_id = payload["device_id"]
+    signing_algorithm = payload["signing_algorithm"]
+    signing_public_key_id = payload["signing_public_key_id"]
+    signing_public_key_hex = payload["signing_public_key_hex"]
+    fingerprint = payload["public_key_fingerprint_sha256"]
+    key_custody = payload["key_custody"]
+    hardware_attested = payload["hardware_attested"]
+
+    if schema_version != "ets.edge.device_identity.v1":
+        raise RuntimeError("unsupported ETS Edge device identity schema")
+    if signing_algorithm != "ed25519" or not signing_public_key_id:
+        raise RuntimeError("ETS Edge device identity signing declaration is invalid")
+    if key_custody != "software_volume" or hardware_attested is not False:
         raise RuntimeError("ETS Edge pilot device identity custody declaration is invalid")
-    return cast(EdgeDeviceIdentity, payload)
+
+    try:
+        public_key = bytes.fromhex(signing_public_key_hex)
+    except ValueError as exc:
+        raise RuntimeError("ETS Edge device identity public key is invalid") from exc
+    if len(public_key) != 32:
+        raise RuntimeError("ETS Edge device identity Ed25519 public key must be 32 bytes")
+
+    expected_fingerprint = hashlib.sha256(public_key).hexdigest()
+    expected_device_id = f"ets-edge:{expected_fingerprint[:32]}"
+    if not hmac.compare_digest(fingerprint, expected_fingerprint):
+        raise RuntimeError("ETS Edge device identity fingerprint does not match public key")
+    if not hmac.compare_digest(device_id, expected_device_id):
+        raise RuntimeError("ETS Edge device id does not match public key fingerprint")
+
+    return EdgeDeviceIdentity(
+        schema_version=schema_version,
+        device_id=device_id,
+        signing_algorithm=signing_algorithm,
+        signing_public_key_id=signing_public_key_id,
+        signing_public_key_hex=signing_public_key_hex,
+        public_key_fingerprint_sha256=fingerprint,
+        key_custody=key_custody,
+        hardware_attested=False,
+    )
 
 
 def _validate_local_api_key(value: str) -> str:
