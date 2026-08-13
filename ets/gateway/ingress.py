@@ -165,6 +165,7 @@ class GatewayIngressService:
             request=request,
             stable_id=stable_id,
             content_hash=content_hash,
+            representation_length=len(representation_bytes),
             redacted_count=redacted_count,
         )
         event = to_evidence_event(
@@ -228,6 +229,7 @@ class GatewayIngressService:
         request: GatewayWebhookRequest,
         stable_id: str,
         content_hash: str,
+        representation_length: int,
         redacted_count: int,
     ) -> CaptureEnvelopeV1:
         minimized = redacted_count > 0
@@ -272,11 +274,18 @@ class GatewayIngressService:
                 profile="ets.gateway.json-minimization.v1",
                 input_format=request.media_type,
                 output_event_type=registration.event_type,
-                lossless=not minimized,
-                notes="Canonical JSON representation after configured key minimization.",
+                lossless=False,
+                notes=(
+                    "Canonical JSON is not source-byte-identical; configured key "
+                    "minimization may additionally remove fields."
+                ),
             ),
             correlation_id=request.correlation_id,
-            metadata={"redacted_field_count": redacted_count},
+            metadata={
+                "redacted_field_count": redacted_count,
+                "input_content_length": len(request.body),
+                "committed_representation_length": representation_length,
+            },
             privacy=CapturePrivacy(
                 classification=registration.classification,
                 redaction_profile=registration.redaction_profile,
@@ -381,12 +390,25 @@ def _receipt(
 
 def _load_json_object(body: bytes) -> dict[str, Any]:
     try:
-        decoded = json.loads(body.decode("utf-8"), parse_constant=_reject_non_finite)
+        decoded = json.loads(
+            body.decode("utf-8"),
+            parse_constant=_reject_non_finite,
+            object_pairs_hook=_unique_json_object,
+        )
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise GatewayIngressError("Gateway request body is not valid JSON") from exc
     if not isinstance(decoded, dict):
         raise GatewayIngressError("Gateway JSON ingress requires an object root")
     return cast(dict[str, Any], decoded)
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON object member names are not allowed")
+        value[key] = item
+    return value
 
 
 def _reject_non_finite(value: str) -> Never:
