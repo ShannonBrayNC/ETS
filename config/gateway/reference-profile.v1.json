@@ -1,0 +1,61 @@
+{
+  "profile_id": "ets.gateway.reference.pilot.v1",
+  "schema_version": "ets.gateway.profile.v1",
+  "conformance_class": "pilot",
+  "deployment": {
+    "default_mode": "collector",
+    "availability_authority": false,
+    "modes": {
+      "collector": {"enabled": true, "status": "normative"},
+      "passive_mirror": {"enabled": true, "status": "experimental"},
+      "routed_inline": {"enabled": false, "status": "deferred"}
+    }
+  },
+  "zones": {
+    "management": {"required": true, "default_route": false, "management_listener": true, "ingestion_listener": false, "sync_listener": false},
+    "collection": {"required": true, "default_route": false, "management_listener": false, "ingestion_listener": true, "sync_listener": false},
+    "upstream": {"required": true, "default_route": true, "management_listener": false, "ingestion_listener": false, "sync_listener": false},
+    "observation": {"required": false, "default_route": false, "management_listener": false, "ingestion_listener": false, "sync_listener": false}
+  },
+  "network_controls": {
+    "ipv4_forwarding": false,
+    "ipv6_forwarding": false,
+    "nat": false,
+    "interzone_bridge": false,
+    "firewall_policy": "default_deny_explicit_allow"
+  },
+  "evidence_boundary": {
+    "privacy_before_commit": true,
+    "raw_evidence_retained": false,
+    "digest_basis": "declared_evidence_representation",
+    "transformation_provenance": true,
+    "completeness_claim": false
+  },
+  "core_boundary": {"api": "ets.core.api", "reimplement_protocol_semantics": false, "local_history_rewritable_by_upstream": false},
+  "transport_security": {"prohibited_versions": ["SSLv2", "SSLv3", "TLS1.0", "TLS1.1"], "minimum_compatible": "TLS1.2", "preferred": "TLS1.3", "mtls_preferred": true},
+  "protocols": {
+    "https_webhook": {"enabled": true, "production_tls_required": true},
+    "syslog": {"enabled": true, "preferred_format": "RFC5424", "preferred_transport": "TLS", "tls_default_port": 6514, "udp_compatibility": true, "udp_lower_assurance": true, "transport_identity_separate_from_hostname": true, "rfc5425_full_conformance_claim": false},
+    "otlp": {"enabled": true, "transports": ["grpc", "http/protobuf"], "signals": ["logs", "metrics", "traces"]},
+    "file": {"enabled": true, "production_tls_required": false}
+  },
+  "identity": {"network_location_is_identity": false, "transport_and_payload_identity_separate": true, "tenant_scope_server_authorized": true, "syslog_tls_identity_equals_hostname": false},
+  "signer": {"development_software_allowed": true, "pilot_hardware_backed_required": true, "private_key_exportable_to_app": false, "purpose_separated_keys": true},
+  "platform": {"architecture": "x86_64", "min_memory_gib": 16, "reference_memory_gib": 32, "min_nvme_gib": 1024, "tpm2_required": true, "uefi_secure_boot_required": true, "preferred_physical_nics": 4},
+  "time": {"source_and_receipt_time_separate": true, "monotonic_for_durations": true, "ntpv4_supported": true, "nts_preferred": true, "clock_quality_required": true, "authenticated_time_proves_correct_utc": false},
+  "resource_bounds": {"payload": true, "decompressed_payload": true, "request_duration": true, "concurrency": true, "queue_items": true, "queue_bytes": true, "storage_watermarks": true, "explicit_backpressure": true},
+  "observability": {"node_health_separate_from_verification": true, "raw_payload_logging": false, "secret_logging": false, "collection_gap_state": true, "clock_quality_state": true},
+  "claims": {"truth": false, "complete_observation": false, "legal_admissibility": false, "regulatory_compliance": false, "source_system_security": false},
+  "qualification_objectives": {"measured": false, "sla": false, "sustained_events_per_second": 1000, "burst_events_per_second": 5000, "burst_seconds": 600, "max_stream_object_gib": 10, "offline_backlog_days": 7},
+  "required_documents": [
+    "docs/architecture/ETS_GATEWAY_ARCHITECTURE.md",
+    "docs/security/ETS_GATEWAY_THREAT_MODEL.md",
+    "docs/spec/ETS_GATEWAY_PROFILE.md",
+    "docs/test/ETS_GATEWAY_G0_TEST_PLAN.md",
+    "docs/adr/ADR-005-ets-gateway-non-inline-default.md",
+    "docs/adr/ADR-006-ets-gateway-network-zones.md",
+    "docs/adr/ADR-007-ets-gateway-capture-privacy-boundary.md",
+    "docs/adr/ADR-008-ets-gateway-identity-signer-time.md",
+    "docs/review/ETS_GATEWAY_G0_TECH_EDIT.md"
+  ]
+}
