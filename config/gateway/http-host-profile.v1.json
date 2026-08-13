@@ -18,10 +18,25 @@
     "max_header_count": 64,
     "max_header_bytes": 16384,
     "max_header_value_bytes": 4096,
+    "critical_header_value_bytes": {
+      "content-type": 200,
+      "x-ets-observed-at": 64,
+      "idempotency-key": 200,
+      "x-ets-declared-identity": 500,
+      "x-correlation-id": 200,
+      "content-encoding": 64
+    },
     "max_concurrent_requests": 64,
     "admission_timeout_seconds": 0.05,
     "body_read_timeout_seconds": 10.0,
     "allowed_content_encodings": ["identity"]
+  },
+  "shutdown": {
+    "drain_is_one_way": true,
+    "new_requests_rejected_after_drain_begins": true,
+    "already_admitted_requests_complete": true,
+    "waiting_requests_recheck_drain_after_capacity_acquisition": true,
+    "fresh_worker_controller_accepts_after_restart": true
   },
   "timeout_boundary": {
     "body_read_is_cancellable_pre_commit": true,
