@@ -7,9 +7,12 @@ COPY ets ./ets
 
 RUN python -m pip install --no-cache-dir -e ".[edge]"
 
-ENV ETS_EDGE_API_URL=http://edge-api:8000
+ENV ETS_EDGE_API_URL=http://127.0.0.1:8001/internal/edge-api \
+    ETS_EDGE_API_ORIGIN=http://edge-api:8000 \
+    ETS_EDGE_API_KEY_FILE=/var/lib/ets/edge-local-api-key \
+    ETS_EDGE_DEVICE_IDENTITY_FILE=/var/lib/ets/edge-device-identity.json
 
 EXPOSE 8001
 EXPOSE 5514/udp
 
-CMD ["python", "-m", "uvicorn", "ets.edge.webhook_adapter:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["python", "-m", "uvicorn", "ets.edge.protected_ingress:app", "--host", "0.0.0.0", "--port", "8001"]
