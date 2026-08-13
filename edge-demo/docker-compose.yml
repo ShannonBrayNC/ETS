@@ -33,6 +33,12 @@ services:
       dockerfile: edge-demo/Dockerfile.webhook
     environment:
       ETS_EDGE_API_URL: http://edge-api:8000
+      ETS_EDGE_SYNC_DB: /var/lib/ets/edge-sync.db
+      ETS_EDGE_SYNC_MAX_ITEMS: "1000"
+      ETS_EDGE_SYNC_MAX_BYTES: "67108864"
+      ETS_EDGE_UPSTREAM_URL: http://edge-upstream:8002
+    volumes:
+      - ets-edge-data:/var/lib/ets
     depends_on:
       edge-api:
         condition: service_healthy
@@ -42,6 +48,26 @@ services:
         - python
         - -c
         - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=2).read()"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  edge-upstream:
+    build:
+      context: ..
+      dockerfile: edge-demo/Dockerfile.upstream
+    environment:
+      ETS_EDGE_UPSTREAM_DB: /var/lib/ets-upstream/upstream.db
+    volumes:
+      - ets-edge-upstream:/var/lib/ets-upstream
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=2).read()"
       interval: 5s
       timeout: 3s
       retries: 20
@@ -65,3 +91,4 @@ services:
 
 volumes:
   ets-edge-data:
+  ets-edge-upstream:
