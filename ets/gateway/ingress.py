@@ -305,7 +305,7 @@ def _existing_matches(
 
 
 def _sync_payload(entry: LogEntry, registration: SourceRegistration) -> dict[str, Any]:
-    material = f"{entry.event.event_id}\0{entry.event_hash}".encode("utf-8")
+    material = f"{entry.event.event_id}\0{entry.event_hash}".encode()
     sync_key = f"ets-gateway-sync-v1:{hashlib.sha256(material).hexdigest()}"
     return {
         "sync_schema": "ets.gateway.sync.v1",
