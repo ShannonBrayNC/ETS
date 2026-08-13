@@ -31,10 +31,33 @@ jobs:
           python -m pip install -e ".[dev]"
           python -m ruff check ets/edge tests/unit/test_edge_syslog_adapter.py
           python -m mypy ets/edge
-          python -m pytest -q tests/unit/test_edge_syslog_adapter.py tests/unit/test_edge_webhook_adapter.py tests/unit/test_edge_sync_queue.py tests/unit/test_edge_upstream_demo.py
+          python -m pytest -q \
+            tests/unit/test_edge_syslog_adapter.py \
+            tests/unit/test_edge_webhook_adapter.py \
+            tests/unit/test_edge_sync_queue.py \
+            tests/unit/test_edge_upstream_demo.py \
+            tests/unit/test_edge_device_identity.py \
+            tests/unit/test_edge_protected_ingress.py
 
       - name: Start local Edge Virtual topology
         run: docker compose -f edge-demo/docker-compose.yml up -d --build
+
+      - name: Load generated local API key
+        run: |
+          for attempt in {1..30}; do
+            if docker compose -f edge-demo/docker-compose.yml exec -T edge-api \
+              cat /var/lib/ets/edge-local-api-key > /tmp/edge-api-key 2>/dev/null; then
+              if test "$(wc -c < /tmp/edge-api-key)" -ge 33; then
+                break
+              fi
+            fi
+            sleep 1
+          done
+          test "$(wc -c < /tmp/edge-api-key)" -ge 33
+          chmod 600 /tmp/edge-api-key
+          EDGE_API_KEY="$(cat /tmp/edge-api-key)"
+          printf 'header = "X-ETS-API-Key: %s"\n' "${EDGE_API_KEY}" > "${HOME}/.curlrc"
+          chmod 600 "${HOME}/.curlrc"
 
       - name: Wait for API and UDP listener
         run: |
@@ -42,12 +65,20 @@ jobs:
           import json
           import time
           import urllib.request
+          from pathlib import Path
+
+          api_key = Path('/tmp/edge-api-key').read_text().strip()
+
+          def protected_json(url: str):
+              request = urllib.request.Request(url, headers={'X-ETS-API-Key': api_key})
+              return json.load(urllib.request.urlopen(request, timeout=2))
 
           for _ in range(60):
               try:
                   ready = json.load(urllib.request.urlopen('http://127.0.0.1:8400/ready', timeout=2))
-                  syslog = json.load(urllib.request.urlopen('http://127.0.0.1:8400/edge/v1/syslog/status', timeout=2))
+                  syslog = protected_json('http://127.0.0.1:8400/edge/v1/syslog/status')
                   if ready.get('status') == 'ready' and syslog.get('listener_state') == 'listening':
+                      assert ready.get('auth') == 'local_api_key', ready
                       break
               except Exception:
                   pass
@@ -75,8 +106,13 @@ jobs:
           import urllib.request
           from pathlib import Path
 
+          api_key = Path('/tmp/edge-api-key').read_text().strip()
           for _ in range(30):
-              status = json.load(urllib.request.urlopen('http://127.0.0.1:8400/edge/v1/syslog/status', timeout=2))
+              request = urllib.request.Request(
+                  'http://127.0.0.1:8400/edge/v1/syslog/status',
+                  headers={'X-ETS-API-Key': api_key},
+              )
+              status = json.load(urllib.request.urlopen(request, timeout=2))
               if status.get('accepted', 0) >= 1 and status.get('last_event_id'):
                   Path('/tmp/syslog-event-id.txt').write_text(status['last_event_id'])
                   break
@@ -135,11 +171,18 @@ jobs:
           import json
           import time
           import urllib.request
+          from pathlib import Path
+
+          api_key = Path('/tmp/edge-api-key').read_text().strip()
+
+          def protected_json(url: str):
+              request = urllib.request.Request(url, headers={'X-ETS-API-Key': api_key})
+              return json.load(urllib.request.urlopen(request, timeout=2))
 
           for _ in range(30):
               try:
-                  syslog = json.load(urllib.request.urlopen('http://127.0.0.1:8400/edge/v1/syslog/status', timeout=2))
-                  sync = json.load(urllib.request.urlopen('http://127.0.0.1:8400/edge/v1/sync/status', timeout=2))
+                  syslog = protected_json('http://127.0.0.1:8400/edge/v1/syslog/status')
+                  sync = protected_json('http://127.0.0.1:8400/edge/v1/sync/status')
                   if syslog.get('listener_state') == 'listening' and sync.get('queue_depth') == 1:
                       break
               except Exception:
@@ -192,8 +235,15 @@ jobs:
           import json
           import time
           import urllib.request
+          from pathlib import Path
+
+          api_key = Path('/tmp/edge-api-key').read_text().strip()
           for _ in range(20):
-              status = json.load(urllib.request.urlopen('http://127.0.0.1:8400/edge/v1/syslog/status', timeout=2))
+              request = urllib.request.Request(
+                  'http://127.0.0.1:8400/edge/v1/syslog/status',
+                  headers={'X-ETS-API-Key': api_key},
+              )
+              status = json.load(urllib.request.urlopen(request, timeout=2))
               if status.get('rejected', 0) >= 1:
                   assert status['listener_state'] == 'listening', status
                   assert status['last_error'], status
