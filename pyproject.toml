@@ -37,6 +37,9 @@ edge = [
     "httpx>=0.28,<1",
     "uvicorn>=0.32,<1",
 ]
+gateway = [
+    "uvicorn>=0.32,<1",
+]
 azure = [
     "azure-identity>=1.17,<2",
     "azure-keyvault-keys>=4.9,<5",
