@@ -18,7 +18,13 @@ from ets.capture import (
     EvidenceReference,
     to_evidence_event,
 )
-from ets.core.api import EventNotFoundError, EvidenceEvent, LogEntry, canonicalize
+from ets.core.api import (
+    DuplicateEventError,
+    EventNotFoundError,
+    EvidenceEvent,
+    LogEntry,
+    canonicalize,
+)
 from ets.gateway.source_registry import SourceRegistration, StaticSourceRegistry
 from ets.runtime.sync_queue import QueueCapacityError, SyncConflictError, SyncQueue
 
@@ -142,11 +148,12 @@ class GatewayIngressService:
             existing = None
 
         if existing is not None:
-            if not _existing_matches(existing, registration, evidence_id, content_hash):
-                raise GatewayConflictError(
-                    "idempotency identity already exists with different immutable content"
-                )
-            return self._ensure_sync(existing, registration, duplicate=True)
+            return self._reconcile_existing(
+                existing,
+                registration,
+                evidence_id=evidence_id,
+                content_hash=content_hash,
+            )
 
         try:
             self._sync_queue.ensure_capacity(SYNC_RESERVATION_BYTES)
@@ -165,8 +172,36 @@ class GatewayIngressService:
             event_id=event_id,
             evidence_id=evidence_id,
         )
-        entry = self._event_log.append(event)
+        try:
+            entry = self._event_log.append(event)
+        except DuplicateEventError:
+            try:
+                existing = self._event_log.get_by_event_id(event_id)
+            except EventNotFoundError as exc:
+                raise GatewayConflictError(
+                    "event identity was concurrently claimed without a retrievable entry"
+                ) from exc
+            return self._reconcile_existing(
+                existing,
+                registration,
+                evidence_id=evidence_id,
+                content_hash=content_hash,
+            )
         return self._ensure_sync(entry, registration, duplicate=False)
+
+    def _reconcile_existing(
+        self,
+        entry: LogEntry,
+        registration: SourceRegistration,
+        *,
+        evidence_id: str,
+        content_hash: str,
+    ) -> GatewayIngressReceipt:
+        if not _existing_matches(entry, registration, evidence_id, content_hash):
+            raise GatewayConflictError(
+                "idempotency identity already exists with different immutable content"
+            )
+        return self._ensure_sync(entry, registration, duplicate=True)
 
     def _validate_request(self, request: GatewayWebhookRequest) -> None:
         if request.media_type != "application/json":
