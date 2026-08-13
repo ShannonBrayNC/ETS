@@ -16,7 +16,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypedDict
 from uuid import uuid4
 
 import httpx
@@ -33,10 +33,23 @@ DEFAULT_SYNC_DB = "/var/lib/ets/edge-sync.db"
 DEFAULT_UPSTREAM_URL = "http://edge-upstream:8002"
 DEFAULT_SYSLOG_PORT = 5514
 
+
+class _SyslogState(TypedDict):
+    listener_state: str
+    listen_host: str
+    listen_port: int
+    accepted: int
+    rejected: int
+    last_event_id: str | None
+    last_received_at: str | None
+    last_peer: str | None
+    last_error: str | None
+
+
 _SYNC_QUEUE: SyncQueue | None = None
 _SYSLOG_TRANSPORT: asyncio.DatagramTransport | None = None
 _SYSLOG_TASKS: set[asyncio.Task[None]] = set()
-_SYSLOG_STATE: dict[str, object] = {
+_SYSLOG_STATE: _SyslogState = {
     "listener_state": "disabled",
     "listen_host": "0.0.0.0",
     "listen_port": DEFAULT_SYSLOG_PORT,
@@ -415,7 +428,7 @@ async def _capture_syslog_datagram(data: bytes, addr: tuple[str, int]) -> None:
         _reject_syslog(f"local evidence committed but sync queue failed: {type(exc).__name__}")
         return
 
-    _SYSLOG_STATE["accepted"] = int(_SYSLOG_STATE["accepted"]) + 1
+    _SYSLOG_STATE["accepted"] += 1
     _SYSLOG_STATE["last_event_id"] = capture.event_id
     _SYSLOG_STATE["last_received_at"] = received_at.isoformat().replace("+00:00", "Z")
     _SYSLOG_STATE["last_peer"] = f"{addr[0]}:{addr[1]}"
@@ -518,7 +531,7 @@ async def _stop_syslog_listener() -> None:
 
 
 def _reject_syslog(message: str) -> None:
-    _SYSLOG_STATE["rejected"] = int(_SYSLOG_STATE["rejected"]) + 1
+    _SYSLOG_STATE["rejected"] += 1
     _record_syslog_error(message)
 
 
