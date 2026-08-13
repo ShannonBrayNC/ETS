@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Protocol
@@ -9,6 +10,12 @@ from typing import Protocol
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from ets.gateway.host import (
+    GatewayHostController,
+    GatewayHostLimitError,
+    GatewayHostSaturatedError,
+    UnsupportedContentEncodingError,
+)
 from ets.gateway.ingress import (
     GatewayBackpressureError,
     GatewayConflictError,
@@ -29,6 +36,10 @@ class RequestBodyTooLarge(GatewayIngressError):
     """Raised when streaming request input exceeds the configured byte bound."""
 
 
+class RequestBodyTimeout(GatewayIngressError):
+    """Raised when the request body cannot be fully read before the pre-commit deadline."""
+
+
 class PrincipalResolver(Protocol):
     """Resolve one authenticated transport principal from an HTTP request."""
 
@@ -39,25 +50,37 @@ class PrincipalResolver(Protocol):
 def create_gateway_app(
     service: GatewayIngressService,
     principal_resolver: PrincipalResolver,
+    *,
+    host_controller: GatewayHostController | None = None,
 ) -> FastAPI:
     """Create the G1C webhook app around injected auth and ingestion services."""
 
     app = FastAPI(title="ETS Gateway", version="0.1.0-g1c")
+    host = host_controller or GatewayHostController()
 
     @app.post("/gateway/v1/webhooks")
     async def ingest_webhook(request: Request) -> JSONResponse:
         try:
-            principal = principal_resolver.resolve(request)
-            body = await _read_bounded_body(request, service.max_body_bytes)
-            capture_request = GatewayWebhookRequest(
-                body=body,
-                idempotency_key=request.headers.get("Idempotency-Key", ""),
-                declared_identity=request.headers.get("X-ETS-Declared-Identity"),
-                observed_at_utc=_observed_at(request),
-                correlation_id=request.headers.get("X-Correlation-ID"),
-                media_type=_content_type(request),
-            )
-            receipt = service.ingest_json(principal, capture_request)
+            host.validate_headers(request.scope.get("headers", ()))
+            host.validate_content_encoding(request.headers.get("Content-Encoding"))
+            async with host.admission():
+                principal = principal_resolver.resolve(request)
+                try:
+                    async with asyncio.timeout(host.policy.body_read_timeout_seconds):
+                        body = await _read_bounded_body(request, service.max_body_bytes)
+                except TimeoutError as exc:
+                    raise RequestBodyTimeout(
+                        "request body read exceeded pre-commit deadline"
+                    ) from exc
+                capture_request = GatewayWebhookRequest(
+                    body=body,
+                    idempotency_key=request.headers.get("Idempotency-Key", ""),
+                    declared_identity=request.headers.get("X-ETS-Declared-Identity"),
+                    observed_at_utc=_observed_at(request),
+                    correlation_id=request.headers.get("X-Correlation-ID"),
+                    media_type=_content_type(request),
+                )
+                receipt = service.ingest_json(principal, capture_request)
         except SourceAuthenticationError:
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -67,6 +90,27 @@ def create_gateway_app(
             return JSONResponse(
                 status_code=status.HTTP_403_FORBIDDEN,
                 content={"detail": "source is not authorized"},
+            )
+        except UnsupportedContentEncodingError:
+            return JSONResponse(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                content={"detail": "request content encoding is not qualified"},
+            )
+        except GatewayHostLimitError:
+            return JSONResponse(
+                status_code=status.HTTP_431_REQUEST_HEADER_FIELDS_TOO_LARGE,
+                content={"detail": "request headers exceed configured host limits"},
+            )
+        except GatewayHostSaturatedError:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={"detail": "Gateway host concurrency is saturated"},
+                headers={"Retry-After": "1"},
+            )
+        except RequestBodyTimeout:
+            return JSONResponse(
+                status_code=status.HTTP_408_REQUEST_TIMEOUT,
+                content={"detail": "request body read exceeded pre-commit deadline"},
             )
         except RequestBodyTooLarge:
             return JSONResponse(
