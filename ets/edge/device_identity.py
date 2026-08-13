@@ -91,7 +91,11 @@ def load_device_identity(path: Path) -> EdgeDeviceIdentity:
         raise RuntimeError("ETS Edge device identity must be a JSON object")
     if payload.get("schema_version") != "ets.edge.device_identity.v1":
         raise RuntimeError("unsupported ETS Edge device identity schema")
-    if payload.get("key_custody") != "software_volume" or payload.get("hardware_attested") is not False:
+    invalid_custody = (
+        payload.get("key_custody") != "software_volume"
+        or payload.get("hardware_attested") is not False
+    )
+    if invalid_custody:
         raise RuntimeError("ETS Edge pilot device identity custody declaration is invalid")
     return cast(EdgeDeviceIdentity, payload)
 
