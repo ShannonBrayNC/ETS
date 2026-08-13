@@ -33,18 +33,19 @@ class SourceRegistration:
     enabled: bool = True
 
     def __post_init__(self) -> None:
-        required = {
-            "principal": self.principal,
-            "source_id": self.source_id,
-            "source_system": self.source_system,
-            "tenant_id": self.tenant_id,
-            "workspace_id": self.workspace_id,
-            "adapter_id": self.adapter_id,
-            "event_type": self.event_type,
-        }
-        empty = [name for name, value in required.items() if not value]
-        if empty:
-            raise ValueError(f"source registration requires: {', '.join(sorted(empty))}")
+        _bounded("principal", self.principal, 500)
+        _bounded("source_id", self.source_id, 500)
+        _bounded("source_system", self.source_system, 200)
+        _bounded("tenant_id", self.tenant_id, 128)
+        _bounded("workspace_id", self.workspace_id, 128)
+        _bounded("adapter_id", self.adapter_id, 200)
+        _bounded("event_type", self.event_type, 128)
+        _bounded_optional("adapter_version", self.adapter_version, 100)
+        _bounded_optional("classification", self.classification, 100)
+        _bounded_optional("redaction_profile", self.redaction_profile, 100)
+        _bounded_optional("minimization_profile", self.minimization_profile, 100)
+        if any(not key or len(key) > 200 for key in self.redacted_keys):
+            raise ValueError("redacted_keys must contain non-empty keys up to 200 characters")
 
 
 class StaticSourceRegistry:
@@ -67,3 +68,13 @@ class StaticSourceRegistry:
         if registration is None or not registration.enabled:
             raise SourceAuthorizationError("source principal is not authorized")
         return registration
+
+
+def _bounded(name: str, value: str, maximum: int) -> None:
+    if not 1 <= len(value) <= maximum:
+        raise ValueError(f"{name} must be 1-{maximum} characters")
+
+
+def _bounded_optional(name: str, value: str | None, maximum: int) -> None:
+    if value is not None:
+        _bounded(name, value, maximum)
