@@ -140,7 +140,10 @@ def _frame(message: bytes) -> bytes:
     return str(len(message)).encode("ascii") + b" " + message
 
 
-async def _open(port: int, client: ssl.SSLContext) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+async def _open(
+    port: int,
+    client: ssl.SSLContext,
+) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
     return await asyncio.open_connection(
         "127.0.0.1",
         port,
