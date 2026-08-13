@@ -12,11 +12,13 @@ from datetime import UTC, datetime
 from typing import Final
 from uuid import uuid4
 
+
+from ets.capture.syslog import SyslogHeader, SyslogParseError
 from ets.capture.syslog import (
-    SyslogHeader,
-    SyslogParseError,
     parse_rfc5424_header as _parse_shared_rfc5424_header,
 )
+
+
 
 MAX_SYSLOG_DATAGRAM_BYTES: Final = 65_507
 MAX_SYSLOG_SOURCE_ID_LENGTH: Final = 64
