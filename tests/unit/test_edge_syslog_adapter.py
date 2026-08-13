@@ -53,7 +53,7 @@ def test_parse_rfc5424_nilvalues_are_not_invented() -> None:
         b"<192>1 - host app proc msg - bad-priority",
         b"<34>2 - host app proc msg - unsupported-version",
         b"<34>1 - host app proc",
-        b"<34>1 - bad host app proc msg - contains-space-in-fixed-header",
+        b"<34>1 - host \xff proc msg - non-ascii-header",
     ],
 )
 def test_parse_rfc5424_rejects_malformed_headers(payload: bytes) -> None:
