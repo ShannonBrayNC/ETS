@@ -12,6 +12,8 @@ SignalForge: Lantern-Protocol/SignalForge#54
 
 A capture envelope records capture/collector/adapter identity, server-authorized tenant and workspace scope, source identity/context, source observation time when supplied, collector receipt time, clock quality, declared representation digest, evidence custody, transformation provenance, privacy/minimization state, correlation metadata, and bounded extensions.
 
+Tenant and workspace identifiers are capped at 128 characters to match the frozen `EvidenceEvent` v1 scope fields. A capture implementation must not accept an envelope that cannot be mapped into the supported event contract solely because its scope identifiers exceed the event-v1 limit.
+
 Transport-authenticated identity and payload-declared identity are separate fields. Neither is inferred from IP address, VLAN, hostname, or other network location alone.
 
 `received_at_utc` is the collector receipt time. `observed_at_utc` is source observation time when available. Mapping into `EvidenceEvent.created_at_utc` uses receipt time; source observation time remains provenance metadata.
@@ -19,6 +21,8 @@ Transport-authenticated identity and payload-declared identity are separate fiel
 `content_digest` is SHA-256 of the representation named by its `representation` field. A digest MUST NOT be described as the digest of original source bytes unless that representation actually consists of the authorized original bytes.
 
 The shared envelope contains metadata, not raw evidence. `privacy.contains_raw_evidence` is fixed to `false`. Raw-content custody is represented through `evidence_reference` and remains outside the default ETS metadata store.
+
+The runtime model applies a 16 KiB serialized-JSON limit independently to `metadata` and `extensions`. Together with the field-level bounds in the normative schema, this keeps the deterministic projection within the existing `EvidenceEvent` v1 64 KiB metadata boundary. Draft 2020-12 JSON Schema cannot express an exact UTF-8 serialized-byte ceiling for arbitrary JSON objects, so this is a required runtime validation in addition to schema validation.
 
 ## Compatibility
 
