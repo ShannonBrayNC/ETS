@@ -93,7 +93,9 @@ def test_health_and_public_device_identity_do_not_require_secret(
     assert "api_key" not in json.dumps(payload).lower()
 
 
-def test_protected_ingress_rejects_missing_and_wrong_key(monkeypatch: Any, tmp_path: Path) -> None:
+def test_protected_ingress_rejects_missing_and_wrong_key(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
     client, _api_key = _client(monkeypatch, tmp_path)
     headers = {
         "Content-Type": "application/json",
@@ -101,7 +103,11 @@ def test_protected_ingress_rejects_missing_and_wrong_key(monkeypatch: Any, tmp_p
         "X-ETS-Workspace": "workspace_alpha",
     }
 
-    missing = client.post("/edge/v1/capture/webhook/demo", content=b'{"ok":true}', headers=headers)
+    missing = client.post(
+        "/edge/v1/capture/webhook/demo",
+        content=b'{"ok":true}',
+        headers=headers,
+    )
     wrong = client.post(
         "/edge/v1/capture/webhook/demo",
         content=b'{"ok":true}',
@@ -113,7 +119,9 @@ def test_protected_ingress_rejects_missing_and_wrong_key(monkeypatch: Any, tmp_p
     assert missing.json()["error"]["code"] == "ETS_EDGE_AUTH_REQUIRED"
 
 
-def test_correct_key_allows_webhook_and_operator_sync_status(monkeypatch: Any, tmp_path: Path) -> None:
+def test_correct_key_allows_webhook_and_operator_sync_status(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
     client, api_key = _client(monkeypatch, tmp_path)
     headers = {
         "Content-Type": "application/json",
@@ -128,7 +136,10 @@ def test_correct_key_allows_webhook_and_operator_sync_status(monkeypatch: Any, t
         headers=headers,
     )
     denied_status = client.get("/edge/v1/sync/status")
-    allowed_status = client.get("/edge/v1/sync/status", headers={"X-ETS-API-Key": api_key})
+    allowed_status = client.get(
+        "/edge/v1/sync/status",
+        headers={"X-ETS-API-Key": api_key},
+    )
 
     assert capture.status_code == 201
     assert capture.json()["sync_state"] == "pending"
