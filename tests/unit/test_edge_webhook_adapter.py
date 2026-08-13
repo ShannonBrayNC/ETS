@@ -24,6 +24,8 @@ class _FakeAsyncClient:
     captured_url: str | None = None
     captured_headers: dict[str, str] | None = None
     captured_json: dict[str, object | None] | None = None
+    upstream_statuses: list[int] = []
+    conflict_ack = False
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         del args, kwargs
@@ -61,8 +63,20 @@ class _FakeAsyncClient:
                 }
             )
 
+        response_status = 200
+        if type(self).upstream_statuses:
+            response_status = type(self).upstream_statuses.pop(0)
+        if response_status >= 400:
+            return _FakeResponse(
+                {"detail": "synthetic upstream failure"},
+                status_code=response_status,
+            )
+
         tree_head = json["tree_head"]
         assert isinstance(tree_head, dict)
+        checkpoint_root = tree_head["root_hash"]
+        if type(self).conflict_ack:
+            checkpoint_root = "d" * 64
         return _FakeResponse(
             {
                 "status": "accepted",
@@ -70,7 +84,7 @@ class _FakeAsyncClient:
                 "idempotency_key": json["idempotency_key"],
                 "event_id": json["event_id"],
                 "event_hash": json["event_hash"],
-                "accepted_checkpoint_root": tree_head["root_hash"],
+                "accepted_checkpoint_root": checkpoint_root,
                 "accepted_checkpoint_size": tree_head["tree_size"],
             },
             status_code=200,
@@ -81,6 +95,8 @@ def _client(monkeypatch: Any, tmp_path: Path) -> TestClient:
     _FakeAsyncClient.captured_url = None
     _FakeAsyncClient.captured_headers = None
     _FakeAsyncClient.captured_json = None
+    _FakeAsyncClient.upstream_statuses = []
+    _FakeAsyncClient.conflict_ack = False
     monkeypatch.setenv("ETS_EDGE_SYNC_DB", str(tmp_path / "sync.db"))
     monkeypatch.setenv("ETS_EDGE_SYNC_MAX_ITEMS", "100")
     monkeypatch.setenv("ETS_EDGE_SYNC_MAX_BYTES", str(16 * 1024 * 1024))
@@ -202,6 +218,18 @@ def test_webhook_rejects_body_over_one_mib(monkeypatch: Any, tmp_path: Path) -> 
     assert _FakeAsyncClient.captured_json is None
 
 
+def test_webhook_applies_sync_queue_backpressure(monkeypatch: Any, tmp_path: Path) -> None:
+    client = _client(monkeypatch, tmp_path)
+    monkeypatch.setenv("ETS_EDGE_SYNC_MAX_BYTES", "1024")
+    webhook_adapter._SYNC_QUEUE = None
+
+    response = _capture(client, b'{"ok":true}')
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "5"
+    assert _FakeAsyncClient.captured_json is None
+
+
 def test_sync_run_synchronizes_queued_checkpoint(monkeypatch: Any, tmp_path: Path) -> None:
     client = _client(monkeypatch, tmp_path)
     response = _capture(client, b'{"ok":true}')
@@ -216,3 +244,41 @@ def test_sync_run_synchronizes_queued_checkpoint(monkeypatch: Any, tmp_path: Pat
     assert status_payload["queue_depth"] == 0
     assert status_payload["synchronized"] == 1
     assert status_payload["upstream_status"] == "online"
+
+
+def test_sync_partial_batch_failure_keeps_only_failed_record_pending(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    client = _client(monkeypatch, tmp_path)
+    assert _capture(client, b'{"sequence":1}').status_code == 201
+    assert _capture(client, b'{"sequence":2}').status_code == 201
+    _FakeAsyncClient.upstream_statuses = [200, 503]
+
+    sync = client.post("/edge/v1/sync/run")
+
+    assert sync.status_code == 200
+    assert sync.json()["attempted"] == 2
+    assert sync.json()["synchronized"] == 1
+    assert sync.json()["retryable_failure"] == 1
+    status_payload = client.get("/edge/v1/sync/status").json()
+    assert status_payload["queue_depth"] == 1
+    assert status_payload["retryable_failure"] == 1
+    assert status_payload["synchronized"] == 1
+
+
+def test_conflicting_upstream_acknowledgement_fails_closed(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    client = _client(monkeypatch, tmp_path)
+    assert _capture(client, b'{"ok":true}').status_code == 201
+    _FakeAsyncClient.conflict_ack = True
+
+    sync = client.post("/edge/v1/sync/run")
+
+    assert sync.status_code == 200
+    assert sync.json()["synchronized"] == 0
+    assert sync.json()["terminal_failure"] == 1
+    assert sync.json()["upstream_status"] == "conflict"
+    status_payload = client.get("/edge/v1/sync/status").json()
+    assert status_payload["queue_depth"] == 1
+    assert status_payload["terminal_failure"] == 1
