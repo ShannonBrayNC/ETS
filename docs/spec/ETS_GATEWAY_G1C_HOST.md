@@ -10,9 +10,11 @@ The qualified host remains out-of-band. It is not a router, firewall, proxy, or 
 
 ## Request limits
 
-The v1 host profile bounds header count, aggregate header bytes, generic per-header value size, concurrent admitted requests, admission wait, and body-read duration. Security-relevant headers also have narrower explicit value limits: `Content-Type`, `X-ETS-Observed-At`, `Idempotency-Key`, `X-ETS-Declared-Identity`, `X-Correlation-ID`, and `Content-Encoding`. Header-byte accounting is the sum of received header-name and header-value bytes; framing overhead is outside this application-policy metric.
+The v1 host profile bounds header count, aggregate header bytes, generic per-header value size, concurrent admitted requests, admission wait, and body-read duration. Security-relevant headers have narrower explicit value limits: `Content-Type`, `X-ETS-Observed-At`, `Idempotency-Key`, `X-ETS-Declared-Identity`, `X-Correlation-ID`, `Content-Encoding`, `Authorization`, and `Content-Length`.
 
-Only identity content encoding is qualified. Compressed request bodies are rejected until a separately bounded compressed/decompressed profile is introduced.
+Those security-relevant headers are singleton fields at this application boundary. Duplicate occurrences are rejected before authentication, parsing, or evidence append rather than relying on framework-specific duplicate-header selection behavior. An injected credential resolver that introduces another credential-bearing header is responsible for imposing an equivalent singleton rule for that credential format.
+
+Header-byte accounting is the sum of received header-name and header-value bytes; framing overhead is outside this application-policy metric. Only identity content encoding is qualified. Compressed request bodies are rejected until a separately bounded compressed/decompressed profile is introduced.
 
 ## Timeout boundary
 
@@ -26,7 +28,7 @@ A bounded semaphore controls admitted webhook work. Requests that cannot obtain 
 
 Host drain is one-way for a controller instance. `begin_shutdown()` stops new admission while already-admitted requests retain their slot until their request context exits. A request that began waiting for capacity before drain started rechecks the drain state after it acquires capacity and is rejected rather than starting new work. Drain rejection uses the same explicit `503` backpressure contract as host saturation.
 
-A restarted worker constructs a fresh `GatewayHostController` from the qualified policy. The drained controller is not reopened. This keeps lifecycle state local to the worker and avoids accidentally admitting new requests into an instance already committed to shutdown.
+`wait_drained()` provides a deterministic completion boundary for the host lifecycle. It may wait without a deadline or under an explicit positive timeout, and it completes only after the active admitted-request count returns to zero. A restarted worker constructs a fresh `GatewayHostController` from the qualified policy; a drained controller is not reopened.
 
 ## TLS profile
 

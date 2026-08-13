@@ -23,6 +23,9 @@ def test_gateway_host_profile_matches_runtime_defaults() -> None:
     assert critical["x-ets-declared-identity"] == policy.max_declared_identity_bytes
     assert critical["x-correlation-id"] == policy.max_correlation_id_bytes
     assert critical["content-encoding"] == policy.max_content_encoding_bytes
+    assert critical["authorization"] == policy.max_authorization_bytes
+    assert critical["content-length"] == policy.max_content_length_bytes
+    assert limits["security_relevant_headers_are_singleton"] is True
     assert limits["max_concurrent_requests"] == policy.max_concurrent_requests
     assert limits["admission_timeout_seconds"] == policy.admission_timeout_seconds
     assert limits["body_read_timeout_seconds"] == policy.body_read_timeout_seconds
@@ -31,6 +34,7 @@ def test_gateway_host_profile_matches_runtime_defaults() -> None:
 
 def test_gateway_host_profile_preserves_non_inline_logging_and_shutdown_boundaries() -> None:
     profile = json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
+    shutdown = profile["shutdown"]
 
     assert profile["schema_version"] == "ets.gateway.http_host.v1"
     assert profile["network_role"] == "out_of_band"
@@ -39,8 +43,9 @@ def test_gateway_host_profile_preserves_non_inline_logging_and_shutdown_boundari
     assert profile["logging"]["raw_payload"] is False
     assert profile["timeout_boundary"]["body_read_is_cancellable_pre_commit"] is True
     assert profile["timeout_boundary"]["authoritative_append_is_inside_request_timeout"] is False
-    assert profile["shutdown"]["drain_is_one_way"] is True
-    assert profile["shutdown"]["new_requests_rejected_after_drain_begins"] is True
-    assert profile["shutdown"]["already_admitted_requests_complete"] is True
-    assert profile["shutdown"]["waiting_requests_recheck_drain_after_capacity_acquisition"] is True
-    assert profile["shutdown"]["fresh_worker_controller_accepts_after_restart"] is True
+    assert shutdown["drain_is_one_way"] is True
+    assert shutdown["new_requests_rejected_after_drain_begins"] is True
+    assert shutdown["already_admitted_requests_complete"] is True
+    assert shutdown["waiting_requests_recheck_drain_after_capacity_acquisition"] is True
+    assert shutdown["wait_drained_available"] is True
+    assert shutdown["fresh_worker_controller_accepts_after_restart"] is True

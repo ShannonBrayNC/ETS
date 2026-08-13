@@ -69,6 +69,8 @@ def test_critical_header_specific_bounds() -> None:
         [
             (b"content-type", b"x" * policy.max_content_type_bytes),
             (b"x-ets-observed-at", b"x" * policy.max_observed_at_bytes),
+            (b"authorization", b"x" * policy.max_authorization_bytes),
+            (b"content-length", b"1" * policy.max_content_length_bytes),
         ]
     )
     with pytest.raises(GatewayHostLimitError):
@@ -79,6 +81,14 @@ def test_critical_header_specific_bounds() -> None:
         controller.validate_headers(
             [(b"x-ets-observed-at", b"x" * (policy.max_observed_at_bytes + 1))]
         )
+
+
+def test_duplicate_security_relevant_headers_are_rejected() -> None:
+    controller = GatewayHostController()
+
+    for name in (b"idempotency-key", b"authorization", b"content-length"):
+        with pytest.raises(GatewayHostLimitError):
+            controller.validate_headers([(name, b"one"), (name.upper(), b"two")])
 
 
 def test_shutdown_drains_admitted_work_rejects_waiter_and_restart_is_fresh() -> None:
@@ -98,9 +108,15 @@ def test_shutdown_drains_admitted_work_rejects_waiter_and_restart_is_fresh() -> 
             waiter = asyncio.create_task(waiting_request())
             await asyncio.sleep(0)
             controller.begin_shutdown()
+            drain_waiter = asyncio.create_task(
+                controller.wait_drained(timeout_seconds=0.1)
+            )
+            await asyncio.sleep(0)
             assert controller.accepting is False
             assert controller.active_requests == 1
+            assert drain_waiter.done() is False
 
+        await drain_waiter
         assert await waiter == "draining"
         assert controller.active_requests == 0
 
@@ -108,7 +124,18 @@ def test_shutdown_drains_admitted_work_rejects_waiter_and_restart_is_fresh() -> 
         assert restarted.accepting is True
         async with restarted.admission():
             assert restarted.active_requests == 1
+        await restarted.wait_drained(timeout_seconds=0.1)
         assert restarted.active_requests == 0
+
+    asyncio.run(exercise())
+
+
+def test_wait_drained_rejects_invalid_timeout() -> None:
+    controller = GatewayHostController()
+
+    async def exercise() -> None:
+        with pytest.raises(ValueError):
+            await controller.wait_drained(timeout_seconds=0)
 
     asyncio.run(exercise())
 
@@ -132,6 +159,26 @@ def test_http_draining_host_returns_backpressure_before_append(tmp_path: Path) -
 
     assert response.status_code == 503
     assert response.headers["Retry-After"] == "1"
+    assert event_log.list_entries() == []
+
+
+def test_http_duplicate_idempotency_header_rejected_before_append(tmp_path: Path) -> None:
+    service, event_log = _service(tmp_path)
+    app = create_gateway_app(service, TestPrincipalResolver())
+    client = TestClient(app)
+
+    response = client.post(
+        "/gateway/v1/webhooks",
+        headers=[
+            ("X-Test-Principal", PRINCIPAL),
+            ("Idempotency-Key", "first"),
+            ("Idempotency-Key", "second"),
+            ("Content-Type", "application/json"),
+        ],
+        content=b"{}",
+    )
+
+    assert response.status_code == 431
     assert event_log.list_entries() == []
 
 

@@ -24,8 +24,11 @@
       "idempotency-key": 200,
       "x-ets-declared-identity": 500,
       "x-correlation-id": 200,
-      "content-encoding": 64
+      "content-encoding": 64,
+      "authorization": 4096,
+      "content-length": 32
     },
+    "security_relevant_headers_are_singleton": true,
     "max_concurrent_requests": 64,
     "admission_timeout_seconds": 0.05,
     "body_read_timeout_seconds": 10.0,
@@ -36,6 +39,7 @@
     "new_requests_rejected_after_drain_begins": true,
     "already_admitted_requests_complete": true,
     "waiting_requests_recheck_drain_after_capacity_acquisition": true,
+    "wait_drained_available": true,
     "fresh_worker_controller_accepts_after_restart": true
   },
   "timeout_boundary": {
