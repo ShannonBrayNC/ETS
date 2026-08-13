@@ -4,11 +4,7 @@ The Edge pilot keeps its historical UDP bounds and exact-byte hashing behavior
 while delegating product-neutral RFC 5424 header parsing to ``ets.capture``.
 """
 
-from __future__ import annotations
 
-import hashlib
-from dataclasses import dataclass
-from datetime import UTC, datetime
 
 from typing import Final
 from uuid import uuid4
