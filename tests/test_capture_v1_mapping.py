@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -17,8 +16,7 @@ EXAMPLE_PATH = (
 
 
 def capture() -> CaptureEnvelopeV1:
-    value = json.loads(EXAMPLE_PATH.read_text(encoding="utf-8"))
-    return CaptureEnvelopeV1.model_validate(value)
+    return CaptureEnvelopeV1.model_validate_json(EXAMPLE_PATH.read_text(encoding="utf-8"))
 
 
 def test_mapping_uses_receipt_time_and_declared_representation_digest() -> None:
