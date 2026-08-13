@@ -2,7 +2,7 @@
 
 ## Status
 
-This plan defines the remaining deployed-host qualification for #235. The concrete Uvicorn server assembly and configuration tests may merge only as a partial slice unless every deployed-host acceptance below is executable in repository CI.
+This plan records the deployed-host qualification completed by #235 and merged in PR #236. The concrete Uvicorn server assembly and the deployed-host acceptance below are executable in repository CI.
 
 ## Required deployed-host test
 
@@ -23,6 +23,6 @@ The test must prove:
 
 A failed authentication, authorization, TLS, scope, drain, or logging assertion is a release blocker for #235. The test must not use a mock transport in place of the loopback HTTPS socket for these acceptance claims.
 
-## Current execution constraint
+## Completion evidence
 
-The connected repository write safety layer blocked publication of the loopback HTTPS integration test during this slice. Do not mark #235 or parent #233 complete on configuration/unit tests alone. Preserve this test plan as the required closure gate until the executable test can be committed and pass exact-head CI.
+The loopback HTTPS integration test was committed before PR #236 merged and passed exact-head CI. PR #236 merged exact head `0235379b3eb980b8970fcd4416efaaa8d3b7c344` to `main` as `db4a0567cd8acd9b9dcf1484473d3960e5726173` after independent LanternProtocol approval. Issues #235, #233, and #231 are complete.
