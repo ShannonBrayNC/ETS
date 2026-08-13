@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from ets.capture import OctetCountingFramer
 from ets.core.api import InMemoryAppendOnlyLog, canonicalize
 from ets.gateway.ingress import (
     GatewayBackpressureError,
@@ -146,6 +147,24 @@ def test_syslog_digest_is_over_declared_header_only_representation(tmp_path: Pat
     assert event.content_hash != hashlib.sha256(message).hexdigest()
     assert event.metadata["content_digest"]["representation"] == SYSLOG_COMMITTED_REPRESENTATION
     assert event.metadata["transformation"]["lossless"] is False
+
+
+def test_qualified_framer_hands_complete_message_to_gateway_ingress(tmp_path: Path) -> None:
+    service, event_log, _ = make_service(tmp_path)
+    message = b"<13>1 2026-08-13T21:00:00Z framed-host app p m - payload"
+    framed = str(len(message)).encode("ascii") + b" " + message
+    framer = OctetCountingFramer(maximum_message_bytes=8192)
+
+    messages = framer.feed(framed)
+    framer.finish()
+    assert messages == (message,)
+
+    receipt = service.ingest_syslog(PRINCIPAL, request(messages[0], "framed-delivery"))
+    event = event_log.get_by_event_id(receipt.event_id).event
+
+    assert event.metadata["source"]["declared_identity"] == "framed-host"
+    assert event.metadata["source"]["transport_identity"] == PRINCIPAL
+    assert event.metadata["capture_metadata"]["raw_payload_retained"] is False
 
 
 def test_syslog_identical_retry_reuses_event_and_sync_record(tmp_path: Path) -> None:
