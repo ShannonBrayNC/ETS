@@ -1,0 +1,40 @@
+{
+  "schema_version": "ets.gateway.http_host.v1",
+  "mode": "collector",
+  "network_role": "out_of_band",
+  "inline_network_dependency": false,
+  "listen": {
+    "scheme": "https",
+    "port": 8443
+  },
+  "tls": {
+    "minimum_version": "TLSv1.2",
+    "preferred_version": "TLSv1.3",
+    "maximum_version": "TLSv1.3",
+    "compression_enabled": false,
+    "client_certificate_mode": "optional_profile"
+  },
+  "request_limits": {
+    "max_header_count": 64,
+    "max_header_bytes": 16384,
+    "max_header_value_bytes": 4096,
+    "max_concurrent_requests": 64,
+    "admission_timeout_seconds": 0.05,
+    "body_read_timeout_seconds": 10.0,
+    "allowed_content_encodings": ["identity"]
+  },
+  "timeout_boundary": {
+    "body_read_is_cancellable_pre_commit": true,
+    "authoritative_append_is_inside_request_timeout": false,
+    "sync_enqueue_is_inside_request_timeout": false
+  },
+  "logging": {
+    "credential_values": false,
+    "raw_payload": false
+  },
+  "claims": {
+    "high_availability_qualified": false,
+    "inline_availability_dependency": false,
+    "tls_termination_may_be_external_if_equivalent_profile_is_enforced": true
+  }
+}
