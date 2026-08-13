@@ -7,7 +7,7 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, NoReturn, Protocol, cast
+from typing import Any, Never, Protocol, cast
 
 from ets.capture import (
     CaptureEnvelopeV1,
@@ -19,9 +19,8 @@ from ets.capture import (
     to_evidence_event,
 )
 from ets.core.api import EventNotFoundError, EvidenceEvent, LogEntry, canonicalize
-from ets.runtime.sync_queue import QueueCapacityError, SyncConflictError, SyncQueue
-
 from ets.gateway.source_registry import SourceRegistration, StaticSourceRegistry
+from ets.runtime.sync_queue import QueueCapacityError, SyncConflictError, SyncQueue
 
 SYNC_RESERVATION_BYTES = 4096
 
@@ -117,6 +116,12 @@ class GatewayIngressService:
         self._sync_queue = sync_queue
         self._config = config or GatewayIngressConfig()
         self._now = now or _utc_now
+
+    @property
+    def max_body_bytes(self) -> int:
+        """Return the configured streaming body limit for transport adapters."""
+
+        return self._config.max_body_bytes
 
     def ingest_json(self, principal: str, request: GatewayWebhookRequest) -> GatewayIngressReceipt:
         """Ingest one authenticated JSON request under server-authorized source scope."""
@@ -349,7 +354,7 @@ def _load_json_object(body: bytes) -> dict[str, Any]:
     return cast(dict[str, Any], decoded)
 
 
-def _reject_non_finite(value: str) -> NoReturn:
+def _reject_non_finite(value: str) -> Never:
     raise ValueError(f"non-finite JSON number is not allowed: {value}")
 
 
