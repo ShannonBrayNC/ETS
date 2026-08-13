@@ -7,12 +7,11 @@ from datetime import UTC, datetime
 import pytest
 
 from ets.edge.syslog_adapter import (
-    build_syslog_capture,
     MAX_SYSLOG_DATAGRAM_BYTES,
-    parse_rfc5424_header,
     SyslogParseError,
+    build_syslog_capture,
+    parse_rfc5424_header,
 )
-
 
 VALID = (
     b'<34>1 2003-10-11T22:14:15.003Z mymachine su 8710 ID47 '
