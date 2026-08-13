@@ -18,7 +18,7 @@ class GatewayHostSaturatedError(RuntimeError):
     """Raised when bounded host concurrency cannot admit a request."""
 
 
-class GatewayHostDrainingError(RuntimeError):
+class GatewayHostDrainingError(GatewayHostSaturatedError):
     """Raised when a draining host no longer accepts new requests."""
 
 
