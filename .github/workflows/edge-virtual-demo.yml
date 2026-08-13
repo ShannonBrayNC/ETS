@@ -36,12 +36,16 @@ jobs:
             ets/edge \
             tests/unit/test_edge_webhook_adapter.py \
             tests/unit/test_edge_sync_queue.py \
-            tests/unit/test_edge_upstream_demo.py
+            tests/unit/test_edge_upstream_demo.py \
+            tests/unit/test_edge_device_identity.py \
+            tests/unit/test_edge_protected_ingress.py
           python -m mypy ets/edge
           python -m pytest -q \
             tests/unit/test_edge_webhook_adapter.py \
             tests/unit/test_edge_sync_queue.py \
-            tests/unit/test_edge_upstream_demo.py
+            tests/unit/test_edge_upstream_demo.py \
+            tests/unit/test_edge_device_identity.py \
+            tests/unit/test_edge_protected_ingress.py
 
       - name: Build and start ETS Edge Virtual
         run: docker compose -f edge-demo/docker-compose.yml up -d --build
@@ -59,17 +63,56 @@ jobs:
           docker compose -f edge-demo/docker-compose.yml logs
           exit 1
 
-      - name: Confirm durable signed demo profile
+      - name: Confirm protected durable signed demo profile
         run: |
+          docker compose -f edge-demo/docker-compose.yml exec -T edge-api \
+            cat /var/lib/ets/edge-local-api-key > /tmp/edge-api-key
+          chmod 600 /tmp/edge-api-key
+
           python - <<'PY'
           import json
           from pathlib import Path
 
           ready = json.loads(Path('/tmp/ready.json').read_text())
+          key = Path('/tmp/edge-api-key').read_text().strip()
           assert ready['status'] == 'ready', ready
           assert ready['storage'] == 'sqlite', ready
           assert ready['signing'] == 'ed25519', ready
-          assert ready['auth'] == 'local_header', ready
+          assert ready['auth'] == 'local_api_key', ready
+          assert len(key.encode('utf-8')) >= 32
+          PY
+
+          MISSING_CODE="$(curl -q --silent --output /tmp/auth-missing.json \
+            --write-out '%{http_code}' http://localhost:8400/api/v1/log/head)"
+          test "${MISSING_CODE}" = "401"
+
+          WRONG_CODE="$(curl -q --silent --output /tmp/auth-wrong.json \
+            --write-out '%{http_code}' \
+            -H 'X-ETS-API-Key: WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW' \
+            http://localhost:8400/api/v1/log/head)"
+          test "${WRONG_CODE}" = "401"
+
+          EDGE_API_KEY="$(cat /tmp/edge-api-key)"
+          printf 'header = "X-ETS-API-Key: %s"\n' "${EDGE_API_KEY}" > "${HOME}/.curlrc"
+          chmod 600 "${HOME}/.curlrc"
+
+          curl --fail --silent --show-error \
+            http://localhost:8400/api/v1/log/head > /tmp/authenticated-head.json
+          curl --fail --silent --show-error \
+            http://localhost:8400/edge/v1/device/identity > /tmp/device-identity.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          identity = json.loads(Path('/tmp/device-identity.json').read_text())
+          serialized = json.dumps(identity, sort_keys=True).lower()
+          assert identity['schema_version'] == 'ets.edge.device_identity.v1', identity
+          assert identity['key_custody'] == 'software_volume', identity
+          assert identity['hardware_attested'] is False, identity
+          assert identity['device_id'].startswith('ets-edge:'), identity
+          assert 'private' not in serialized, identity
+          assert 'api_key' not in serialized, identity
           PY
 
       - name: Capture, prove, and verify an external webhook
@@ -309,6 +352,14 @@ jobs:
             sleep 2
           done
 
+          RESTARTED_KEY="$(docker compose -f edge-demo/docker-compose.yml exec -T edge-api \
+            cat /var/lib/ets/edge-local-api-key)"
+          ORIGINAL_KEY="$(cat /tmp/edge-api-key)"
+          test "${RESTARTED_KEY}" = "${ORIGINAL_KEY}"
+
+          curl --fail --silent --show-error \
+            http://localhost:8400/edge/v1/device/identity > /tmp/restarted-device-identity.json
+
           curl --fail --silent --show-error \
             -H 'X-ETS-Tenant: tenant_demo' \
             -H 'X-ETS-Workspace: workspace_alpha' \
@@ -324,8 +375,11 @@ jobs:
           import json
           from pathlib import Path
 
+          original_identity = json.loads(Path('/tmp/device-identity.json').read_text())
+          restarted_identity = json.loads(Path('/tmp/restarted-device-identity.json').read_text())
           event = json.loads(Path('/tmp/restarted-event.json').read_text())
           webhook = json.loads(Path('/tmp/restarted-webhook-event.json').read_text())
+          assert restarted_identity == original_identity, (original_identity, restarted_identity)
           assert event['event']['event_id'] == 'evt_edge_virtual_ci_001', event
           assert webhook['event']['event_type'] == 'evidence.captured.webhook', webhook
           PY
