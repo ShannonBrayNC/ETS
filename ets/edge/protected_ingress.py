@@ -14,10 +14,7 @@ from pathlib import Path
 import httpx
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response
-from starlette.applications import Starlette
-from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.routing import Mount
 
 from ets.edge.device_identity import load_device_identity, load_local_api_key
 from ets.edge.webhook_adapter import app as ingress_app
@@ -127,7 +124,7 @@ def _device_identity_path() -> Path:
     return Path(os.getenv("ETS_EDGE_DEVICE_IDENTITY_FILE", DEFAULT_DEVICE_IDENTITY_FILE))
 
 
-app = Starlette(
-    routes=[Mount("/", app=ingress_app)],
-    middleware=[Middleware(ProtectedEdgeMiddleware)],
-)
+# Wrap the original ingress ASGI app directly. BaseHTTPMiddleware passes
+# non-HTTP ASGI scopes through to the child application, preserving the
+# FastAPI lifespan that starts/stops the UDP syslog listener.
+app = ProtectedEdgeMiddleware(ingress_app)
