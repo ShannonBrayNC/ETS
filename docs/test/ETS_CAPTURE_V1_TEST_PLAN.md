@@ -11,9 +11,13 @@ SignalForge: Lantern-Protocol/SignalForge#54
 3. Reject `invalid-raw-evidence.json` because `privacy.contains_raw_evidence` is fixed to `false`.
 4. Reject `invalid-missing-representation.json` because every digest must declare the committed representation.
 5. Reject missing tenant/workspace scope.
-6. Reject unknown root and nested fields.
-7. Reject digest algorithms other than SHA-256 and malformed digest hex.
-8. Reject naive/non-date-time receipt timestamps in the runtime model.
+6. Reject tenant/workspace identifiers longer than the frozen `EvidenceEvent` v1 128-character limit.
+7. Reject unknown root and nested fields.
+8. Reject empty strings for optional identity/version/reference fields when those fields are present.
+9. Reject digest algorithms other than SHA-256 and malformed digest hex.
+10. Reject naive/non-date-time receipt timestamps in the runtime model.
+11. Reject runtime `metadata` or `extensions` whose serialized UTF-8 JSON exceeds 16 KiB independently.
+12. Reject non-JSON-native and non-finite values in runtime metadata/extension mappings.
 
 ## Compatibility
 
@@ -42,6 +46,8 @@ The mapped event must use:
 `observed_at_utc` must remain provenance metadata and must not replace receipt time.
 
 The mapped metadata must preserve collector/adapter identity, source identifier, optional sequence/idempotency information, transport and declared identities as distinct values, clock quality, declared representation, custody reference, transformation, privacy state, and bounded extension metadata.
+
+A maximum-bound runtime envelope must still map into an `EvidenceEvent` whose canonical metadata is within the frozen 64 KiB Core limit. If that invariant cannot be demonstrated, the capture bounds must be reduced rather than weakening the Core contract.
 
 ## Claims boundary tests
 
