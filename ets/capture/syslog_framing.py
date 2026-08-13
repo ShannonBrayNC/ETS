@@ -34,6 +34,7 @@ class OctetCountingFramer:
         self._maximum_message_bytes = maximum_message_bytes
         self._maximum_prefix_bytes = maximum_prefix_bytes
         self._maximum_buffer_bytes = resolved_buffer_bytes
+        self._prefix = bytearray()
         self._buffer = bytearray()
         self._expected_message_bytes: int | None = None
 
@@ -41,7 +42,7 @@ class OctetCountingFramer:
     def buffered_bytes(self) -> int:
         """Return the currently retained incomplete frame bytes."""
 
-        return len(self._buffer)
+        return len(self._prefix) + len(self._buffer)
 
     def feed(self, data: bytes) -> tuple[bytes, ...]:
         """Feed stream bytes and return every complete syslog message produced."""
@@ -52,68 +53,55 @@ class OctetCountingFramer:
         frames: list[bytes] = []
         offset = 0
         while offset < len(data):
-            remaining_capacity = self._maximum_buffer_bytes - len(self._buffer)
-            if remaining_capacity <= 0:
-                raise SyslogFramingError("syslog framing buffer exceeds configured limit")
+            if self._expected_message_bytes is None:
+                byte = data[offset]
+                offset += 1
+                if byte == ord(" "):
+                    self._expected_message_bytes = self._finish_prefix()
+                    continue
+                if byte < ord("0") or byte > ord("9"):
+                    raise SyslogFramingError("syslog frame length prefix must be decimal")
+                if len(self._prefix) >= self._maximum_prefix_bytes:
+                    raise SyslogFramingError(
+                        "syslog frame length prefix exceeds configured limit"
+                    )
+                self._prefix.append(byte)
+                continue
 
-            take = min(remaining_capacity, len(data) - offset)
+            expected = self._expected_message_bytes
+            if expected is None:
+                continue
+            remaining_message_bytes = expected - len(self._buffer)
+            if remaining_message_bytes <= 0:
+                raise SyslogFramingError("invalid syslog framing state")
+
+            take = min(remaining_message_bytes, len(data) - offset)
+            if self.buffered_bytes + take > self._maximum_buffer_bytes:
+                raise SyslogFramingError("syslog framing buffer exceeds configured limit")
             self._buffer.extend(data[offset : offset + take])
             offset += take
-            frames.extend(self._drain_complete_frames())
 
-            if len(self._buffer) >= self._maximum_buffer_bytes and offset < len(data):
-                raise SyslogFramingError("syslog framing buffer exceeds configured limit")
+            if len(self._buffer) == expected:
+                frames.append(bytes(self._buffer))
+                self._buffer.clear()
+                self._expected_message_bytes = None
 
         return tuple(frames)
 
     def finish(self) -> None:
         """Validate that stream shutdown did not leave an incomplete frame."""
 
-        if self._buffer or self._expected_message_bytes is not None:
+        if self._prefix or self._buffer or self._expected_message_bytes is not None:
             raise SyslogFramingError("syslog stream ended with an incomplete frame")
 
-    def _drain_complete_frames(self) -> list[bytes]:
-        frames: list[bytes] = []
-        while True:
-            if self._expected_message_bytes is None:
-                expected = self._parse_prefix_if_complete()
-                if expected is None:
-                    break
-                self._expected_message_bytes = expected
-
-            expected_bytes = self._expected_message_bytes
-            if expected_bytes is None or len(self._buffer) < expected_bytes:
-                break
-
-            frames.append(bytes(self._buffer[:expected_bytes]))
-            del self._buffer[:expected_bytes]
-            self._expected_message_bytes = None
-
-        return frames
-
-    def _parse_prefix_if_complete(self) -> int | None:
-        separator = self._buffer.find(b" ")
-        if separator < 0:
-            if len(self._buffer) > self._maximum_prefix_bytes:
-                raise SyslogFramingError("syslog frame length prefix exceeds configured limit")
-            if any(byte < ord("0") or byte > ord("9") for byte in self._buffer):
-                raise SyslogFramingError("syslog frame length prefix must be decimal")
-            return None
-
-        if separator == 0:
+    def _finish_prefix(self) -> int:
+        if not self._prefix:
             raise SyslogFramingError("syslog frame length prefix is missing")
-        if separator > self._maximum_prefix_bytes:
-            raise SyslogFramingError("syslog frame length prefix exceeds configured limit")
-
-        prefix = bytes(self._buffer[:separator])
-        if any(byte < ord("0") or byte > ord("9") for byte in prefix):
-            raise SyslogFramingError("syslog frame length prefix must be decimal")
-        if prefix[0:1] == b"0":
+        if self._prefix[0:1] == b"0":
             raise SyslogFramingError("syslog frame length must be a non-zero decimal value")
 
-        expected = int(prefix)
+        expected = int(self._prefix)
+        self._prefix.clear()
         if expected > self._maximum_message_bytes:
             raise SyslogFramingError("syslog frame exceeds configured message limit")
-
-        del self._buffer[: separator + 1]
         return expected
