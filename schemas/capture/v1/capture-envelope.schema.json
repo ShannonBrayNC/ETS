@@ -22,7 +22,7 @@
     "capture_id": { "type": "string", "minLength": 1, "maxLength": 200 },
     "collector_id": { "type": "string", "minLength": 1, "maxLength": 200 },
     "adapter_id": { "type": "string", "minLength": 1, "maxLength": 200 },
-    "adapter_version": { "type": ["string", "null"], "maxLength": 100 },
+    "adapter_version": { "type": ["string", "null"], "minLength": 1, "maxLength": 100 },
     "source": {
       "type": "object",
       "additionalProperties": false,
@@ -33,9 +33,9 @@
         "tenant_id": { "type": "string", "minLength": 1, "maxLength": 200 },
         "workspace_id": { "type": "string", "minLength": 1, "maxLength": 200 },
         "sequence": { "type": ["integer", "string", "null"] },
-        "idempotency_key": { "type": ["string", "null"], "maxLength": 500 },
-        "transport_identity": { "type": ["string", "null"], "maxLength": 500 },
-        "declared_identity": { "type": ["string", "null"], "maxLength": 500 }
+        "idempotency_key": { "type": ["string", "null"], "minLength": 1, "maxLength": 500 },
+        "transport_identity": { "type": ["string", "null"], "minLength": 1, "maxLength": 500 },
+        "declared_identity": { "type": ["string", "null"], "minLength": 1, "maxLength": 500 }
       }
     },
     "observed_at_utc": { "type": ["string", "null"], "format": "date-time" },
@@ -44,7 +44,7 @@
       "type": "string",
       "enum": ["synchronized", "estimated", "degraded", "unknown"]
     },
-    "media_type": { "type": ["string", "null"], "maxLength": 200 },
+    "media_type": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 },
     "content_length": { "type": ["integer", "null"], "minimum": 0 },
     "content_digest": {
       "type": "object",
@@ -62,12 +62,12 @@
       "additionalProperties": false,
       "required": ["retention_mode"],
       "properties": {
-        "uri": { "type": ["string", "null"], "maxLength": 4096 },
+        "uri": { "type": ["string", "null"], "minLength": 1, "maxLength": 4096 },
         "retention_mode": {
           "type": "string",
           "enum": ["source_retained", "external_store", "not_retained", "managed_store"]
         },
-        "store_profile": { "type": ["string", "null"], "maxLength": 200 }
+        "store_profile": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 }
       }
     },
     "transformation": {
@@ -76,22 +76,22 @@
       "required": ["profile", "output_event_type", "lossless"],
       "properties": {
         "profile": { "type": "string", "minLength": 1, "maxLength": 200 },
-        "input_format": { "type": ["string", "null"], "maxLength": 200 },
+        "input_format": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 },
         "output_event_type": { "type": "string", "minLength": 1, "maxLength": 128 },
         "lossless": { "type": "boolean" },
-        "notes": { "type": ["string", "null"], "maxLength": 2000 }
+        "notes": { "type": ["string", "null"], "minLength": 1, "maxLength": 2000 }
       }
     },
-    "correlation_id": { "type": ["string", "null"], "maxLength": 200 },
+    "correlation_id": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 },
     "metadata": { "type": "object" },
     "privacy": {
       "type": "object",
       "additionalProperties": false,
       "required": ["contains_raw_evidence"],
       "properties": {
-        "classification": { "type": ["string", "null"], "maxLength": 100 },
-        "redaction_profile": { "type": ["string", "null"], "maxLength": 100 },
-        "minimization_profile": { "type": ["string", "null"], "maxLength": 100 },
+        "classification": { "type": ["string", "null"], "minLength": 1, "maxLength": 100 },
+        "redaction_profile": { "type": ["string", "null"], "minLength": 1, "maxLength": 100 },
+        "minimization_profile": { "type": ["string", "null"], "minLength": 1, "maxLength": 100 },
         "contains_raw_evidence": { "const": false }
       }
     },
