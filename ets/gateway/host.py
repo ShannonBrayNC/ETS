@@ -39,6 +39,8 @@ class GatewayHostPolicy:
     max_declared_identity_bytes: int = 500
     max_correlation_id_bytes: int = 200
     max_content_encoding_bytes: int = 64
+    max_authorization_bytes: int = 4 * 1024
+    max_content_length_bytes: int = 32
     max_concurrent_requests: int = 64
     admission_timeout_seconds: float = 0.05
     body_read_timeout_seconds: float = 10.0
@@ -55,6 +57,8 @@ class GatewayHostPolicy:
             self.max_declared_identity_bytes,
             self.max_correlation_id_bytes,
             self.max_content_encoding_bytes,
+            self.max_authorization_bytes,
+            self.max_content_length_bytes,
             self.max_concurrent_requests,
         )
         if any(value < 1 for value in numeric):
@@ -78,6 +82,8 @@ class GatewayHostController:
         self._semaphore = asyncio.Semaphore(self.policy.max_concurrent_requests)
         self._accepting = True
         self._active_requests = 0
+        self._drained = asyncio.Event()
+        self._drained.set()
 
     @property
     def accepting(self) -> bool:
@@ -96,8 +102,22 @@ class GatewayHostController:
 
         self._accepting = False
 
+    async def wait_drained(self, timeout_seconds: float | None = None) -> None:
+        """Wait until all already-admitted work has exited the host controller."""
+
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            raise ValueError("drain timeout must be positive")
+        if timeout_seconds is None:
+            await self._drained.wait()
+            return
+        try:
+            async with asyncio.timeout(timeout_seconds):
+                await self._drained.wait()
+        except TimeoutError as exc:
+            raise TimeoutError("Gateway host did not drain before timeout") from exc
+
     def validate_headers(self, headers: Iterable[tuple[bytes, bytes]]) -> None:
-        """Reject excessive aggregate, count, generic, or critical HTTP header values."""
+        """Reject excessive, duplicate, or overlong security-relevant HTTP headers."""
 
         critical_limits = {
             b"content-type": self.policy.max_content_type_bytes,
@@ -106,17 +126,25 @@ class GatewayHostController:
             b"x-ets-declared-identity": self.policy.max_declared_identity_bytes,
             b"x-correlation-id": self.policy.max_correlation_id_bytes,
             b"content-encoding": self.policy.max_content_encoding_bytes,
+            b"authorization": self.policy.max_authorization_bytes,
+            b"content-length": self.policy.max_content_length_bytes,
         }
+        seen_critical: set[bytes] = set()
         count = 0
         total_bytes = 0
         for name, value in headers:
+            normalized_name = name.lower()
             count += 1
             total_bytes += len(name) + len(value)
             if len(value) > self.policy.max_header_value_bytes:
                 raise GatewayHostLimitError("request header value exceeds configured limit")
-            critical_limit = critical_limits.get(name.lower())
-            if critical_limit is not None and len(value) > critical_limit:
-                raise GatewayHostLimitError("critical request header exceeds configured limit")
+            critical_limit = critical_limits.get(normalized_name)
+            if critical_limit is not None:
+                if normalized_name in seen_critical:
+                    raise GatewayHostLimitError("duplicate security-relevant request header")
+                seen_critical.add(normalized_name)
+                if len(value) > critical_limit:
+                    raise GatewayHostLimitError("critical request header exceeds configured limit")
             if count > self.policy.max_header_count:
                 raise GatewayHostLimitError("request header count exceeds configured limit")
             if total_bytes > self.policy.max_header_bytes:
@@ -148,11 +176,15 @@ class GatewayHostController:
             if not self._accepting:
                 raise GatewayHostDrainingError("Gateway host is draining")
 
+            if self._active_requests == 0:
+                self._drained.clear()
             self._active_requests += 1
             try:
                 yield
             finally:
                 self._active_requests -= 1
+                if self._active_requests == 0:
+                    self._drained.set()
         finally:
             if acquired:
                 self._semaphore.release()
