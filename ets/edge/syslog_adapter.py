@@ -5,7 +5,11 @@ while delegating product-neutral RFC 5424 header parsing to ``ets.capture``.
 """
 
 
+from __future__ import annotations
 
+import hashlib
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Final
 from uuid import uuid4
 
@@ -16,7 +20,6 @@ from ets.capture.syslog import (
 
 MAX_SYSLOG_DATAGRAM_BYTES: Final = 65_507
 MAX_SYSLOG_SOURCE_ID_LENGTH: Final = 64
-
 
 @dataclass(frozen=True, slots=True)
 class SyslogCapture:
