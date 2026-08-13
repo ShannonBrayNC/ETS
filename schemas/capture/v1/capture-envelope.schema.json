@@ -32,7 +32,13 @@
         "identifier": { "type": "string", "minLength": 1, "maxLength": 500 },
         "tenant_id": { "type": "string", "minLength": 1, "maxLength": 128 },
         "workspace_id": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "sequence": { "type": ["integer", "string", "null"] },
+        "sequence": {
+          "oneOf": [
+            { "type": "integer" },
+            { "type": "string", "minLength": 1, "maxLength": 500 },
+            { "type": "null" }
+          ]
+        },
         "idempotency_key": { "type": ["string", "null"], "minLength": 1, "maxLength": 500 },
         "transport_identity": { "type": ["string", "null"], "minLength": 1, "maxLength": 500 },
         "declared_identity": { "type": ["string", "null"], "minLength": 1, "maxLength": 500 }
