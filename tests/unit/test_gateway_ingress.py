@@ -8,7 +8,13 @@ from typing import Any
 
 import pytest
 
-from ets.core.api import InMemoryAppendOnlyLog, canonicalize
+from ets.core.api import (
+    DuplicateEventError,
+    EvidenceEvent,
+    InMemoryAppendOnlyLog,
+    LogEntry,
+    canonicalize,
+)
 from ets.gateway.ingress import (
     GatewayBackpressureError,
     GatewayConflictError,
@@ -40,6 +46,25 @@ class FailOnceQueue(SyncQueue):
         return super().enqueue(payload)
 
 
+class DuplicateOnAppendLog(InMemoryAppendOnlyLog):
+    """Simulate another writer winning between lookup and append."""
+
+    def __init__(self, *, conflicting: bool = False) -> None:
+        super().__init__()
+        self._conflicting = conflicting
+        self._raced = False
+
+    def append(self, event: EvidenceEvent) -> LogEntry:
+        if not self._raced:
+            self._raced = True
+            winner = event
+            if self._conflicting:
+                winner = event.model_copy(update={"content_hash": "0" * 64})
+            super().append(winner)
+            raise DuplicateEventError("simulated concurrent append winner")
+        return super().append(event)
+
+
 def source_registration(*, enabled: bool = True) -> SourceRegistration:
     return SourceRegistration(
         principal=PRINCIPAL,
@@ -64,21 +89,22 @@ def make_service(
     *,
     max_body_bytes: int = 1024 * 1024,
     queue: SyncQueue | None = None,
+    event_log: InMemoryAppendOnlyLog | None = None,
     enabled: bool = True,
     now: datetime | None = None,
 ) -> tuple[GatewayIngressService, InMemoryAppendOnlyLog, SyncQueue]:
-    event_log = InMemoryAppendOnlyLog()
+    log = event_log if event_log is not None else InMemoryAppendOnlyLog()
     sync_queue = queue or SyncQueue(tmp_path / "sync.db")
     registry = StaticSourceRegistry([source_registration(enabled=enabled)])
     clock = None if now is None else lambda: now
     service = GatewayIngressService(
         registry=registry,
-        event_log=event_log,
+        event_log=log,
         sync_queue=sync_queue,
         config=GatewayIngressConfig(max_body_bytes=max_body_bytes),
         now=clock,
     )
-    return service, event_log, sync_queue
+    return service, log, sync_queue
 
 
 def request(body: bytes, key: str = "request-1") -> GatewayWebhookRequest:
@@ -135,6 +161,29 @@ def test_conflicting_retry_fails_without_second_append(tmp_path: Path) -> None:
         service.ingest_json(PRINCIPAL, request(b'{"order_id":"43"}'))
 
     assert len(event_log.list_entries()) == 1
+
+
+def test_concurrent_identical_append_reconciles_existing_event(tmp_path: Path) -> None:
+    race_log = DuplicateOnAppendLog()
+    service, event_log, sync_queue = make_service(tmp_path, event_log=race_log)
+
+    receipt = service.ingest_json(PRINCIPAL, request(b'{"order_id":"42"}'))
+
+    assert receipt.duplicate is True
+    assert receipt.log_index == 0
+    assert len(event_log.list_entries()) == 1
+    assert sync_queue.status().queue_depth == 1
+
+
+def test_concurrent_conflicting_append_returns_conflict(tmp_path: Path) -> None:
+    race_log = DuplicateOnAppendLog(conflicting=True)
+    service, event_log, sync_queue = make_service(tmp_path, event_log=race_log)
+
+    with pytest.raises(GatewayConflictError):
+        service.ingest_json(PRINCIPAL, request(b'{"order_id":"42"}'))
+
+    assert len(event_log.list_entries()) == 1
+    assert sync_queue.status().queue_depth == 0
 
 
 def test_body_limit_minus_one_exact_and_plus_one(tmp_path: Path) -> None:
