@@ -22,9 +22,9 @@ from ets.gateway.source_registry import (
     StaticSourceRegistry,
 )
 from ets.gateway.syslog_capture import (
+    SYSLOG_COMMITTED_REPRESENTATION,
     GatewaySyslogCaptureError,
     GatewaySyslogCaptureRequest,
-    SYSLOG_COMMITTED_REPRESENTATION,
 )
 from ets.runtime.sync_queue import QueueCapacityError, SyncQueue, SyncRecord
 
