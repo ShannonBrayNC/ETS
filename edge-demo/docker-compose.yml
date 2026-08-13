@@ -37,11 +37,19 @@ services:
       ETS_EDGE_SYNC_MAX_ITEMS: "1000"
       ETS_EDGE_SYNC_MAX_BYTES: "67108864"
       ETS_EDGE_UPSTREAM_URL: http://edge-upstream:8002
+      ETS_EDGE_SYSLOG_ENABLED: "1"
+      ETS_EDGE_SYSLOG_HOST: 0.0.0.0
+      ETS_EDGE_SYSLOG_PORT: "5514"
+      ETS_EDGE_SYSLOG_TENANT: tenant_demo
+      ETS_EDGE_SYSLOG_WORKSPACE: workspace_alpha
+      ETS_EDGE_SYSLOG_SOURCE_ID: syslog-demo
     volumes:
       - ets-edge-data:/var/lib/ets
     depends_on:
       edge-api:
         condition: service_healthy
+    ports:
+      - "5514:5514/udp"
     healthcheck:
       test:
         - CMD
