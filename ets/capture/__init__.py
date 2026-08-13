@@ -10,6 +10,7 @@ from ets.capture.models import (
     EvidenceReference,
 )
 from ets.capture.syslog import SyslogHeader, SyslogParseError, parse_rfc5424_header
+from ets.capture.syslog_framing import OctetCountingFramer, SyslogFramingError
 
 __all__ = [
     "CaptureEnvelopeV1",
@@ -18,6 +19,8 @@ __all__ = [
     "CaptureTransformation",
     "ContentDigest",
     "EvidenceReference",
+    "OctetCountingFramer",
+    "SyslogFramingError",
     "SyslogHeader",
     "SyslogParseError",
     "capture_event_metadata",
