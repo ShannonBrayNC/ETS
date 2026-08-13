@@ -7,10 +7,10 @@ from datetime import UTC, datetime
 import pytest
 
 from ets.edge.syslog_adapter import (
-    MAX_SYSLOG_DATAGRAM_BYTES,
-    SyslogParseError,
     build_syslog_capture,
+    MAX_SYSLOG_DATAGRAM_BYTES,
     parse_rfc5424_header,
+    SyslogParseError,
 )
 
 
