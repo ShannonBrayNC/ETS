@@ -18,6 +18,10 @@ class GatewayHostSaturatedError(RuntimeError):
     """Raised when bounded host concurrency cannot admit a request."""
 
 
+class GatewayHostDrainingError(RuntimeError):
+    """Raised when a draining host no longer accepts new requests."""
+
+
 class UnsupportedContentEncodingError(GatewayHostLimitError):
     """Raised when a request uses an unqualified content encoding."""
 
@@ -29,6 +33,12 @@ class GatewayHostPolicy:
     max_header_count: int = 64
     max_header_bytes: int = 16 * 1024
     max_header_value_bytes: int = 4 * 1024
+    max_content_type_bytes: int = 200
+    max_observed_at_bytes: int = 64
+    max_idempotency_key_bytes: int = 200
+    max_declared_identity_bytes: int = 500
+    max_correlation_id_bytes: int = 200
+    max_content_encoding_bytes: int = 64
     max_concurrent_requests: int = 64
     admission_timeout_seconds: float = 0.05
     body_read_timeout_seconds: float = 10.0
@@ -39,6 +49,12 @@ class GatewayHostPolicy:
             self.max_header_count,
             self.max_header_bytes,
             self.max_header_value_bytes,
+            self.max_content_type_bytes,
+            self.max_observed_at_bytes,
+            self.max_idempotency_key_bytes,
+            self.max_declared_identity_bytes,
+            self.max_correlation_id_bytes,
+            self.max_content_encoding_bytes,
             self.max_concurrent_requests,
         )
         if any(value < 1 for value in numeric):
@@ -60,10 +76,37 @@ class GatewayHostController:
     def __init__(self, policy: GatewayHostPolicy | None = None) -> None:
         self.policy = policy or GatewayHostPolicy()
         self._semaphore = asyncio.Semaphore(self.policy.max_concurrent_requests)
+        self._accepting = True
+        self._active_requests = 0
+
+    @property
+    def accepting(self) -> bool:
+        """Return whether the host accepts new requests."""
+
+        return self._accepting
+
+    @property
+    def active_requests(self) -> int:
+        """Return the number of requests currently admitted by this controller."""
+
+        return self._active_requests
+
+    def begin_shutdown(self) -> None:
+        """Stop new admission while allowing already-admitted requests to complete."""
+
+        self._accepting = False
 
     def validate_headers(self, headers: Iterable[tuple[bytes, bytes]]) -> None:
-        """Reject excessive aggregate, count, or per-value HTTP headers."""
+        """Reject excessive aggregate, count, generic, or critical HTTP header values."""
 
+        critical_limits = {
+            b"content-type": self.policy.max_content_type_bytes,
+            b"x-ets-observed-at": self.policy.max_observed_at_bytes,
+            b"idempotency-key": self.policy.max_idempotency_key_bytes,
+            b"x-ets-declared-identity": self.policy.max_declared_identity_bytes,
+            b"x-correlation-id": self.policy.max_correlation_id_bytes,
+            b"content-encoding": self.policy.max_content_encoding_bytes,
+        }
         count = 0
         total_bytes = 0
         for name, value in headers:
@@ -71,6 +114,9 @@ class GatewayHostController:
             total_bytes += len(name) + len(value)
             if len(value) > self.policy.max_header_value_bytes:
                 raise GatewayHostLimitError("request header value exceeds configured limit")
+            critical_limit = critical_limits.get(name.lower())
+            if critical_limit is not None and len(value) > critical_limit:
+                raise GatewayHostLimitError("critical request header exceeds configured limit")
             if count > self.policy.max_header_count:
                 raise GatewayHostLimitError("request header count exceeds configured limit")
             if total_bytes > self.policy.max_header_bytes:
@@ -85,17 +131,31 @@ class GatewayHostController:
 
     @asynccontextmanager
     async def admission(self) -> AsyncIterator[None]:
-        """Admit a request within the configured concurrency budget."""
+        """Admit a request within concurrency and host-drain boundaries."""
 
+        if not self._accepting:
+            raise GatewayHostDrainingError("Gateway host is draining")
+
+        acquired = False
         try:
-            async with asyncio.timeout(self.policy.admission_timeout_seconds):
-                await self._semaphore.acquire()
-        except TimeoutError as exc:
-            raise GatewayHostSaturatedError("Gateway host concurrency is saturated") from exc
-        try:
-            yield
+            try:
+                async with asyncio.timeout(self.policy.admission_timeout_seconds):
+                    await self._semaphore.acquire()
+                acquired = True
+            except TimeoutError as exc:
+                raise GatewayHostSaturatedError("Gateway host concurrency is saturated") from exc
+
+            if not self._accepting:
+                raise GatewayHostDrainingError("Gateway host is draining")
+
+            self._active_requests += 1
+            try:
+                yield
+            finally:
+                self._active_requests -= 1
         finally:
-            self._semaphore.release()
+            if acquired:
+                self._semaphore.release()
 
 
 def create_gateway_tls_context() -> ssl.SSLContext:
