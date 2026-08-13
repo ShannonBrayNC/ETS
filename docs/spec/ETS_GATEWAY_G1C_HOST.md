@@ -10,7 +10,9 @@ The qualified host remains out-of-band. It is not a router, firewall, proxy, or 
 
 ## Request limits
 
-The v1 host profile bounds header count, aggregate header bytes, per-header value size, concurrent admitted requests, admission wait, and body-read duration. Only identity content encoding is qualified. Compressed request bodies are rejected until a separately bounded compressed/decompressed profile is introduced.
+The v1 host profile bounds header count, aggregate header bytes, generic per-header value size, concurrent admitted requests, admission wait, and body-read duration. Security-relevant headers also have narrower explicit value limits: `Content-Type`, `X-ETS-Observed-At`, `Idempotency-Key`, `X-ETS-Declared-Identity`, `X-Correlation-ID`, and `Content-Encoding`. Header-byte accounting is the sum of received header-name and header-value bytes; framing overhead is outside this application-policy metric.
+
+Only identity content encoding is qualified. Compressed request bodies are rejected until a separately bounded compressed/decompressed profile is introduced.
 
 ## Timeout boundary
 
@@ -19,6 +21,12 @@ The body-read deadline is pre-commit and cancellable. It ends before `GatewayIng
 ## Saturation
 
 A bounded semaphore controls admitted webhook work. Requests that cannot obtain capacity within the admission window receive explicit `503` backpressure with `Retry-After`. The host does not create an unbounded waiting queue.
+
+## Shutdown and restart
+
+Host drain is one-way for a controller instance. `begin_shutdown()` stops new admission while already-admitted requests retain their slot until their request context exits. A request that began waiting for capacity before drain started rechecks the drain state after it acquires capacity and is rejected rather than starting new work. Drain rejection uses the same explicit `503` backpressure contract as host saturation.
+
+A restarted worker constructs a fresh `GatewayHostController` from the qualified policy. The drained controller is not reopened. This keeps lifecycle state local to the worker and avoids accidentally admitting new requests into an instance already committed to shutdown.
 
 ## TLS profile
 
@@ -32,4 +40,4 @@ The qualified profile does not log credential values or raw request payloads. Ex
 
 ## Qualification boundary
 
-This slice qualifies application-host limits and configuration. It does not claim high availability, inline failover, general decompression support, packet capture, or complete-observation guarantees.
+This slice qualifies application-host limits, admission/drain lifecycle behavior, and TLS configuration. It does not claim high availability, inline failover, general decompression support, packet capture, or complete-observation guarantees.
