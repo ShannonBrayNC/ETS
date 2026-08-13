@@ -320,14 +320,15 @@ class GatewayIngressService:
 
 
 def _stable_event_identity(registration: SourceRegistration, idempotency_key: str) -> str:
-    material = "\0".join(
-        (
+    material = canonicalize(
+        [
+            "ets.gateway.idempotency.v1",
             registration.tenant_id,
             registration.workspace_id,
             registration.source_id,
             idempotency_key,
-        )
-    ).encode("utf-8")
+        ]
+    )
     return hashlib.sha256(material).hexdigest()
 
 
