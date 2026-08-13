@@ -1,0 +1,51 @@
+{
+  "schema_version": "ets.capture.v1",
+  "capture_id": "cap_demo_0001",
+  "collector_id": "ets-gateway:demo",
+  "adapter_id": "gateway.webhook",
+  "adapter_version": "0.1.0",
+  "source": {
+    "system": "example-crm",
+    "identifier": "webhook:orders",
+    "tenant_id": "tenant_demo",
+    "workspace_id": "workspace_alpha",
+    "sequence": "42",
+    "idempotency_key": "orders-42",
+    "transport_identity": "spiffe://example.test/workload/orders",
+    "declared_identity": "orders-service"
+  },
+  "observed_at_utc": "2026-08-13T14:30:00Z",
+  "received_at_utc": "2026-08-13T14:30:01Z",
+  "clock_quality": "synchronized",
+  "media_type": "application/json",
+  "content_length": 128,
+  "content_digest": {
+    "algorithm": "sha256",
+    "value": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "representation": "minimized-json-v1",
+    "profile": "ets.content.sha256.v1"
+  },
+  "evidence_reference": {
+    "uri": "ets-source://example-crm/orders/42",
+    "retention_mode": "source_retained",
+    "store_profile": null
+  },
+  "transformation": {
+    "profile": "gateway.webhook.minimize.v1",
+    "input_format": "application/json",
+    "output_event_type": "evidence.captured.webhook",
+    "lossless": false,
+    "notes": "Example excludes source fields not authorized for immutable commitment."
+  },
+  "correlation_id": "corr-demo-42",
+  "metadata": {
+    "json_root_type": "object"
+  },
+  "privacy": {
+    "classification": "internal",
+    "redaction_profile": null,
+    "minimization_profile": "gateway.webhook.minimize.v1",
+    "contains_raw_evidence": false
+  },
+  "extensions": {}
+}

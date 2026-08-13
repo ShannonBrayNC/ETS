@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.org/schemas/ets/capture/v1",
+  "title": "ETS Capture Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "capture_id",
+    "collector_id",
+    "adapter_id",
+    "source",
+    "received_at_utc",
+    "clock_quality",
+    "content_digest",
+    "evidence_reference",
+    "transformation",
+    "privacy"
+  ],
+  "properties": {
+    "schema_version": { "const": "ets.capture.v1" },
+    "capture_id": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "collector_id": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "adapter_id": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "adapter_version": { "type": ["string", "null"], "minLength": 1, "maxLength": 100 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "identifier", "tenant_id", "workspace_id"],
+      "properties": {
+        "system": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "identifier": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "tenant_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "workspace_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sequence": {
+          "oneOf": [
+            { "type": "integer" },
+            { "type": "string", "minLength": 1, "maxLength": 500 },
+            { "type": "null" }
+          ]
+        },
+        "idempotency_key": { "type": ["string", "null"], "minLength": 1, "maxLength": 500 },
+        "transport_identity": { "type": ["string", "null"], "minLength": 1, "maxLength": 500 },
+        "declared_identity": { "type": ["string", "null"], "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "observed_at_utc": { "type": ["string", "null"], "format": "date-time" },
+    "received_at_utc": { "type": "string", "format": "date-time" },
+    "clock_quality": {
+      "type": "string",
+      "enum": ["synchronized", "estimated", "degraded", "unknown"]
+    },
+    "media_type": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 },
+    "content_length": { "type": ["integer", "null"], "minimum": 0 },
+    "content_digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value", "representation", "profile"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "value": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "representation": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "profile": { "const": "ets.content.sha256.v1" }
+      }
+    },
+    "evidence_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["retention_mode"],
+      "properties": {
+        "uri": { "type": ["string", "null"], "minLength": 1, "maxLength": 4096 },
+        "retention_mode": {
+          "type": "string",
+          "enum": ["source_retained", "external_store", "not_retained", "managed_store"]
+        },
+        "store_profile": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "transformation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "output_event_type", "lossless"],
+      "properties": {
+        "profile": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "input_format": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 },
+        "output_event_type": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "lossless": { "type": "boolean" },
+        "notes": { "type": ["string", "null"], "minLength": 1, "maxLength": 2000 }
+      }
+    },
+    "correlation_id": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 },
+    "metadata": { "type": "object" },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contains_raw_evidence"],
+      "properties": {
+        "classification": { "type": ["string", "null"], "minLength": 1, "maxLength": 100 },
+        "redaction_profile": { "type": ["string", "null"], "minLength": 1, "maxLength": 100 },
+        "minimization_profile": { "type": ["string", "null"], "minLength": 1, "maxLength": 100 },
+        "contains_raw_evidence": { "const": false }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" }
+    }
+  }
+}

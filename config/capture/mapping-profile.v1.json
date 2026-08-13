@@ -1,0 +1,72 @@
+{
+  "schema_version": "ets.capture.mapping.v1",
+  "input_contract": "ets.capture.v1",
+  "output_contract": "ets.event.v1",
+  "core_boundary": "ets.core.api",
+  "caller_supplied": [
+    "event_id",
+    "evidence_id",
+    "subject_ref",
+    "actor_id"
+  ],
+  "output_defaults": {
+    "schema_version": "ets.event.v1",
+    "content_hash_alg": "sha256",
+    "external_refs": null
+  },
+  "runtime_limits": {
+    "tenant_id_max_chars": 128,
+    "workspace_id_max_chars": 128,
+    "source_sequence_string_max_chars": 500,
+    "metadata_json_max_bytes": 16384,
+    "extensions_json_max_bytes": 16384,
+    "event_metadata_max_bytes": 65536
+  },
+  "field_mapping": {
+    "tenant_id": "source.tenant_id",
+    "workspace_id": "source.workspace_id",
+    "event_type": "transformation.output_event_type",
+    "content_hash": "content_digest.value",
+    "content_hash_alg": "literal:sha256",
+    "created_at_utc": "received_at_utc",
+    "source_system": "source.system",
+    "correlation_id": "correlation_id",
+    "redaction_profile": "privacy.redaction_profile"
+  },
+  "metadata_projection": [
+    "schema_version",
+    "capture_id",
+    "collector_id",
+    "adapter_id",
+    "adapter_version",
+    "source.identifier",
+    "source.sequence",
+    "source.idempotency_key",
+    "source.transport_identity",
+    "source.declared_identity",
+    "observed_at_utc",
+    "received_at_utc",
+    "clock_quality",
+    "media_type",
+    "content_length",
+    "content_digest.representation",
+    "content_digest.profile",
+    "evidence_reference",
+    "transformation",
+    "privacy",
+    "metadata",
+    "extensions"
+  ],
+  "invariants": {
+    "source_observation_time_is_not_event_receipt_time": true,
+    "declared_representation_digest_is_event_content_hash": true,
+    "transport_identity_is_not_declared_identity": true,
+    "raw_evidence_in_shared_envelope": false,
+    "historical_edge_capture_contract_unchanged": true,
+    "event_v1_hashable_fields_unchanged": true,
+    "truth_claim": false,
+    "completeness_claim": false,
+    "compliance_claim": false,
+    "legal_admissibility_claim": false
+  }
+}
