@@ -272,9 +272,125 @@ async def _failure_ordering(tmp_path: Path) -> None:
         await host.shutdown()
 
 
+async def _invalid_frames_create_no_evidence(tmp_path: Path) -> None:
+    server_tls, client_tls = _tls_contexts(tmp_path)
+    registry = _registry()
+    event_log = InMemoryAppendOnlyLog()
+    service = GatewayIngressService(
+        registry=registry,
+        event_log=event_log,
+        sync_queue=SyncQueue(tmp_path / "invalid-frame-sync.db"),
+        config=GatewayIngressConfig(max_syslog_message_bytes=8192),
+    )
+    host = GatewaySyslogHost(
+        service,
+        registry,
+        server_tls,
+        host="127.0.0.1",
+        port=0,
+    )
+    await host.start()
+    port = host.bound_port
+    assert port is not None
+
+    async def send_invalid(payload: bytes) -> None:
+        _reader, writer = await _open(port, client_tls)
+        try:
+            writer.write(payload)
+            with suppress(ConnectionError, OSError, ssl.SSLError):
+                await writer.drain()
+        finally:
+            writer.close()
+            with suppress(ConnectionError, OSError, ssl.SSLError):
+                await writer.wait_closed()
+        await asyncio.sleep(0.05)
+
+    try:
+        await send_invalid(b"x malformed")
+        assert event_log.list_entries() == []
+
+        await send_invalid(b"8193 ")
+        assert event_log.list_entries() == []
+
+        await send_invalid(b"10 abc")
+        assert event_log.list_entries() == []
+    finally:
+        await host.shutdown()
+
+
+async def _clean_shutdown_preserves_admitted_work(tmp_path: Path) -> None:
+    server_tls, client_tls = _tls_contexts(tmp_path)
+    registry = _registry()
+    event_log = InMemoryAppendOnlyLog()
+    service = GatewayIngressService(
+        registry=registry,
+        event_log=event_log,
+        sync_queue=SyncQueue(tmp_path / "shutdown-sync.db"),
+        config=GatewayIngressConfig(max_syslog_message_bytes=8192),
+    )
+    host = GatewaySyslogHost(
+        service,
+        registry,
+        server_tls,
+        policy=GatewaySyslogHostPolicy(graceful_shutdown_seconds=1.0),
+        host="127.0.0.1",
+        port=0,
+    )
+    await host.start()
+    port = host.bound_port
+    assert port is not None
+
+    _reader, writer = await _open(port, client_tls)
+    writer.write(_frame(b"<13>1 - admitted app p m - complete"))
+    await writer.drain()
+    await _wait_for_entries(event_log, 1)
+    assert host.active_connections >= 1
+
+    shutdown_task = asyncio.create_task(host.shutdown())
+    try:
+        for _ in range(100):
+            if not host.accepting:
+                break
+            await asyncio.sleep(0.005)
+        assert host.accepting is False
+
+        try:
+            _late_reader, late_writer = await _open(port, client_tls)
+        except (ConnectionError, OSError, ssl.SSLError):
+            pass
+        else:
+            late_writer.close()
+            with suppress(ConnectionError, OSError, ssl.SSLError):
+                await late_writer.wait_closed()
+            raise AssertionError("new TLS connection was admitted after shutdown began")
+
+        writer.close()
+        with suppress(ConnectionError, OSError, ssl.SSLError):
+            await writer.wait_closed()
+        await shutdown_task
+
+        assert len(event_log.list_entries()) == 1
+        assert host.active_connections == 0
+        assert host.drain_timed_out is False
+    finally:
+        writer.close()
+        with suppress(ConnectionError, OSError, ssl.SSLError):
+            await writer.wait_closed()
+        if not shutdown_task.done():
+            await shutdown_task
+
+
 def test_gateway_syslog_connection_saturation_and_idle_timeout(tmp_path: Path) -> None:
     asyncio.run(_saturation_and_idle(tmp_path))
 
 
 def test_gateway_syslog_stops_after_failed_frame_in_same_read(tmp_path: Path) -> None:
     asyncio.run(_failure_ordering(tmp_path))
+
+
+def test_gateway_syslog_invalid_frames_create_no_partial_evidence(tmp_path: Path) -> None:
+    asyncio.run(_invalid_frames_create_no_evidence(tmp_path))
+
+
+def test_gateway_syslog_clean_shutdown_preserves_admitted_work(tmp_path: Path) -> None:
+    asyncio.run(_clean_shutdown_preserves_admitted_work(tmp_path))
