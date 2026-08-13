@@ -14,10 +14,13 @@ from pathlib import Path
 import httpx
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response
+from starlette.applications import Starlette
+from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.routing import Mount
 
 from ets.edge.device_identity import load_device_identity, load_local_api_key
-from ets.edge.webhook_adapter import app
+from ets.edge.webhook_adapter import app as ingress_app
 
 DEFAULT_API_KEY_FILE = "/var/lib/ets/edge-local-api-key"
 DEFAULT_DEVICE_IDENTITY_FILE = "/var/lib/ets/edge-device-identity.json"
@@ -124,4 +127,7 @@ def _device_identity_path() -> Path:
     return Path(os.getenv("ETS_EDGE_DEVICE_IDENTITY_FILE", DEFAULT_DEVICE_IDENTITY_FILE))
 
 
-app.add_middleware(ProtectedEdgeMiddleware)
+app = Starlette(
+    routes=[Mount("/", app=ingress_app)],
+    middleware=[Middleware(ProtectedEdgeMiddleware)],
+)
