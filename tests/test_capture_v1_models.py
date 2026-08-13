@@ -23,7 +23,7 @@ def example() -> dict[str, object]:
 
 
 def capture() -> CaptureEnvelopeV1:
-    return CaptureEnvelopeV1.model_validate(example())
+    return CaptureEnvelopeV1.model_validate_json(EXAMPLE_PATH.read_text(encoding="utf-8"))
 
 
 def test_normative_example_parses_strictly() -> None:
@@ -36,14 +36,14 @@ def test_unknown_root_and_nested_fields_rejected() -> None:
     root = example()
     root["unexpected"] = True
     with pytest.raises(ValidationError):
-        CaptureEnvelopeV1.model_validate(root)
+        CaptureEnvelopeV1.model_validate_json(json.dumps(root))
 
     nested = example()
     source = nested["source"]
     assert isinstance(source, dict)
     source["unexpected"] = True
     with pytest.raises(ValidationError):
-        CaptureEnvelopeV1.model_validate(nested)
+        CaptureEnvelopeV1.model_validate_json(json.dumps(nested))
 
 
 def test_raw_evidence_true_rejected() -> None:
@@ -52,7 +52,7 @@ def test_raw_evidence_true_rejected() -> None:
     assert isinstance(privacy, dict)
     privacy["contains_raw_evidence"] = True
     with pytest.raises(ValidationError):
-        CaptureEnvelopeV1.model_validate(value)
+        CaptureEnvelopeV1.model_validate_json(json.dumps(value))
 
 
 def test_digest_representation_required() -> None:
@@ -61,7 +61,7 @@ def test_digest_representation_required() -> None:
     assert isinstance(digest, dict)
     del digest["representation"]
     with pytest.raises(ValidationError):
-        CaptureEnvelopeV1.model_validate(value)
+        CaptureEnvelopeV1.model_validate_json(json.dumps(value))
 
 
 def test_scope_sequence_and_mapping_bounds() -> None:
@@ -70,26 +70,26 @@ def test_scope_sequence_and_mapping_bounds() -> None:
     assert isinstance(source, dict)
     source["tenant_id"] = "t" * 129
     with pytest.raises(ValidationError):
-        CaptureEnvelopeV1.model_validate(value)
+        CaptureEnvelopeV1.model_validate_json(json.dumps(value))
 
     value = example()
     source = value["source"]
     assert isinstance(source, dict)
     source["sequence"] = "x" * 501
     with pytest.raises(ValidationError):
-        CaptureEnvelopeV1.model_validate(value)
+        CaptureEnvelopeV1.model_validate_json(json.dumps(value))
 
     value = example()
     value["metadata"] = {"value": "x" * (16 * 1024)}
     with pytest.raises(ValidationError):
-        CaptureEnvelopeV1.model_validate(value)
+        CaptureEnvelopeV1.model_validate_json(json.dumps(value))
 
 
 def test_naive_timestamps_rejected() -> None:
     value = example()
     value["received_at_utc"] = "2026-08-13T14:30:01"
     with pytest.raises(ValidationError):
-        CaptureEnvelopeV1.model_validate(value)
+        CaptureEnvelopeV1.model_validate_json(json.dumps(value))
 
 
 @pytest.mark.parametrize(
@@ -112,4 +112,4 @@ def test_schema_required_literals_are_model_required(
     assert isinstance(target, dict)
     del target[key]
     with pytest.raises(ValidationError):
-        CaptureEnvelopeV1.model_validate(value)
+        CaptureEnvelopeV1.model_validate_json(json.dumps(value))
