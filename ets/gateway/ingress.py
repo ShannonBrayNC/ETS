@@ -1,11 +1,11 @@
-"""Bounded, retry-safe Gateway JSON ingestion service for GATE-G1C."""
+"""Bounded, retry-safe Gateway ingestion service for G1C/G1D."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Never, Protocol, cast
 
@@ -26,6 +26,11 @@ from ets.core.api import (
     canonicalize,
 )
 from ets.gateway.source_registry import SourceRegistration, StaticSourceRegistry
+from ets.gateway.syslog_capture import (
+    DEFAULT_MAX_SYSLOG_MESSAGE_BYTES,
+    GatewaySyslogCaptureRequest,
+    build_syslog_capture,
+)
 from ets.runtime.sync_queue import QueueCapacityError, SyncConflictError, SyncQueue
 
 SYNC_RESERVATION_BYTES = 4096
@@ -78,6 +83,7 @@ class EventLog(Protocol):
 class GatewayIngressConfig:
     collector_id: str = "ets-gateway"
     max_body_bytes: int = 1024 * 1024
+    max_syslog_message_bytes: int = DEFAULT_MAX_SYSLOG_MESSAGE_BYTES
     max_idempotency_chars: int = 200
     max_declared_identity_chars: int = 500
     max_correlation_chars: int = 200
@@ -87,6 +93,7 @@ class GatewayIngressConfig:
             raise ValueError("collector_id is required")
         numeric = (
             self.max_body_bytes,
+            self.max_syslog_message_bytes,
             self.max_idempotency_chars,
             self.max_declared_identity_chars,
             self.max_correlation_chars,
@@ -129,6 +136,12 @@ class GatewayIngressService:
 
         return self._config.max_body_bytes
 
+    @property
+    def max_syslog_message_bytes(self) -> int:
+        """Return the configured framed syslog message limit."""
+
+        return self._config.max_syslog_message_bytes
+
     def ingest_json(self, principal: str, request: GatewayWebhookRequest) -> GatewayIngressReceipt:
         """Ingest one authenticated JSON request under server-authorized source scope."""
 
@@ -141,7 +154,64 @@ class GatewayIngressService:
         stable_id = _stable_event_identity(registration, request.idempotency_key)
         event_id = f"gateway:{stable_id}"
         evidence_id = f"gateway-evidence:{stable_id}"
+        capture = self._build_capture(
+            registration=registration,
+            request=request,
+            stable_id=stable_id,
+            content_hash=content_hash,
+            representation_length=len(representation_bytes),
+            redacted_count=redacted_count,
+        )
+        return self._commit_capture(
+            registration,
+            capture,
+            event_id=event_id,
+            evidence_id=evidence_id,
+            content_hash=content_hash,
+        )
 
+    def ingest_syslog(
+        self,
+        principal: str,
+        request: GatewaySyslogCaptureRequest,
+    ) -> GatewayIngressReceipt:
+        """Ingest one framed RFC 5424 message under server-authorized source scope."""
+
+        registration = self._registry.resolve(principal)
+        resolved_request = (
+            request
+            if request.received_at_utc is not None
+            else replace(request, received_at_utc=self._now())
+        )
+        mapped = build_syslog_capture(
+            registration,
+            resolved_request,
+            collector_id=self._config.collector_id,
+            maximum_message_bytes=self._config.max_syslog_message_bytes,
+        )
+        idempotency_key = mapped.envelope.source.idempotency_key
+        if idempotency_key is None:
+            raise GatewayIngressError("syslog capture requires an idempotency identity")
+        stable_id = _stable_event_identity(registration, idempotency_key)
+        event_id = f"gateway:{stable_id}"
+        evidence_id = f"gateway-evidence:{stable_id}"
+        return self._commit_capture(
+            registration,
+            mapped.envelope,
+            event_id=event_id,
+            evidence_id=evidence_id,
+            content_hash=mapped.envelope.content_digest.value,
+        )
+
+    def _commit_capture(
+        self,
+        registration: SourceRegistration,
+        capture: CaptureEnvelopeV1,
+        *,
+        event_id: str,
+        evidence_id: str,
+        content_hash: str,
+    ) -> GatewayIngressReceipt:
         try:
             existing = self._event_log.get_by_event_id(event_id)
         except EventNotFoundError:
@@ -160,14 +230,6 @@ class GatewayIngressService:
         except QueueCapacityError as exc:
             raise GatewayBackpressureError(str(exc)) from exc
 
-        capture = self._build_capture(
-            registration=registration,
-            request=request,
-            stable_id=stable_id,
-            content_hash=content_hash,
-            representation_length=len(representation_bytes),
-            redacted_count=redacted_count,
-        )
         event = to_evidence_event(
             capture,
             event_id=event_id,
