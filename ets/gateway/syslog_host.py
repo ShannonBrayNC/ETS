@@ -7,13 +7,16 @@ import ssl
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, cast
+from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 from ets.capture import OctetCountingFramer, SyslogFramingError
+from ets.gateway.host import create_gateway_tls_context, load_gateway_tls_credentials
 from ets.gateway.ingress import (
     GatewayBackpressureError,
     GatewayConflictError,
+    GatewayIngressError,
     GatewayIngressService,
     GatewayPartialCommitError,
 )
@@ -100,19 +103,23 @@ def extract_uri_san_principal(peer_certificate: object) -> str:
 
 def create_gateway_syslog_tls_context(
     *,
-    certfile: str,
-    keyfile: str,
-    client_ca_file: str,
+    certfile: str | Path,
+    keyfile: str | Path,
+    client_ca_file: str | Path,
 ) -> ssl.SSLContext:
     """Create the qualified mTLS context for RFC 5425 syslog transport."""
 
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.minimum_version = ssl.TLSVersion.TLSv1_2
-    context.maximum_version = ssl.TLSVersion.TLSv1_3
-    context.options |= ssl.OP_NO_COMPRESSION
-    context.load_cert_chain(certfile=certfile, keyfile=keyfile)
-    context.load_verify_locations(cafile=client_ca_file)
-    context.verify_mode = ssl.CERT_REQUIRED
+    context = load_gateway_tls_credentials(
+        create_gateway_tls_context(),
+        certfile=certfile,
+        keyfile=keyfile,
+        client_ca_file=client_ca_file,
+    )
+    # RFC 9662 forbids TLS 1.3 early data for secure syslog. Python's ssl layer
+    # does not expose early-data APIs; disabling TLS 1.3 session tickets makes
+    # the profile explicit and prevents ticket-based resumption from becoming
+    # an accidental path to 0-RTT if runtime support changes later.
+    context.num_tickets = 0
     return context
 
 
@@ -141,6 +148,10 @@ class GatewaySyslogHost:
             raise ValueError("Gateway syslog TLS host requires client certificates")
         if tls_context.minimum_version < ssl.TLSVersion.TLSv1_2:
             raise ValueError("Gateway syslog TLS host requires TLS 1.2 or newer")
+        if ssl.HAS_TLSv1_3 and tls_context.maximum_version < ssl.TLSVersion.TLSv1_3:
+            raise ValueError("Gateway syslog TLS host must support TLS 1.3 when available")
+        if tls_context.num_tickets != 0:
+            raise ValueError("Gateway syslog TLS host requires TLS 1.3 session tickets disabled")
         if not tls_context.options & ssl.OP_NO_COMPRESSION:
             raise ValueError("Gateway syslog TLS host requires TLS compression to be disabled")
         if not 0 <= port <= 65535:
@@ -186,6 +197,7 @@ class GatewaySyslogHost:
         if self._server is not None:
             raise RuntimeError("Gateway syslog host is already started")
         self._accepting = True
+        self.drain_timed_out = False
         self._server = await asyncio.start_server(
             self._client_connected,
             self.host,
@@ -241,6 +253,8 @@ class GatewaySyslogHost:
 
     def _connection_finished(self, task: asyncio.Task[None]) -> None:
         self._connection_tasks.discard(task)
+        with suppress(asyncio.CancelledError):
+            task.exception()
         if not self._connection_tasks:
             self._drained.set()
 
@@ -310,6 +324,7 @@ class GatewaySyslogHost:
         except (
             GatewayBackpressureError,
             GatewayConflictError,
+            GatewayIngressError,
             GatewayPartialCommitError,
             GatewaySyslogCaptureError,
             GatewaySyslogHostError,
@@ -324,9 +339,3 @@ class GatewaySyslogHost:
             writer.close()
             with suppress(ConnectionError, OSError, ssl.SSLError):
                 await writer.wait_closed()
-
-
-def _peer_certificate_for_test(value: dict[str, Any]) -> dict[str, Any]:
-    """Typed passthrough used only to keep certificate-shape unit tests explicit."""
-
-    return value
