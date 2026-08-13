@@ -363,7 +363,7 @@ class SyncQueue:
         return 0 if row is None else int(row[0])
 
     def _require_row(self, connection: sqlite3.Connection, idempotency_key: str) -> sqlite3.Row:
-        row = connection.execute(
+        row: sqlite3.Row | None = connection.execute(
             "SELECT * FROM sync_queue WHERE idempotency_key = ?", (idempotency_key,)
         ).fetchone()
         if row is None:
