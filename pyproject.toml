@@ -31,11 +31,14 @@ dev = [
     "pytest>=9.0.3,<10",
     "ruff>=0.8,<1",
     "mypy>=1.13,<2",
-    "uvicorn>=0.32,<1",
+    "uvicorn>=0.47,<1",
 ]
 edge = [
     "httpx>=0.28,<1",
     "uvicorn>=0.32,<1",
+]
+gateway = [
+    "uvicorn>=0.47,<1",
 ]
 azure = [
     "azure-identity>=1.17,<2",
