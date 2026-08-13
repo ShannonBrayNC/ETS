@@ -8,7 +8,14 @@ from pydantic import ValidationError
 
 from ets.capture.models import CaptureEnvelopeV1
 
-EXAMPLE_PATH = Path(__file__).parents[1] / "schemas" / "capture" / "v1" / "examples" / "minimal.json"
+EXAMPLE_PATH = (
+    Path(__file__).parents[1]
+    / "schemas"
+    / "capture"
+    / "v1"
+    / "examples"
+    / "minimal.json"
+)
 
 
 def load_example() -> dict[str, object]:
