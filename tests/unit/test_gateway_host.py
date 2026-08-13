@@ -96,7 +96,7 @@ def test_host_header_count_aggregate_and_value_bounds() -> None:
     with pytest.raises(GatewayHostLimitError):
         controller.validate_headers([(b"a", b"1"), (b"b", b"2"), (b"c", b"3")])
     with pytest.raises(GatewayHostLimitError):
-        controller.validate_headers([(b"longname", b"12345678"), (b"b", b"22")])
+        controller.validate_headers([(b"longname10", b"12345678"), (b"b", b"22")])
     with pytest.raises(GatewayHostLimitError):
         controller.validate_headers([(b"a", b"123456789")])
 
