@@ -6,6 +6,13 @@ from ets.evidence_object.canonical import (
     hashable_payload,
     object_hash,
 )
+from ets.evidence_object.canonical_v2 import (
+    EVIDENCE_OBJECT_V2_HASH_PROFILE,
+    EVIDENCE_OBJECT_V2_IDENTITY_FIELDS,
+    canonical_identity_bytes,
+    identity_hash,
+    identity_payload,
+)
 from ets.evidence_object.models import (
     Assertion,
     Claim,
@@ -23,25 +30,46 @@ from ets.evidence_object.models import (
     VerificationRecord,
     VerificationResult,
 )
+from ets.evidence_object.models_v2 import (
+    ContractBinding,
+    DigestRef,
+    EvidenceIdentityV2,
+    EvidenceObjectV2,
+    PolicyDescriptorV2,
+    PrivacyDescriptorV2,
+    ProofMaterialV2,
+)
 
 __all__ = [
     "Assertion",
     "Claim",
+    "ContractBinding",
+    "DigestRef",
     "EVIDENCE_OBJECT_HASH_PROFILE",
+    "EVIDENCE_OBJECT_V2_HASH_PROFILE",
+    "EVIDENCE_OBJECT_V2_IDENTITY_FIELDS",
     "EvidenceContext",
     "EvidenceIdentity",
+    "EvidenceIdentityV2",
     "EvidenceObject",
+    "EvidenceObjectV2",
     "HashAlgorithm",
     "IntegrityBinding",
     "LifecycleRecord",
     "LifecycleState",
+    "PolicyDescriptorV2",
+    "PrivacyDescriptorV2",
     "PrivacyPolicy",
+    "ProofMaterialV2",
     "Provenance",
     "Relationship",
     "RelationshipType",
     "VerificationRecord",
     "VerificationResult",
     "canonical_bytes",
+    "canonical_identity_bytes",
     "hashable_payload",
+    "identity_hash",
+    "identity_payload",
     "object_hash",
 ]

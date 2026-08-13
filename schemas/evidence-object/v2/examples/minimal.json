@@ -1,0 +1,35 @@
+{
+  "schema_id": "https://lanternprotocol.org/schemas/ets/evidence-object/v2",
+  "identity": {
+    "object_id": "evidence-object-v2:minimal-001",
+    "namespace": "urn:ets:example",
+    "object_type": "observation",
+    "version": 1
+  },
+  "created_at": "2026-08-13T00:00:00Z",
+  "bindings": [
+    {
+      "binding_type": "event",
+      "contract_id": "ets.event.v1",
+      "subject_ref": "urn:ets:event:minimal-001",
+      "commitment": {
+        "algorithm": "sha256",
+        "digest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      }
+    }
+  ],
+  "policies": [
+    {
+      "policy_ref": "urn:ets:policy:baseline",
+      "purpose": "reference-vector",
+      "audience": ["developer"]
+    }
+  ],
+  "privacy": {
+    "classification": "public",
+    "contains_pii": false,
+    "minimization_profile": "ets.minimal.v1"
+  },
+  "extensions": {},
+  "proof_material": []
+}

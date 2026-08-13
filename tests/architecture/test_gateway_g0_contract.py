@@ -132,8 +132,9 @@ def test_gateway_syslog_profile_prefers_tls_and_marks_udp_lower_assurance() -> N
     assert syslog["udp_compatibility"] is True
     assert syslog["udp_lower_assurance"] is True
     assert syslog["transport_identity_separate_from_hostname"] is True
-    # RFC 5425 contains 2009-era TLS cipher requirements; G0 uses its syslog/TLS transport model
-    # while current cryptographic configuration follows BCP 195, so full RFC 5425 conformance is not claimed.
+    # RFC 5425 contains 2009-era TLS cipher requirements; G0 uses its syslog/TLS
+    # transport model while current cryptographic configuration follows BCP 195,
+    # so full RFC 5425 conformance is not claimed.
     assert syslog["rfc5425_full_conformance_claim"] is False
 
 
