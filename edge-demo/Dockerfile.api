@@ -13,10 +13,9 @@ ENV ETS_EDGE_DATA_DIR=/var/lib/ets \
     ETS_SQLITE_PATH=/var/lib/ets/edge.db \
     ETS_LOG_ID=ets-edge-virtual-demo \
     ETS_REDACTION_PROFILE=none \
-    ETS_AUTH_MODE=local_header \
+    ETS_AUTH_MODE=local_api_key \
     ETS_SIGNING_MODE=ed25519 \
-    ETS_SIGNING_PUBLIC_KEY_ID=ets-edge-virtual-demo-key \
-    ETS_ALLOW_INSECURE_LOCAL=1
+    ETS_SIGNING_PUBLIC_KEY_ID=ets-edge-virtual-demo-key
 
 VOLUME ["/var/lib/ets"]
 EXPOSE 8000
