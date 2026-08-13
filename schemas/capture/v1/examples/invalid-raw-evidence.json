@@ -1,0 +1,31 @@
+{
+  "schema_version": "ets.capture.v1",
+  "capture_id": "cap_invalid_raw",
+  "collector_id": "ets-gateway:test",
+  "adapter_id": "gateway.webhook",
+  "source": {
+    "system": "example",
+    "identifier": "test-source",
+    "tenant_id": "tenant_test",
+    "workspace_id": "workspace_test"
+  },
+  "received_at_utc": "2026-08-13T14:30:01Z",
+  "clock_quality": "unknown",
+  "content_digest": {
+    "algorithm": "sha256",
+    "value": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "representation": "received-bytes",
+    "profile": "ets.content.sha256.v1"
+  },
+  "evidence_reference": {
+    "retention_mode": "not_retained"
+  },
+  "transformation": {
+    "profile": "test.identity.v1",
+    "output_event_type": "evidence.captured.test",
+    "lossless": true
+  },
+  "privacy": {
+    "contains_raw_evidence": true
+  }
+}
