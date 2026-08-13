@@ -67,6 +67,27 @@ def test_parse_rfc5424_rejects_oversized_datagram() -> None:
         parse_rfc5424_header(payload)
 
 
+def test_edge_udp_bound_remains_independent_of_gateway_tls_profile() -> None:
+    payload = b"<13>1 - host app proc msg - " + (b"x" * 9000)
+
+    assert len(payload) > 8192
+    assert len(payload) < MAX_SYSLOG_DATAGRAM_BYTES
+
+    header = parse_rfc5424_header(payload)
+    captured = build_syslog_capture(
+        payload,
+        tenant_id="tenant_demo",
+        workspace_id="workspace_alpha",
+        source_id="linux-lab",
+        peer_host="127.0.0.1",
+        peer_port=5514,
+    )
+
+    assert header.priority == 13
+    assert captured.byte_size == len(payload)
+    assert captured.content_hash == hashlib.sha256(payload).hexdigest()
+
+
 def test_build_syslog_capture_hashes_exact_bytes_and_excludes_raw_message() -> None:
     captured = build_syslog_capture(
         VALID,
