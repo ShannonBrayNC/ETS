@@ -17,7 +17,11 @@ from cryptography.x509.oid import NameOID
 from fastapi import Request
 
 from ets.core.api import InMemoryAppendOnlyLog
-from ets.gateway.host import GatewayHostController, create_gateway_tls_context, load_gateway_tls_credentials
+from ets.gateway.host import (
+    GatewayHostController,
+    create_gateway_tls_context,
+    load_gateway_tls_credentials,
+)
 from ets.gateway.http import SourceAuthenticationError, create_gateway_app
 from ets.gateway.ingress import GatewayIngressConfig, GatewayIngressService
 from ets.gateway.server import create_gateway_https_server
