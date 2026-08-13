@@ -9,8 +9,10 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
+
 from typing import Final
 from uuid import uuid4
+
 from ets.capture.syslog import SyslogHeader, SyslogParseError
 from ets.capture.syslog import (
     parse_rfc5424_header as _parse_shared_rfc5424_header,
