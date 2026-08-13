@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MAX_CAPTURE_MAPPING_BYTES = 16 * 1024
+EXTENSION_KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 class StrictCaptureModel(BaseModel):
@@ -114,4 +116,12 @@ class CaptureEnvelopeV1(StrictCaptureModel):
             raise ValueError("capture mappings must contain JSON-native values") from exc
         if len(encoded) > MAX_CAPTURE_MAPPING_BYTES:
             raise ValueError("capture mappings must not exceed 16 KiB")
+        return value
+
+    @field_validator("extensions")
+    @classmethod
+    def validate_extension_keys(cls, value: dict[str, Any]) -> dict[str, Any]:
+        invalid = [key for key in value if EXTENSION_KEY_PATTERN.fullmatch(key) is None]
+        if invalid:
+            raise ValueError("extension keys must match the ets.capture.v1 key pattern")
         return value
