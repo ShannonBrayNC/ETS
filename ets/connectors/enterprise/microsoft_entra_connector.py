@@ -252,7 +252,8 @@ class MicrosoftEntraDeltaAdapter:
         except MicrosoftEntraDeltaStateExpiredError:
             return _collection(
                 "gap_detected",
-                "Microsoft Graph delta state expired; explicit full resync authorization is required",
+                "Microsoft Graph delta state expired; explicit full resync "
+                "authorization is required",
                 checkpoint=checkpoint,
             )
         except MicrosoftEntraDeltaRetryableError:
