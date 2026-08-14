@@ -1,0 +1,43 @@
+{
+  "schema_version": "ets.connector.instance.v1",
+  "instance_id": "synthetic-audit-production",
+  "connector_id": "synthetic.audit",
+  "connector_version": "1.0",
+  "enabled": true,
+  "scope": {
+    "tenant_id": "tenant_demo",
+    "workspace_id": "security"
+  },
+  "source": {
+    "name": "Synthetic Audit Source",
+    "environment": "test"
+  },
+  "authentication": {
+    "method": "none",
+    "credential_ref": null
+  },
+  "collection": {
+    "mode": "poll",
+    "interval_seconds": 60,
+    "batch_size": 100
+  },
+  "checkpoint": {
+    "strategy": "source_cursor",
+    "durable": true
+  },
+  "policy": {
+    "capture_profile": "security-audit.v1",
+    "normalization_profile": "synthetic.audit.v1"
+  },
+  "retry": {
+    "max_attempts": 8,
+    "backoff": "exponential",
+    "max_age_seconds": 86400
+  },
+  "gap_detection": {
+    "enabled": true
+  },
+  "settings": {
+    "stream": "primary"
+  }
+}
