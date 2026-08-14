@@ -56,7 +56,11 @@ def _instance(*, settings: dict[str, Any] | None = None) -> ConnectorInstanceV1:
     )
 
 
-def _raw_event(*, stage: str = "ResponseComplete", marker: str = "RAW-K8S-MARKER") -> dict[str, Any]:
+def _raw_event(
+    *,
+    stage: str = "ResponseComplete",
+    marker: str = "RAW-K8S-MARKER",
+) -> dict[str, Any]:
     return {
         "apiVersion": "audit.k8s.io/v1",
         "kind": "Event",
@@ -138,7 +142,7 @@ def test_decode_minimizes_raw_request_response_identity_and_network_fields() -> 
     assert "token=secret" not in serialized
 
 
-def test_same_audit_request_stages_receive_distinct_source_record_ids() -> None:
+def test_same_audit_request_stages_receive_distinct_bounded_source_record_ids() -> None:
     adapter, _ = _adapter()
     batch = parse_kubernetes_audit_event_list(
         _payload(
@@ -150,9 +154,23 @@ def test_same_audit_request_stages_receive_distinct_source_record_ids() -> None:
     first = adapter.normalize(_instance(), batch.records[0])
     second = adapter.normalize(_instance(), batch.records[1])
 
-    assert first.source_record_id == "audit-001:RequestReceived"
-    assert second.source_record_id == "audit-001:ResponseComplete"
+    assert first.source_record_id.startswith("audit-stage:")
+    assert second.source_record_id.startswith("audit-stage:")
+    assert len(first.source_record_id) == len("audit-stage:") + 64
+    assert len(second.source_record_id) == len("audit-stage:") + 64
     assert first.source_record_id != second.source_record_id
+
+
+def test_maximum_audit_id_and_stage_still_produce_bounded_identity() -> None:
+    adapter, _ = _adapter()
+    raw = _raw_event(stage="S" * 100)
+    raw["auditID"] = "A" * 500
+    batch = parse_kubernetes_audit_event_list(_payload(raw))
+
+    candidate = adapter.normalize(_instance(), batch.records[0])
+
+    assert candidate.source_record_id.startswith("audit-stage:")
+    assert len(candidate.source_record_id) == len("audit-stage:") + 64
 
 
 def test_stage_timestamp_is_preserved_as_source_observation_time() -> None:
@@ -215,7 +233,9 @@ def test_configuration_rejects_polling_and_unqualified_settings() -> None:
             )
         }
     )
-    unsafe = _instance(settings={"cluster_id": "cluster-a", "webhook_url": "https://evil.test"})
+    unsafe = _instance(
+        settings={"cluster_id": "cluster-a", "webhook_url": "https://evil.test"}
+    )
 
     with pytest.raises(ConnectorConfigurationError, match="requires push collection"):
         adapter.validate_config(polling)
