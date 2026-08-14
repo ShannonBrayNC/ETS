@@ -100,7 +100,7 @@ def test_profile_rejects_customer_endpoint_overrides_and_invalid_clouds() -> Non
 
 def test_profile_requires_canonical_tenant_and_application_guids() -> None:
     payload = _profile().model_dump(mode="json")
-    payload["tenant_id"] = "not-a-guid"
+    payload["tenant_id"] = "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz"
     with pytest.raises(ValidationError, match="canonical GUID"):
         MicrosoftTenantProfileV1.model_validate(payload)
 
