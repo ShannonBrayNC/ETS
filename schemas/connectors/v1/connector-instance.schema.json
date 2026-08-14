@@ -1,0 +1,131 @@
+{
+  "$defs": {
+    "ConnectorAuthentication": {
+      "additionalProperties": false,
+      "description": "Authentication metadata containing only an opaque credential reference.",
+      "properties": {
+        "credential_ref": {
+          "anyOf": [
+            {"maxLength": 500, "minLength": 1, "type": "string"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "title": "Credential Ref"
+        },
+        "method": {"maxLength": 100, "minLength": 1, "title": "Method", "type": "string"}
+      },
+      "required": ["method"],
+      "title": "ConnectorAuthentication",
+      "type": "object"
+    },
+    "ConnectorCheckpointPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "durable": {"default": true, "title": "Durable", "type": "boolean"},
+        "strategy": {
+          "default": "none",
+          "enum": ["none", "source_cursor", "time_window", "source_sequence"],
+          "title": "Strategy",
+          "type": "string"
+        }
+      },
+      "title": "ConnectorCheckpointPolicy",
+      "type": "object"
+    },
+    "ConnectorCollection": {
+      "additionalProperties": false,
+      "description": "Generic collection controls shared by push and polling adapters.",
+      "properties": {
+        "batch_size": {"default": 500, "maximum": 10000, "minimum": 1, "title": "Batch Size", "type": "integer"},
+        "interval_seconds": {
+          "anyOf": [
+            {"maximum": 86400, "minimum": 1, "type": "integer"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "title": "Interval Seconds"
+        },
+        "mode": {"enum": ["push", "poll"], "title": "Mode", "type": "string"}
+      },
+      "required": ["mode"],
+      "title": "ConnectorCollection",
+      "type": "object"
+    },
+    "ConnectorGapPolicy": {
+      "additionalProperties": false,
+      "properties": {"enabled": {"default": true, "title": "Enabled", "type": "boolean"}},
+      "title": "ConnectorGapPolicy",
+      "type": "object"
+    },
+    "ConnectorPolicyBinding": {
+      "additionalProperties": false,
+      "description": "References to governed policy/normalization profiles, not inline policy logic.",
+      "properties": {
+        "capture_profile": {"maxLength": 200, "minLength": 1, "title": "Capture Profile", "type": "string"},
+        "normalization_profile": {"maxLength": 200, "minLength": 1, "title": "Normalization Profile", "type": "string"}
+      },
+      "required": ["capture_profile", "normalization_profile"],
+      "title": "ConnectorPolicyBinding",
+      "type": "object"
+    },
+    "ConnectorRetryPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "backoff": {"default": "exponential", "enum": ["fixed", "exponential"], "title": "Backoff", "type": "string"},
+        "max_age_seconds": {"default": 86400, "maximum": 2592000, "minimum": 1, "title": "Max Age Seconds", "type": "integer"},
+        "max_attempts": {"default": 8, "maximum": 100, "minimum": 0, "title": "Max Attempts", "type": "integer"}
+      },
+      "title": "ConnectorRetryPolicy",
+      "type": "object"
+    },
+    "ConnectorScope": {
+      "additionalProperties": false,
+      "description": "Requested ETS scope; runtime authorization remains server-side.",
+      "properties": {
+        "tenant_id": {"maxLength": 128, "minLength": 1, "title": "Tenant Id", "type": "string"},
+        "workspace_id": {"maxLength": 128, "minLength": 1, "title": "Workspace Id", "type": "string"}
+      },
+      "required": ["tenant_id", "workspace_id"],
+      "title": "ConnectorScope",
+      "type": "object"
+    },
+    "ConnectorSource": {
+      "additionalProperties": false,
+      "description": "Human-readable source identity and deployment environment.",
+      "properties": {
+        "environment": {"maxLength": 100, "minLength": 1, "title": "Environment", "type": "string"},
+        "name": {"maxLength": 200, "minLength": 1, "title": "Name", "type": "string"}
+      },
+      "required": ["name", "environment"],
+      "title": "ConnectorSource",
+      "type": "object"
+    },
+    "JsonValue": {}
+  },
+  "$id": "https://lanternprotocol.net/schemas/connectors/v1/connector-instance.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Customer connector configuration without reusable credential material.",
+  "properties": {
+    "authentication": {"$ref": "#/$defs/ConnectorAuthentication"},
+    "checkpoint": {"$ref": "#/$defs/ConnectorCheckpointPolicy"},
+    "collection": {"$ref": "#/$defs/ConnectorCollection"},
+    "connector_id": {"pattern": "^[a-z0-9][a-z0-9._-]{2,127}$", "title": "Connector Id", "type": "string"},
+    "connector_version": {"maxLength": 100, "minLength": 1, "title": "Connector Version", "type": "string"},
+    "enabled": {"default": true, "title": "Enabled", "type": "boolean"},
+    "gap_detection": {"$ref": "#/$defs/ConnectorGapPolicy"},
+    "instance_id": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$", "title": "Instance Id", "type": "string"},
+    "policy": {"$ref": "#/$defs/ConnectorPolicyBinding"},
+    "retry": {"$ref": "#/$defs/ConnectorRetryPolicy"},
+    "schema_version": {"const": "ets.connector.instance.v1", "title": "Schema Version", "type": "string"},
+    "scope": {"$ref": "#/$defs/ConnectorScope"},
+    "settings": {"additionalProperties": {"$ref": "#/$defs/JsonValue"}, "title": "Settings", "type": "object"},
+    "source": {"$ref": "#/$defs/ConnectorSource"}
+  },
+  "required": [
+    "schema_version", "instance_id", "connector_id", "connector_version", "scope", "source",
+    "authentication", "collection", "policy"
+  ],
+  "title": "ConnectorInstanceV1",
+  "type": "object"
+}
