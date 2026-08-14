@@ -78,7 +78,11 @@ def _service(
     return service, event_log, sync_queue
 
 
-def _logs_request(*, body: str = "log body", second_invalid: bool = False) -> ExportLogsServiceRequest:
+def _logs_request(
+    *,
+    body: str = "log body",
+    second_invalid: bool = False,
+) -> ExportLogsServiceRequest:
     request = ExportLogsServiceRequest()
     resource_logs = request.resource_logs.add()
     resource_attribute = resource_logs.resource.attributes.add()
@@ -338,7 +342,13 @@ def test_http_and_grpc_commit_equivalent_content_hashes(tmp_path: Path) -> None:
 
 
 class SlowIngressService(GatewayIngressService):
-    def __init__(self, *args: Any, started: threading.Event, release: threading.Event, **kwargs: Any):
+    def __init__(
+        self,
+        *args: Any,
+        started: threading.Event,
+        release: threading.Event,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.started = started
         self.release = release
