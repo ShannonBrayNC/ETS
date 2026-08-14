@@ -120,27 +120,44 @@ class SyncQueue:
             if used_bytes + payload_bytes > self.max_bytes:
                 raise QueueCapacityError("sync queue byte capacity reached")
 
-            connection.execute(
-                """
-                INSERT INTO sync_queue (
-                    idempotency_key, event_id, event_hash, tenant_id, workspace_id,
-                    payload_json, payload_bytes, state, attempts, created_at_utc,
-                    updated_at_utc
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-                """,
-                (
-                    required["idempotency_key"],
-                    required["event_id"],
-                    required["event_hash"],
-                    required["tenant_id"],
-                    required["workspace_id"],
-                    normalized,
-                    payload_bytes,
-                    SyncState.PENDING.value,
-                    now,
-                    now,
-                ),
-            )
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO sync_queue (
+                        idempotency_key, event_id, event_hash, tenant_id, workspace_id,
+                        payload_json, payload_bytes, state, attempts, created_at_utc,
+                        updated_at_utc
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                    """,
+                    (
+                        required["idempotency_key"],
+                        required["event_id"],
+                        required["event_hash"],
+                        required["tenant_id"],
+                        required["workspace_id"],
+                        normalized,
+                        payload_bytes,
+                        SyncState.PENDING.value,
+                        now,
+                        now,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                winner = connection.execute(
+                    "SELECT * FROM sync_queue WHERE idempotency_key = ?",
+                    (required["idempotency_key"],),
+                ).fetchone()
+                if winner is None:
+                    raise
+                if (
+                    winner["event_hash"] != required["event_hash"]
+                    or winner["payload_json"] != normalized
+                ):
+                    raise SyncConflictError(
+                        "idempotency key concurrently claimed with different immutable content"
+                    ) from exc
+                return _row_to_record(winner)
+
             row = connection.execute(
                 "SELECT * FROM sync_queue WHERE idempotency_key = ?",
                 (required["idempotency_key"],),
