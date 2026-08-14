@@ -1,0 +1,25 @@
+{
+  "schema_version": "ets.connector.definition.v1",
+  "connector_id": "sample.events",
+  "display_name": "Sample Events",
+  "description": "Reference third-party connector package for ETS SDK packaging qualification.",
+  "implementation_class": "third_party",
+  "source_classes": ["sample_events"],
+  "adapter_version": "1.0",
+  "sdk_contract_version": "ets.connector.sdk.v1",
+  "capture_envelope_versions": ["ets.capture.v1"],
+  "gateway_host_versions": ["ets.gateway.connector-host.v1"],
+  "capabilities": {
+    "delivery_modes": ["poll"],
+    "authentication_methods": ["bearer"],
+    "discovery": false,
+    "checkpointing": true,
+    "reconciliation": true,
+    "normalization": true,
+    "health": true
+  },
+  "configuration_schema": {
+    "instance_schema": "ets.connector.instance.v1",
+    "settings_schema_ref": "settings.schema.json"
+  }
+}

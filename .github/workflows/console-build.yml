@@ -1,0 +1,35 @@
+name: Console Build
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/console/**"
+      - "tests/architecture/test_console_production_boundary.py"
+      - ".github/workflows/console-build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  console-build:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/console/web
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/console/web/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build Console
+        run: npm run build
