@@ -97,11 +97,19 @@ class FixtureAwsClient:
             }
         )
         if self.throttle:
-            raise AwsCloudTrailThrottleError(15)
+            raise AwsCloudTrailThrottleError(42)
         return self.page
 
     def close(self) -> None:
         self.closed = True
+
+
+def _empty_page() -> AwsCloudTrailPage:
+    return AwsCloudTrailPage(
+        records=(),
+        next_cursor=None,
+        observed_through_utc=None,
+    )
 
 
 def _broker(
@@ -199,7 +207,7 @@ def _adapter(
 
 
 def test_aws_cloudtrail_adapter_passes_shared_connector_conformance() -> None:
-    client = FixtureAwsClient(AwsCloudTrailPage(records=(), next_cursor=None, observed_through_utc=None))
+    client = FixtureAwsClient(_empty_page())
     adapter, registry = _adapter(client=client)
 
     report = ConnectorConformanceHarness(registry).validate_sample(
@@ -261,10 +269,7 @@ def test_throttling_never_advances_checkpoint() -> None:
         cursor="current-token",
         observed_through_utc=NOW - timedelta(minutes=1),
     )
-    client = FixtureAwsClient(
-        AwsCloudTrailPage(records=(), next_cursor=None, observed_through_utc=None),
-        throttle=True,
-    )
+    client = FixtureAwsClient(_empty_page(), throttle=True)
     adapter, _ = _adapter(client=client)
 
     result = adapter.collect(_instance(), checkpoint)
@@ -300,7 +305,7 @@ def test_revoked_credential_fails_before_source_client_and_checkpoint() -> None:
 
 
 def test_reconciliation_marks_checkpoint_older_than_event_history_as_gap() -> None:
-    client = FixtureAwsClient(AwsCloudTrailPage(records=(), next_cursor=None, observed_through_utc=None))
+    client = FixtureAwsClient(_empty_page())
     adapter, _ = _adapter(client=client)
     stale = ConnectorCheckpointV1(
         schema_version="ets.connector.checkpoint.v1",
@@ -317,7 +322,7 @@ def test_reconciliation_marks_checkpoint_older_than_event_history_as_gap() -> No
 
 def test_normalize_minimizes_sensitive_and_unbounded_source_fields() -> None:
     marker = "RAW-AWS-CLOUDTRAIL-MARKER"
-    client = FixtureAwsClient(AwsCloudTrailPage(records=(), next_cursor=None, observed_through_utc=None))
+    client = FixtureAwsClient(_empty_page())
     adapter, _ = _adapter(client=client)
 
     candidate = adapter.normalize(_instance(), _record(marker=marker))
@@ -333,7 +338,7 @@ def test_normalize_minimizes_sensitive_and_unbounded_source_fields() -> None:
 
 
 def test_customer_cannot_override_aws_endpoint_or_account_scope() -> None:
-    client = FixtureAwsClient(AwsCloudTrailPage(records=(), next_cursor=None, observed_through_utc=None))
+    client = FixtureAwsClient(_empty_page())
     adapter, _ = _adapter(client=client)
     instance = _instance(
         settings={
