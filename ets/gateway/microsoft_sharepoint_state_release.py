@@ -11,6 +11,7 @@ import sqlite3
 
 from ets.connectors.enterprise.microsoft_sharepoint_state import (
     MicrosoftSharePointStateError,
+    SharePointMetadataSnapshotV1,
     SharePointMetadataStateStore,
     snapshot_sharepoint_metadata_record,
 )
@@ -24,8 +25,8 @@ class SharePointMetadataStateReleaseHook:
     def __init__(self, store: SharePointMetadataStateStore, *, source_key: str) -> None:
         if not source_key:
             raise ValueError("SharePoint release source_key is required")
-        self._store = store
-        self._source_key = source_key
+        self._store: SharePointMetadataStateStore = store
+        self._source_key: str = source_key
 
     def release(self, collection: ConnectorCollectionResultV1) -> None:
         """Atomically persist page state after all observations reached queued state.
@@ -36,7 +37,7 @@ class SharePointMetadataStateReleaseHook:
         """
 
         try:
-            snapshots = tuple(
+            snapshots: tuple[SharePointMetadataSnapshotV1, ...] = tuple(
                 snapshot_sharepoint_metadata_record(record) for record in collection.records
             )
             self._store.apply(
