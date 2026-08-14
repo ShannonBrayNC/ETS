@@ -1,6 +1,13 @@
 import type {
   ArtifactReceipt,
   ArtifactRecord,
+  ConnectorDefinition,
+  ConnectorHealth,
+  ConnectorInstance,
+  ConnectorInstanceListResponse,
+  ConnectorInstanceRecord,
+  ConnectorRuntimeState,
+  GatewayAuthorizationContext,
   HealthSnapshot,
   ProofBundle,
   TenantScope,
@@ -8,6 +15,23 @@ import type {
 } from "./types";
 
 const jsonHeaders = { "Content-Type": "application/json" } as const;
+const managementBase = (import.meta.env.VITE_ETS_MANAGEMENT_BASE ?? "").replace(/\/$/, "");
+const localManagementTenant = import.meta.env.DEV ? import.meta.env.VITE_ETS_LOCAL_TENANT : undefined;
+const localManagementWorkspace = import.meta.env.DEV
+  ? import.meta.env.VITE_ETS_LOCAL_WORKSPACE
+  : undefined;
+
+function managementUrl(path: string): string {
+  return `${managementBase}${path}`;
+}
+
+function managementHeaders(includeJson = false): HeadersInit {
+  return {
+    ...(includeJson ? jsonHeaders : {}),
+    ...(localManagementTenant ? { "X-ETS-Tenant": localManagementTenant } : {}),
+    ...(localManagementWorkspace ? { "X-ETS-Workspace": localManagementWorkspace } : {}),
+  };
+}
 
 function scopeHeaders(scope: TenantScope, correlationId?: string): HeadersInit {
   return {
@@ -38,6 +62,15 @@ async function readText(response: Response): Promise<string> {
   return response.text();
 }
 
+export async function getAuthorizationContext(): Promise<GatewayAuthorizationContext> {
+  return readJson<GatewayAuthorizationContext>(
+    await fetch(managementUrl("/api/v2/auth/context"), {
+      credentials: "same-origin",
+      headers: managementHeaders(),
+    }),
+  );
+}
+
 export async function getHealthSnapshot(): Promise<HealthSnapshot> {
   const [health, ready, version] = await Promise.allSettled([
     fetch("/health").then((response) => readJson<Record<string, unknown>>(response)),
@@ -65,6 +98,7 @@ export async function getHealthSnapshot(): Promise<HealthSnapshot> {
 
 export async function registerArtifact(
   scope: TenantScope,
+  actorId: string,
   file: File,
   metadata: Record<string, unknown>,
 ): Promise<ArtifactReceipt> {
@@ -94,7 +128,7 @@ export async function registerArtifact(
         ...metadata,
       },
       source_system: "ets-console",
-      actor_id: "console-user",
+      actor_id: actorId,
       correlation_id: correlationId,
     }),
   });
@@ -123,4 +157,128 @@ export async function getLatestTreeHead(scope: TenantScope): Promise<TreeHead> {
 
 export async function getVersionText(): Promise<string> {
   return readText(await fetch("/version"));
+}
+
+export async function getConnectorCatalog(): Promise<ConnectorDefinition[]> {
+  return readJson<ConnectorDefinition[]>(
+    await fetch(managementUrl("/gateway/connectors/v1/catalog"), {
+      credentials: "same-origin",
+      headers: managementHeaders(),
+    }),
+  );
+}
+
+export async function getConnectorInstances(): Promise<ConnectorInstanceRecord[]> {
+  const response = await readJson<ConnectorInstanceListResponse>(
+    await fetch(managementUrl("/gateway/connectors/v1/instances"), {
+      credentials: "same-origin",
+      headers: managementHeaders(),
+    }),
+  );
+  return response.items;
+}
+
+export async function createConnectorInstance(
+  instance: ConnectorInstance,
+): Promise<ConnectorInstanceRecord> {
+  return readJson<ConnectorInstanceRecord>(
+    await fetch(managementUrl("/gateway/connectors/v1/instances"), {
+      method: "POST",
+      credentials: "same-origin",
+      headers: managementHeaders(true),
+      body: JSON.stringify(instance),
+    }),
+  );
+}
+
+export async function updateConnectorInstance(
+  record: ConnectorInstanceRecord,
+  instance: ConnectorInstance,
+): Promise<ConnectorInstanceRecord> {
+  return readJson<ConnectorInstanceRecord>(
+    await fetch(
+      managementUrl(`/gateway/connectors/v1/instances/${encodeURIComponent(instance.instance_id)}`),
+      {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: managementHeaders(true),
+        body: JSON.stringify({ instance, expected_revision: record.revision }),
+      },
+    ),
+  );
+}
+
+export async function validateConnectorInstance(instance: ConnectorInstance): Promise<ConnectorHealth> {
+  return readJson<ConnectorHealth>(
+    await fetch(managementUrl("/gateway/connectors/v1/validate"), {
+      method: "POST",
+      credentials: "same-origin",
+      headers: managementHeaders(true),
+      body: JSON.stringify(instance),
+    }),
+  );
+}
+
+export async function testConnectorConnection(instanceId: string): Promise<ConnectorHealth> {
+  return readJson<ConnectorHealth>(
+    await fetch(
+      managementUrl(
+        `/gateway/connectors/v1/instances/${encodeURIComponent(instanceId)}/test-connection`,
+      ),
+      { method: "POST", credentials: "same-origin", headers: managementHeaders() },
+    ),
+  );
+}
+
+export async function setConnectorEnabled(
+  record: ConnectorInstanceRecord,
+  enabled: boolean,
+): Promise<ConnectorInstanceRecord> {
+  const action = enabled ? "enable" : "disable";
+  return readJson<ConnectorInstanceRecord>(
+    await fetch(
+      managementUrl(
+        `/gateway/connectors/v1/instances/${encodeURIComponent(record.instance.instance_id)}/${action}`,
+      ),
+      {
+        method: "POST",
+        credentials: "same-origin",
+        headers: managementHeaders(true),
+        body: JSON.stringify({ expected_revision: record.revision }),
+      },
+    ),
+  );
+}
+
+export async function getConnectorRuntime(instanceId: string): Promise<ConnectorRuntimeState> {
+  return readJson<ConnectorRuntimeState>(
+    await fetch(
+      managementUrl(
+        `/gateway/connectors/v1/instances/${encodeURIComponent(instanceId)}/runtime`,
+      ),
+      { credentials: "same-origin", headers: managementHeaders() },
+    ),
+  );
+}
+
+export async function markConnectorGap(instanceId: string): Promise<ConnectorRuntimeState> {
+  return readJson<ConnectorRuntimeState>(
+    await fetch(
+      managementUrl(
+        `/gateway/connectors/v1/instances/${encodeURIComponent(instanceId)}/gaps/detect`,
+      ),
+      { method: "POST", credentials: "same-origin", headers: managementHeaders() },
+    ),
+  );
+}
+
+export async function reconcileConnectorGap(instanceId: string): Promise<ConnectorRuntimeState> {
+  return readJson<ConnectorRuntimeState>(
+    await fetch(
+      managementUrl(
+        `/gateway/connectors/v1/instances/${encodeURIComponent(instanceId)}/gaps/reconcile`,
+      ),
+      { method: "POST", credentials: "same-origin", headers: managementHeaders() },
+    ),
+  );
 }
