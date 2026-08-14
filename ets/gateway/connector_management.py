@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from ets.connectors.credentials.broker import CredentialBroker
-from ets.connectors.credentials.models import (
-    CREDENTIAL_REFERENCE_SCHEMA_VERSION,
-    CredentialReferenceV1,
-)
+from ets.connectors.credentials.models import CredentialReferenceV1
 from ets.connectors.models import (
     ConnectorCheckpointV1,
     ConnectorDefinitionV1,
@@ -57,7 +55,7 @@ class ConnectorManagementService:
         registry: ConnectorRegistry,
         store: ConnectorRuntimeStore,
         credential_broker: CredentialBroker | None = None,
-        now: callable_datetime | None = None,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         self._registry = registry
         self._store = store
@@ -168,7 +166,7 @@ class ConnectorManagementService:
             if self._credential_broker is None:
                 raise RuntimeError("connector credential broker is not configured")
             reference = CredentialReferenceV1(
-                schema_version=CREDENTIAL_REFERENCE_SCHEMA_VERSION,
+                schema_version="ets.connector.credential_ref.v1",
                 ref=credential_ref,
             )
             with self._credential_broker.resolve(reference):
@@ -226,7 +224,7 @@ class ConnectorManagementService:
         if credential_ref is None:
             return
         reference = CredentialReferenceV1(
-            schema_version=CREDENTIAL_REFERENCE_SCHEMA_VERSION,
+            schema_version="ets.connector.credential_ref.v1",
             ref=credential_ref,
         )
         if self._credential_broker is not None:
@@ -252,13 +250,6 @@ class ConnectorManagementService:
             raise ConnectorManagementAuthorizationError(
                 "management principal is not authorized for connector scope"
             )
-
-
-class callable_datetime:
-    """Minimal callable protocol without importing product runtime dependencies."""
-
-    def __call__(self) -> datetime:
-        raise NotImplementedError
 
 
 def _utc_now() -> datetime:
