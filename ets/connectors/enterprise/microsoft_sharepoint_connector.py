@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, Protocol
+from typing import Protocol, cast
 
 from pydantic import JsonValue
 
@@ -156,13 +156,29 @@ class MicrosoftSharePointDeltaAdapter:
         try:
             page = self._collect_page(instance, None)
         except CredentialResolutionError:
-            return _health("degraded", "retryable_error", "Microsoft credential is unavailable")
+            return _health(
+                "degraded",
+                "retryable_error",
+                "Microsoft credential is unavailable",
+            )
         except CredentialProviderNotFoundError:
-            return _health("failed", "invalid_config", "Microsoft credential provider is unavailable")
+            return _health(
+                "failed",
+                "invalid_config",
+                "Microsoft credential provider is unavailable",
+            )
         except MicrosoftSharePointDeltaAuthenticationError:
-            return _health("failed", "authentication_failed", "Microsoft Graph token was rejected")
+            return _health(
+                "failed",
+                "authentication_failed",
+                "Microsoft Graph token was rejected",
+            )
         except MicrosoftSharePointDeltaAuthorizationError:
-            return _health("failed", "authorization_failed", "SharePoint metadata access was denied")
+            return _health(
+                "failed",
+                "authorization_failed",
+                "SharePoint metadata access was denied",
+            )
         except MicrosoftSharePointDeltaThrottleError as exc:
             return ConnectorHealthV1(
                 schema_version="ets.connector.health.v1",
@@ -440,7 +456,9 @@ class MicrosoftSharePointDeltaAdapter:
         )
 
 
-def _request_profile(settings: MicrosoftSharePointDeltaSettings) -> MicrosoftSharePointDeltaRequestProfile:
+def _request_profile(
+    settings: MicrosoftSharePointDeltaSettings,
+) -> MicrosoftSharePointDeltaRequestProfile:
     if settings.scope == "drive":
         assert settings.drive_id is not None
         return sharepoint_drive_delta_request_profile(
@@ -549,7 +567,7 @@ def _setting_int(instance: ConnectorInstanceV1, key: str, default: int) -> int:
 def _required_scope(value: object) -> SharePointDeltaScope:
     if value not in {"drive", "list"}:
         raise ConnectorConfigurationError("SharePoint scope must be drive or list")
-    return value  # type: ignore[return-value]
+    return cast(SharePointDeltaScope, value)
 
 
 def _required_record_string(record: Mapping[str, JsonValue], key: str) -> str:
