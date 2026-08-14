@@ -111,23 +111,29 @@ def test_production_context_uses_signed_scope_and_rejects_browser_override(tmp_p
     assert tampered.status_code == 403
 
 
-def test_viewer_cannot_administer_connector_catalog(tmp_path: Path) -> None:
+def test_auditor_can_read_connector_catalog_without_management_authority(tmp_path: Path) -> None:
     client, secret = _production_client(tmp_path)
     viewer = _token(secret, "viewer")
+    auditor = _token(secret, "auditor")
     operator = _token(secret, "operator")
 
-    denied = client.get(
+    viewer_denied = client.get(
         "/gateway/connectors/v1/catalog",
         headers={"Authorization": f"Bearer {viewer}"},
     )
-    allowed = client.get(
+    auditor_allowed = client.get(
+        "/gateway/connectors/v1/catalog",
+        headers={"Authorization": f"Bearer {auditor}"},
+    )
+    operator_allowed = client.get(
         "/gateway/connectors/v1/catalog",
         headers={"Authorization": f"Bearer {operator}"},
     )
 
-    assert denied.status_code == 403
-    assert allowed.status_code == 200
-    assert allowed.json()[0]["connector_id"] == "synthetic.management"
+    assert viewer_denied.status_code == 403
+    assert auditor_allowed.status_code == 200
+    assert auditor_allowed.json()[0]["connector_id"] == "synthetic.management"
+    assert operator_allowed.status_code == 200
 
 
 def test_unknown_signed_role_fails_closed(tmp_path: Path) -> None:
