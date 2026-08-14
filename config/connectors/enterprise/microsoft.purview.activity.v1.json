@@ -1,0 +1,25 @@
+{
+  "schema_version": "ets.connector.definition.v1",
+  "connector_id": "microsoft.purview.activity",
+  "display_name": "Microsoft Purview Management Activity",
+  "description": "Governed Microsoft Purview Management Activity polling and audit-content normalization with webhook-assisted discovery and polling recovery.",
+  "implementation_class": "enterprise_api",
+  "source_classes": ["purview_management_activity"],
+  "adapter_version": "1.0",
+  "sdk_contract_version": "ets.connector.sdk.v1",
+  "capture_envelope_versions": ["ets.capture.v1"],
+  "gateway_host_versions": ["ets.gateway.connector-host.v1"],
+  "capabilities": {
+    "delivery_modes": ["poll", "push"],
+    "authentication_methods": ["bearer"],
+    "discovery": true,
+    "checkpointing": true,
+    "reconciliation": true,
+    "normalization": true,
+    "health": true
+  },
+  "configuration_schema": {
+    "instance_schema": "ets.connector.instance.v1",
+    "settings_schema_ref": "schemas/connectors/v1/enterprise/microsoft-purview-activity-settings.schema.json"
+  }
+}
