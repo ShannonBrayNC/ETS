@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/connectors/v1/enterprise/microsoft-tenant-profile.schema.json",
+  "title": "ETS Microsoft tenant/cloud onboarding profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "application_id",
+    "cloud",
+    "credential_ref",
+    "consent_state"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "ets.connector.microsoft.tenant_profile.v1"
+    },
+    "tenant_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "application_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "cloud": {
+      "enum": [
+        "global",
+        "us_government_l4",
+        "us_government_l5_dod",
+        "china_21vianet"
+      ]
+    },
+    "credential_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "ref"],
+      "properties": {
+        "schema_version": {
+          "const": "ets.connector.credential_ref.v1"
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 500
+        }
+      }
+    },
+    "consent_state": {
+      "enum": ["pending", "granted", "partial", "revoked", "failed"]
+    }
+  }
+}
