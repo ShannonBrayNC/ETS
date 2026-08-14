@@ -1,6 +1,6 @@
 # ETS Gateway Native Connector Packaging v1
 
-Status: G2D candidate  
+Status: G2D qualified  
 Parent: #249  
 Implements: #253
 
@@ -12,12 +12,13 @@ implementations.
 
 ## Built-in catalog
 
-The v1 catalog contains four native connector definitions:
+The v1 catalog contains four qualified native connector definitions:
 
 - `native.webhook` — qualified G1C HTTPS/webhook runtime;
 - `native.syslog` — qualified G1D RFC 5424 syslog-TLS runtime;
 - `native.file_drop` — qualified G1E explicit File/Drop runtime;
-- `native.otlp` — G1F semantic/commit contract with transport activation held until G1F-C/D qualify.
+- `native.otlp` — qualified G1F OTLP/HTTP and OTLP/gRPC runtimes using the shared semantic and
+  commitment contracts.
 
 Every definition validates through `ets.connector.definition.v1` and references a connector-specific
 settings schema. Customer instances continue to use `ets.connector.instance.v1`.
@@ -38,6 +39,10 @@ The owning G1 runtime remains authoritative for:
 - ETS Core append;
 - durable synchronization;
 - transport-specific bounds and shutdown behavior.
+
+The qualified OTLP binding points to the concrete HTTP and gRPC owners:
+`ets.gateway.otlp_http/create_otlp_http_app` and
+`ets.gateway.otlp_grpc/GatewayOtlpGrpcHost`.
 
 ## Management adapter behavior
 
@@ -61,9 +66,9 @@ A valid connector configuration is not evidence that the underlying listener is 
 concrete host supplies a runtime probe, qualified native connectors return `unknown_observation`
 rather than claiming healthy transport state.
 
-The OTLP native definition is intentionally visible before transport completion but reports
-`unsupported` / degraded state while its binding is marked `transport_pending`. This prevents the
-catalog from advertising an unqualified OTLP listener as operational.
+This rule applies equally to OTLP after G1F-C/D qualification. Catalog qualification means the
+transport implementation and its governed evidence path have passed their qualification gates; it
+does not mean a particular deployed listener is currently healthy.
 
 ## Assurance labels
 
@@ -87,11 +92,12 @@ cannot grant ETS scope.
 ## Activation rule
 
 A connector catalog entry may exist before its transport is active, but activation must fail closed
-unless its G1 runtime profile has completed its own qualification. In particular, `native.otlp`
-remains transport-pending until #280 and #281 complete.
+unless its G1 runtime profile has completed its own qualification. `native.otlp` transitioned to
+`qualified` only after #280 and #281 completed their exact-head CI, security, formal, and independent
+review gates.
 
 ## Exit gate
 
-G2D completes when all four definitions validate through the shared connector registry, native
-configuration cannot silently relax G1 invariants, G2C can represent their instances truthfully,
-and the OTLP binding transitions to qualified only after the authoritative G1F transport tests pass.
+G2D is qualified when all four definitions validate through the shared connector registry, native
+configuration cannot silently relax G1 invariants, G2C can represent their instances truthfully, and
+each catalog binding points to a qualified authoritative G1 runtime without duplicating it.
