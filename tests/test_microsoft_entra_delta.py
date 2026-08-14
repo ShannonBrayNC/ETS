@@ -84,7 +84,11 @@ def test_users_delta_preserves_exact_next_link_and_minimizes_identity_fields() -
     assert len(page.records) == 1
     record = page.records[0]
     assert record.object_id == "user-001"
-    assert record.metadata == {"object_type": "user", "account_enabled": True, "user_type": "Member"}
+    assert record.metadata == {
+        "object_type": "user",
+        "account_enabled": True,
+        "user_type": "Member",
+    }
     serialized = json.dumps(record.model_dump(mode="json"))
     assert "Alice Example" not in serialized
     assert "alice@example.test" not in serialized
