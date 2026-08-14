@@ -15,6 +15,7 @@ from ets.capture.object_digest import (
 )
 
 MAX_RELATIVE_PATH_CHARS: Final = 4096
+MAX_RELATIVE_PATH_COMPONENTS: Final = 64
 
 
 class FilesystemObjectError(ValueError):
@@ -61,6 +62,13 @@ class FilesystemObjectDigest:
     raw_object_retained: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class _DirectoryStep:
+    parent_fd: int
+    component: str
+    opened: os.stat_result
+
+
 def normalize_relative_object_path(relative_path: str) -> str:
     """Validate the portable, normalized relative-path contract."""
 
@@ -80,6 +88,8 @@ def normalize_relative_object_path(relative_path: str) -> str:
         raise FilesystemPathError("relative path must name one object below the intake root")
 
     parts = relative_path.split("/")
+    if len(parts) > MAX_RELATIVE_PATH_COMPONENTS:
+        raise FilesystemPathError("relative path exceeds configured component limit")
     for part in parts:
         if part in {"", ".", ".."}:
             raise FilesystemPathError("relative path contains an unsafe path component")
@@ -104,29 +114,37 @@ def digest_filesystem_object(
     _require_secure_descriptor_traversal()
 
     root_path = os.path.abspath(os.fspath(intake_root))
-    root_fd = _open_root(root_path)
+    root_fd, root_opened = _open_root(root_path)
+    opened_fds = [root_fd]
+    directory_steps: list[_DirectoryStep] = []
     parent_fd = root_fd
 
     try:
         parts = normalized.split("/")
         for component in parts[:-1]:
-            child_fd = _open_directory_component(parent_fd, component)
-            if parent_fd != root_fd:
-                os.close(parent_fd)
+            child_fd, child_opened = _open_directory_component(parent_fd, component)
+            opened_fds.append(child_fd)
+            directory_steps.append(
+                _DirectoryStep(
+                    parent_fd=parent_fd,
+                    component=component,
+                    opened=child_opened,
+                )
+            )
             parent_fd = child_fd
 
-        file_name = parts[-1]
-        return _digest_final_component(
+        result = _digest_final_component(
             parent_fd,
-            file_name,
+            parts[-1],
             normalized,
             maximum_bytes=maximum_bytes,
             chunk_size=chunk_size,
         )
+        _verify_directory_chain(root_path, root_opened, directory_steps)
+        return result
     finally:
-        if parent_fd != root_fd:
-            os.close(parent_fd)
-        os.close(root_fd)
+        for descriptor in reversed(opened_fds):
+            os.close(descriptor)
 
 
 def _require_secure_descriptor_traversal() -> None:
@@ -140,7 +158,7 @@ def _require_secure_descriptor_traversal() -> None:
         )
 
 
-def _open_root(root_path: str) -> int:
+def _open_root(root_path: str) -> tuple[int, os.stat_result]:
     try:
         before = os.lstat(root_path)
     except OSError as exc:
@@ -159,10 +177,13 @@ def _open_root(root_path: str) -> int:
     if not _same_identity(before, opened) or not stat.S_ISDIR(opened.st_mode):
         os.close(root_fd)
         raise FilesystemObjectInstabilityError("intake root changed during open")
-    return root_fd
+    return root_fd, opened
 
 
-def _open_directory_component(parent_fd: int, component: str) -> int:
+def _open_directory_component(
+    parent_fd: int,
+    component: str,
+) -> tuple[int, os.stat_result]:
     try:
         before = os.stat(component, dir_fd=parent_fd, follow_symlinks=False)
     except OSError as exc:
@@ -181,7 +202,7 @@ def _open_directory_component(parent_fd: int, component: str) -> int:
     if not _same_identity(before, opened) or not stat.S_ISDIR(opened.st_mode):
         os.close(child_fd)
         raise FilesystemObjectInstabilityError("filesystem path changed during traversal")
-    return child_fd
+    return child_fd, opened
 
 
 def _digest_final_component(
@@ -254,6 +275,45 @@ def _digest_final_component(
         )
     finally:
         os.close(file_fd)
+
+
+def _verify_directory_chain(
+    root_path: str,
+    root_opened: os.stat_result,
+    directory_steps: list[_DirectoryStep],
+) -> None:
+    try:
+        root_after = os.lstat(root_path)
+    except OSError as exc:
+        raise FilesystemObjectInstabilityError("intake root changed after read") from exc
+
+    if (
+        _is_link_or_reparse(root_after)
+        or not stat.S_ISDIR(root_after.st_mode)
+        or not _same_identity(root_opened, root_after)
+    ):
+        raise FilesystemObjectInstabilityError("intake root changed after read")
+
+    for step in directory_steps:
+        try:
+            current = os.stat(
+                step.component,
+                dir_fd=step.parent_fd,
+                follow_symlinks=False,
+            )
+        except OSError as exc:
+            raise FilesystemObjectInstabilityError(
+                "filesystem directory chain changed after read"
+            ) from exc
+
+        if (
+            _is_link_or_reparse(current)
+            or not stat.S_ISDIR(current.st_mode)
+            or not _same_identity(step.opened, current)
+        ):
+            raise FilesystemObjectInstabilityError(
+                "filesystem directory chain changed after read"
+            )
 
 
 def _metadata(value: os.stat_result) -> FilesystemObjectMetadata:
