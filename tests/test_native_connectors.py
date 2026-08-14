@@ -87,15 +87,17 @@ def test_qualified_native_connector_reports_configuration_not_host_liveness() ->
     assert "host liveness" in health.message
 
 
-def test_otlp_is_truthfully_transport_pending_until_g1f_transport_qualifies() -> None:
+def test_otlp_reports_qualified_configuration_without_claiming_host_liveness() -> None:
     registry = load_native_connector_registry(MANIFESTS)
     instance = _instance("native.otlp", auth_method="gateway_principal")
 
     adapter = registry.validate_adapter_instance(instance)
     health = adapter.health(instance)
 
-    assert health.state == "degraded"
-    assert health.code == "unsupported"
+    assert NATIVE_CONNECTOR_BINDINGS["native.otlp"].readiness == "qualified"
+    assert health.state == "unknown"
+    assert health.code == "unknown_observation"
+    assert "host liveness" in health.message
 
 
 def test_native_connector_rejects_unknown_settings() -> None:
