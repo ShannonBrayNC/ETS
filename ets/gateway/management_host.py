@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict
 
-from ets.api.auth import AuthContext, AuthPolicy, LocalHeaderAuthPolicy
+from ets.api.auth import AuthContext, AuthError, AuthPolicy, LocalHeaderAuthPolicy
 from ets.api.authorization import AuthCapability, AuthRole, AuthorizationProfile
 from ets.gateway.connector_management import (
     ConnectorManagementAuthorizationError,
@@ -48,7 +48,10 @@ def create_gateway_management_app(
     )
 
     def auth_context(request: Request) -> AuthContext:
-        return request_auth_policy.authenticate(request)
+        try:
+            return request_auth_policy.authenticate(request)
+        except AuthError as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 
     def principal(request: Request) -> ConnectorManagementPrincipal:
         context = auth_context(request)
@@ -63,7 +66,10 @@ def create_gateway_management_app(
     @app.get("/api/v2/auth/context", response_model=GatewayAuthorizationContextV2, tags=["auth"])
     def authorization_context(request: Request) -> GatewayAuthorizationContextV2:
         context = auth_context(request)
-        subject, tenant_id, workspace_id = _resolved_identity_scope(request, context)
+        try:
+            subject, tenant_id, workspace_id = _resolved_identity_scope(request, context)
+        except ConnectorManagementAuthorizationError as exc:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
         return GatewayAuthorizationContextV2(
             schema_version="ets.gateway.authorization_context.v2",
             mode=auth_mode,
