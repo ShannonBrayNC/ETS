@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from ets.capture import FilesystemObjectError, digest_filesystem_object
+from ets.capture import FilesystemObjectError, StreamDigestError, digest_filesystem_object
 from ets.gateway.file_capture import GatewayFileCaptureError, GatewayFileCaptureRequest
 from ets.gateway.file_ingress import GatewayFileIngressService
 from ets.gateway.ingress import (
@@ -18,7 +18,7 @@ from ets.gateway.ingress import (
     GatewayIngressReceipt,
     GatewayPartialCommitError,
 )
-from ets.gateway.source_registry import SourceAuthorizationError
+from ets.gateway.source_registry import SourceAuthorizationError, StaticSourceRegistry
 
 FileSubmissionStage = Literal[
     "discovered",
@@ -33,6 +33,7 @@ FileSubmissionErrorCode = Literal[
     "capture_rejected",
     "conflict",
     "filesystem_rejected",
+    "shutdown_timeout",
     "source_unauthorized",
 ]
 
@@ -131,10 +132,12 @@ class GatewayFileDropHost:
         self,
         *,
         service: GatewayFileIngressService,
+        registry: StaticSourceRegistry,
         intake_root: str | Path,
         policy: GatewayFileDropPolicy | None = None,
     ) -> None:
         self.service = service
+        self.registry = registry
         self.intake_root = Path(intake_root)
         self.policy = policy or GatewayFileDropPolicy()
         self._accepting = True
@@ -189,6 +192,11 @@ class GatewayFileDropHost:
                     "Gateway file/drop host is shutting down"
                 )
 
+            try:
+                self.registry.resolve(principal)
+            except SourceAuthorizationError:
+                return self._rejected(submission, "source_unauthorized")
+
             if task is not None:
                 if not self._active_tasks:
                     self._drained.clear()
@@ -227,6 +235,9 @@ class GatewayFileDropHost:
             status = _status_from_receipt(submission, receipt)
             self._record(status)
             return status
+        except asyncio.CancelledError:
+            self._rejected(submission, "shutdown_timeout")
+            raise
         except GatewayPartialCommitError as exc:
             status = GatewayFileSubmissionStatus(
                 delivery_id=submission.delivery_id,
@@ -239,13 +250,11 @@ class GatewayFileDropHost:
             )
             self._record(status)
             return status
-        except SourceAuthorizationError:
-            return self._rejected(submission, "source_unauthorized")
         except GatewayBackpressureError:
             return self._rejected(submission, "backpressure")
         except GatewayConflictError:
             return self._rejected(submission, "conflict")
-        except FilesystemObjectError:
+        except (FilesystemObjectError, StreamDigestError):
             return self._rejected(submission, "filesystem_rejected")
         except (GatewayFileCaptureError, GatewayIngressError):
             return self._rejected(submission, "capture_rejected")
