@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeAlias, cast
@@ -101,7 +102,7 @@ def _iter_records(signal_class: OtlpSignalClass, request: Message) -> Iterator[O
                 scope = _message_mapping(scope_logs.scope)
                 for record in scope_logs.log_records:
                     source_time = int(record.time_unix_nano) or None
-                    yield resource, scope, _message_mapping(record), source_time
+                    yield resource, scope, _log_record_mapping(record), source_time
         return
 
     if signal_class == "metrics":
@@ -122,6 +123,20 @@ def _iter_records(signal_class: OtlpSignalClass, request: Message) -> Iterator[O
             for span in scope_spans.spans:
                 source_time = int(span.start_time_unix_nano) or None
                 yield resource, scope, _message_mapping(span), source_time
+
+
+def _log_record_mapping(record: Any) -> dict[str, Any]:
+    mapping = _message_mapping(record)
+    mapping.pop("body", None)
+    encoded_body = bytes(record.body.SerializeToString())
+    mapping["body_present"] = bool(encoded_body)
+    if encoded_body:
+        mapping["body_digest"] = {
+            "algorithm": "sha256",
+            "value": hashlib.sha256(encoded_body).hexdigest(),
+            "representation": "otlp.any_value.protobuf",
+        }
+    return mapping
 
 
 def _metric_rows(
