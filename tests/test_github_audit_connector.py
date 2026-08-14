@@ -171,7 +171,7 @@ def _adapter(
     now: datetime = NOW,
 ) -> tuple[GitHubAuditAdapter, ConnectorRegistry]:
     registry = _definition_registry()
-    definition = registry.definition("github.audit")
+    definition = registry.get_definition("github.audit")
     credential_broker = broker or _broker()[0]
     seen_material: list[bytes] = []
 
@@ -286,7 +286,7 @@ def test_revoked_credential_fails_before_source_client_and_checkpoint() -> None:
 
     registry = _definition_registry()
     adapter = GitHubAuditAdapter(
-        registry.definition("github.audit"),
+        registry.get_definition("github.audit"),
         broker,
         client_factory=factory,
         now=lambda: NOW,
