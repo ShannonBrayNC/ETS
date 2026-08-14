@@ -175,7 +175,7 @@ def _registration() -> SourceRegistration:
         redaction_profile="generic-rest-redaction-v1",
         minimization_profile="generic-rest-selected-fields-v1",
         redacted_keys=frozenset({"secret"}),
-        clock_quality="source_reported",
+        clock_quality="unknown",
     )
 
 
