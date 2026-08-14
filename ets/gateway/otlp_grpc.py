@@ -44,6 +44,34 @@ class OtlpGrpcPrincipalResolver(Protocol):
     def resolve(self, context: grpc.ServicerContext[Any, Any]) -> str: ...
 
 
+class MtlsUriSanPrincipalResolver:
+    """Resolve exactly one SPIFFE URI SAN from gRPC's authenticated peer context."""
+
+    def __init__(self, *, required_prefix: str = "spiffe://") -> None:
+        if not required_prefix:
+            raise ValueError("required_prefix must not be empty")
+        self.required_prefix = required_prefix
+
+    def resolve(self, context: grpc.ServicerContext[Any, Any]) -> str:
+        if context.peer_identity_key() != "x509_subject_alternative_name":
+            raise PermissionError("gRPC peer identity is not an authenticated X.509 SAN")
+        identities = context.peer_identities()
+        if identities is None:
+            raise PermissionError("gRPC peer has no authenticated identity")
+
+        principals: list[str] = []
+        for identity in identities:
+            try:
+                value = identity.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+            if value.startswith(self.required_prefix):
+                principals.append(value)
+        if len(principals) != 1:
+            raise PermissionError("gRPC peer must present exactly one qualified URI SAN principal")
+        return principals[0]
+
+
 @dataclass(frozen=True, slots=True)
 class OtlpGrpcPolicy:
     """Bounded OTLP/gRPC host policy."""
@@ -204,20 +232,21 @@ class GatewayOtlpGrpcHost:
         budget = self.policy.processing_budget_seconds
         if remaining is not None:
             budget = min(budget, max(remaining, 0.0))
-        return _commit_batch(
-            decoded,
-            principal=principal,
-            delivery_id=delivery_id,
-            correlation_id=correlation_id,
-            service=self.service,
-            processing_budget_seconds=budget,
-        )
+        try:
+            return _commit_batch(
+                decoded,
+                principal=principal,
+                delivery_id=delivery_id,
+                correlation_id=correlation_id,
+                service=self.service,
+                processing_budget_seconds=budget,
+            )
+        except SourceAuthorizationError:
+            _abort(context, grpc.StatusCode.PERMISSION_DENIED, "source is not authorized")
 
     def _resolve_principal(self, context: grpc.ServicerContext[Any, Any]) -> str:
         try:
             return self.principal_resolver.resolve(context)
-        except SourceAuthorizationError:
-            _abort(context, grpc.StatusCode.PERMISSION_DENIED, "source is not authorized")
         except PermissionError:
             _abort(context, grpc.StatusCode.UNAUTHENTICATED, "source authentication failed")
 
