@@ -28,6 +28,10 @@ def test_connector_runtime_and_management_do_not_import_forbidden_boundaries() -
             elif isinstance(node, ast.ImportFrom) and node.module is not None:
                 names.append(node.module)
             for name in names:
-                if any(name == prefix or name.startswith(f"{prefix}.") for prefix in FORBIDDEN_PREFIXES):
+                forbidden = any(
+                    name == prefix or name.startswith(f"{prefix}.")
+                    for prefix in FORBIDDEN_PREFIXES
+                )
+                if forbidden:
                     violations.append(f"{path.relative_to(ROOT)} imports {name}")
     assert violations == []
