@@ -247,7 +247,7 @@ def snapshot_sharepoint_metadata_record(
     metadata_raw = record.get("metadata")
     if not isinstance(metadata_raw, dict):
         raise MicrosoftSharePointStateError("SharePoint state metadata must be an object")
-    metadata = cast(dict[str, JsonValue], metadata_raw)
+    metadata = metadata_raw
     encoded = _canonical_json(metadata)
     if len(encoded) > SHAREPOINT_STATE_MAXIMUM_MAPPING_BYTES:
         raise MicrosoftSharePointStateError(
