@@ -320,7 +320,10 @@ def test_reauthorization_signal_does_not_create_a_gap_without_gap_state() -> Non
         (_resource_notification(subscription_id="other-subscription"), _subscription()),
         (_resource_notification(tenant_id=OTHER_TENANT_ID), _subscription()),
         (_resource_notification(), _subscription(resource="/drives/other/root")),
-        (_resource_notification(), _subscription(resource="https://evil.example/drives/drive-001/root")),
+        (
+            _resource_notification(),
+            _subscription(resource="https://evil.example/drives/drive-001/root"),
+        ),
         (_resource_notification(), _subscription(resource="/drives/drive-001/root?select=id")),
     ],
 )
