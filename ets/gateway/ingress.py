@@ -1,4 +1,4 @@
-"""Bounded, retry-safe Gateway ingestion service for G1C/G1D."""
+"""Bounded, retry-safe Gateway ingestion service for G1C/G1D/G1F."""
 
 from __future__ import annotations
 
@@ -24,6 +24,11 @@ from ets.core.api import (
     EvidenceEvent,
     LogEntry,
     canonicalize,
+)
+from ets.gateway.otlp_capture import (
+    DEFAULT_MAX_OTLP_COMMITTED_BYTES,
+    GatewayOtlpCaptureRequest,
+    build_otlp_capture,
 )
 from ets.gateway.source_registry import SourceRegistration, StaticSourceRegistry
 from ets.gateway.syslog_capture import (
@@ -84,6 +89,7 @@ class GatewayIngressConfig:
     collector_id: str = "ets-gateway"
     max_body_bytes: int = 1024 * 1024
     max_syslog_message_bytes: int = DEFAULT_MAX_SYSLOG_MESSAGE_BYTES
+    max_otlp_committed_bytes: int = DEFAULT_MAX_OTLP_COMMITTED_BYTES
     max_idempotency_chars: int = 200
     max_declared_identity_chars: int = 500
     max_correlation_chars: int = 200
@@ -94,6 +100,7 @@ class GatewayIngressConfig:
         numeric = (
             self.max_body_bytes,
             self.max_syslog_message_bytes,
+            self.max_otlp_committed_bytes,
             self.max_idempotency_chars,
             self.max_declared_identity_chars,
             self.max_correlation_chars,
@@ -141,6 +148,12 @@ class GatewayIngressService:
         """Return the configured framed syslog message limit."""
 
         return self._config.max_syslog_message_bytes
+
+    @property
+    def max_otlp_committed_bytes(self) -> int:
+        """Return the configured bounded OTLP committed-representation limit."""
+
+        return self._config.max_otlp_committed_bytes
 
     def ingest_json(self, principal: str, request: GatewayWebhookRequest) -> GatewayIngressReceipt:
         """Ingest one authenticated JSON request under server-authorized source scope."""
@@ -192,6 +205,39 @@ class GatewayIngressService:
         idempotency_key = mapped.envelope.source.idempotency_key
         if idempotency_key is None:
             raise GatewayIngressError("syslog capture requires an idempotency identity")
+        stable_id = _stable_event_identity(registration, idempotency_key)
+        event_id = f"gateway:{stable_id}"
+        evidence_id = f"gateway-evidence:{stable_id}"
+        return self._commit_capture(
+            registration,
+            mapped.envelope,
+            event_id=event_id,
+            evidence_id=evidence_id,
+            content_hash=mapped.envelope.content_digest.value,
+        )
+
+    def ingest_otlp(
+        self,
+        principal: str,
+        request: GatewayOtlpCaptureRequest,
+    ) -> GatewayIngressReceipt:
+        """Ingest one decoded OTLP observation under server-authorized source scope."""
+
+        registration = self._registry.resolve(principal)
+        resolved_request = (
+            request
+            if request.received_at_utc is not None
+            else replace(request, received_at_utc=self._now())
+        )
+        mapped = build_otlp_capture(
+            registration,
+            resolved_request,
+            collector_id=self._config.collector_id,
+            maximum_committed_bytes=self._config.max_otlp_committed_bytes,
+        )
+        idempotency_key = mapped.envelope.source.idempotency_key
+        if idempotency_key is None:
+            raise GatewayIngressError("OTLP capture requires an idempotency identity")
         stable_id = _stable_event_identity(registration, idempotency_key)
         event_id = f"gateway:{stable_id}"
         evidence_id = f"gateway-evidence:{stable_id}"
