@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Mapping
 
 import pytest
 from pydantic import JsonValue
@@ -211,10 +211,14 @@ def test_management_scope_is_server_authorized(tmp_path: Path) -> None:
 def test_instance_updates_use_optimistic_revision_and_audit(tmp_path: Path) -> None:
     service, store = make_service(tmp_path / "revision.db")
     service.create_instance(principal(), connector_instance())
-    updated = connector_instance().model_copy(update={"source": ConnectorSource(
-        name="renamed-source",
-        environment="test",
-    )})
+    updated = connector_instance().model_copy(
+        update={
+            "source": ConnectorSource(
+                name="renamed-source",
+                environment="test",
+            )
+        }
+    )
     record = service.update_instance(principal(), updated, expected_revision=1)
     assert record.revision == 2
 
