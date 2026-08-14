@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, NoReturn, Protocol
+from typing import NoReturn, Protocol, cast
 
 import grpc
 from google.protobuf.message import Message
@@ -37,11 +38,13 @@ from ets.gateway.otlp_capture import GatewayOtlpCaptureRequest
 from ets.gateway.otlp_protobuf import OtlpProtobufDecodeError, decode_otlp_protobuf
 from ets.gateway.source_registry import SourceAuthorizationError
 
+type RegisterServicer = Callable[[object, grpc.Server], None]
+
 
 class OtlpGrpcPrincipalResolver(Protocol):
     """Resolve an authenticated gRPC peer to the Gateway source principal."""
 
-    def resolve(self, context: grpc.ServicerContext[Any, Any]) -> str: ...
+    def resolve(self, context: grpc.ServicerContext) -> str: ...
 
 
 class MtlsUriSanPrincipalResolver:
@@ -52,7 +55,7 @@ class MtlsUriSanPrincipalResolver:
             raise ValueError("required_prefix must not be empty")
         self.required_prefix = required_prefix
 
-    def resolve(self, context: grpc.ServicerContext[Any, Any]) -> str:
+    def resolve(self, context: grpc.ServicerContext) -> str:
         if context.peer_identity_key() != "x509_subject_alternative_name":
             raise PermissionError("gRPC peer identity is not an authenticated X.509 SAN")
         identities = context.peer_identities()
@@ -153,18 +156,21 @@ class GatewayOtlpGrpcHost:
             ),
             maximum_concurrent_rpcs=self.policy.max_concurrent_rpcs,
         )
-        logs_service_pb2_grpc.add_LogsServiceServicer_to_server(
-            _LogsService(self),
-            self._server,
+        register_logs = cast(
+            RegisterServicer,
+            logs_service_pb2_grpc.add_LogsServiceServicer_to_server,
         )
-        metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
-            _MetricsService(self),
-            self._server,
+        register_metrics = cast(
+            RegisterServicer,
+            metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server,
         )
-        trace_service_pb2_grpc.add_TraceServiceServicer_to_server(
-            _TraceService(self),
-            self._server,
+        register_traces = cast(
+            RegisterServicer,
+            trace_service_pb2_grpc.add_TraceServiceServicer_to_server,
         )
+        register_logs(_LogsService(self), self._server)
+        register_metrics(_MetricsService(self), self._server)
+        register_traces(_TraceService(self), self._server)
         address = f"{self.host}:{self.port}"
         if self.server_credentials is None:
             self._bound_port = self._server.add_insecure_port(address)
@@ -204,7 +210,7 @@ class GatewayOtlpGrpcHost:
         self,
         signal_class: OtlpSignalClass,
         request: Message,
-        context: grpc.ServicerContext[Any, Any],
+        context: grpc.ServicerContext,
     ) -> OtlpGrpcBatchResult:
         principal = self._resolve_principal(context)
         delivery_id = _metadata_value(context, "idempotency-key")
@@ -244,7 +250,7 @@ class GatewayOtlpGrpcHost:
         except SourceAuthorizationError:
             _abort(context, grpc.StatusCode.PERMISSION_DENIED, "source is not authorized")
 
-    def _resolve_principal(self, context: grpc.ServicerContext[Any, Any]) -> str:
+    def _resolve_principal(self, context: grpc.ServicerContext) -> str:
         try:
             return self.principal_resolver.resolve(context)
         except PermissionError:
@@ -262,7 +268,7 @@ def create_otlp_grpc_mtls_credentials(
     if not private_key or not certificate_chain or not client_ca:
         raise ValueError("OTLP/gRPC mTLS credentials must be non-empty")
     return grpc.ssl_server_credentials(
-        ((private_key, certificate_chain),),
+        [(private_key, certificate_chain)],
         root_certificates=client_ca,
         require_client_auth=True,
     )
@@ -275,7 +281,7 @@ class _LogsService(logs_service_pb2_grpc.LogsServiceServicer):
     def Export(
         self,
         request: ExportLogsServiceRequest,
-        context: grpc.ServicerContext[Any, Any],
+        context: grpc.ServicerContext,
     ) -> ExportLogsServiceResponse:
         result = self._host._handle("logs", request, context)
         response = ExportLogsServiceResponse()
@@ -293,7 +299,7 @@ class _MetricsService(metrics_service_pb2_grpc.MetricsServiceServicer):
     def Export(
         self,
         request: ExportMetricsServiceRequest,
-        context: grpc.ServicerContext[Any, Any],
+        context: grpc.ServicerContext,
     ) -> ExportMetricsServiceResponse:
         result = self._host._handle("metrics", request, context)
         response = ExportMetricsServiceResponse()
@@ -311,7 +317,7 @@ class _TraceService(trace_service_pb2_grpc.TraceServiceServicer):
     def Export(
         self,
         request: ExportTraceServiceRequest,
-        context: grpc.ServicerContext[Any, Any],
+        context: grpc.ServicerContext,
     ) -> ExportTraceServiceResponse:
         result = self._host._handle("traces", request, context)
         response = ExportTraceServiceResponse()
@@ -380,21 +386,21 @@ def _commit_batch(
     )
 
 
-def _metadata_value(context: grpc.ServicerContext[Any, Any], key: str) -> str | None:
-    for item in context.invocation_metadata():
-        if item.key.lower() == key:
-            value = item.value
-            if isinstance(value, bytes):
-                try:
-                    return value.decode("utf-8")
-                except UnicodeDecodeError:
-                    return None
-            return str(value)
+def _metadata_value(context: grpc.ServicerContext, key: str) -> str | None:
+    for metadata_key, metadata_value in context.invocation_metadata():
+        if metadata_key.lower() != key:
+            continue
+        if isinstance(metadata_value, bytes):
+            try:
+                return metadata_value.decode("utf-8")
+            except UnicodeDecodeError:
+                return None
+        return metadata_value
     return None
 
 
 def _set_trailing_receipt(
-    context: grpc.ServicerContext[Any, Any],
+    context: grpc.ServicerContext,
     result: OtlpGrpcBatchResult,
 ) -> None:
     context.set_trailing_metadata(
@@ -425,7 +431,7 @@ def _result_message(result: OtlpGrpcBatchResult) -> str:
 
 
 def _abort(
-    context: grpc.ServicerContext[Any, Any],
+    context: grpc.ServicerContext,
     code: grpc.StatusCode,
     details: str,
 ) -> NoReturn:
