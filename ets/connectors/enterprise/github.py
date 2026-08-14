@@ -8,7 +8,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol, cast
+from typing import NoReturn, Protocol, cast
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
@@ -196,7 +196,6 @@ class GitHubAuditHttpClient:
                 link_header = response.headers.get("Link")
         except HTTPError as exc:
             self._raise_http_error(exc)
-            raise AssertionError("unreachable")
         except (TimeoutError, URLError, OSError) as exc:
             raise GitHubAuditRetryableError("GitHub audit API request failed") from exc
 
@@ -239,7 +238,7 @@ class GitHubAuditHttpClient:
                 "GitHub credential material must be ASCII token data"
             ) from exc
 
-    def _raise_http_error(self, exc: HTTPError) -> None:
+    def _raise_http_error(self, exc: HTTPError) -> NoReturn:
         if exc.code == 401:
             raise GitHubAuditAuthenticationError("GitHub audit API authentication failed") from exc
         if exc.code in {403, 429}:
@@ -249,10 +248,14 @@ class GitHubAuditHttpClient:
                 raise GitHubAuditThrottleError(_retry_after_seconds(exc)) from exc
             raise GitHubAuditAuthorizationError("GitHub audit API authorization failed") from exc
         if exc.code == 404:
-            raise GitHubAuditAuthorizationError("GitHub audit organization is not accessible") from exc
+            raise GitHubAuditAuthorizationError(
+                "GitHub audit organization is not accessible"
+            ) from exc
         if 500 <= exc.code <= 599:
             raise GitHubAuditRetryableError("GitHub audit API server error") from exc
-        raise GitHubAuditClientError(f"GitHub audit API rejected request with HTTP {exc.code}") from exc
+        raise GitHubAuditClientError(
+            f"GitHub audit API rejected request with HTTP {exc.code}"
+        ) from exc
 
 
 class GitHubAuditAdapter:
@@ -284,13 +287,17 @@ class GitHubAuditAdapter:
         if instance.collection.mode != "poll":
             raise ConnectorConfigurationError("GitHub audit connector requires poll collection")
         if instance.collection.batch_size > 100:
-            raise ConnectorConfigurationError("GitHub audit collection batch_size must not exceed 100")
+            raise ConnectorConfigurationError(
+                "GitHub audit collection batch_size must not exceed 100"
+            )
         if instance.checkpoint.strategy != "time_window":
             raise ConnectorConfigurationError(
                 "GitHub audit connector requires time_window checkpoint strategy"
             )
         if instance.authentication.method != "bearer":
-            raise ConnectorConfigurationError("GitHub audit connector requires bearer authentication")
+            raise ConnectorConfigurationError(
+                "GitHub audit connector requires bearer authentication"
+            )
         if instance.authentication.credential_ref is None:
             raise ConnectorConfigurationError(
                 "GitHub audit connector requires an opaque credential reference"
