@@ -81,7 +81,10 @@ class ConnectorPackagePublisherV1(BaseModel):
 
     @model_validator(mode="after")
     def validate_classification(self) -> ConnectorPackagePublisherV1:
-        if self.publisher_class == "community_unqualified" and self.qualification_state == "qualified":
+        if (
+            self.publisher_class == "community_unqualified"
+            and self.qualification_state == "qualified"
+        ):
             raise ValueError("community_unqualified packages cannot claim qualified state")
         return self
 
@@ -172,7 +175,9 @@ class ConnectorPackageManifestV1(BaseModel):
         required = {self.definition_path, self.settings_schema_path}
         missing = required - set(paths)
         if missing:
-            raise ValueError("connector package definition/settings schema must be integrity-covered")
+            raise ValueError(
+                "connector package definition/settings schema must be integrity-covered"
+            )
         for entrypoint in (self.entrypoints.adapter, self.entrypoints.conformance):
             module_path = _module_file_for_entrypoint(entrypoint)
             if module_path not in paths:
@@ -341,7 +346,9 @@ def _check_compatibility(
     if gateway_host_version not in compatibility.gateway_host_versions:
         raise ConnectorPackageCompatibilityError("connector package Gateway host is incompatible")
     if capture_envelope_version not in compatibility.capture_envelope_versions:
-        raise ConnectorPackageCompatibilityError("connector package capture envelope is incompatible")
+        raise ConnectorPackageCompatibilityError(
+            "connector package capture envelope is incompatible"
+        )
 
 
 def _module_file_for_entrypoint(entrypoint: str) -> str:
