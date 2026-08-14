@@ -6,7 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
@@ -229,7 +229,7 @@ def _removed_reason(value: object) -> EntraRemovalReason | None:
     reason = value.get("reason")
     if reason not in {"changed", "deleted"}:
         raise MicrosoftEntraDeltaError("Entra delta @removed reason is not supported")
-    return reason
+    return cast(EntraRemovalReason, reason)
 
 
 def _minimized_metadata(
@@ -261,7 +261,7 @@ def _minimized_metadata(
                 if isinstance(item, str) and item
             ]
             if bounded_types:
-                metadata["group_types"] = bounded_types
+                metadata["group_types"] = cast(JsonValue, bounded_types)
     return metadata
 
 
