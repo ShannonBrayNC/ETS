@@ -206,7 +206,10 @@ def create_connector_management_router(
         except ConnectorManagementAuthorizationError as exc:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
-    @router.put("/instances/{instance_id}/runtime/checkpoint", response_model=ConnectorRuntimeStateV1)
+    @router.put(
+        "/instances/{instance_id}/runtime/checkpoint",
+        response_model=ConnectorRuntimeStateV1,
+    )
     def update_checkpoint(
         request: Request,
         instance_id: str,
