@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/connectors/v1/native/syslog-settings.schema.json",
+  "title": "ETS Gateway native syslog settings",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "bind_host": {"type": "string", "minLength": 1, "maxLength": 255},
+    "bind_port": {"type": "integer", "minimum": 1, "maximum": 65535},
+    "max_connections": {"type": "integer", "minimum": 1, "maximum": 10000},
+    "max_message_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576},
+    "read_idle_timeout_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 3600}
+  }
+}
