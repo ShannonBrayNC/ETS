@@ -20,6 +20,7 @@ from ets.connectors.enterprise.microsoft_entra_delta import (
     ENTRA_DEFAULT_MAXIMUM_RECORDS,
     EntraDeltaCollection,
     EntraDeltaRequestProfile,
+    MicrosoftEntraDeltaPageV1,
     MicrosoftEntraDeltaRecordV1,
     entra_delta_request_profile,
 )
@@ -79,7 +80,7 @@ class CredentialResolver(Protocol):
 class EntraDeltaSourceClient(Protocol):
     """Source client contract used by the adapter and deterministic fixtures."""
 
-    def fetch(self, request_url: str | None = None): ...
+    def fetch(self, request_url: str | None = None) -> MicrosoftEntraDeltaPageV1: ...
 
     def close(self) -> None: ...
 
@@ -386,7 +387,7 @@ class MicrosoftEntraDeltaAdapter:
         self,
         instance: ConnectorInstanceV1,
         checkpoint: ConnectorCheckpointV1 | None,
-    ):
+    ) -> MicrosoftEntraDeltaPageV1:
         settings = self._settings(instance)
         credential_ref = instance.authentication.credential_ref
         if credential_ref is None:
@@ -427,7 +428,11 @@ class MicrosoftEntraDeltaAdapter:
                 "Entra tenant profile is not registered server-side"
             ) from exc
         collection = instance.settings.get("collection")
-        if collection not in {"users", "groups"}:
+        if collection == "users":
+            qualified_collection: EntraDeltaCollection = "users"
+        elif collection == "groups":
+            qualified_collection = "groups"
+        else:
             raise ConnectorConfigurationError("Entra collection must be users or groups")
         timeout = instance.settings.get("request_timeout_seconds", 30.0)
         if (
@@ -453,7 +458,7 @@ class MicrosoftEntraDeltaAdapter:
         return MicrosoftEntraDeltaSettings(
             tenant_profile_id=profile_id,
             tenant_profile=tenant_profile,
-            collection=collection,
+            collection=qualified_collection,
             request_timeout_seconds=float(timeout),
             maximum_response_bytes=maximum,
         )
