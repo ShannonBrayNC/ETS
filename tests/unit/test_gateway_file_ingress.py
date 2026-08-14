@@ -109,7 +109,9 @@ def make_service(
     return service, log, sync_queue
 
 
-def test_file_ingress_commits_authoritative_scope_and_queues_without_raw_payload(tmp_path: Path) -> None:
+def test_file_ingress_commits_authoritative_scope_and_queues_without_raw_payload(
+    tmp_path: Path,
+) -> None:
     marker = b"RAW-FILE-SECRET-MARKER"
     received = datetime(2026, 8, 14, 1, 30, tzinfo=UTC)
     service, event_log, sync_queue = make_service(tmp_path, now=received)
@@ -120,7 +122,8 @@ def test_file_ingress_commits_authoritative_scope_and_queues_without_raw_payload
     assert event.tenant_id == "tenant_authoritative"
     assert event.workspace_id == "workspace_authoritative"
     assert event.created_at_utc == received
-    assert event.metadata["capture_metadata"]["object_digest"] == hashlib.sha256(marker).hexdigest()
+    expected_object_digest = hashlib.sha256(marker).hexdigest()
+    assert event.metadata["capture_metadata"]["object_digest"] == expected_object_digest
     assert marker.decode() not in json.dumps(event.model_dump(mode="json"))
     queued = sync_queue.claim_batch(1)
     assert len(queued) == 1
