@@ -177,7 +177,7 @@ def _page(*, cursor: str | None = None) -> MicrosoftEntraDeltaPageV1:
         {
             "schema_version": "ets.connector.microsoft.entra_delta_page.v1",
             "collection": "users",
-            "records": [_record().model_dump(mode="json")],
+            "records": (_record().model_dump(mode="json"),),
             "next_link": next_link,
             "delta_link": None,
         }
@@ -268,7 +268,9 @@ def test_entra_removed_object_is_a_source_claim_not_a_new_observation_time() -> 
             {
                 "schema_version": "ets.connector.microsoft.entra_delta_page.v1",
                 "collection": "users",
-                "records": [_record(removed_reason="deleted").model_dump(mode="json")],
+                "records": (
+                    _record(removed_reason="deleted").model_dump(mode="json"),
+                ),
                 "next_link": None,
                 "delta_link": (
                     "https://graph.microsoft.com/v1.0/users/delta?"
