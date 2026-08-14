@@ -17,6 +17,16 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from fastapi import Request
 
+from ets.api.authorization import (
+    ALL_CAPABILITIES,
+    AuthCapability,
+    AuthorizationProfile,
+    AuthRole,
+    AuthRoleError,
+    capabilities_for_roles,
+    parse_role_claim,
+)
+
 
 class AuthError(PermissionError):
     """Raised when API authentication fails."""
@@ -27,6 +37,12 @@ class AuthContext:
     subject: str | None = None
     tenant_id: str | None = None
     workspace_id: str | None = None
+    roles: tuple[AuthRole, ...] = ()
+    capabilities: tuple[AuthCapability, ...] = ()
+    authorization_profile: AuthorizationProfile = "local_nonproduction"
+
+    def has_capability(self, capability: AuthCapability) -> bool:
+        return capability in self.capabilities
 
 
 class AuthPolicy:
@@ -37,6 +53,14 @@ class AuthPolicy:
 
 class LocalHeaderAuthPolicy(AuthPolicy):
     """Development auth mode; tenant/workspace scoping comes from headers."""
+
+    def authenticate(self, request: Request) -> AuthContext:
+        return AuthContext(
+            subject="local-header",
+            roles=("administrator",),
+            capabilities=ALL_CAPABILITIES,
+            authorization_profile="local_nonproduction",
+        )
 
 
 class LocalAPIKeyAuthPolicy(AuthPolicy):
@@ -51,7 +75,12 @@ class LocalAPIKeyAuthPolicy(AuthPolicy):
         provided = request.headers.get("X-ETS-API-Key")
         if provided is None or not hmac.compare_digest(provided, self._api_key):
             raise AuthError("invalid API key")
-        return AuthContext(subject="local-api-key")
+        return AuthContext(
+            subject="local-api-key",
+            roles=("administrator",),
+            capabilities=ALL_CAPABILITIES,
+            authorization_profile="local_nonproduction",
+        )
 
 
 class ProductionJWTAuthPolicy(AuthPolicy):
@@ -70,10 +99,7 @@ class ProductionJWTAuthPolicy(AuthPolicy):
             raise AuthError("missing bearer token")
 
         claims = self._decode_token(token)
-        tenant_id = _optional_str(claims.get("tenant_id"), "tenant_id")
-        workspace_id = _optional_str(claims.get("workspace_id"), "workspace_id")
-        subject = _optional_str(claims.get("sub"), "sub")
-        return AuthContext(subject=subject, tenant_id=tenant_id, workspace_id=workspace_id)
+        return _context_from_production_claims(claims)
 
     def _decode_token(self, token: str) -> dict[str, Any]:
         parts = token.split(".")
@@ -152,11 +178,7 @@ class ProductionJWKSAuthPolicy(AuthPolicy):
             raise AuthError("missing bearer token")
 
         claims = self._decode_token(token)
-        return AuthContext(
-            subject=_optional_str(claims.get("sub"), "sub"),
-            tenant_id=_optional_str(claims.get("tenant_id"), "tenant_id"),
-            workspace_id=_optional_str(claims.get("workspace_id"), "workspace_id"),
-        )
+        return _context_from_production_claims(claims)
 
     def _decode_token(self, token: str) -> dict[str, Any]:
         parts = token.split(".")
@@ -243,6 +265,21 @@ def rsa_public_jwk(public_key: rsa.RSAPublicKey, *, kid: str) -> dict[str, str]:
         "n": _b64encode(_int_to_bytes(numbers.n)),
         "e": _b64encode(_int_to_bytes(numbers.e)),
     }
+
+
+def _context_from_production_claims(claims: dict[str, Any]) -> AuthContext:
+    try:
+        roles = parse_role_claim(claims.get("roles"))
+    except AuthRoleError as exc:
+        raise AuthError(str(exc)) from exc
+    return AuthContext(
+        subject=_optional_str(claims.get("sub"), "sub"),
+        tenant_id=_optional_str(claims.get("tenant_id"), "tenant_id"),
+        workspace_id=_optional_str(claims.get("workspace_id"), "workspace_id"),
+        roles=roles,
+        capabilities=capabilities_for_roles(roles),
+        authorization_profile="production",
+    )
 
 
 def _b64encode(value: bytes) -> str:
