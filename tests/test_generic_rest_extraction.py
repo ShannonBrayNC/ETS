@@ -9,7 +9,11 @@ import pytest
 
 from ets.connectors.conformance import ConnectorConformanceHarness
 from ets.connectors.generic.extraction import GenericRestAdapter
-from ets.connectors.generic.rest import GenericRestHostPolicy, GenericRestRequestProfile, GenericRestResponse
+from ets.connectors.generic.rest import (
+    GenericRestHostPolicy,
+    GenericRestRequestProfile,
+    GenericRestResponse,
+)
 from ets.connectors.models import (
     ConnectorAuthentication,
     ConnectorCheckpointPolicy,
@@ -59,7 +63,11 @@ class FixtureClientFactory:
         return FixtureClient(self.responses.pop(0))
 
 
-def _response(payload: dict[str, Any], *, content_type: str = "application/json") -> GenericRestResponse:
+def _response(
+    payload: dict[str, Any],
+    *,
+    content_type: str = "application/json",
+) -> GenericRestResponse:
     return GenericRestResponse(
         body=json.dumps(payload).encode("utf-8"),
         content_type=content_type,
