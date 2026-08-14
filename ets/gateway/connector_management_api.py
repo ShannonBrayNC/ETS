@@ -69,12 +69,20 @@ def create_connector_management_router(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
     @router.get("/catalog")
-    def catalog() -> tuple[object, ...]:
-        return tuple(item.model_dump(mode="json") for item in service.catalog())
+    def catalog(request: Request) -> tuple[object, ...]:
+        try:
+            definitions = service.catalog(principal(request))
+        except ConnectorManagementAuthorizationError as exc:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+        return tuple(item.model_dump(mode="json") for item in definitions)
 
     @router.get("/instances", response_model=ConnectorInstanceListResponse)
     def list_instances(request: Request) -> ConnectorInstanceListResponse:
-        return ConnectorInstanceListResponse(items=service.list_instances(principal(request)))
+        try:
+            items = service.list_instances(principal(request))
+        except ConnectorManagementAuthorizationError as exc:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+        return ConnectorInstanceListResponse(items=items)
 
     @router.post(
         "/instances",
@@ -229,8 +237,13 @@ def create_connector_management_router(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
         except ConnectorRevisionConflictError as exc:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-        except (ConnectorManagementAuthorizationError, ValueError) as exc:
+        except ConnectorManagementAuthorizationError as exc:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(exc),
+            ) from exc
 
     @router.post("/instances/{instance_id}/gaps/detect", response_model=ConnectorRuntimeStateV1)
     def mark_gap(request: Request, instance_id: str) -> ConnectorRuntimeStateV1:
