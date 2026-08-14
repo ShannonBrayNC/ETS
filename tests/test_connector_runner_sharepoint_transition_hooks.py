@@ -21,6 +21,9 @@ from ets.gateway.microsoft_sharepoint_state_release import (
 
 NOW = datetime(2026, 8, 14, 20, 30, tzinfo=UTC)
 SOURCE_KEY = "tenant-authoritative/workspace-authoritative/sharepoint-authoritative"
+DONE_CHECKPOINT = (
+    "https://graph.microsoft.com/v1.0/drives/drive-001/root/delta?$deltatoken=done"
+)
 
 
 def _record(source_record_id: str, name: str) -> dict[str, JsonValue]:
@@ -72,7 +75,7 @@ class FixtureAdapter:
             records=(self.record,),
             checkpoint=ConnectorCheckpointV1(
                 schema_version="ets.connector.checkpoint.v1",
-                cursor="https://graph.microsoft.com/v1.0/drives/drive-001/root/delta?$deltatoken=done",
+                cursor=DONE_CHECKPOINT,
             ),
             has_more=False,
             message="fixture page",
@@ -117,11 +120,12 @@ def test_candidate_classification_precedes_commit_and_state_release_follows_queu
     candidate_hook = SharePointMetadataTransitionCandidateHook(store, source_key=SOURCE_KEY)
     release_hook = SharePointMetadataStateReleaseHook(store, source_key=SOURCE_KEY)
     ingress = FixtureIngress()
-    runner = GatewayConnectorCollectionRunner(ingress)  # type: ignore[arg-type]
+    runner = GatewayConnectorCollectionRunner(ingress)
+    baseline_adapter = FixtureAdapter(_record("drive:item-001:baseline", "report.docx"))
 
     baseline = runner.run(
-        adapter=FixtureAdapter(_record("drive:item-001:baseline", "report.docx")),  # type: ignore[arg-type]
-        instance=object(),  # type: ignore[arg-type]
+        adapter=baseline_adapter,
+        instance=object(),
         principal="fixture-principal",
         checkpoint=None,
         candidate_hook=candidate_hook,
@@ -137,9 +141,10 @@ def test_candidate_classification_precedes_commit_and_state_release_follows_queu
     assert persisted.name == "report.docx"
     assert store.baseline_complete(SOURCE_KEY) is True
 
+    renamed_adapter = FixtureAdapter(_record("drive:item-001:renamed", "renamed.docx"))
     renamed = runner.run(
-        adapter=FixtureAdapter(_record("drive:item-001:renamed", "renamed.docx")),  # type: ignore[arg-type]
-        instance=object(),  # type: ignore[arg-type]
+        adapter=renamed_adapter,
+        instance=object(),
         principal="fixture-principal",
         checkpoint=baseline.checkpoint_to_persist,
         candidate_hook=candidate_hook,
