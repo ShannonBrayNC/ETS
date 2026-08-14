@@ -15,6 +15,7 @@ from ets.capture import (
     ContentDigest,
     EvidenceReference,
     FilesystemObjectDigest,
+    FilesystemObjectMetadata,
 )
 from ets.core.api import canonicalize
 from ets.gateway.source_registry import SourceRegistration
@@ -187,13 +188,13 @@ def build_file_capture(
     return GatewayFileCapture(envelope=envelope, committed_representation=committed)
 
 
-def _metadata(value: object) -> dict[str, int]:
+def _metadata(value: FilesystemObjectMetadata) -> dict[str, int]:
     return {
-        "device": int(getattr(value, "device")),
-        "inode": int(getattr(value, "inode")),
-        "size": int(getattr(value, "size")),
-        "mtime_ns": int(getattr(value, "mtime_ns")),
-        "ctime_ns": int(getattr(value, "ctime_ns")),
+        "device": value.device,
+        "inode": value.inode,
+        "size": value.size,
+        "mtime_ns": value.mtime_ns,
+        "ctime_ns": value.ctime_ns,
     }
 
 
