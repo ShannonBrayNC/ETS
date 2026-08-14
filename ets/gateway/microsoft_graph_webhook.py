@@ -33,8 +33,8 @@ from ets.gateway.host import (
 )
 from ets.gateway.microsoft_graph_commit import (
     MicrosoftGraphResourceCommitRetryableError,
-    MicrosoftGraphResourceCommitTerminalError,
     MicrosoftGraphResourceCommitter,
+    MicrosoftGraphResourceCommitTerminalError,
 )
 
 GRAPH_WEBHOOK_PATH = "/gateway/v1/microsoft/graph"
