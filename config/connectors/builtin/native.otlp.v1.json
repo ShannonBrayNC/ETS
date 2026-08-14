@@ -1,0 +1,25 @@
+{
+  "schema_version": "ets.connector.definition.v1",
+  "connector_id": "native.otlp",
+  "display_name": "Gateway OTLP",
+  "description": "Built-in OTLP intake using the shared G1F semantic and commitment contracts; transport remains unavailable until G1F-C/D qualification completes.",
+  "implementation_class": "native",
+  "source_classes": ["otlp_logs", "otlp_metrics", "otlp_traces"],
+  "adapter_version": "1.0",
+  "sdk_contract_version": "ets.connector.sdk.v1",
+  "capture_envelope_versions": ["ets.capture.v1"],
+  "gateway_host_versions": ["ets.gateway.connector-host.v1"],
+  "capabilities": {
+    "delivery_modes": ["push"],
+    "authentication_methods": ["gateway_principal"],
+    "discovery": false,
+    "checkpointing": false,
+    "reconciliation": false,
+    "normalization": true,
+    "health": true
+  },
+  "configuration_schema": {
+    "instance_schema": "ets.connector.instance.v1",
+    "settings_schema_ref": "schemas/connectors/v1/native/otlp-settings.schema.json"
+  }
+}
