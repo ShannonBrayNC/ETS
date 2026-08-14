@@ -16,8 +16,8 @@ from ets.connectors.credentials.provider import (
     CredentialResolutionError,
 )
 from ets.connectors.enterprise.microsoft_purview_activity import (
-    MicrosoftPurviewManagementProfile,
     PURVIEW_CONTENT_TYPES,
+    MicrosoftPurviewManagementProfile,
     PurviewContentType,
 )
 from ets.connectors.enterprise.microsoft_purview_audit import MicrosoftPurviewAuditRecordV1
@@ -138,7 +138,9 @@ class MicrosoftPurviewActivityAdapter:
         settings = _settings(instance)
         self._profile_resolver.resolve(settings.management_profile_id)
         if instance.collection.mode != "poll":
-            raise ConnectorConfigurationError("Purview Management Activity requires poll collection")
+            raise ConnectorConfigurationError(
+                "Purview Management Activity requires poll collection"
+            )
         if instance.checkpoint.strategy != "source_cursor":
             raise ConnectorConfigurationError(
                 "Purview Management Activity requires source_cursor checkpointing"
@@ -206,9 +208,15 @@ class MicrosoftPurviewActivityAdapter:
         except MicrosoftPurviewThrottleError:
             return _collection("throttled", "Purview Management Activity source is rate limited")
         except MicrosoftPurviewRetryableError:
-            return _collection("retryable_error", "Purview Management Activity source is unavailable")
+            return _collection(
+                "retryable_error",
+                "Purview Management Activity source is unavailable",
+            )
         except (MicrosoftPurviewClientError, ValueError):
-            return _collection("terminal_error", "Purview source response violated the qualified profile")
+            return _collection(
+                "terminal_error",
+                "Purview source response violated the qualified profile",
+            )
 
     def checkpoint(self, result: ConnectorCollectionResultV1) -> ConnectorCheckpointV1 | None:
         return result.checkpoint
@@ -352,7 +360,9 @@ def _settings(instance: ConnectorInstanceV1) -> MicrosoftPurviewConnectorSetting
     poll_window = _integer(instance.settings.get("poll_window_seconds", 3600), 60, 86400)
     overlap = _integer(instance.settings.get("overlap_seconds", 300), 0, 3600)
     if overlap >= poll_window:
-        raise ConnectorConfigurationError("Purview overlap_seconds must be below poll_window_seconds")
+        raise ConnectorConfigurationError(
+            "Purview overlap_seconds must be below poll_window_seconds"
+        )
     return MicrosoftPurviewConnectorSettings(
         management_profile_id=profile_id,
         content_type=content_type,
