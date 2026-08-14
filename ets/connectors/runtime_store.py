@@ -213,6 +213,8 @@ class ConnectorRuntimeStore:
         last_success_at_utc: datetime | None,
         now: datetime,
     ) -> ConnectorRuntimeStateV1:
+        if observation_state == "collection_gap" and not gap_open:
+            raise ValueError("collection_gap requires gap_open before checkpoint persistence")
         current = _utc(now)
         last_success = None if last_success_at_utc is None else _utc(last_success_at_utc)
         checkpoint_json = None if checkpoint is None else checkpoint.model_dump_json()
@@ -341,14 +343,19 @@ class ConnectorRuntimeStore:
                 (_time(current), _time(current), limit),
             ).fetchall()
             claimed = tuple(str(row["instance_id"]) for row in rows)
-            for instance_id in claimed:
+            for claimed_instance_id in claimed:
                 connection.execute(
                     """
                     UPDATE connector_runtime
                     SET lease_owner = ?, lease_expires_at_utc = ?, updated_at_utc = ?
                     WHERE instance_id = ?
                     """,
-                    (owner, _time(lease_expires), _time(current), instance_id),
+                    (
+                        owner,
+                        _time(lease_expires),
+                        _time(current),
+                        claimed_instance_id,
+                    ),
                 )
         return claimed
 
