@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/connectors/v1/generic/generic-rest-settings.schema.json",
+  "title": "ETS Generic REST connector settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "endpoint_url",
+    "records_path",
+    "source_record_id_path",
+    "evidence_fields"
+  ],
+  "properties": {
+    "endpoint_url": {
+      "type": "string",
+      "minLength": 9,
+      "maxLength": 2000,
+      "pattern": "^https://"
+    },
+    "records_path": {"$ref": "#/$defs/jsonPointer"},
+    "source_record_id_path": {"$ref": "#/$defs/jsonPointer"},
+    "observed_at_path": {"$ref": "#/$defs/jsonPointer"},
+    "evidence_fields": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+      },
+      "additionalProperties": {"$ref": "#/$defs/jsonPointer"}
+    },
+    "event_type": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "checkpoint_cursor_path": {"$ref": "#/$defs/jsonPointer"},
+    "has_more_path": {"$ref": "#/$defs/jsonPointer"},
+    "cursor_query_parameter": {"$ref": "#/$defs/queryName"},
+    "time_window_query_parameter": {"$ref": "#/$defs/queryName"},
+    "window_overlap_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 86400,
+      "default": 300
+    },
+    "request_timeout_seconds": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 60,
+      "default": 30
+    },
+    "max_response_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16777216,
+      "default": 1048576
+    },
+    "headers": {"$ref": "#/$defs/stringMap"},
+    "query": {"$ref": "#/$defs/stringMap"}
+  },
+  "$defs": {
+    "jsonPointer": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 1000,
+      "pattern": "^/"
+    },
+    "queryName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "stringMap": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 2048
+      }
+    }
+  }
+}

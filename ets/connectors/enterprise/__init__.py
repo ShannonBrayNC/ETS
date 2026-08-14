@@ -16,6 +16,11 @@ from ets.connectors.enterprise.kubernetes import (
     KubernetesAuditDecodeError,
     parse_kubernetes_audit_event_list,
 )
+from ets.connectors.enterprise.okta import (
+    OktaSystemLogAdapter,
+    OktaSystemLogHttpClient,
+    OktaSystemLogPage,
+)
 
 __all__ = [
     "AwsCloudTrailAdapter",
@@ -27,5 +32,8 @@ __all__ = [
     "KubernetesAuditAdapter",
     "KubernetesAuditBatch",
     "KubernetesAuditDecodeError",
+    "OktaSystemLogAdapter",
+    "OktaSystemLogHttpClient",
+    "OktaSystemLogPage",
     "parse_kubernetes_audit_event_list",
 ]
