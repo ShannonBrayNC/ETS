@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/connectors/v1/enterprise/kubernetes-audit-settings.schema.json",
+  "title": "ETS Kubernetes audit webhook connector settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["cluster_id"],
+  "properties": {
+    "cluster_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"
+    },
+    "maximum_batch_events": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 400
+    },
+    "maximum_event_bytes": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 1048576
+    }
+  }
+}
