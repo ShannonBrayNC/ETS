@@ -136,12 +136,12 @@ class KubernetesAuditAdapter:
         record: Mapping[str, JsonValue],
     ) -> ConnectorEvidenceCandidateV1:
         settings = _settings(instance)
-        audit_id = _required_string(record, "audit_id", 500)
-        stage = _required_string(record, "stage", 100)
+        _required_string(record, "audit_id", 500)
+        _required_string(record, "stage", 100)
         observed_at = _source_timestamp(record)
         return ConnectorEvidenceCandidateV1(
             schema_version="ets.connector.candidate.v1",
-            source_record_id=f"{audit_id}:{stage}",
+            source_record_id="audit-stage:" + stable_kubernetes_audit_identity(record),
             source_system=KUBERNETES_SOURCE_SYSTEM,
             observed_at_utc=observed_at,
             event_type=KUBERNETES_EVENT_TYPE,
