@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 AuthRole = Literal[
     "viewer",
@@ -94,7 +94,7 @@ def parse_role_claim(value: Any) -> tuple[AuthRole, ...]:
     for item in raw_roles:
         if not isinstance(item, str) or item not in ROLE_CAPABILITIES:
             raise AuthRoleError("bearer token contains an unsupported ETS role")
-        role = cast(AuthRole, item)
+        role = item
         if role not in roles:
             roles.append(role)
     return tuple(sorted(roles))
