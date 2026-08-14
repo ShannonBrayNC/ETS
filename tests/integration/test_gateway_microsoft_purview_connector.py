@@ -322,7 +322,8 @@ def test_purview_gateway_commits_before_releasing_checkpoint(tmp_path: Path) -> 
     event = event_log.list_entries()[0].event
     assert event.tenant_id == "tenant-authoritative"
     assert event.workspace_id == "workspace-authoritative"
-    assert event.observed_at_utc == EVENT_TIME
+    assert event.metadata["observed_at_utc"] == EVENT_TIME.isoformat().replace("+00:00", "Z")
+    assert event.created_at_utc == NOW
     serialized_event = json.dumps(event.model_dump(mode="json"), sort_keys=True)
     assert "instance-tenant-must-not-authorize" not in serialized_event
     assert "fixture-purview-token" not in serialized_event
