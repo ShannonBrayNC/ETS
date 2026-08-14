@@ -79,9 +79,11 @@ def digest_stream_sha256(
             raise StreamDigestError("stream returned more bytes than requested")
         if not chunk:
             if declared_length is not None and observed != declared_length:
-                raise StreamDigestLengthError(
-                    f"declared length mismatch: expected {declared_length} bytes, observed {observed}"
+                message = (
+                    f"declared length mismatch: expected {declared_length} bytes, "
+                    f"observed {observed}"
                 )
+                raise StreamDigestLengthError(message)
             return StreamDigestResult(
                 algorithm="sha256",
                 value=hasher.hexdigest(),
