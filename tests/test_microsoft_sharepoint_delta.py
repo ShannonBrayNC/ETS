@@ -6,10 +6,7 @@ from datetime import UTC, datetime
 import pytest
 
 from ets.connectors.credentials.models import CredentialReferenceV1
-from ets.connectors.enterprise.microsoft import (
-    MicrosoftCloudEndpoints,
-    MicrosoftTenantProfileV1,
-)
+from ets.connectors.enterprise.microsoft import MicrosoftTenantProfileV1
 from ets.connectors.enterprise.microsoft_sharepoint_delta import (
     MicrosoftSharePointDeltaError,
     parse_sharepoint_delta_page,
@@ -19,23 +16,20 @@ from ets.connectors.enterprise.microsoft_sharepoint_delta import (
 )
 
 TENANT_ID = "11111111-1111-1111-1111-111111111111"
+APPLICATION_ID = "22222222-2222-2222-2222-222222222222"
 
 
 def _tenant() -> MicrosoftTenantProfileV1:
     return MicrosoftTenantProfileV1(
         schema_version="ets.connector.microsoft.tenant_profile.v1",
         tenant_id=TENANT_ID,
+        application_id=APPLICATION_ID,
         cloud="global",
-        endpoints=MicrosoftCloudEndpoints(
-            authority_root="https://login.microsoftonline.com",
-            graph_root="https://graph.microsoft.com",
-        ),
         credential_ref=CredentialReferenceV1(
             schema_version="ets.connector.credential_ref.v1",
             ref="env://MICROSOFT_GRAPH_TOKEN",
         ),
         consent_state="granted",
-        granted_permissions=("Sites.Read.All",),
     )
 
 
