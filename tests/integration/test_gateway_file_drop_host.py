@@ -63,13 +63,15 @@ def make_host(
     intake_root.mkdir()
     event_log = InMemoryAppendOnlyLog()
     sync_queue = queue or SyncQueue(tmp_path / "sync.db")
+    registry = StaticSourceRegistry([registration()])
     service = GatewayFileIngressService(
-        registry=StaticSourceRegistry([registration()]),
+        registry=registry,
         event_log=event_log,
         sync_queue=sync_queue,
     )
     host = GatewayFileDropHost(
         service=service,
+        registry=registry,
         intake_root=intake_root,
         policy=policy,
     )
@@ -106,6 +108,34 @@ def test_file_drop_valid_empty_exact_and_over_bound(tmp_path: Path) -> None:
         assert over.stage == "rejected"
         assert over.error_code == "filesystem_rejected"
         assert len(event_log.list_entries()) == 3
+
+    asyncio.run(scenario())
+
+
+def test_file_drop_authorization_fails_before_file_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        host, event_log, _, root = make_host(tmp_path)
+        (root / "secret.bin").write_bytes(b"do-not-read")
+        called = False
+
+        def forbidden_digest(*args: Any, **kwargs: Any) -> Any:
+            nonlocal called
+            called = True
+            raise AssertionError("unauthorized submission reached filesystem read")
+
+        monkeypatch.setattr(file_drop_module, "digest_filesystem_object", forbidden_digest)
+        result = await host.submit(
+            "spiffe://example.test/workload/unauthorized",
+            GatewayFileDropSubmission(relative_path="secret.bin", delivery_id="unauthorized"),
+        )
+
+        assert result.stage == "rejected"
+        assert result.error_code == "source_unauthorized"
+        assert called is False
+        assert event_log.list_entries() == []
 
     asyncio.run(scenario())
 
@@ -216,7 +246,7 @@ def test_file_drop_concurrency_saturation_is_bounded(
         release = threading.Event()
         original = file_drop_module.digest_filesystem_object
 
-        def slow_digest(*args: object, **kwargs: object) -> object:
+        def slow_digest(*args: Any, **kwargs: Any) -> Any:
             started.set()
             release.wait(timeout=2)
             return original(*args, **kwargs)
@@ -257,7 +287,7 @@ def test_file_drop_shutdown_drains_admitted_work_and_rejects_new(
         release = threading.Event()
         original = file_drop_module.digest_filesystem_object
 
-        def slow_digest(*args: object, **kwargs: object) -> object:
+        def slow_digest(*args: Any, **kwargs: Any) -> Any:
             started.set()
             release.wait(timeout=2)
             return original(*args, **kwargs)
