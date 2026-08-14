@@ -25,6 +25,12 @@ from ets.connectors.models import (
     ConnectorScope,
     ConnectorSource,
 )
+from ets.connectors.native import (
+    NATIVE_CONNECTOR_BINDINGS,
+    NativeConnectorAdapter,
+    NativeConnectorBinding,
+    load_native_connector_registry,
+)
 from ets.connectors.registry import (
     ConnectorCompatibilityError,
     ConnectorNotFoundError,
@@ -43,6 +49,7 @@ __all__ = [
     "CONNECTOR_INSTANCE_SCHEMA_VERSION",
     "CONNECTOR_SDK_CONTRACT_VERSION",
     "GATEWAY_CONNECTOR_HOST_VERSION",
+    "NATIVE_CONNECTOR_BINDINGS",
     "ConnectorAdapter",
     "ConnectorAuthentication",
     "ConnectorCapabilities",
@@ -69,4 +76,7 @@ __all__ = [
     "ConnectorRetryPolicy",
     "ConnectorScope",
     "ConnectorSource",
+    "NativeConnectorAdapter",
+    "NativeConnectorBinding",
+    "load_native_connector_registry",
 ]
