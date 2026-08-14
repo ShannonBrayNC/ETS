@@ -9,10 +9,19 @@ from ets.capture.models import (
     ContentDigest,
     EvidenceReference,
 )
+from ets.capture.object_digest import (
+    BinaryStream,
+    StreamDigestError,
+    StreamDigestLengthError,
+    StreamDigestLimitError,
+    StreamDigestResult,
+    digest_stream_sha256,
+)
 from ets.capture.syslog import SyslogHeader, SyslogParseError, parse_rfc5424_header
 from ets.capture.syslog_framing import OctetCountingFramer, SyslogFramingError
 
 __all__ = [
+    "BinaryStream",
     "CaptureEnvelopeV1",
     "CapturePrivacy",
     "CaptureSource",
@@ -20,10 +29,15 @@ __all__ = [
     "ContentDigest",
     "EvidenceReference",
     "OctetCountingFramer",
+    "StreamDigestError",
+    "StreamDigestLengthError",
+    "StreamDigestLimitError",
+    "StreamDigestResult",
     "SyslogFramingError",
     "SyslogHeader",
     "SyslogParseError",
     "capture_event_metadata",
+    "digest_stream_sha256",
     "parse_rfc5424_header",
     "to_evidence_event",
 ]
