@@ -166,7 +166,7 @@ def validate_purview_next_page_uri(
             "Purview next-page URI changed the approved content type"
         )
     publisher = query.get("PublisherIdentifier")
-    if publisher not in {None, [profile.publisher_identifier]}:
+    if publisher is not None and publisher != [profile.publisher_identifier]:
         raise MicrosoftPurviewActivityError(
             "Purview next-page URI changed the server-owned publisher identifier"
         )
