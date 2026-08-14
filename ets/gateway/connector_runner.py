@@ -11,6 +11,7 @@ from pydantic import JsonValue
 from ets.connectors.models import (
     ConnectorCheckpointV1,
     ConnectorCollectionResultV1,
+    ConnectorEvidenceCandidateV1,
     ConnectorInstanceV1,
     ConnectorOperationCode,
 )
@@ -27,6 +28,16 @@ from ets.gateway.ingress import (
 
 class GatewayConnectorReleaseError(RuntimeError):
     """Raised when post-commit operational state cannot be durably released."""
+
+
+class GatewayConnectorCandidateHook(Protocol):
+    """Optional deterministic pre-commit transformation of a normalized candidate."""
+
+    def transform(
+        self,
+        record: Mapping[str, JsonValue],
+        candidate: ConnectorEvidenceCandidateV1,
+    ) -> ConnectorEvidenceCandidateV1: ...
 
 
 class GatewayConnectorReleaseHook(Protocol):
@@ -62,6 +73,7 @@ class GatewayConnectorCollectionRunner:
         instance: ConnectorInstanceV1,
         principal: str,
         checkpoint: ConnectorCheckpointV1 | None,
+        candidate_hook: GatewayConnectorCandidateHook | None = None,
         release_hook: GatewayConnectorReleaseHook | None = None,
     ) -> GatewayConnectorRunResult:
         collection = adapter.collect(instance, checkpoint)
@@ -85,6 +97,7 @@ class GatewayConnectorCollectionRunner:
                 instance=instance,
                 principal=principal,
                 record=record,
+                candidate_hook=candidate_hook,
             )
             if result is not None:
                 return GatewayConnectorRunResult(
@@ -136,9 +149,12 @@ class GatewayConnectorCollectionRunner:
         instance: ConnectorInstanceV1,
         principal: str,
         record: Mapping[str, JsonValue],
+        candidate_hook: GatewayConnectorCandidateHook | None,
     ) -> GatewayConnectorRunResult | None:
         try:
             candidate = adapter.normalize(instance, record)
+            if candidate_hook is not None:
+                candidate = candidate_hook.transform(record, candidate)
             receipt = self._ingress.ingest_candidate(
                 principal,
                 GatewayConnectorCandidateRequest(candidate=candidate),
