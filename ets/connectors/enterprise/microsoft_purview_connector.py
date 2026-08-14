@@ -17,10 +17,15 @@ from ets.connectors.credentials.provider import (
 )
 from ets.connectors.enterprise.microsoft_purview_activity import (
     PURVIEW_CONTENT_TYPES,
+    MicrosoftPurviewContentDescriptorV1,
+    MicrosoftPurviewDiscoveryPageV1,
     MicrosoftPurviewManagementProfile,
     PurviewContentType,
 )
-from ets.connectors.enterprise.microsoft_purview_audit import MicrosoftPurviewAuditRecordV1
+from ets.connectors.enterprise.microsoft_purview_audit import (
+    MicrosoftPurviewAuditContentV1,
+    MicrosoftPurviewAuditRecordV1,
+)
 from ets.connectors.enterprise.microsoft_purview_http import (
     MicrosoftPurviewActivityHttpClient,
     MicrosoftPurviewAuthenticationError,
@@ -34,8 +39,10 @@ from ets.connectors.models import (
     ConnectorCollectionResultV1,
     ConnectorDefinitionV1,
     ConnectorEvidenceCandidateV1,
+    ConnectorHealthState,
     ConnectorHealthV1,
     ConnectorInstanceV1,
+    ConnectorOperationCode,
     ConnectorReconciliationResultV1,
 )
 from ets.connectors.sdk import ConnectorConfigurationError
@@ -89,15 +96,15 @@ class MicrosoftPurviewSourceClient(Protocol):
         start_time_utc: datetime | None = None,
         end_time_utc: datetime | None = None,
         next_page_uri: str | None = None,
-    ): ...
+    ) -> MicrosoftPurviewDiscoveryPageV1: ...
 
     def retrieve_content(
         self,
-        descriptor,
+        descriptor: MicrosoftPurviewContentDescriptorV1,
         *,
         service_specific_allowlist: frozenset[str] = frozenset(),
         include_client_ip: bool = False,
-    ): ...
+    ) -> MicrosoftPurviewAuditContentV1: ...
 
     def close(self) -> None: ...
 
@@ -162,7 +169,9 @@ class MicrosoftPurviewActivityAdapter:
                 code="ok",
                 message="Purview Management Activity source is reachable",
             )
-        state = "degraded" if result.code in {"retryable_error", "throttled"} else "failed"
+        state: ConnectorHealthState = (
+            "degraded" if result.code in {"retryable_error", "throttled"} else "failed"
+        )
         return ConnectorHealthV1(
             schema_version="ets.connector.health.v1",
             state=state,
@@ -262,7 +271,7 @@ class MicrosoftPurviewActivityAdapter:
             metadata={
                 "provider": "microsoft_purview",
                 "source_class": "management_activity",
-                "record": cast(dict[str, JsonValue], evidence),
+                "record": evidence,
             },
         )
 
@@ -415,10 +424,10 @@ def _intermediate_record(record: MicrosoftPurviewAuditRecordV1) -> dict[str, Jso
     }
 
 
-def _collection(code: str, message: str) -> ConnectorCollectionResultV1:
+def _collection(code: ConnectorOperationCode, message: str) -> ConnectorCollectionResultV1:
     return ConnectorCollectionResultV1(
         schema_version="ets.connector.collection_result.v1",
-        code=cast(object, code),
+        code=code,
         message=message,
     )
 
