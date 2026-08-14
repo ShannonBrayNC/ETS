@@ -10,6 +10,12 @@ from ets.connectors.enterprise.github import (
     GitHubAuditHttpClient,
     GitHubAuditPage,
 )
+from ets.connectors.enterprise.kubernetes import (
+    KubernetesAuditAdapter,
+    KubernetesAuditBatch,
+    KubernetesAuditDecodeError,
+    parse_kubernetes_audit_event_list,
+)
 from ets.connectors.enterprise.okta import (
     OktaSystemLogAdapter,
     OktaSystemLogHttpClient,
@@ -23,7 +29,11 @@ __all__ = [
     "GitHubAuditAdapter",
     "GitHubAuditHttpClient",
     "GitHubAuditPage",
+    "KubernetesAuditAdapter",
+    "KubernetesAuditBatch",
+    "KubernetesAuditDecodeError",
     "OktaSystemLogAdapter",
     "OktaSystemLogHttpClient",
     "OktaSystemLogPage",
+    "parse_kubernetes_audit_event_list",
 ]
