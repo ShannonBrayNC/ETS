@@ -116,17 +116,15 @@ class AwsCloudTrailBotoClient:
         credential_buffer = bytearray(credential_material)
         try:
             credentials = _decode_session_credentials(bytes(credential_buffer))
-            boto3 = importlib.import_module("boto3")
-            botocore_config = importlib.import_module("botocore.config")
-            config_type = getattr(botocore_config, "Config")
-            session_type = getattr(boto3, "Session")
-            session = session_type(
+            boto3: Any = importlib.import_module("boto3")
+            botocore_config: Any = importlib.import_module("botocore.config")
+            session = boto3.Session(
                 aws_access_key_id=credentials["aws_access_key_id"],
                 aws_secret_access_key=credentials["aws_secret_access_key"],
                 aws_session_token=credentials.get("aws_session_token"),
                 region_name=settings.region,
             )
-            config = config_type(
+            config = botocore_config.Config(
                 connect_timeout=settings.request_timeout_seconds,
                 read_timeout=settings.request_timeout_seconds,
                 retries={"max_attempts": 0},
@@ -160,11 +158,15 @@ class AwsCloudTrailBotoClient:
             raise AwsCloudTrailClientError("AWS CloudTrail client is closed")
         if not 1 <= per_page <= AWS_CLOUDTRAIL_MAX_PAGE_SIZE:
             raise ValueError("AWS CloudTrail page size must be 1-50")
+
         request: dict[str, object] = {"MaxResults": per_page}
         if next_token is not None:
             request["NextToken"] = next_token
         if observed_at_or_after is not None:
-            if observed_at_or_after.tzinfo is None or observed_at_or_after.utcoffset() is None:
+            if (
+                observed_at_or_after.tzinfo is None
+                or observed_at_or_after.utcoffset() is None
+            ):
                 raise ValueError("AWS CloudTrail checkpoint timestamp must be timezone-aware")
             request["StartTime"] = observed_at_or_after.astimezone(UTC)
 
@@ -184,12 +186,16 @@ class AwsCloudTrailBotoClient:
             record = _bounded_source_record(event, region=region)
             records.append(record)
             timestamp = _source_timestamp(record)
-            if timestamp is not None and (observed_through is None or timestamp > observed_through):
+            if timestamp is not None and (
+                observed_through is None or timestamp > observed_through
+            ):
                 observed_through = timestamp
 
         raw_next = response.get("NextToken")
         if raw_next is not None and not isinstance(raw_next, str):
-            raise AwsCloudTrailRetryableError("AWS CloudTrail returned an invalid pagination token")
+            raise AwsCloudTrailRetryableError(
+                "AWS CloudTrail returned an invalid pagination token"
+            )
         return AwsCloudTrailPage(
             records=tuple(records),
             next_cursor=raw_next,
@@ -347,7 +353,9 @@ class AwsCloudTrailAdapter:
                 reconciled=False,
                 gap_detected=False,
                 checkpoint=checkpoint,
-                message="AWS CloudTrail continuity cannot be established without a time checkpoint",
+                message=(
+                    "AWS CloudTrail continuity cannot be established without a time checkpoint"
+                ),
             )
         retention_floor = self._now().astimezone(UTC) - timedelta(
             days=AWS_CLOUDTRAIL_RETENTION_DAYS
@@ -359,7 +367,9 @@ class AwsCloudTrailAdapter:
                 reconciled=False,
                 gap_detected=True,
                 checkpoint=checkpoint,
-                message="AWS CloudTrail checkpoint is older than the qualified event-history window",
+                message=(
+                    "AWS CloudTrail checkpoint is older than the qualified event-history window"
+                ),
             )
         result = self.collect(instance, checkpoint)
         if result.code != "ok":
@@ -465,15 +475,25 @@ def _decode_session_credentials(material: bytes) -> dict[str, str]:
     unexpected = set(decoded) - AWS_ALLOWED_CREDENTIAL_KEYS
     if unexpected:
         raise AwsCloudTrailAuthenticationError("AWS credential lease has unsupported fields")
+
     access_key = decoded.get("aws_access_key_id")
     secret_key = decoded.get("aws_secret_access_key")
     session_token = decoded.get("aws_session_token")
     if not isinstance(access_key, str) or not access_key:
-        raise AwsCloudTrailAuthenticationError("AWS credential lease is missing access key material")
+        raise AwsCloudTrailAuthenticationError(
+            "AWS credential lease is missing access key material"
+        )
     if not isinstance(secret_key, str) or not secret_key:
-        raise AwsCloudTrailAuthenticationError("AWS credential lease is missing secret key material")
-    if session_token is not None and (not isinstance(session_token, str) or not session_token):
-        raise AwsCloudTrailAuthenticationError("AWS credential lease has invalid session token material")
+        raise AwsCloudTrailAuthenticationError(
+            "AWS credential lease is missing secret key material"
+        )
+    if session_token is not None and (
+        not isinstance(session_token, str) or not session_token
+    ):
+        raise AwsCloudTrailAuthenticationError(
+            "AWS credential lease has invalid session token material"
+        )
+
     result = {
         "aws_access_key_id": access_key,
         "aws_secret_access_key": secret_key,
@@ -483,17 +503,23 @@ def _decode_session_credentials(material: bytes) -> dict[str, str]:
     return result
 
 
-def _bounded_source_record(event: Mapping[str, Any], *, region: str) -> dict[str, JsonValue]:
+def _bounded_source_record(
+    event: Mapping[str, Any],
+    *,
+    region: str,
+) -> dict[str, JsonValue]:
     record: dict[str, JsonValue] = {"region": region}
     _copy_string(event, record, "EventId", "event_id", 500)
     _copy_string(event, record, "EventName", "event_name", 200)
     _copy_string(event, record, "EventSource", "event_source", 200)
     _copy_string(event, record, "ReadOnly", "read_only", 20)
+
     event_time = event.get("EventTime")
     if isinstance(event_time, datetime):
         if event_time.tzinfo is None or event_time.utcoffset() is None:
             event_time = event_time.replace(tzinfo=UTC)
         record["event_time"] = event_time.astimezone(UTC).isoformat()
+
     resources = event.get("Resources")
     if isinstance(resources, list):
         bounded_resources: list[JsonValue] = []
@@ -507,6 +533,7 @@ def _bounded_source_record(event: Mapping[str, Any], *, region: str) -> dict[str
                 bounded_resources.append(resource)
         if bounded_resources:
             record["resources"] = bounded_resources
+
     raw_detail = event.get("CloudTrailEvent")
     if isinstance(raw_detail, str):
         detail = _bounded_cloudtrail_detail(raw_detail)
@@ -522,6 +549,7 @@ def _bounded_cloudtrail_detail(raw: str) -> dict[str, JsonValue]:
         return {}
     if not isinstance(decoded, dict):
         return {}
+
     detail: dict[str, JsonValue] = {}
     for key in (
         "eventVersion",
@@ -537,11 +565,13 @@ def _bounded_cloudtrail_detail(raw: str) -> dict[str, JsonValue]:
         "vpcEndpointId",
     ):
         value = decoded.get(key)
-        if isinstance(value, (str, bool, int, float)) and not isinstance(value, complex):
+        if isinstance(value, (str, bool, int, float)):
             detail[_snake_case(key)] = cast(JsonValue, value)
+
     event_time = decoded.get("eventTime")
     if isinstance(event_time, str):
         detail["event_time"] = event_time[:100]
+
     identity = decoded.get("userIdentity")
     if isinstance(identity, dict):
         minimized_identity: dict[str, JsonValue] = {}
@@ -572,7 +602,14 @@ def _copy_string(
 
 
 def _minimized_record(record: Mapping[str, JsonValue]) -> dict[str, JsonValue]:
-    allowed = ("region", "event_id", "event_name", "event_source", "event_time", "read_only")
+    allowed = (
+        "region",
+        "event_id",
+        "event_name",
+        "event_source",
+        "event_time",
+        "read_only",
+    )
     minimized = {key: record[key] for key in allowed if key in record}
     resources = record.get("resources")
     if isinstance(resources, list):
@@ -620,7 +657,9 @@ def _raise_aws_error(exc: Exception) -> NoReturn:
         "SignatureDoesNotMatch",
         "UnrecognizedClientException",
     }:
-        raise AwsCloudTrailAuthenticationError("AWS session credential was rejected") from exc
+        raise AwsCloudTrailAuthenticationError(
+            "AWS session credential was rejected"
+        ) from exc
     if code in {"AccessDenied", "AccessDeniedException", "UnauthorizedOperation"}:
         raise AwsCloudTrailAuthorizationError("AWS CloudTrail access was denied") from exc
     if code in {"Throttling", "ThrottlingException", "TooManyRequestsException"}:
@@ -632,7 +671,9 @@ def _raise_aws_error(exc: Exception) -> NoReturn:
         "RequestTimeoutException",
         "ServiceUnavailable",
     }:
-        raise AwsCloudTrailRetryableError("AWS CloudTrail request is temporarily unavailable") from exc
+        raise AwsCloudTrailRetryableError(
+            "AWS CloudTrail request is temporarily unavailable"
+        ) from exc
     raise AwsCloudTrailRetryableError("AWS CloudTrail request failed") from exc
 
 
@@ -674,7 +715,10 @@ def _health(
     )
 
 
-def _collection(code: ConnectorOperationCode, message: str) -> ConnectorCollectionResultV1:
+def _collection(
+    code: ConnectorOperationCode,
+    message: str,
+) -> ConnectorCollectionResultV1:
     return ConnectorCollectionResultV1(
         schema_version="ets.connector.collection_result.v1",
         code=code,
