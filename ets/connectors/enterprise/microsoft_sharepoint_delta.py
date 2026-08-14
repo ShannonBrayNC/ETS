@@ -280,6 +280,8 @@ def _minimize_record(
         if minimized_content_type:
             metadata["content_type"] = minimized_content_type
 
+    _copy_minimized_sharing(raw, metadata)
+
     deleted = "deleted" in raw
     if deleted:
         deleted_facet = raw.get("deleted")
@@ -306,6 +308,40 @@ def _minimize_record(
         source_modified_at_utc=modified,
         metadata=metadata,
     )
+
+
+def _copy_minimized_sharing(
+    raw: dict[str, object],
+    metadata: dict[str, JsonValue],
+) -> None:
+    """Copy bounded sharing state without owner/sharedBy identity material."""
+
+    shared = raw.get("shared")
+    if shared is not None:
+        if not isinstance(shared, dict):
+            raise MicrosoftSharePointDeltaError("shared facet must be an object")
+        minimized_shared: dict[str, JsonValue] = {}
+        sharing_scope = shared.get("scope")
+        if sharing_scope is not None:
+            if not isinstance(sharing_scope, str) or sharing_scope not in {
+                "anonymous",
+                "organization",
+                "users",
+            }:
+                raise MicrosoftSharePointDeltaError("shared facet scope is invalid")
+            minimized_shared["scope"] = sharing_scope
+        shared_at = _optional_datetime(shared.get("sharedDateTime"), "shared.sharedDateTime")
+        if shared_at is not None:
+            minimized_shared["shared_at_utc"] = _format_utc(shared_at)
+        metadata["shared"] = minimized_shared
+
+    shared_changed = raw.get("@microsoft.graph.sharedChanged")
+    if shared_changed is not None:
+        if shared_changed not in {"True", "False"}:
+            raise MicrosoftSharePointDeltaError(
+                "Microsoft Graph sharedChanged annotation is invalid"
+            )
+        metadata["sharing_changed"] = shared_changed == "True"
 
 
 def _bounded_identifier(value: str, field_name: str) -> str:
