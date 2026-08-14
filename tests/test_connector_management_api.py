@@ -140,6 +140,44 @@ def test_management_api_enforces_injected_scope_authorization(tmp_path: Path) ->
     assert denied.status_code == 403
 
 
+def test_catalog_and_instance_list_require_management_authority(tmp_path: Path) -> None:
+    api = client(tmp_path)
+    headers = {"x-manage": "false"}
+
+    catalog = api.get("/gateway/connectors/v1/catalog", headers=headers)
+    listed = api.get("/gateway/connectors/v1/instances", headers=headers)
+
+    assert catalog.status_code == 403
+    assert listed.status_code == 403
+
+
+def test_invalid_gap_checkpoint_is_422_without_persisted_mutation(tmp_path: Path) -> None:
+    api = client(tmp_path)
+    created = api.post(
+        "/gateway/connectors/v1/instances",
+        json=instance().model_dump(mode="json"),
+    )
+    assert created.status_code == 201
+
+    invalid = api.put(
+        "/gateway/connectors/v1/instances/api-source/runtime/checkpoint",
+        json={
+            "checkpoint": None,
+            "expected_checkpoint_revision": 0,
+            "observation_state": "collection_gap",
+            "gap_open": False,
+            "last_success_at_utc": None,
+        },
+    )
+    assert invalid.status_code == 422
+
+    runtime = api.get("/gateway/connectors/v1/instances/api-source/runtime")
+    assert runtime.status_code == 200
+    assert runtime.json()["checkpoint_revision"] == 0
+    assert runtime.json()["observation_state"] == "unknown_observation"
+    assert runtime.json()["gap_open"] is False
+
+
 def test_management_api_does_not_supply_an_anonymous_auth_fallback(tmp_path: Path) -> None:
     registry = ConnectorRegistry([definition()])
     service = ConnectorManagementService(
