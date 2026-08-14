@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any, TypeAlias, cast
 
 from google.protobuf.json_format import MessageToDict
 from google.protobuf.message import DecodeError, Message
@@ -23,6 +23,12 @@ from ets.capture.otlp import (
 
 OTLP_PROTOBUF_DECODER_PROFILE = "ets.gateway.otlp.protobuf.v1"
 OTLP_PROTOBUF_TRANSFORMATION_PROFILE = "ets.gateway.otlp.protobuf-to-semantic.v1"
+OtlpRecordRow: TypeAlias = tuple[
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    int | None,
+]
 
 
 class OtlpProtobufDecodeError(ValueError):
@@ -49,9 +55,9 @@ def decode_otlp_protobuf(signal_class: OtlpSignalClass, payload: bytes) -> OtlpD
                     source_timestamp_utc=_timestamp_from_unix_nano(source_time_ns),
                     decoder_profile=OTLP_PROTOBUF_DECODER_PROFILE,
                     transformation_profile=OTLP_PROTOBUF_TRANSFORMATION_PROFILE,
-                    resource_metadata=_message_mapping(resource),
-                    scope_metadata=_message_mapping(scope),
-                    record_metadata=_message_mapping(record),
+                    resource_metadata=resource,
+                    scope_metadata=scope,
+                    record_metadata=record,
                 )
             )
         except (TypeError, ValueError, ValidationError):
@@ -86,50 +92,67 @@ def _parse_request(signal_class: OtlpSignalClass, payload: bytes) -> Message:
     return request
 
 
-def _iter_records(
-    signal_class: OtlpSignalClass,
-    request: Message,
-) -> Iterator[tuple[Message, Message, Message, int | None]]:
+def _iter_records(signal_class: OtlpSignalClass, request: Message) -> Iterator[OtlpRecordRow]:
     if signal_class == "logs":
         logs_request = cast(Any, request)
         for resource_logs in logs_request.resource_logs:
+            resource = _message_mapping(resource_logs.resource)
             for scope_logs in resource_logs.scope_logs:
+                scope = _message_mapping(scope_logs.scope)
                 for record in scope_logs.log_records:
                     source_time = int(record.time_unix_nano) or None
-                    yield resource_logs.resource, scope_logs.scope, record, source_time
+                    yield resource, scope, _message_mapping(record), source_time
         return
 
     if signal_class == "metrics":
         metrics_request = cast(Any, request)
         for resource_metrics in metrics_request.resource_metrics:
+            resource = _message_mapping(resource_metrics.resource)
             for scope_metrics in resource_metrics.scope_metrics:
+                scope = _message_mapping(scope_metrics.scope)
                 for metric in scope_metrics.metrics:
-                    yield (
-                        resource_metrics.resource,
-                        scope_metrics.scope,
-                        metric,
-                        _metric_source_time(metric),
-                    )
+                    yield from _metric_rows(resource, scope, metric)
         return
 
     trace_request = cast(Any, request)
     for resource_spans in trace_request.resource_spans:
+        resource = _message_mapping(resource_spans.resource)
         for scope_spans in resource_spans.scope_spans:
+            scope = _message_mapping(scope_spans.scope)
             for span in scope_spans.spans:
                 source_time = int(span.start_time_unix_nano) or None
-                yield resource_spans.resource, scope_spans.scope, span, source_time
+                yield resource, scope, _message_mapping(span), source_time
 
 
-def _metric_source_time(metric: Any) -> int | None:
+def _metric_rows(
+    resource: dict[str, Any],
+    scope: dict[str, Any],
+    metric: Any,
+) -> Iterator[OtlpRecordRow]:
     data_name = metric.WhichOneof("data")
     if data_name is None:
-        return None
+        return
     data = getattr(metric, data_name)
     points = getattr(data, "data_points", ())
     if not points:
-        return None
-    value = int(getattr(points[0], "time_unix_nano", 0))
-    return value or None
+        return
+
+    aggregation = _message_mapping(data)
+    aggregation.pop("data_points", None)
+    descriptor = {
+        "name": str(metric.name),
+        "description": str(metric.description),
+        "unit": str(metric.unit),
+        "data_kind": str(data_name),
+    }
+    for point in points:
+        record = {
+            "metric": descriptor,
+            "aggregation": aggregation,
+            "data_point": _message_mapping(point),
+        }
+        value = int(getattr(point, "time_unix_nano", 0))
+        yield resource, scope, record, value or None
 
 
 def _message_mapping(message: Message) -> dict[str, Any]:
