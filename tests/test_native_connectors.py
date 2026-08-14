@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pydantic import JsonValue
 
 from ets.connectors.models import (
     ConnectorAuthentication,
@@ -25,7 +26,7 @@ def _instance(
     connector_id: str,
     *,
     auth_method: str,
-    settings: dict[str, object] | None = None,
+    settings: dict[str, JsonValue] | None = None,
 ) -> ConnectorInstanceV1:
     return ConnectorInstanceV1(
         schema_version="ets.connector.instance.v1",
