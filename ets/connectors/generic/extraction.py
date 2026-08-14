@@ -373,7 +373,7 @@ class GenericRestAdapter:
             raise GenericRestExtractionError(
                 "Generic REST intermediate record evidence must be an object"
             )
-        selected = cast(dict[str, JsonValue], evidence)
+        selected = evidence
         profile = _profile(instance)
         metadata: dict[str, JsonValue] = {
             "provider": "generic_rest",
