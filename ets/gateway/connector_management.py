@@ -24,7 +24,7 @@ from ets.connectors.runtime_store import ConnectorRuntimeStore
 
 
 class ConnectorManagementAuthorizationError(PermissionError):
-    """Raised when a management principal cannot administer a connector scope."""
+    """Raised when a management principal cannot access a connector scope."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +34,7 @@ class ConnectorManagementPrincipal:
     actor_id: str
     tenant_id: str
     workspace_id: str
+    can_read: bool = False
     can_manage: bool = True
 
     def __post_init__(self) -> None:
@@ -66,7 +67,7 @@ class ConnectorManagementService:
         self,
         principal: ConnectorManagementPrincipal,
     ) -> tuple[ConnectorDefinitionV1, ...]:
-        self._require_management(principal)
+        self._require_read(principal)
         return self._registry.list_definitions()
 
     def create_instance(
@@ -74,7 +75,7 @@ class ConnectorManagementService:
         principal: ConnectorManagementPrincipal,
         instance: ConnectorInstanceV1,
     ) -> ConnectorInstanceRecordV1:
-        self._authorize(principal, instance)
+        self._authorize_manage(principal, instance)
         self._registry.validate_instance(instance)
         self._validate_credential_reference(instance)
         return self._store.create_instance(
@@ -89,14 +90,14 @@ class ConnectorManagementService:
         instance_id: str,
     ) -> ConnectorInstanceRecordV1:
         record = self._store.get_instance(instance_id)
-        self._authorize(principal, record.instance)
+        self._authorize_read(principal, record.instance)
         return record
 
     def list_instances(
         self,
         principal: ConnectorManagementPrincipal,
     ) -> tuple[ConnectorInstanceRecordV1, ...]:
-        self._require_management(principal)
+        self._require_read(principal)
         records = self._store.list_instances()
         return tuple(
             record
@@ -112,8 +113,8 @@ class ConnectorManagementService:
         expected_revision: int,
     ) -> ConnectorInstanceRecordV1:
         current = self._store.get_instance(instance.instance_id)
-        self._authorize(principal, current.instance)
-        self._authorize(principal, instance)
+        self._authorize_manage(principal, current.instance)
+        self._authorize_manage(principal, instance)
         self._registry.validate_instance(instance)
         self._validate_credential_reference(instance)
         return self._store.replace_instance(
@@ -132,7 +133,7 @@ class ConnectorManagementService:
         enabled: bool,
         expected_revision: int,
     ) -> ConnectorInstanceRecordV1:
-        record = self.get_instance(principal, instance_id)
+        record = self._managed_record(principal, instance_id)
         updated = record.instance.model_copy(update={"enabled": enabled})
         action = "connector.enabled" if enabled else "connector.disabled"
         return self._store.replace_instance(
@@ -148,7 +149,7 @@ class ConnectorManagementService:
         principal: ConnectorManagementPrincipal,
         instance: ConnectorInstanceV1,
     ) -> ConnectorHealthV1:
-        self._authorize(principal, instance)
+        self._authorize_manage(principal, instance)
         self._registry.validate_adapter_instance(instance)
         self._validate_credential_reference(instance)
         return ConnectorHealthV1(
@@ -163,7 +164,7 @@ class ConnectorManagementService:
         principal: ConnectorManagementPrincipal,
         instance_id: str,
     ) -> ConnectorHealthV1:
-        record = self.get_instance(principal, instance_id)
+        record = self._managed_record(principal, instance_id)
         instance = record.instance
         adapter = self._registry.validate_adapter_instance(instance)
         credential_ref = instance.authentication.credential_ref
@@ -197,7 +198,7 @@ class ConnectorManagementService:
         gap_open: bool,
         last_success_at_utc: datetime | None,
     ) -> ConnectorRuntimeStateV1:
-        self.get_instance(principal, instance_id)
+        self._managed_record(principal, instance_id)
         return self._store.set_checkpoint(
             instance_id,
             checkpoint,
@@ -213,7 +214,7 @@ class ConnectorManagementService:
         principal: ConnectorManagementPrincipal,
         instance_id: str,
     ) -> ConnectorRuntimeStateV1:
-        self.get_instance(principal, instance_id)
+        self._managed_record(principal, instance_id)
         return self._store.mark_gap(instance_id, now=self._now())
 
     def reconcile_gap(
@@ -221,8 +222,17 @@ class ConnectorManagementService:
         principal: ConnectorManagementPrincipal,
         instance_id: str,
     ) -> ConnectorRuntimeStateV1:
-        self.get_instance(principal, instance_id)
+        self._managed_record(principal, instance_id)
         return self._store.reconcile_gap(instance_id, now=self._now())
+
+    def _managed_record(
+        self,
+        principal: ConnectorManagementPrincipal,
+        instance_id: str,
+    ) -> ConnectorInstanceRecordV1:
+        record = self._store.get_instance(instance_id)
+        self._authorize_manage(principal, record.instance)
+        return record
 
     def _validate_credential_reference(self, instance: ConnectorInstanceV1) -> None:
         credential_ref = instance.authentication.credential_ref
@@ -246,13 +256,31 @@ class ConnectorManagementService:
         )
 
     @staticmethod
+    def _require_read(principal: ConnectorManagementPrincipal) -> None:
+        if not (principal.can_read or principal.can_manage):
+            raise ConnectorManagementAuthorizationError(
+                "management principal is not authorized to read connectors"
+            )
+
+    @staticmethod
     def _require_management(principal: ConnectorManagementPrincipal) -> None:
         if not principal.can_manage:
             raise ConnectorManagementAuthorizationError(
                 "management principal is not authorized for connector administration"
             )
 
-    def _authorize(
+    def _authorize_read(
+        self,
+        principal: ConnectorManagementPrincipal,
+        instance: ConnectorInstanceV1,
+    ) -> None:
+        self._require_read(principal)
+        if not self._is_scope_match(principal, instance):
+            raise ConnectorManagementAuthorizationError(
+                "management principal is not authorized for connector scope"
+            )
+
+    def _authorize_manage(
         self,
         principal: ConnectorManagementPrincipal,
         instance: ConnectorInstanceV1,
