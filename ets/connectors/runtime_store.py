@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Literal, cast
 
 from ets.connectors.models import ConnectorCheckpointV1, ConnectorInstanceV1
 from ets.connectors.runtime import (
@@ -12,9 +13,24 @@ from ets.connectors.runtime import (
     CONNECTOR_INSTANCE_RECORD_SCHEMA_VERSION,
     CONNECTOR_RUNTIME_SCHEMA_VERSION,
     ConnectorAdminAuditEventV1,
+    ConnectorAuditResult,
     ConnectorInstanceRecordV1,
     ConnectorObservationState,
     ConnectorRuntimeStateV1,
+)
+
+ReconciledObservationState = Literal[
+    "healthy_observation",
+    "degraded_observation",
+    "unknown_observation",
+]
+_VALID_OBSERVATION_STATES = frozenset(
+    {
+        "healthy_observation",
+        "degraded_observation",
+        "collection_gap",
+        "unknown_observation",
+    }
 )
 
 
@@ -179,7 +195,7 @@ class ConnectorRuntimeStore:
             retry_count=int(row["retry_count"]),
             next_attempt_at_utc=_optional_time(row["next_attempt_at_utc"]),
             last_success_at_utc=_optional_time(row["last_success_at_utc"]),
-            observation_state=str(row["observation_state"]),
+            observation_state=_observation_state(row["observation_state"]),
             gap_open=bool(row["gap_open"]),
             lease_owner=None if row["lease_owner"] is None else str(row["lease_owner"]),
             lease_expires_at_utc=_optional_time(row["lease_expires_at_utc"]),
@@ -249,7 +265,7 @@ class ConnectorRuntimeStore:
         self,
         instance_id: str,
         *,
-        observation_state: LiteralHealthyState = "healthy_observation",
+        observation_state: ReconciledObservationState = "healthy_observation",
         now: datetime,
     ) -> ConnectorRuntimeStateV1:
         current = _utc(now)
@@ -467,7 +483,7 @@ class ConnectorRuntimeStore:
         action: str,
         instance: ConnectorInstanceV1,
         actor_id: str,
-        result: str,
+        result: ConnectorAuditResult,
         revision: int | None,
         message: str | None,
         now: datetime,
@@ -490,7 +506,11 @@ class ConnectorRuntimeStore:
         )
 
 
-LiteralHealthyState = str
+def _observation_state(value: object) -> ConnectorObservationState:
+    state = str(value)
+    if state not in _VALID_OBSERVATION_STATES:
+        raise ConnectorRuntimeStoreError(f"invalid persisted observation state: {state}")
+    return cast(ConnectorObservationState, state)
 
 
 def _utc(value: datetime) -> datetime:
