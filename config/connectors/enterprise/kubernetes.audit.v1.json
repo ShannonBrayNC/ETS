@@ -1,0 +1,25 @@
+{
+  "schema_version": "ets.connector.definition.v1",
+  "connector_id": "kubernetes.audit",
+  "display_name": "Kubernetes Audit Webhook",
+  "description": "Push enterprise connector for bounded Kubernetes audit.k8s.io/v1 webhook observations.",
+  "implementation_class": "enterprise_api",
+  "source_classes": ["kubernetes_audit_webhook"],
+  "adapter_version": "1.0",
+  "sdk_contract_version": "ets.connector.sdk.v1",
+  "capture_envelope_versions": ["ets.capture.v1"],
+  "gateway_host_versions": ["ets.gateway.connector-host.v1"],
+  "capabilities": {
+    "delivery_modes": ["push"],
+    "authentication_methods": ["mtls"],
+    "discovery": false,
+    "checkpointing": false,
+    "reconciliation": true,
+    "normalization": true,
+    "health": true
+  },
+  "configuration_schema": {
+    "instance_schema": "ets.connector.instance.v1",
+    "settings_schema_ref": "schemas/connectors/v1/enterprise/kubernetes-audit-settings.schema.json"
+  }
+}
