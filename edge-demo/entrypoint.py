@@ -14,11 +14,8 @@ from pathlib import Path
 
 import uvicorn
 
-from ets.edge.device_identity import (
-    build_device_identity,
-    load_or_create_local_api_key,
-    write_device_identity,
-)
+from ets.edge.device_identity import build_device_identity, write_device_identity
+from ets.edge.provisioning import load_or_create_provisioned_local_api_key
 
 DATA_DIR = Path(os.getenv("ETS_EDGE_DATA_DIR", "/var/lib/ets"))
 KEY_PATH = DATA_DIR / "edge-demo-signing-key.hex"
@@ -43,7 +40,11 @@ def _load_or_create_signing_key() -> str:
 def main() -> None:
     signing_key_hex = _load_or_create_signing_key()
     public_key_id = os.getenv("ETS_SIGNING_PUBLIC_KEY_ID", "ets-edge-virtual-demo-key")
-    local_api_key = load_or_create_local_api_key(API_KEY_PATH, os.getenv("ETS_LOCAL_API_KEY"))
+    local_api_key = load_or_create_provisioned_local_api_key(
+        API_KEY_PATH,
+        os.getenv("ETS_LOCAL_API_KEY"),
+        os.getenv("ETS_LOCAL_API_KEY_FILE"),
+    )
     identity = build_device_identity(signing_key_hex, public_key_id)
     write_device_identity(DEVICE_IDENTITY_PATH, identity)
 
