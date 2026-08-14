@@ -86,6 +86,7 @@ def _client(
     queue: SyncQueue | None = None,
     policy: OtlpHttpPolicy | None = None,
 ) -> tuple[TestClient, InMemoryAppendOnlyLog, SyncQueue]:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     event_log = InMemoryAppendOnlyLog()
     sync_queue = queue or SyncQueue(tmp_path / "otlp-http-sync.db")
     service = GatewayIngressService(
