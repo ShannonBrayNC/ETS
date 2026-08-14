@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -42,13 +42,9 @@ def test_otlp_observation_accepts_declared_signal_classes(signal_class: str) -> 
 
 
 def test_otlp_observation_normalizes_source_time_to_utc() -> None:
-    source_time = datetime(2026, 8, 13, 20, 0, tzinfo=timezone_offset())
+    source_time = datetime(2026, 8, 13, 20, 0, tzinfo=timezone(timedelta(hours=-4)))
     observation = _observation(source_timestamp_utc=source_time)
     assert observation.source_timestamp_utc == datetime(2026, 8, 14, 0, 0, tzinfo=UTC)
-
-
-def timezone_offset() -> object:
-    return UTC - timedelta(hours=0)
 
 
 def test_otlp_observation_rejects_naive_source_time() -> None:
