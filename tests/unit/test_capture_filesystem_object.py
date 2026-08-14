@@ -54,6 +54,7 @@ def test_normalize_relative_object_path_accepts_nested_portable_path() -> None:
         "nested/object:stream",
         "nested/control\x01.bin",
         "nested/cafe\u0301.bin",
+        "/".join(["a"] * 65),
     ],
 )
 def test_normalize_relative_object_path_rejects_unsafe_forms(relative_path: str) -> None:
@@ -135,6 +136,36 @@ def test_digest_filesystem_object_detects_replacement_after_open(
         digest_filesystem_object(tmp_path, "evidence.bin", maximum_bytes=1024)
 
 
+def test_digest_filesystem_object_detects_directory_replacement_after_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_directory = tmp_path / "nested"
+    original_directory.mkdir()
+    target = original_directory / "evidence.bin"
+    target.write_bytes(b"original")
+
+    replacement_directory = tmp_path / "replacement"
+    replacement_directory.mkdir()
+    (replacement_directory / "evidence.bin").write_bytes(b"replaced")
+    moved_directory = tmp_path / "moved-original"
+    original_digest = filesystem_object.digest_stream_sha256
+
+    def replace_directory_then_digest(stream: Any, **kwargs: Any) -> Any:
+        original_directory.rename(moved_directory)
+        replacement_directory.rename(original_directory)
+        return original_digest(stream, **kwargs)
+
+    monkeypatch.setattr(
+        filesystem_object,
+        "digest_stream_sha256",
+        replace_directory_then_digest,
+    )
+
+    with pytest.raises(FilesystemObjectInstabilityError, match="directory chain changed"):
+        digest_filesystem_object(tmp_path, "nested/evidence.bin", maximum_bytes=1024)
+
+
 def test_digest_filesystem_object_detects_truncation_after_open(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -163,6 +194,7 @@ def test_digest_filesystem_object_detects_same_inode_rewrite(
 
     def rewrite_then_digest(stream: Any, **kwargs: Any) -> Any:
         target.write_bytes(b"bbbbbbbb")
+        os.utime(target, ns=(1_000_000_000, 1_000_000_000))
         return original_digest(stream, **kwargs)
 
     monkeypatch.setattr(filesystem_object, "digest_stream_sha256", rewrite_then_digest)
