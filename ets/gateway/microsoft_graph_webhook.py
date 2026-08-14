@@ -1,8 +1,9 @@
 """Bounded Microsoft Graph webhook ingress for G2E-B.
 
-This host validates Microsoft Graph endpoint-validation and notification requests,
-but it intentionally stops before ETS evidence commitment. Gateway commitment and
-durable synchronization are qualified separately.
+Endpoint validation and notification parsing remain a pre-admission boundary. When a
+resource committer is configured, validated resource observations must complete the
+shared Gateway local-append and durable-sync path before the webhook reports committed
+acceptance. Lifecycle notifications remain operational subscription/gap state.
 """
 
 from __future__ import annotations
@@ -29,6 +30,11 @@ from ets.gateway.host import (
     GatewayHostLimitError,
     GatewayHostSaturatedError,
     UnsupportedContentEncodingError,
+)
+from ets.gateway.microsoft_graph_commit import (
+    MicrosoftGraphResourceCommitRetryableError,
+    MicrosoftGraphResourceCommitTerminalError,
+    MicrosoftGraphResourceCommitter,
 )
 
 GRAPH_WEBHOOK_PATH = "/gateway/v1/microsoft/graph"
@@ -86,18 +92,19 @@ class InMemoryMicrosoftGraphSubscriptionStore:
 def create_microsoft_graph_webhook_app(
     subscription_store: MicrosoftGraphSubscriptionStore,
     *,
+    resource_committer: MicrosoftGraphResourceCommitter | None = None,
     host_controller: GatewayHostController | None = None,
     maximum_body_bytes: int = GRAPH_DEFAULT_MAXIMUM_BODY_BYTES,
     maximum_notifications: int = 100,
 ) -> FastAPI:
-    """Create the bounded Graph webhook app without implying ETS commitment."""
+    """Create the bounded Graph webhook app with optional governed commitment."""
 
     if maximum_body_bytes < 1:
         raise ValueError("maximum_body_bytes must be positive")
     if not 1 <= maximum_notifications <= 100:
         raise ValueError("maximum_notifications must be between 1 and 100")
 
-    app = FastAPI(title="ETS Gateway Microsoft Graph Webhook", version="0.1.0-g2e-b")
+    app = FastAPI(title="ETS Gateway Microsoft Graph Webhook", version="0.2.0-g2e-b")
     host = host_controller or GatewayHostController()
 
     @app.post(GRAPH_WEBHOOK_PATH)
@@ -130,10 +137,14 @@ def create_microsoft_graph_webhook_app(
                     maximum_notifications=maximum_notifications,
                 )
                 lifecycle_updates = 0
+                resource_commits = 0
                 for notification in batch.notifications:
                     if notification.kind == "lifecycle":
                         subscription_store.apply_lifecycle(notification)
                         lifecycle_updates += 1
+                    elif resource_committer is not None:
+                        await asyncio.to_thread(resource_committer.commit, notification)
+                        resource_commits += 1
 
         except UnsupportedContentEncodingError:
             return JSONResponse(
@@ -161,17 +172,40 @@ def create_microsoft_graph_webhook_app(
                 status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 content={"detail": "Graph webhook body exceeds configured limit"},
             )
+        except MicrosoftGraphResourceCommitRetryableError:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={"detail": "Graph resource commitment is temporarily unavailable"},
+                headers={"Retry-After": "1"},
+            )
+        except MicrosoftGraphResourceCommitTerminalError:
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={"detail": "Graph resource observation failed Gateway admission"},
+            )
         except MicrosoftGraphNotificationError:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"detail": "invalid Microsoft Graph webhook request"},
             )
 
+        if resource_committer is None:
+            return JSONResponse(
+                status_code=status.HTTP_202_ACCEPTED,
+                content={
+                    "status": "accepted_pre_commit",
+                    "notification_count": len(batch.notifications),
+                    "lifecycle_updates": lifecycle_updates,
+                },
+            )
+
+        acceptance = "accepted_committed" if resource_commits else "accepted_operational"
         return JSONResponse(
             status_code=status.HTTP_202_ACCEPTED,
             content={
-                "status": "accepted_pre_commit",
+                "status": acceptance,
                 "notification_count": len(batch.notifications),
+                "resource_commits": resource_commits,
                 "lifecycle_updates": lifecycle_updates,
             },
         )
