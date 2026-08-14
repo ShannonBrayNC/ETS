@@ -8,7 +8,11 @@ import pytest
 
 from ets.connectors.conformance import ConnectorConformanceHarness
 from ets.connectors.credentials.broker import CredentialBroker
-from ets.connectors.credentials.models import CredentialMetadataV1, CredentialReferenceV1
+from ets.connectors.credentials.models import (
+    CredentialMetadataV1,
+    CredentialReferenceV1,
+    CredentialStatus,
+)
 from ets.connectors.credentials.provider import CredentialLease, CredentialResolutionError
 from ets.connectors.enterprise.github import (
     GitHubAuditAdapter,
@@ -39,7 +43,7 @@ MANIFESTS = Path("config/connectors/enterprise")
 class FixtureCredentialProvider:
     scheme = "fixture"
 
-    def __init__(self, *, status: str = "available") -> None:
+    def __init__(self, *, status: CredentialStatus = "available") -> None:
         self.status = status
         self.resolve_count = 0
 
@@ -48,7 +52,7 @@ class FixtureCredentialProvider:
             schema_version="ets.connector.credential_metadata.v1",
             reference=reference,
             provider="fixture",
-            status=self.status,  # type: ignore[arg-type]
+            status=self.status,
             version="1",
             updated_at_utc=NOW,
         )
@@ -56,7 +60,10 @@ class FixtureCredentialProvider:
     def resolve(self, reference: CredentialReferenceV1) -> CredentialLease:
         self.resolve_count += 1
         if self.status != "available":
-            raise CredentialResolutionError(self.status, "fixture credential unavailable")  # type: ignore[arg-type]
+            raise CredentialResolutionError(
+                self.status,
+                "fixture credential unavailable",
+            )
         return CredentialLease(b"fixture-credential-bytes", self.describe(reference))
 
 
@@ -98,7 +105,10 @@ class FixtureGitHubClient:
         self.closed = True
 
 
-def _broker(*, status: str = "available") -> tuple[CredentialBroker, FixtureCredentialProvider]:
+def _broker(
+    *,
+    status: CredentialStatus = "available",
+) -> tuple[CredentialBroker, FixtureCredentialProvider]:
     broker = CredentialBroker()
     provider = FixtureCredentialProvider(status=status)
     broker.register(provider)
@@ -181,7 +191,13 @@ def _adapter(
 
 
 def test_github_audit_adapter_passes_shared_connector_conformance() -> None:
-    client = FixtureGitHubClient(GitHubAuditPage(records=(), next_cursor=None, observed_through_utc=None))
+    client = FixtureGitHubClient(
+        GitHubAuditPage(
+            records=(),
+            next_cursor=None,
+            observed_through_utc=None,
+        )
+    )
     adapter, registry = _adapter(client=client)
 
     report = ConnectorConformanceHarness(registry).validate_sample(
@@ -221,7 +237,11 @@ def test_time_checkpoint_is_replayed_when_no_cursor_is_available() -> None:
         observed_through_utc=NOW - timedelta(seconds=1),
     )
     client = FixtureGitHubClient(
-        GitHubAuditPage(records=(_record(),), next_cursor=None, observed_through_utc=NOW)
+        GitHubAuditPage(
+            records=(_record(),),
+            next_cursor=None,
+            observed_through_utc=NOW,
+        )
     )
     adapter, _ = _adapter(client=client)
 
@@ -239,7 +259,11 @@ def test_throttling_never_advances_checkpoint() -> None:
         observed_through_utc=NOW - timedelta(minutes=1),
     )
     client = FixtureGitHubClient(
-        GitHubAuditPage(records=(), next_cursor=None, observed_through_utc=None),
+        GitHubAuditPage(
+            records=(),
+            next_cursor=None,
+            observed_through_utc=None,
+        ),
         throttle=True,
     )
     adapter, _ = _adapter(client=client)
@@ -277,7 +301,13 @@ def test_revoked_credential_fails_before_source_client_and_checkpoint() -> None:
 
 
 def test_reconciliation_marks_checkpoint_older_than_retention_as_gap() -> None:
-    client = FixtureGitHubClient(GitHubAuditPage(records=(), next_cursor=None, observed_through_utc=None))
+    client = FixtureGitHubClient(
+        GitHubAuditPage(
+            records=(),
+            next_cursor=None,
+            observed_through_utc=None,
+        )
+    )
     adapter, _ = _adapter(client=client)
     stale = ConnectorCheckpointV1(
         schema_version="ets.connector.checkpoint.v1",
@@ -294,7 +324,13 @@ def test_reconciliation_marks_checkpoint_older_than_retention_as_gap() -> None:
 
 def test_normalize_minimizes_sensitive_and_unbounded_source_fields() -> None:
     marker = "RAW-GITHUB-AUDIT-MARKER"
-    client = FixtureGitHubClient(GitHubAuditPage(records=(), next_cursor=None, observed_through_utc=None))
+    client = FixtureGitHubClient(
+        GitHubAuditPage(
+            records=(),
+            next_cursor=None,
+            observed_through_utc=None,
+        )
+    )
     adapter, _ = _adapter(client=client)
 
     candidate = adapter.normalize(_instance(), _record(marker=marker))
@@ -310,7 +346,13 @@ def test_normalize_minimizes_sensitive_and_unbounded_source_fields() -> None:
 
 
 def test_customer_cannot_override_github_api_host() -> None:
-    client = FixtureGitHubClient(GitHubAuditPage(records=(), next_cursor=None, observed_through_utc=None))
+    client = FixtureGitHubClient(
+        GitHubAuditPage(
+            records=(),
+            next_cursor=None,
+            observed_through_utc=None,
+        )
+    )
     adapter, _ = _adapter(client=client)
     instance = _instance(
         settings={
@@ -319,5 +361,8 @@ def test_customer_cannot_override_github_api_host() -> None:
         }
     )
 
-    with pytest.raises(ConnectorConfigurationError, match="unsupported GitHub audit connector settings"):
+    with pytest.raises(
+        ConnectorConfigurationError,
+        match="unsupported GitHub audit connector settings",
+    ):
         adapter.validate_config(instance)
