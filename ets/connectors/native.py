@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from ets.connectors.models import ConnectorDefinitionV1, ConnectorHealthV1, ConnectorInstanceV1
+from pydantic import JsonValue
+
+from ets.connectors.models import (
+    ConnectorCheckpointV1,
+    ConnectorCollectionResultV1,
+    ConnectorDefinitionV1,
+    ConnectorEvidenceCandidateV1,
+    ConnectorHealthV1,
+    ConnectorInstanceV1,
+    ConnectorReconciliationResultV1,
+)
 from ets.connectors.registry import ConnectorRegistry
 from ets.connectors.sdk import ConnectorCapabilityError, ConnectorConfigurationError
 
@@ -151,18 +162,30 @@ class NativeConnectorAdapter:
         self.validate_config(instance)
         raise ConnectorCapabilityError("native push connectors do not implement discovery")
 
-    def collect(self, instance: ConnectorInstanceV1, checkpoint: object) -> object:
+    def collect(
+        self,
+        instance: ConnectorInstanceV1,
+        checkpoint: ConnectorCheckpointV1 | None,
+    ) -> ConnectorCollectionResultV1:
         self.validate_config(instance)
         raise ConnectorCapabilityError("native push connectors do not implement polling")
 
-    def checkpoint(self, result: object) -> None:
+    def checkpoint(self, result: ConnectorCollectionResultV1) -> ConnectorCheckpointV1 | None:
         raise ConnectorCapabilityError("native push connectors do not expose source checkpoints")
 
-    def reconcile(self, instance: ConnectorInstanceV1, checkpoint: object) -> object:
+    def reconcile(
+        self,
+        instance: ConnectorInstanceV1,
+        checkpoint: ConnectorCheckpointV1 | None,
+    ) -> ConnectorReconciliationResultV1:
         self.validate_config(instance)
         raise ConnectorCapabilityError("native push connectors do not implement reconciliation")
 
-    def normalize(self, instance: ConnectorInstanceV1, record: object) -> object:
+    def normalize(
+        self,
+        instance: ConnectorInstanceV1,
+        record: Mapping[str, JsonValue],
+    ) -> ConnectorEvidenceCandidateV1:
         self.validate_config(instance)
         raise ConnectorCapabilityError("native G1 runtimes own normalization")
 
