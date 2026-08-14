@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/connectors/v1/enterprise/microsoft-sharepoint-onedrive-delta-settings.schema.json",
+  "title": "ETS Microsoft SharePoint and OneDrive metadata delta connector settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenant_profile_id", "scope"],
+  "properties": {
+    "tenant_profile_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["drive", "list"]
+    },
+    "drive_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "site_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "list_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "request_timeout_seconds": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 60,
+      "default": 30
+    },
+    "maximum_response_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16777216,
+      "default": 1048576
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"scope": {"const": "drive"}}, "required": ["scope"]},
+      "then": {
+        "required": ["drive_id"],
+        "not": {"anyOf": [{"required": ["site_id"]}, {"required": ["list_id"]}]}
+      }
+    },
+    {
+      "if": {"properties": {"scope": {"const": "list"}}, "required": ["scope"]},
+      "then": {
+        "required": ["site_id", "list_id"],
+        "not": {"required": ["drive_id"]}
+      }
+    }
+  ]
+}
