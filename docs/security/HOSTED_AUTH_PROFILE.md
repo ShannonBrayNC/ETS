@@ -10,7 +10,7 @@ Hosted ETS deployments should use JWKS-backed RS256 bearer-token validation thro
 ETS_AUTH_MODE=production_jwks
 ```
 
-Local development modes are useful for laptops and demos, but they should not be used as hosted security boundaries.
+Local development modes are useful for laptops and demos, but they should not be used as hosted security boundaries. The runtime-profile enforcement rules and explicit local/demo override are documented in [RUNTIME_PROFILE_GUARD.md](RUNTIME_PROFILE_GUARD.md).
 
 ## Supported auth modes
 
@@ -61,7 +61,7 @@ Local auth modes are for development only:
 - `local_header` trusts `X-ETS-Tenant` and `X-ETS-Workspace` headers.
 - `local_api_key` protects local routes with a shared demo key.
 
-Neither mode proves caller identity in a hosted environment.
+Neither mode proves caller identity in a hosted environment. When any local-only runtime profile is selected, startup requires the explicit `ETS_ALLOW_INSECURE_LOCAL=1` override described in [RUNTIME_PROFILE_GUARD.md](RUNTIME_PROFILE_GUARD.md). Hosted deployments must not set that override.
 
 ## Release checklist
 
@@ -70,6 +70,7 @@ Before hosting ETS, confirm:
 - `ETS_AUTH_MODE` is set to `production_jwks`.
 - issuer and audience validation are configured.
 - local auth modes are disabled.
+- `ETS_ALLOW_INSECURE_LOCAL` is not enabled.
 - JWKS source ownership is documented.
 - key rotation responsibility is documented.
 - API examples use placeholders only.
