@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict
 
 from ets.api.auth import AuthContext, AuthError, AuthPolicy, LocalHeaderAuthPolicy
-from ets.api.authorization import AuthCapability, AuthRole, AuthorizationProfile
+from ets.api.authorization import AuthCapability, AuthorizationProfile, AuthRole
 from ets.gateway.connector_management import (
     ConnectorManagementAuthorizationError,
     ConnectorManagementPrincipal,
