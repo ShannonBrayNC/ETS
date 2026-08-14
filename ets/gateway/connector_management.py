@@ -34,8 +34,8 @@ class ConnectorManagementPrincipal:
     actor_id: str
     tenant_id: str
     workspace_id: str
-    can_read: bool = False
     can_manage: bool = True
+    can_read: bool = False
 
     def __post_init__(self) -> None:
         for name, value, maximum in (
