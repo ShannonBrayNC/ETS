@@ -18,6 +18,7 @@ from ets.connectors.enterprise.microsoft_entra_connector import (
     MicrosoftEntraDeltaAdapter,
 )
 from ets.connectors.enterprise.microsoft_entra_delta import (
+    EntraDeltaRequestProfile,
     MicrosoftEntraDeltaPageV1,
     MicrosoftEntraDeltaRecordV1,
 )
@@ -27,6 +28,7 @@ from ets.connectors.enterprise.microsoft_entra_http import (
 from ets.connectors.models import (
     ConnectorAuthentication,
     ConnectorCheckpointPolicy,
+    ConnectorCheckpointV1,
     ConnectorCollection,
     ConnectorGapPolicy,
     ConnectorInstanceV1,
@@ -167,7 +169,10 @@ def _record(*, removed_reason: str | None = None) -> MicrosoftEntraDeltaRecordV1
 
 
 def _page(*, cursor: str | None = None) -> MicrosoftEntraDeltaPageV1:
-    next_link = cursor or "https://graph.microsoft.com/v1.0/users/delta?$skiptoken=next"
+    next_link = (
+        cursor
+        or "https://graph.microsoft.com/v1.0/users/delta?$skiptoken=next"
+    )
     return MicrosoftEntraDeltaPageV1.model_validate(
         {
             "schema_version": "ets.connector.microsoft.entra_delta_page.v1",
@@ -179,10 +184,17 @@ def _page(*, cursor: str | None = None) -> MicrosoftEntraDeltaPageV1:
     )
 
 
-def _adapter(client: FixturePageClient | ExpiredStateClient) -> tuple[MicrosoftEntraDeltaAdapter, ConnectorRegistry]:
+def _adapter(
+    client: FixturePageClient | ExpiredStateClient,
+) -> tuple[MicrosoftEntraDeltaAdapter, ConnectorRegistry]:
     registry = ConnectorRegistry.from_manifest_directory(MANIFESTS)
 
-    def factory(profile, material: bytes, timeout: float, maximum: int):
+    def factory(
+        profile: EntraDeltaRequestProfile,
+        material: bytes,
+        timeout: float,
+        maximum: int,
+    ) -> FixturePageClient | ExpiredStateClient:
         assert profile.collection == "users"
         assert material == b"fixture-entra-token"
         assert timeout == 30.0
@@ -258,7 +270,10 @@ def test_entra_removed_object_is_a_source_claim_not_a_new_observation_time() -> 
                 "collection": "users",
                 "records": [_record(removed_reason="deleted").model_dump(mode="json")],
                 "next_link": None,
-                "delta_link": "https://graph.microsoft.com/v1.0/users/delta?$deltatoken=done",
+                "delta_link": (
+                    "https://graph.microsoft.com/v1.0/users/delta?"
+                    "$deltatoken=done"
+                ),
             }
         )
     )
@@ -276,16 +291,12 @@ def test_expired_delta_state_returns_gap_and_preserves_old_checkpoint() -> None:
     client = ExpiredStateClient()
     adapter, _ = _adapter(client)
     checkpoint = _page().checkpoint_url
-    prior = {
-        "schema_version": "ets.connector.checkpoint.v1",
-        "cursor": checkpoint,
-    }
-
-    result = adapter.collect(
-        _instance(),
-        __import__("ets.connectors.models", fromlist=["ConnectorCheckpointV1"])
-        .ConnectorCheckpointV1.model_validate(prior),
+    prior = ConnectorCheckpointV1(
+        schema_version="ets.connector.checkpoint.v1",
+        cursor=checkpoint,
     )
+
+    result = adapter.collect(_instance(), prior)
 
     assert result.code == "gap_detected"
     assert result.checkpoint is not None
