@@ -62,7 +62,11 @@ class ConnectorManagementService:
         self._credential_broker = credential_broker
         self._now = now or _utc_now
 
-    def catalog(self) -> tuple[ConnectorDefinitionV1, ...]:
+    def catalog(
+        self,
+        principal: ConnectorManagementPrincipal,
+    ) -> tuple[ConnectorDefinitionV1, ...]:
+        self._require_management(principal)
         return self._registry.list_definitions()
 
     def create_instance(
@@ -92,11 +96,12 @@ class ConnectorManagementService:
         self,
         principal: ConnectorManagementPrincipal,
     ) -> tuple[ConnectorInstanceRecordV1, ...]:
+        self._require_management(principal)
         records = self._store.list_instances()
         return tuple(
             record
             for record in records
-            if self._is_authorized(principal, record.instance)
+            if self._is_scope_match(principal, record.instance)
         )
 
     def update_instance(
@@ -231,22 +236,29 @@ class ConnectorManagementService:
             self._credential_broker.describe(reference)
 
     @staticmethod
-    def _is_authorized(
+    def _is_scope_match(
         principal: ConnectorManagementPrincipal,
         instance: ConnectorInstanceV1,
     ) -> bool:
         return (
-            principal.can_manage
-            and principal.tenant_id == instance.scope.tenant_id
+            principal.tenant_id == instance.scope.tenant_id
             and principal.workspace_id == instance.scope.workspace_id
         )
+
+    @staticmethod
+    def _require_management(principal: ConnectorManagementPrincipal) -> None:
+        if not principal.can_manage:
+            raise ConnectorManagementAuthorizationError(
+                "management principal is not authorized for connector administration"
+            )
 
     def _authorize(
         self,
         principal: ConnectorManagementPrincipal,
         instance: ConnectorInstanceV1,
     ) -> None:
-        if not self._is_authorized(principal, instance):
+        self._require_management(principal)
+        if not self._is_scope_match(principal, instance):
             raise ConnectorManagementAuthorizationError(
                 "management principal is not authorized for connector scope"
             )
