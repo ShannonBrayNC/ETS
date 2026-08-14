@@ -155,7 +155,7 @@ def _adapter(page: GitHubAuditPage) -> GitHubAuditAdapter:
         return client
 
     return GitHubAuditAdapter(
-        registry.definition("github.audit"),
+        registry.get_definition("github.audit"),
         broker,
         client_factory=factory,
         now=lambda: NOW,
