@@ -11,7 +11,9 @@ from dataclasses import dataclass
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse, Response
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import ExportLogsServiceResponse
-from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceResponse
+from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
+    ExportMetricsServiceResponse,
+)
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceResponse
 
 from ets.capture.otlp import OtlpDecodedBatchV1, OtlpSignalClass
