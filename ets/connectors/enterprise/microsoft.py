@@ -267,7 +267,7 @@ def _readiness(
 ) -> MicrosoftConnectorReadinessV1:
     endpoints = profile.endpoints
     return MicrosoftConnectorReadinessV1(
-        schema_version=MICROSOFT_READINESS_SCHEMA_VERSION,
+        schema_version="ets.connector.microsoft.readiness.v1",
         state=state,
         code=code,
         tenant_id=profile.tenant_id,
