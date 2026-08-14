@@ -207,7 +207,10 @@ def _digest_final_component(
 
     try:
         opened_before = os.fstat(file_fd)
-        if not _same_identity(path_before, opened_before) or not stat.S_ISREG(opened_before.st_mode):
+        if (
+            not _same_identity(path_before, opened_before)
+            or not stat.S_ISREG(opened_before.st_mode)
+        ):
             raise FilesystemObjectInstabilityError("filesystem object changed during open")
 
         before = _metadata(opened_before)
