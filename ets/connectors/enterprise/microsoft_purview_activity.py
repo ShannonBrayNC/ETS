@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal, cast
-from urllib.parse import parse_qs, quote, urlencode, urlsplit
+from urllib.parse import SplitResult, parse_qs, quote, urlencode, urlsplit
 
 from ets.connectors.enterprise.microsoft import MicrosoftCloud, MicrosoftTenantProfileV1
 
@@ -137,10 +137,7 @@ def build_purview_content_list_url(
             raise ValueError("Purview content discovery window must not exceed 24 hours")
         query["startTime"] = _format_utc(start)
         query["endTime"] = _format_utc(end)
-    return (
-        f"{_tenant_activity_root(profile)}/subscriptions/content?"
-        + urlencode(query)
-    )
+    return f"{_tenant_activity_root(profile)}/subscriptions/content?" + urlencode(query)
 
 
 def validate_purview_next_page_uri(
@@ -313,7 +310,7 @@ def _tenant_activity_root(profile: MicrosoftPurviewManagementProfile) -> str:
 def _validate_management_origin(
     profile: MicrosoftPurviewManagementProfile,
     value: str,
-):
+) -> SplitResult:
     root = urlsplit(profile.management_root)
     parsed = urlsplit(value)
     if parsed.scheme != "https" or parsed.hostname != root.hostname:
