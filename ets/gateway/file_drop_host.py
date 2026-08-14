@@ -89,11 +89,20 @@ class GatewayFileDropSubmission:
     def __post_init__(self) -> None:
         if not 1 <= len(self.delivery_id) <= 200:
             raise ValueError("delivery_id must be 1-200 characters")
-        if self.declared_filename is not None and not 1 <= len(self.declared_filename) <= 500:
+        if (
+            self.declared_filename is not None
+            and not 1 <= len(self.declared_filename) <= 500
+        ):
             raise ValueError("declared_filename must be 1-500 characters when supplied")
-        if self.declared_content_type is not None and not 1 <= len(self.declared_content_type) <= 200:
+        if (
+            self.declared_content_type is not None
+            and not 1 <= len(self.declared_content_type) <= 200
+        ):
             raise ValueError("declared_content_type must be 1-200 characters when supplied")
-        if self.correlation_id is not None and not 1 <= len(self.correlation_id) <= 200:
+        if (
+            self.correlation_id is not None
+            and not 1 <= len(self.correlation_id) <= 200
+        ):
             raise ValueError("correlation_id must be 1-200 characters when supplied")
 
 
