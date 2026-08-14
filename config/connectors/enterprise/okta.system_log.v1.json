@@ -1,0 +1,25 @@
+{
+  "schema_version": "ets.connector.definition.v1",
+  "connector_id": "okta.system_log",
+  "display_name": "Okta System Log",
+  "description": "Polling enterprise connector for bounded Okta System Log observations.",
+  "implementation_class": "enterprise_api",
+  "source_classes": ["okta_system_log"],
+  "adapter_version": "1.0",
+  "sdk_contract_version": "ets.connector.sdk.v1",
+  "capture_envelope_versions": ["ets.capture.v1"],
+  "gateway_host_versions": ["ets.gateway.connector-host.v1"],
+  "capabilities": {
+    "delivery_modes": ["poll"],
+    "authentication_methods": ["api_token"],
+    "discovery": true,
+    "checkpointing": true,
+    "reconciliation": true,
+    "normalization": true,
+    "health": true
+  },
+  "configuration_schema": {
+    "instance_schema": "ets.connector.instance.v1",
+    "settings_schema_ref": "schemas/connectors/v1/enterprise/okta-system-log-settings.schema.json"
+  }
+}

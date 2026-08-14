@@ -10,6 +10,11 @@ from ets.connectors.enterprise.github import (
     GitHubAuditHttpClient,
     GitHubAuditPage,
 )
+from ets.connectors.enterprise.okta import (
+    OktaSystemLogAdapter,
+    OktaSystemLogHttpClient,
+    OktaSystemLogPage,
+)
 
 __all__ = [
     "AwsCloudTrailAdapter",
@@ -18,4 +23,7 @@ __all__ = [
     "GitHubAuditAdapter",
     "GitHubAuditHttpClient",
     "GitHubAuditPage",
+    "OktaSystemLogAdapter",
+    "OktaSystemLogHttpClient",
+    "OktaSystemLogPage",
 ]
