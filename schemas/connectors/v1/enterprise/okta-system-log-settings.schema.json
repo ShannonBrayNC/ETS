@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/connectors/v1/enterprise/okta-system-log-settings.schema.json",
+  "title": "ETS Okta System Log connector settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["organization"],
+  "properties": {
+    "organization": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 63,
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$"
+    },
+    "domain_suffix": {
+      "type": "string",
+      "enum": ["okta.com", "oktapreview.com", "okta-emea.com"]
+    },
+    "request_timeout_seconds": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 30
+    }
+  }
+}
