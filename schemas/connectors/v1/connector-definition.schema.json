@@ -1,0 +1,79 @@
+{
+  "$defs": {
+    "ConnectorCapabilities": {
+      "additionalProperties": false,
+      "description": "Capabilities declared by a connector definition.",
+      "properties": {
+        "authentication_methods": {
+          "items": {"type": "string"},
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Authentication Methods",
+          "type": "array"
+        },
+        "checkpointing": {"default": false, "title": "Checkpointing", "type": "boolean"},
+        "delivery_modes": {
+          "items": {"enum": ["push", "poll"], "type": "string"},
+          "maxItems": 2,
+          "minItems": 1,
+          "title": "Delivery Modes",
+          "type": "array"
+        },
+        "discovery": {"default": false, "title": "Discovery", "type": "boolean"},
+        "health": {"default": true, "title": "Health", "type": "boolean"},
+        "normalization": {"default": true, "title": "Normalization", "type": "boolean"},
+        "reconciliation": {"default": false, "title": "Reconciliation", "type": "boolean"}
+      },
+      "required": ["delivery_modes", "authentication_methods"],
+      "title": "ConnectorCapabilities",
+      "type": "object"
+    },
+    "ConnectorConfigurationSchema": {
+      "additionalProperties": false,
+      "description": "Schema references declared by a connector definition.",
+      "properties": {
+        "instance_schema": {
+          "const": "ets.connector.instance.v1",
+          "title": "Instance Schema",
+          "type": "string"
+        },
+        "settings_schema_ref": {
+          "anyOf": [
+            {"maxLength": 500, "minLength": 1, "type": "string"},
+            {"type": "null"}
+          ],
+          "default": null,
+          "title": "Settings Schema Ref"
+        }
+      },
+      "required": ["instance_schema"],
+      "title": "ConnectorConfigurationSchema",
+      "type": "object"
+    }
+  },
+  "$id": "https://lanternprotocol.net/schemas/connectors/v1/connector-definition.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Versioned connector type metadata shipped by ETS or a qualified extension.",
+  "properties": {
+    "adapter_version": {"maxLength": 100, "minLength": 1, "title": "Adapter Version", "type": "string"},
+    "capabilities": {"$ref": "#/$defs/ConnectorCapabilities"},
+    "capture_envelope_versions": {"items": {"type": "string"}, "maxItems": 8, "minItems": 1, "title": "Capture Envelope Versions", "type": "array"},
+    "configuration_schema": {"$ref": "#/$defs/ConnectorConfigurationSchema"},
+    "connector_id": {"pattern": "^[a-z0-9][a-z0-9._-]{2,127}$", "title": "Connector Id", "type": "string"},
+    "description": {"maxLength": 2000, "minLength": 1, "title": "Description", "type": "string"},
+    "display_name": {"maxLength": 200, "minLength": 1, "title": "Display Name", "type": "string"},
+    "gateway_host_versions": {"items": {"type": "string"}, "maxItems": 8, "minItems": 1, "title": "Gateway Host Versions", "type": "array"},
+    "implementation_class": {"enum": ["native", "enterprise_api", "generic", "third_party"], "title": "Implementation Class", "type": "string"},
+    "schema_version": {"const": "ets.connector.definition.v1", "title": "Schema Version", "type": "string"},
+    "sdk_contract_version": {"const": "ets.connector.sdk.v1", "title": "Sdk Contract Version", "type": "string"},
+    "source_classes": {"items": {"type": "string"}, "maxItems": 16, "minItems": 1, "title": "Source Classes", "type": "array"}
+  },
+  "required": [
+    "schema_version", "connector_id", "display_name", "description", "implementation_class",
+    "source_classes", "adapter_version", "sdk_contract_version", "capture_envelope_versions",
+    "gateway_host_versions", "capabilities", "configuration_schema"
+  ],
+  "title": "ConnectorDefinitionV1",
+  "type": "object"
+}
