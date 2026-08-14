@@ -1,0 +1,46 @@
+{
+  "schema_version": "ets.connector.package.v1",
+  "package_id": "sample.events.package",
+  "package_version": "1.0.0",
+  "connector_id": "sample.events",
+  "publisher": {
+    "name": "ETS SDK sample",
+    "publisher_class": "community_unqualified",
+    "qualification_state": "unqualified"
+  },
+  "provenance": {
+    "repository_url": "https://github.com/ShannonBrayNC/ETS",
+    "source_revision": "reference-sample",
+    "build_ref": "examples/connectors/sample_third_party"
+  },
+  "compatibility": {
+    "sdk_contract_version": "ets.connector.sdk.v1",
+    "gateway_host_versions": ["ets.gateway.connector-host.v1"],
+    "capture_envelope_versions": ["ets.capture.v1"]
+  },
+  "definition_path": "definition.json",
+  "settings_schema_path": "settings.schema.json",
+  "entrypoints": {
+    "adapter": "sample_connector:SampleConnector",
+    "conformance": "sample_conformance:run_conformance"
+  },
+  "files": [
+    {
+      "path": "definition.json",
+      "sha256": "958f0bef37910a0a3dc006cdc45ce1474b3d8cd2c67be67fafe045e3a3db7a82"
+    },
+    {
+      "path": "sample_conformance.py",
+      "sha256": "81475bf76bdccad76a04f9dcd30359229c1e427c6c7a59dd5d94b1c583e8fbb4"
+    },
+    {
+      "path": "sample_connector.py",
+      "sha256": "1ada3b358e667ad5a2ac61c36e9adfa35b11e7ed1eff16fad8c0a0158435763a"
+    },
+    {
+      "path": "settings.schema.json",
+      "sha256": "b54f7b4f06f05d9d5b9dc8fcf957347512e38115cc941dcd50588b86c5244044"
+    }
+  ],
+  "package_content_sha256": "1b611bea067e3bba6b69238fcd3a1cf198b2e6fc345bc219303efaae3577ecc9"
+}
