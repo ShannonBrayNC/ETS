@@ -7,7 +7,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Final
+from typing import Final, cast
 
 from pydantic import JsonValue
 
@@ -194,7 +194,7 @@ def _parse_record(
             continue
         value = raw[key]
         _validate_json_value(key, value)
-        service_specific[key] = value  # type: ignore[assignment]
+        service_specific[key] = cast(JsonValue, value)
 
     return MicrosoftPurviewAuditRecordV1(
         source_record_id=source_record_id,
