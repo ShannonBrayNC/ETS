@@ -48,8 +48,16 @@ class MicrosoftEntraDeltaPageV1(StrictDeltaModel):
     schema_version: Literal["ets.connector.microsoft.entra_delta_page.v1"]
     collection: EntraDeltaCollection
     records: tuple[MicrosoftEntraDeltaRecordV1, ...]
-    next_link: str | None = Field(default=None, min_length=1, max_length=ENTRA_MAXIMUM_LINK_CHARACTERS)
-    delta_link: str | None = Field(default=None, min_length=1, max_length=ENTRA_MAXIMUM_LINK_CHARACTERS)
+    next_link: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=ENTRA_MAXIMUM_LINK_CHARACTERS,
+    )
+    delta_link: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=ENTRA_MAXIMUM_LINK_CHARACTERS,
+    )
 
     @property
     def cycle_complete(self) -> bool:
