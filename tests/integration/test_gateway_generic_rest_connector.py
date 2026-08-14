@@ -77,7 +77,7 @@ class FailOnceQueue(SyncQueue):
         return super().enqueue(payload)
 
 
-def _response() -> GenericRestResponse:
+def _response(*, status: str = "succeeded") -> GenericRestResponse:
     payload = {
         "data": {
             "items": [
@@ -85,7 +85,7 @@ def _response() -> GenericRestResponse:
                     "id": "source-event-001",
                     "observedAt": "2026-08-14T16:59:30Z",
                     "kind": "deployment",
-                    "status": "succeeded",
+                    "status": status,
                     "raw": RAW_MARKER,
                     "tenant_id": "payload-tenant-must-not-route",
                     "workspace_id": "payload-workspace-must-not-route",
@@ -179,9 +179,9 @@ def _registration() -> SourceRegistration:
     )
 
 
-def _adapter() -> GenericRestAdapter:
+def _adapter(response: GenericRestResponse | None = None) -> GenericRestAdapter:
     registry = ConnectorRegistry.from_manifest_directory(MANIFESTS)
-    factory = FixtureClientFactory(_response())
+    factory = FixtureClientFactory(response or _response())
     return GenericRestAdapter(
         registry.get_definition("generic.rest"),
         GenericRestHostPolicy(frozenset({"api.example.test"})),
@@ -288,5 +288,34 @@ def test_generic_rest_partial_commit_withholds_cursor_and_retry_recovers(
     assert retry.code == "ok"
     assert retry.checkpoint_to_persist is not None
     assert retry.checkpoint_to_persist.cursor == SOURCE_CURSOR
+    assert len(event_log.list_entries()) == 1
+    assert sync_queue.status().queue_depth == 1
+
+
+def test_generic_rest_conflict_withholds_cursor_and_preserves_original_evidence(
+    tmp_path: Path,
+) -> None:
+    runner, event_log, sync_queue = _runner(tmp_path)
+    instance = _instance()
+
+    first = runner.run(
+        adapter=_adapter(_response(status="succeeded")),
+        instance=instance,
+        principal=PRINCIPAL,
+        checkpoint=None,
+    )
+    conflict = runner.run(
+        adapter=_adapter(_response(status="failed")),
+        instance=instance,
+        principal=PRINCIPAL,
+        checkpoint=None,
+    )
+
+    assert first.code == "ok"
+    assert first.checkpoint_to_persist is not None
+    assert conflict.code == "terminal_error"
+    assert conflict.committed_local == 0
+    assert conflict.sync_queued == 0
+    assert conflict.checkpoint_to_persist is None
     assert len(event_log.list_entries()) == 1
     assert sync_queue.status().queue_depth == 1
