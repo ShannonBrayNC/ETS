@@ -32,6 +32,7 @@ dev = [
     "pytest>=9.0.3,<10",
     "ruff>=0.8,<1",
     "mypy>=1.13,<2",
+    "types-protobuf>=7.34.1.20260518,<8",
     "uvicorn>=0.47,<1",
 ]
 edge = [
