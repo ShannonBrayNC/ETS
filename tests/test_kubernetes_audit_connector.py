@@ -218,8 +218,13 @@ def test_decode_enforces_body_batch_and_event_bounds() -> None:
             _payload(_raw_event(), _raw_event(stage="ResponseStarted")),
             maximum_batch_events=1,
         )
+
+    oversized_payload = _payload(_raw_event(marker="X" * 2048))
     with pytest.raises(KubernetesAuditDecodeError, match="event exceeds"):
-        parse_kubernetes_audit_event_list(payload, maximum_event_bytes=1024)
+        parse_kubernetes_audit_event_list(
+            oversized_payload,
+            maximum_event_bytes=1024,
+        )
 
 
 def test_configuration_rejects_polling_and_unqualified_settings() -> None:
