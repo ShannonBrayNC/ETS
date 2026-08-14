@@ -147,7 +147,7 @@ def _service(tmp_path: Path) -> ConnectorManagementService:
 
 def _manage_principal() -> ConnectorManagementPrincipal:
     return ConnectorManagementPrincipal(
-        subject="operator-1",
+        actor_id="operator-1",
         tenant_id="tenant-a",
         workspace_id="workspace-a",
         can_manage=True,
@@ -156,11 +156,10 @@ def _manage_principal() -> ConnectorManagementPrincipal:
 
 def _read_only_principal() -> ConnectorManagementPrincipal:
     return ConnectorManagementPrincipal(
-        subject="auditor-1",
+        actor_id="auditor-1",
         tenant_id="tenant-a",
         workspace_id="workspace-a",
         can_manage=False,
-        can_read=True,
     )
 
 
