@@ -166,7 +166,11 @@ def _runner(
     tmp_path: Path,
     *,
     queue: SyncQueue | None = None,
-) -> tuple[GatewayConnectorCollectionRunner, InMemoryAppendOnlyLog, SyncQueue]:
+) -> tuple[
+    GatewayConnectorCollectionRunner,
+    InMemoryAppendOnlyLog,
+    SyncQueue,
+]:
     event_log = InMemoryAppendOnlyLog()
     sync_queue = queue or SyncQueue(tmp_path / "connector-sync.db")
     ingress = GatewayConnectorIngressService(
