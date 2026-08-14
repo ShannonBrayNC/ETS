@@ -7,7 +7,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Annotated, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
