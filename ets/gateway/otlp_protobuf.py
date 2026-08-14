@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from typing import Any, TypeAlias, cast
+from typing import Any, cast
 
 from google.protobuf.json_format import MessageToDict
 from google.protobuf.message import DecodeError, Message
@@ -24,7 +24,7 @@ from ets.capture.otlp import (
 
 OTLP_PROTOBUF_DECODER_PROFILE = "ets.gateway.otlp.protobuf.v1"
 OTLP_PROTOBUF_TRANSFORMATION_PROFILE = "ets.gateway.otlp.protobuf-to-semantic.v1"
-OtlpRecordRow: TypeAlias = tuple[
+type OtlpRecordRow = tuple[
     dict[str, Any],
     dict[str, Any],
     dict[str, Any],
