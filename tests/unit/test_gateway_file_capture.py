@@ -35,7 +35,11 @@ def registration() -> SourceRegistration:
     )
 
 
-def observation(payload: bytes = b"file-payload", *, relative_path: str = "drop/a.bin") -> FilesystemObjectDigest:
+def observation(
+    payload: bytes = b"file-payload",
+    *,
+    relative_path: str = "drop/a.bin",
+) -> FilesystemObjectDigest:
     digest = StreamDigestResult(
         algorithm="sha256",
         value=hashlib.sha256(payload).hexdigest(),
@@ -57,7 +61,11 @@ def observation(payload: bytes = b"file-payload", *, relative_path: str = "drop/
     )
 
 
-def request(payload: bytes = b"file-payload", *, delivery_id: str = "delivery-1") -> GatewayFileCaptureRequest:
+def request(
+    payload: bytes = b"file-payload",
+    *,
+    delivery_id: str = "delivery-1",
+) -> GatewayFileCaptureRequest:
     return GatewayFileCaptureRequest(
         observation=observation(payload),
         delivery_id=delivery_id,
@@ -71,12 +79,13 @@ def request(payload: bytes = b"file-payload", *, delivery_id: str = "delivery-1"
 def test_file_capture_uses_authoritative_scope_and_declared_representation() -> None:
     mapped = build_file_capture(registration(), request())
     envelope = mapped.envelope
+    expected_content_hash = hashlib.sha256(mapped.committed_representation).hexdigest()
 
     assert envelope.source.tenant_id == "tenant_authoritative"
     assert envelope.source.workspace_id == "workspace_authoritative"
     assert envelope.source.transport_identity == PRINCIPAL
     assert envelope.source.idempotency_key == "file:delivery-1"
-    assert envelope.content_digest.value == hashlib.sha256(mapped.committed_representation).hexdigest()
+    assert envelope.content_digest.value == expected_content_hash
     assert envelope.metadata["object_digest"] == hashlib.sha256(b"file-payload").hexdigest()
     assert envelope.metadata["declared_filename_claim"] == "source-name.bin"
     assert envelope.metadata["relative_path"] == "drop/a.bin"
@@ -103,8 +112,9 @@ def test_file_capture_keeps_raw_marker_out_of_committed_surfaces() -> None:
 
 def test_file_capture_rejects_unstable_or_precommitted_observation() -> None:
     base = observation()
+    changed = replace(base, stability="changed")
     with pytest.raises(GatewayFileCaptureError, match="not qualified as stable"):
-        build_file_capture(registration(), replace(request(), observation=replace(base, stability="changed")))
+        build_file_capture(registration(), replace(request(), observation=changed))
     with pytest.raises(GatewayFileCaptureError, match="already carries commitment"):
         build_file_capture(
             registration(),
