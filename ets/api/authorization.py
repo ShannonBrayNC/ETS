@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from ets.api.auth_errors import AuthRoleError
-
 AuthRole = Literal[
     "viewer",
     "evidence_producer",
@@ -25,6 +23,11 @@ AuthCapability = Literal[
     "admin.manage",
 ]
 AuthorizationProfile = Literal["local_nonproduction", "production"]
+
+
+class AuthRoleError(ValueError):
+    """Raised when a signed role claim cannot map to the ETS authorization model."""
+
 
 ROLE_CAPABILITIES: dict[AuthRole, frozenset[AuthCapability]] = {
     "viewer": frozenset({"evidence.read"}),
