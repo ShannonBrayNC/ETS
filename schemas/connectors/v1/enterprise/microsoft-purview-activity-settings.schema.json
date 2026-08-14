@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/connectors/v1/enterprise/microsoft-purview-activity-settings.schema.json",
+  "title": "ETS Microsoft Purview Management Activity connector settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["management_profile_id", "content_type"],
+  "properties": {
+    "management_profile_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "content_type": {
+      "type": "string",
+      "enum": [
+        "Audit.AzureActiveDirectory",
+        "Audit.Exchange",
+        "Audit.SharePoint",
+        "Audit.General",
+        "DLP.All"
+      ]
+    },
+    "service_specific_allowlist": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+      },
+      "default": []
+    },
+    "include_client_ip": {
+      "type": "boolean",
+      "default": false
+    },
+    "request_timeout_seconds": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 60,
+      "default": 30
+    },
+    "maximum_discovery_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2097152,
+      "default": 2097152
+    },
+    "maximum_content_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16777216,
+      "default": 16777216
+    },
+    "poll_window_seconds": {
+      "type": "integer",
+      "minimum": 60,
+      "maximum": 86400,
+      "default": 3600
+    },
+    "overlap_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3600,
+      "default": 300
+    }
+  }
+}
