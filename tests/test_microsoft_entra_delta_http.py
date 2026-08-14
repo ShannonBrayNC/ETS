@@ -7,12 +7,9 @@ from urllib.request import Request
 
 import pytest
 
-from ets.connectors.enterprise.microsoft import (
-    MicrosoftTenantProfileV1,
-)
-from ets.connectors.enterprise.microsoft_entra_delta import (
-    entra_delta_request_profile,
-)
+from ets.connectors.credentials.models import CredentialReferenceV1
+from ets.connectors.enterprise.microsoft import MicrosoftTenantProfileV1
+from ets.connectors.enterprise.microsoft_entra_delta import entra_delta_request_profile
 from ets.connectors.enterprise.microsoft_entra_http import (
     MicrosoftEntraDeltaAuthenticationError,
     MicrosoftEntraDeltaAuthorizationError,
@@ -21,7 +18,6 @@ from ets.connectors.enterprise.microsoft_entra_http import (
     MicrosoftEntraDeltaStateExpiredError,
     MicrosoftEntraDeltaThrottleError,
 )
-from ets.connectors.credentials.models import CredentialReferenceV1
 
 TENANT_ID = "11111111-1111-1111-1111-111111111111"
 APPLICATION_ID = "22222222-2222-2222-2222-222222222222"
