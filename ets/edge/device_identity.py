@@ -27,6 +27,42 @@ class EdgeDeviceIdentity(TypedDict):
 _IDENTITY_FIELDS = frozenset(EdgeDeviceIdentity.__annotations__)
 
 
+def resolve_local_api_key_provisioning(
+    explicit_key: str | None,
+    explicit_key_file: str | None,
+) -> str | None:
+    """Resolve optional first-boot local API-key provisioning without logging it.
+
+    A direct environment value and a secret-file path are mutually exclusive.
+    The returned value is still validated and persisted by
+    ``load_or_create_local_api_key`` so the existing no-implicit-rotation rule
+    remains authoritative across restarts.
+    """
+
+    if explicit_key is not None and explicit_key_file is not None:
+        raise RuntimeError(
+            "ETS_LOCAL_API_KEY and ETS_LOCAL_API_KEY_FILE are mutually exclusive"
+        )
+
+    if explicit_key_file is None:
+        return explicit_key
+
+    file_value = explicit_key_file.strip()
+    if not file_value:
+        raise RuntimeError("ETS_LOCAL_API_KEY_FILE must not be empty")
+
+    path = Path(file_value)
+    try:
+        raw_value = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError(f"unable to read ETS local API key file: {path}") from exc
+
+    key = raw_value.strip()
+    if not key:
+        raise RuntimeError("ETS local API key file is empty")
+    return _validate_local_api_key(key)
+
+
 def load_or_create_local_api_key(path: Path, explicit_key: str | None = None) -> str:
     """Return a durable local API key, generating at least 256 bits on first boot.
 

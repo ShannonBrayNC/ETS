@@ -17,6 +17,7 @@ import uvicorn
 from ets.edge.device_identity import (
     build_device_identity,
     load_or_create_local_api_key,
+    resolve_local_api_key_provisioning,
     write_device_identity,
 )
 
@@ -43,7 +44,11 @@ def _load_or_create_signing_key() -> str:
 def main() -> None:
     signing_key_hex = _load_or_create_signing_key()
     public_key_id = os.getenv("ETS_SIGNING_PUBLIC_KEY_ID", "ets-edge-virtual-demo-key")
-    local_api_key = load_or_create_local_api_key(API_KEY_PATH, os.getenv("ETS_LOCAL_API_KEY"))
+    explicit_api_key = resolve_local_api_key_provisioning(
+        os.getenv("ETS_LOCAL_API_KEY"),
+        os.getenv("ETS_LOCAL_API_KEY_FILE"),
+    )
+    local_api_key = load_or_create_local_api_key(API_KEY_PATH, explicit_api_key)
     identity = build_device_identity(signing_key_hex, public_key_id)
     write_device_identity(DEVICE_IDENTITY_PATH, identity)
 
