@@ -48,7 +48,9 @@ GITHUB_ALLOWED_SETTINGS = frozenset(
         "request_timeout_seconds",
     }
 )
-GITHUB_ORGANIZATION_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,98}[A-Za-z0-9])?$")
+GITHUB_ORGANIZATION_PATTERN = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,98}[A-Za-z0-9])?$"
+)
 GITHUB_INCLUDE_VALUES = frozenset({"web", "git", "all"})
 GITHUB_PROVENANCE_FIELDS = (
     "@timestamp",
@@ -316,7 +318,11 @@ class GitHubAuditAdapter:
                 retry_after_seconds=exc.retry_after_seconds,
             )
         except GitHubAuditRetryableError:
-            return _health("degraded", "retryable_error", "GitHub audit API is temporarily unavailable")
+            return _health(
+                "degraded",
+                "retryable_error",
+                "GitHub audit API is temporarily unavailable",
+            )
         except GitHubAuditClientError:
             return _health("failed", "terminal_error", "GitHub audit API request failed")
         message = (
@@ -388,7 +394,9 @@ class GitHubAuditAdapter:
                 checkpoint=checkpoint,
                 message="GitHub audit continuity cannot be established without a time checkpoint",
             )
-        retention_floor = self._now().astimezone(UTC) - timedelta(days=GITHUB_AUDIT_RETENTION_DAYS)
+        retention_floor = self._now().astimezone(UTC) - timedelta(
+            days=GITHUB_AUDIT_RETENTION_DAYS
+        )
         if checkpoint.observed_through_utc < retention_floor:
             return ConnectorReconciliationResultV1(
                 schema_version="ets.connector.reconciliation_result.v1",
