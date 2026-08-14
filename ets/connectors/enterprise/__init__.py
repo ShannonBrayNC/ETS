@@ -5,5 +5,19 @@ from ets.connectors.enterprise.github import (
     GitHubAuditHttpClient,
     GitHubAuditPage,
 )
+from ets.connectors.enterprise.kubernetes import (
+    KubernetesAuditAdapter,
+    KubernetesAuditBatch,
+    KubernetesAuditDecodeError,
+    parse_kubernetes_audit_event_list,
+)
 
-__all__ = ["GitHubAuditAdapter", "GitHubAuditHttpClient", "GitHubAuditPage"]
+__all__ = [
+    "GitHubAuditAdapter",
+    "GitHubAuditHttpClient",
+    "GitHubAuditPage",
+    "KubernetesAuditAdapter",
+    "KubernetesAuditBatch",
+    "KubernetesAuditDecodeError",
+    "parse_kubernetes_audit_event_list",
+]
