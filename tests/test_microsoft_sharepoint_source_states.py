@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 from ets.connectors.credentials.models import CredentialMetadataV1, CredentialReferenceV1
@@ -31,6 +32,7 @@ from ets.connectors.models import (
 )
 from ets.connectors.registry import ConnectorRegistry
 
+NOW = datetime(2026, 8, 14, 20, 30, tzinfo=UTC)
 MANIFESTS = Path("config/connectors/enterprise")
 PROFILE_ID = "sharepoint-prod"
 CREDENTIAL_REF = "fixture://microsoft/sharepoint"
@@ -45,7 +47,7 @@ class FixtureCredentialResolver:
             provider="fixture",
             status="available",
             version="1",
-            updated_at_utc=None,
+            updated_at_utc=NOW,
         )
 
     def resolve(self, reference: CredentialReferenceV1) -> CredentialLease:
