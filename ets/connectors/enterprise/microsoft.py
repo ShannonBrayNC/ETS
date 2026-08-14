@@ -22,8 +22,8 @@ MICROSOFT_TENANT_PROFILE_SCHEMA_VERSION = "ets.connector.microsoft.tenant_profil
 MICROSOFT_READINESS_SCHEMA_VERSION = "ets.connector.microsoft.readiness.v1"
 
 _GUID_PATTERN = re.compile(
-    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-"
-    r"[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 )
 
 MicrosoftCloud = Literal[
