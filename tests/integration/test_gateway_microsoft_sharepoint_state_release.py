@@ -325,7 +325,9 @@ def test_partial_commit_retry_releases_state_only_after_sync_repair(tmp_path: Pa
     assert store.baseline_complete(SOURCE_KEY) is True
 
 
-def test_state_release_failure_withholds_checkpoint_after_evidence_is_queued(tmp_path: Path) -> None:
+def test_state_release_failure_withholds_checkpoint_after_evidence_is_queued(
+    tmp_path: Path,
+) -> None:
     store = SharePointMetadataStateStore(tmp_path / "state.db", max_items=1)
     existing_page = _page(object_id="item-existing", cycle_complete=True)
     store.apply(
