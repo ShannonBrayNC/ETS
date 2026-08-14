@@ -15,20 +15,27 @@ from urllib.request import Request, urlopen
 
 from pydantic import JsonValue
 
-from ets.connectors.credentials.broker import CredentialBroker
 from ets.connectors.credentials.models import CredentialReferenceV1
+from ets.connectors.credentials.provider import (
+    CredentialLease,
+    CredentialProviderNotFoundError,
+    CredentialResolutionError,
+)
 from ets.connectors.models import (
     ConnectorCheckpointV1,
     ConnectorCollectionResultV1,
     ConnectorDefinitionV1,
     ConnectorEvidenceCandidateV1,
+    ConnectorHealthState,
     ConnectorHealthV1,
     ConnectorInstanceV1,
+    ConnectorOperationCode,
     ConnectorReconciliationResultV1,
 )
 from ets.connectors.sdk import ConnectorConfigurationError
 
 GITHUB_AUDIT_RETENTION_DAYS = 180
+GITHUB_API_BASE_URL = "https://api.github.com"
 GITHUB_DEFAULT_API_VERSION = "2022-11-28"
 GITHUB_SOURCE_SYSTEM = "github.audit"
 GITHUB_EVENT_TYPE = "github.audit.observed"
@@ -36,7 +43,6 @@ GITHUB_TRANSFORMATION_PROFILE = "ets.connector.github.audit-metadata.v1"
 GITHUB_ALLOWED_SETTINGS = frozenset(
     {
         "organization",
-        "api_base_url",
         "api_version",
         "include",
         "request_timeout_seconds",
@@ -45,6 +51,7 @@ GITHUB_ALLOWED_SETTINGS = frozenset(
 GITHUB_ORGANIZATION_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,98}[A-Za-z0-9])?$")
 GITHUB_INCLUDE_VALUES = frozenset({"web", "git", "all"})
 GITHUB_PROVENANCE_FIELDS = (
+    "@timestamp",
     "_document_id",
     "action",
     "actor",
@@ -103,10 +110,15 @@ class GitHubAuditPage:
 @dataclass(frozen=True, slots=True)
 class GitHubAuditSettings:
     organization: str
-    api_base_url: str
     api_version: str
     include: str
     request_timeout_seconds: float
+
+
+class CredentialResolver(Protocol):
+    """Minimal G2B boundary required by enterprise API adapters."""
+
+    def resolve(self, reference: CredentialReferenceV1) -> CredentialLease: ...
 
 
 class GitHubAuditClient(Protocol):
@@ -129,7 +141,7 @@ GitHubAuditClientFactory = Callable[[GitHubAuditSettings, bytes], GitHubAuditCli
 
 
 class GitHubAuditHttpClient:
-    """Minimal bounded REST client for GitHub organization audit-log collection."""
+    """Minimal bounded REST client for GitHub.com organization audit-log collection."""
 
     def __init__(self, settings: GitHubAuditSettings, credential_material: bytes) -> None:
         if not credential_material:
@@ -139,10 +151,7 @@ class GitHubAuditHttpClient:
         self._closed = False
 
     def __repr__(self) -> str:
-        return (
-            "GitHubAuditHttpClient(credential=<redacted>, "
-            f"api_base_url={self._settings.api_base_url!r})"
-        )
+        return "GitHubAuditHttpClient(credential=<redacted>, api_base_url='https://api.github.com')"
 
     def collect(
         self,
@@ -166,7 +175,7 @@ class GitHubAuditHttpClient:
             query["phrase"] = f"created:>={_github_search_time(observed_at_or_after)}"
 
         url = (
-            f"{self._settings.api_base_url.rstrip('/')}/orgs/{quote(organization, safe='')}/"
+            f"{GITHUB_API_BASE_URL}/orgs/{quote(organization, safe='')}/"
             f"audit-log?{urlencode(query)}"
         )
         request = Request(
@@ -250,7 +259,7 @@ class GitHubAuditAdapter:
     def __init__(
         self,
         definition: ConnectorDefinitionV1,
-        credential_broker: CredentialBroker,
+        credential_resolver: CredentialResolver,
         *,
         client_factory: GitHubAuditClientFactory | None = None,
         now: Callable[[], datetime] | None = None,
@@ -260,7 +269,7 @@ class GitHubAuditAdapter:
         if definition.implementation_class != "enterprise_api":
             raise ValueError("GitHub audit adapter requires enterprise_api definition")
         self._definition = definition
-        self._credential_broker = credential_broker
+        self._credential_resolver = credential_resolver
         self._client_factory = client_factory or GitHubAuditHttpClient
         self._now = now or _utc_now
 
@@ -290,6 +299,10 @@ class GitHubAuditAdapter:
         settings = _settings(instance)
         try:
             page = self._collect_page(instance, None, per_page=1)
+        except CredentialResolutionError as exc:
+            return _credential_health(exc)
+        except CredentialProviderNotFoundError:
+            return _health("failed", "invalid_config", "GitHub credential provider is unavailable")
         except GitHubAuditAuthenticationError:
             return _health("failed", "authentication_failed", "GitHub credential was rejected")
         except GitHubAuditAuthorizationError:
@@ -324,6 +337,10 @@ class GitHubAuditAdapter:
         self.validate_config(instance)
         try:
             page = self._collect_page(instance, checkpoint)
+        except CredentialResolutionError as exc:
+            return _collection(_credential_operation_code(exc), "GitHub credential is unavailable")
+        except CredentialProviderNotFoundError:
+            return _collection("invalid_config", "GitHub credential provider is unavailable")
         except GitHubAuditAuthenticationError:
             return _collection("authentication_failed", "GitHub credential was rejected")
         except GitHubAuditAuthorizationError:
@@ -443,7 +460,7 @@ class GitHubAuditAdapter:
             schema_version="ets.connector.credential_ref.v1",
             ref=credential_ref,
         )
-        with self._credential_broker.resolve(reference) as lease:
+        with self._credential_resolver.resolve(reference) as lease:
             client = self._client_factory(settings, lease.reveal())
             try:
                 return client.collect(
@@ -466,22 +483,11 @@ def _settings(instance: ConnectorInstanceV1) -> GitHubAuditSettings:
             "unsupported GitHub audit connector settings: " + ", ".join(unexpected)
         )
     organization = instance.settings.get("organization")
-    if not isinstance(organization, str) or GITHUB_ORGANIZATION_PATTERN.fullmatch(organization) is None:
-        raise ConnectorConfigurationError("GitHub organization setting is invalid")
-
-    api_base_url = instance.settings.get("api_base_url", "https://api.github.com")
-    if not isinstance(api_base_url, str):
-        raise ConnectorConfigurationError("GitHub api_base_url must be a string")
-    parsed = urlsplit(api_base_url)
     if (
-        parsed.scheme != "https"
-        or not parsed.netloc
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.query
-        or parsed.fragment
+        not isinstance(organization, str)
+        or GITHUB_ORGANIZATION_PATTERN.fullmatch(organization) is None
     ):
-        raise ConnectorConfigurationError("GitHub api_base_url must be a bounded HTTPS API root")
+        raise ConnectorConfigurationError("GitHub organization setting is invalid")
 
     api_version = instance.settings.get("api_version", GITHUB_DEFAULT_API_VERSION)
     if not isinstance(api_version, str) or not 1 <= len(api_version) <= 40:
@@ -490,11 +496,14 @@ def _settings(instance: ConnectorInstanceV1) -> GitHubAuditSettings:
     if not isinstance(include, str) or include not in GITHUB_INCLUDE_VALUES:
         raise ConnectorConfigurationError("GitHub include must be one of web, git, or all")
     timeout = instance.settings.get("request_timeout_seconds", 10.0)
-    if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= 60:
+    if (
+        not isinstance(timeout, (int, float))
+        or isinstance(timeout, bool)
+        or not 0 < timeout <= 60
+    ):
         raise ConnectorConfigurationError("GitHub request timeout must be between 0 and 60 seconds")
     return GitHubAuditSettings(
         organization=organization,
-        api_base_url=api_base_url.rstrip("/"),
         api_version=api_version,
         include=include,
         request_timeout_seconds=float(timeout),
@@ -577,19 +586,40 @@ def _retry_after_seconds(exc: HTTPError) -> int:
     return 60
 
 
-def _health(state: str, code: str, message: str) -> ConnectorHealthV1:
+def _credential_operation_code(exc: CredentialResolutionError) -> ConnectorOperationCode:
+    if exc.status in {"missing", "expired", "revoked"}:
+        return "authentication_failed"
+    if exc.status == "unavailable":
+        return "retryable_error"
+    return "invalid_config"
+
+
+def _credential_health(exc: CredentialResolutionError) -> ConnectorHealthV1:
+    code = _credential_operation_code(exc)
+    state: ConnectorHealthState = "degraded" if code == "retryable_error" else "failed"
+    return _health(state, code, "GitHub connector credential is unavailable")
+
+
+def _health(
+    state: ConnectorHealthState,
+    code: ConnectorOperationCode,
+    message: str,
+) -> ConnectorHealthV1:
     return ConnectorHealthV1(
         schema_version="ets.connector.health.v1",
-        state=cast(Any, state),
-        code=cast(Any, code),
+        state=state,
+        code=code,
         message=message,
     )
 
 
-def _collection(code: str, message: str) -> ConnectorCollectionResultV1:
+def _collection(
+    code: ConnectorOperationCode,
+    message: str,
+) -> ConnectorCollectionResultV1:
     return ConnectorCollectionResultV1(
         schema_version="ets.connector.collection_result.v1",
-        code=cast(Any, code),
+        code=code,
         message=message,
     )
 
