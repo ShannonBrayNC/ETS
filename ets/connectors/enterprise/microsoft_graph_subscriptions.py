@@ -436,7 +436,12 @@ def _validate_graph_management_url(graph_root: str, value: str) -> None:
         raise MicrosoftGraphSubscriptionTerminalError(
             "Microsoft Graph management request changed the qualified subscription path"
         )
-    if parsed.username is not None or parsed.password is not None or parsed.query or parsed.fragment:
+    if (
+        parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
         raise MicrosoftGraphSubscriptionTerminalError(
             "Microsoft Graph management request contains unsupported URL components"
         )
