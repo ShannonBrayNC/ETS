@@ -93,7 +93,10 @@ def test_delta_page_minimizes_metadata_and_excludes_content_and_actor_fields() -
                         "shareId": "must-not-copy",
                     },
                     "file": {
-                        "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "mimeType": (
+                            "application/vnd.openxmlformats-officedocument."
+                            "wordprocessingml.document"
+                        ),
                         "hashes": {"quickXorHash": "must-not-copy"},
                     },
                     "webUrl": "https://contoso.sharepoint.com/raw-location",
@@ -123,7 +126,9 @@ def test_delta_page_minimizes_metadata_and_excludes_content_and_actor_fields() -
         "path": "/drive/root:/Reports",
     }
     assert record.metadata["file"] == {
-        "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        "mime_type": (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
     }
     serialized = json.dumps(record.metadata, sort_keys=True)
     for forbidden in (
