@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/connectors/v1/enterprise/aws-cloudtrail-settings.schema.json",
+  "title": "ETS AWS CloudTrail Event History connector settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["region"],
+  "properties": {
+    "region": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9-]+$"
+    },
+    "request_timeout_seconds": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 60
+    }
+  }
+}
