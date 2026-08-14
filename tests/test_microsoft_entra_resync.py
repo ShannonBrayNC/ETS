@@ -139,8 +139,8 @@ def _service(tmp_path: Path) -> ConnectorManagementService:
         )
     )
     return ConnectorManagementService(
-        registry,
-        ConnectorRuntimeStore(tmp_path / "connector-runtime.db"),
+        registry=registry,
+        store=ConnectorRuntimeStore(tmp_path / "connector-runtime.db"),
         now=lambda: NOW,
     )
 
