@@ -9,10 +9,18 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from ets.connectors.models import ConnectorCheckpointV1, ConnectorInstanceV1
 
-CONNECTOR_RUNTIME_SCHEMA_VERSION = "ets.connector.runtime.v1"
-CONNECTOR_INSTANCE_RECORD_SCHEMA_VERSION = "ets.connector.instance_record.v1"
-CONNECTOR_OPERATION_RECEIPT_SCHEMA_VERSION = "ets.connector.operation_receipt.v1"
-CONNECTOR_ADMIN_AUDIT_SCHEMA_VERSION = "ets.connector.admin_audit.v1"
+CONNECTOR_RUNTIME_SCHEMA_VERSION: Literal["ets.connector.runtime.v1"] = (
+    "ets.connector.runtime.v1"
+)
+CONNECTOR_INSTANCE_RECORD_SCHEMA_VERSION: Literal["ets.connector.instance_record.v1"] = (
+    "ets.connector.instance_record.v1"
+)
+CONNECTOR_OPERATION_RECEIPT_SCHEMA_VERSION: Literal["ets.connector.operation_receipt.v1"] = (
+    "ets.connector.operation_receipt.v1"
+)
+CONNECTOR_ADMIN_AUDIT_SCHEMA_VERSION: Literal["ets.connector.admin_audit.v1"] = (
+    "ets.connector.admin_audit.v1"
+)
 
 ConnectorObservationState = Literal[
     "healthy_observation",
@@ -20,6 +28,7 @@ ConnectorObservationState = Literal[
     "collection_gap",
     "unknown_observation",
 ]
+ConnectorAuditResult = Literal["success", "failure"]
 ConnectorOperationStage = Literal[
     "configured",
     "source_received",
@@ -115,7 +124,7 @@ class ConnectorAdminAuditEventV1(StrictRuntimeModel):
     actor_id: str = Field(min_length=1, max_length=200)
     tenant_id: str = Field(min_length=1, max_length=128)
     workspace_id: str = Field(min_length=1, max_length=128)
-    result: Literal["success", "failure"]
+    result: ConnectorAuditResult
     revision: int | None = Field(default=None, ge=1)
     message: str | None = Field(default=None, min_length=1, max_length=500)
     created_at_utc: datetime
