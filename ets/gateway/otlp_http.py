@@ -224,10 +224,10 @@ async def _handle_request(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             content={"detail": "OTLP/HTTP request exceeds configured byte limits"},
         )
-    except OtlpProtobufDecodeError:
+    except (OtlpHttpRequestError, OtlpProtobufDecodeError):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"detail": "invalid OTLP protobuf request"},
+            content={"detail": "invalid OTLP/HTTP protobuf request"},
         )
 
     return _otlp_success_response(signal_class, batch)
@@ -292,7 +292,40 @@ def _commit_batch(
 
 
 def _otlp_success_response(signal_class: OtlpSignalClass, result: OtlpHttpBatchResult) -> Response:
-    response = _new_signal_response(signal_class)
+    message = _result_message(result)
+    if signal_class == "logs":
+        response = ExportLogsServiceResponse()
+        if result.rejected or result.partial_commit:
+            response.partial_success.rejected_log_records = result.rejected
+            response.partial_success.error_message = message
+        payload = response.SerializeToString()
+    elif signal_class == "metrics":
+        metrics_response = ExportMetricsServiceResponse()
+        if result.rejected or result.partial_commit:
+            metrics_response.partial_success.rejected_data_points = result.rejected
+            metrics_response.partial_success.error_message = message
+        payload = metrics_response.SerializeToString()
+    else:
+        trace_response = ExportTraceServiceResponse()
+        if result.rejected or result.partial_commit:
+            trace_response.partial_success.rejected_spans = result.rejected
+            trace_response.partial_success.error_message = message
+        payload = trace_response.SerializeToString()
+
+    return Response(
+        content=payload,
+        status_code=status.HTTP_200_OK,
+        media_type=OTLP_PROTOBUF_MEDIA_TYPE,
+        headers={
+            "X-ETS-Decoded-Records": str(result.decoded_records),
+            "X-ETS-Committed-Local": str(result.committed_local),
+            "X-ETS-Sync-Queued": str(result.sync_queued),
+            "X-ETS-Partial-Commit": str(result.partial_commit),
+        },
+    )
+
+
+def _result_message(result: OtlpHttpBatchResult) -> str:
     messages: list[str] = []
     if result.decode_rejected:
         messages.append(f"decode_rejected={result.decode_rejected}")
@@ -306,36 +339,7 @@ def _otlp_success_response(signal_class: OtlpSignalClass, result: OtlpHttpBatchR
         messages.append(f"budget_rejected={result.budget_rejected}")
     if result.partial_commit:
         messages.append(f"partial_commit={result.partial_commit}")
-
-    if result.rejected or result.partial_commit:
-        partial = response.partial_success
-        if signal_class == "logs":
-            partial.rejected_log_records = result.rejected
-        elif signal_class == "metrics":
-            partial.rejected_data_points = result.rejected
-        else:
-            partial.rejected_spans = result.rejected
-        partial.error_message = "; ".join(messages)
-
-    return Response(
-        content=response.SerializeToString(),
-        status_code=status.HTTP_200_OK,
-        media_type=OTLP_PROTOBUF_MEDIA_TYPE,
-        headers={
-            "X-ETS-Decoded-Records": str(result.decoded_records),
-            "X-ETS-Committed-Local": str(result.committed_local),
-            "X-ETS-Sync-Queued": str(result.sync_queued),
-            "X-ETS-Partial-Commit": str(result.partial_commit),
-        },
-    )
-
-
-def _new_signal_response(signal_class: OtlpSignalClass) -> object:
-    if signal_class == "logs":
-        return ExportLogsServiceResponse()
-    if signal_class == "metrics":
-        return ExportMetricsServiceResponse()
-    return ExportTraceServiceResponse()
+    return "; ".join(messages)
 
 
 def _content_type(request: Request) -> str:
