@@ -108,7 +108,9 @@ def _normalize_subscription_resource(value: str) -> str:
         raise MicrosoftSharePointNotificationError(
             "SharePoint Graph subscription resource is outside bounds"
         )
-    if "://" in value or any(character in value for character in ("?", "#", "\x00", "\r", "\n")):
+    if "://" in value or any(
+        character in value for character in ("?", "#", "\x00", "\r", "\n")
+    ):
         raise MicrosoftSharePointNotificationError(
             "SharePoint Graph subscription resource is not a qualified relative path"
         )
