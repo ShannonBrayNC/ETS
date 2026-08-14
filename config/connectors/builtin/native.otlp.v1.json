@@ -2,7 +2,7 @@
   "schema_version": "ets.connector.definition.v1",
   "connector_id": "native.otlp",
   "display_name": "Gateway OTLP",
-  "description": "Built-in OTLP intake using the shared G1F semantic and commitment contracts; transport remains unavailable until G1F-C/D qualification completes.",
+  "description": "Built-in bounded OTLP/HTTP and OTLP/gRPC intake backed by the qualified Gateway G1F runtime.",
   "implementation_class": "native",
   "source_classes": ["otlp_logs", "otlp_metrics", "otlp_traces"],
   "adapter_version": "1.0",

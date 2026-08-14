@@ -88,9 +88,12 @@ NATIVE_CONNECTOR_BINDINGS: dict[str, NativeConnectorBinding] = {
     ),
     "native.otlp": NativeConnectorBinding(
         connector_id="native.otlp",
-        runtime_owner="GATE-G1F-C/GATE-G1F-D",
+        runtime_owner=(
+            "ets.gateway.otlp_http/create_otlp_http_app + "
+            "ets.gateway.otlp_grpc/GatewayOtlpGrpcHost"
+        ),
         transport_profile="ets.gateway.otlp.v1",
-        readiness="transport_pending",
+        readiness="qualified",
         assurance_label="production_preferred",
         allowed_setting_keys=frozenset(
             {
