@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
@@ -222,6 +223,7 @@ def _parse_notification(
         "subscriptionExpirationDateTime",
     )
     lifecycle_event = raw.get("lifecycleEvent")
+    lifecycle: GraphLifecycleEvent | None
     if lifecycle_event is not None:
         if lifecycle_event not in {
             "reauthorizationRequired",
@@ -229,7 +231,7 @@ def _parse_notification(
             "missed",
         }:
             raise MicrosoftGraphNotificationError("Graph lifecycle event is not qualified")
-        lifecycle = lifecycle_event
+        lifecycle = cast(GraphLifecycleEvent, lifecycle_event)
         kind: GraphNotificationKind = "lifecycle"
         change_type = None
         resource = None
@@ -346,4 +348,4 @@ def _parse_datetime(value: str, field_name: str) -> datetime:
 
 
 def _constant_time_equal(left: str, right: str) -> bool:
-    return __import__("hmac").compare_digest(left, right)
+    return hmac.compare_digest(left, right)
