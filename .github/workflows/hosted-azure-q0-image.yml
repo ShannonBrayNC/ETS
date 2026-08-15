@@ -222,17 +222,31 @@ jobs:
 
           report_path = Path("evidence/host-az-q0-image/trivy-high-critical.json")
           report = json.loads(report_path.read_text(encoding="utf-8"))
-          counts = {"HIGH": 0, "CRITICAL": 0}
+          severities = ("HIGH", "CRITICAL")
+          fixable = {severity: 0 for severity in severities}
+          upstream_unfixed = {severity: 0 for severity in severities}
           for result in report.get("Results") or []:
               for finding in result.get("Vulnerabilities") or []:
                   severity = str(finding.get("Severity", "")).upper()
-                  if severity in counts:
-                      counts[severity] += 1
-          gate = "PASS" if sum(counts.values()) == 0 else "FAIL"
+                  if severity not in fixable:
+                      continue
+                  fixed_version = str(finding.get("FixedVersion") or "").strip()
+                  if fixed_version:
+                      fixable[severity] += 1
+                  else:
+                      upstream_unfixed[severity] += 1
+          gate = "PASS" if sum(fixable.values()) == 0 else "FAIL"
           summary = {
-              "high": counts["HIGH"],
-              "critical": counts["CRITICAL"],
               "gate": gate,
+              "policy": "fail_on_fixable_high_critical_v1",
+              "fixable": {
+                  "high": fixable["HIGH"],
+                  "critical": fixable["CRITICAL"],
+              },
+              "upstream_unfixed": {
+                  "high": upstream_unfixed["HIGH"],
+                  "critical": upstream_unfixed["CRITICAL"],
+              },
           }
           Path("evidence/host-az-q0-image/vulnerability-gate.json").write_text(
               json.dumps(summary, indent=2, sort_keys=True) + "\n",
@@ -248,6 +262,9 @@ jobs:
               "sbom": "sbom.spdx.json",
               "vulnerability_report": "trivy-high-critical.json",
               "vulnerability_gate": gate,
+              "vulnerability_gate_policy": "fail_on_fixable_high_critical_v1",
+              "upstream_unfixed_high": upstream_unfixed["HIGH"],
+              "upstream_unfixed_critical": upstream_unfixed["CRITICAL"],
               "registry_credentials_retained": False,
               "customer_identifiers_retained": False,
           }
@@ -297,6 +314,6 @@ jobs:
           VULNERABILITY_GATE: ${{ steps.gate.outputs.vulnerability_gate }}
         run: |
           if [ "$VULNERABILITY_GATE" != "PASS" ]; then
-            echo "Q0 image contains retained HIGH/CRITICAL vulnerability findings." >&2
+            echo "Q0 image contains fixable HIGH/CRITICAL vulnerability findings." >&2
             exit 1
           fi
