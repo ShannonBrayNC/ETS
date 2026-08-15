@@ -1,6 +1,12 @@
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm
 
 WORKDIR /app
+
+# Apply current Debian security updates during the image build. The APT lists are
+# removed in the same layer so the runtime image does not retain package metadata.
+RUN apt-get update \
+    && apt-get upgrade --yes --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md ./
 COPY ets ./ets
