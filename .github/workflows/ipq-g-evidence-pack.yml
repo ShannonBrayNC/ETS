@@ -1,0 +1,85 @@
+name: IPQ-G Integrated Evidence Pack
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ipq-g-evidence-pack-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IPQ_FROZEN_SUT_SHA: 75927c5a6c3f35e56c4f6e2cd88947e18a2ff333
+
+jobs:
+  evidence-pack:
+    name: Retained A-F evidence and disclosure audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact IPQ-G harness head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Assert frozen baseline and exact harness identities
+        shell: bash
+        env:
+          EXPECTED_HARNESS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_HARNESS_SHA"
+          mkdir -p artifacts/ipq-g/retained
+          printf 'qualification=IPQ-GQ1\nharness_sha=%s\nfrozen_sut_sha=%s\nbase_sha=%s\ngithub_event_sha=%s\n' \
+            "$actual" "$IPQ_FROZEN_SUT_SHA" "$BASE_SHA" "$GITHUB_SHA" \
+            > artifacts/ipq-g/identity.txt
+
+      - name: Verify and extract exact retained A-F artifacts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/verify_and_extract_ipq_artifacts.py \
+            docs/test/IPQ_G_RETAINED_ARTIFACTS.json \
+            artifacts/ipq-g/retained
+
+      - name: Inventory verified retained evidence files
+        shell: bash
+        run: |
+          set -euo pipefail
+          find artifacts/ipq-g/retained -type f -print0 \
+            | sort -z \
+            | xargs -0 sha256sum \
+            > artifacts/ipq-g/retained-file-sha256.txt
+
+      - name: Scan all likely-text evidence for high-risk secret shapes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/audit_ipq_evidence_pack.py \
+            artifacts/ipq-g/retained \
+            --output artifacts/ipq-g/evidence-disclosure-audit.json
+
+      - name: Confirm frozen non-pass boundaries are present in result records
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'FAIL_PLAINTEXT_REUSABLE_API_KEY\|plaintext' \
+            docs/test/ETS_INTEGRATED_PILOT_QUALIFICATION_REPORT.md
+          grep -q 'D13' docs/test/ETS_INTEGRATED_PILOT_QUALIFICATION_REPORT.md
+          grep -q '#334' docs/test/ETS_INTEGRATED_PILOT_QUALIFICATION_REPORT.md
+          grep -q '#342' docs/test/ETS_INTEGRATED_PILOT_QUALIFICATION_REPORT.md
+          grep -q 'NO-GO' docs/test/ETS_INTEGRATED_PILOT_QUALIFICATION_REPORT.md
+
+      - name: Upload integrated evidence-pack audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipq-g-integrated-evidence-pack
+          path: artifacts/ipq-g/
+          if-no-files-found: error
+          retention-days: 90
