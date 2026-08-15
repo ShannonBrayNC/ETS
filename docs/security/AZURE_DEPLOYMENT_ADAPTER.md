@@ -22,18 +22,29 @@ Configuration, Key Vault or Managed HSM access, and Application Insights routing
 SignalForge-provided crypto client factory. The adapter:
 
 - reads only non-secret configuration from environment or App Configuration;
-- requires `ETS_AZURE_MANAGED_IDENTITY_ENABLED=true`;
-- requires `ETS_AZURE_KEY_VAULT_URL`, `ETS_AZURE_KEY_NAME`, and
-  `ETS_AZURE_KEY_VERSION`;
+- uses Managed Identity and rejects an explicitly disabled managed-identity flag;
+- hosted deployments set `ETS_AZURE_MANAGED_IDENTITY_ENABLED=true`;
+- requires `ETS_AZURE_KEY_VAULT_URL` and `ETS_AZURE_KEY_NAME`;
+- accepts optional `ETS_AZURE_KEY_VERSION`; when omitted, resolves the current key
+  to a concrete version before signing;
+- requires an RSA Key Vault/Managed HSM key capable of `PS256` signing;
 - creates an `AzureKeyVaultTreeHeadSigner` without private key material;
-- delegates signing to a Managed Identity-backed Azure SDK client supplied by
-  the deployment layer;
-- rejects missing configuration and invalid signatures fail closed.
+- SHA-256 hashes the canonical tree-head payload before delegating the digest to
+  the Managed Identity-backed Azure SDK `CryptographyClient`;
+- rejects missing configuration and invalid signature results fail closed.
+
+Azure Key Vault does not support Ed25519/EdDSA keys. Local ETS Ed25519 signing is
+a separate profile and must not be represented as Key Vault signing.
+
+The hosted Azure runtime also exposes
+`POST /api/v1/verify/tree-head-signature` for independent PS256 verification using
+a caller-supplied DER SubjectPublicKeyInfo RSA public key. The existing local
+Ed25519 verification route remains unchanged.
 
 ## Required Configuration Sources
 
 Hosted deployments should source values from Azure App Configuration, Key Vault
-references, GitHub Actions secrets, or managed environment variables. Do not commit real vault URLs, key names, key versions, tenant IDs, client IDs, access
+references, GitHub Actions secrets, or managed environment variables. **Do not commit real vault URLs**, key names, key versions, tenant IDs, client IDs, access
 tokens, private keys, or customer identifiers.
 
 `.env.example` contains placeholders only. Production values must be injected by
@@ -49,9 +60,9 @@ CI/CD or the Azure runtime environment.
 - Application Insights;
 - App Configuration keys for signer mode and non-secret signer references.
 
-The Bicep file intentionally does not create or export private key material.
-Deployment owners must provision or approve the signing key and grant the managed
-identity least-privilege signing access.
+The Bicep file intentionally does not create or export private key material in
+this runtime-composition slice. A later infrastructure slice may provision an
+operator-approved non-exportable RSA key and least-privilege runtime RBAC.
 
 ## Hosted Integration Test Boundary
 

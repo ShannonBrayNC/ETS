@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import pytest
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
 
 from ets.api.azure_signing import AzureManagedIdentitySignerAdapter
 from ets.core.signing import verify_tree_head_signature
@@ -17,20 +19,28 @@ class FakeSignResult:
 
 
 class FakeCryptoClient:
-    def __init__(self, private_key: Ed25519PrivateKey, observed_key_ids: list[str]) -> None:
+    def __init__(self, private_key: rsa.RSAPrivateKey, observed_key_ids: list[str]) -> None:
         self._private_key = private_key
         self._observed_key_ids = observed_key_ids
 
     def sign(self, algorithm: str, digest: bytes) -> FakeSignResult:
-        assert algorithm == "EdDSA"
-        return FakeSignResult(signature=self._private_key.sign(digest))
+        assert algorithm == "PS256"
+        signature = self._private_key.sign(
+            digest,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=hashes.SHA256().digest_size,
+            ),
+            Prehashed(hashes.SHA256()),
+        )
+        return FakeSignResult(signature=signature)
 
 
 def test_azure_managed_identity_signer_adapter_builds_tree_head_signer_from_env() -> None:
-    private_key = Ed25519PrivateKey.generate()
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public_key_hex = private_key.public_key().public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
     ).hex()
     observed_key_ids: list[str] = []
 
@@ -52,8 +62,34 @@ def test_azure_managed_identity_signer_adapter_builds_tree_head_signer_from_env(
     signed = signer.sign(_tree_head())
 
     assert observed_key_ids == ["https://ets-hosted.vault.azure.net/keys/ets-tree-head/version-002"]
+    assert signed.signature_alg == "ps256"
     assert signed.public_key_id == observed_key_ids[0]
     assert verify_tree_head_signature(signed, public_key_hex)
+
+
+def test_azure_managed_identity_signer_adapter_resolves_latest_version_when_omitted() -> None:
+    observed_key_ids: list[str] = []
+
+    class ReadyCryptoClient:
+        def sign(self, algorithm: str, digest: bytes) -> FakeSignResult:
+            return FakeSignResult(signature=b"signature")
+
+    def crypto_client_factory(key_id: str) -> ReadyCryptoClient:
+        observed_key_ids.append(key_id)
+        return ReadyCryptoClient()
+
+    adapter = AzureManagedIdentitySignerAdapter.from_env(
+        {
+            "ETS_AZURE_KEY_VAULT_URL": "https://ets-hosted.vault.azure.net/",
+            "ETS_AZURE_KEY_NAME": "ets-tree-head",
+        },
+        crypto_client_factory=crypto_client_factory,
+        key_version_resolver=lambda vault_url, key_name: "resolved-version-003",
+    )
+
+    assert adapter.key_id.endswith("/resolved-version-003")
+    adapter.check_ready()
+    assert observed_key_ids == [adapter.key_id]
 
 
 def test_azure_managed_identity_signer_adapter_requires_managed_identity() -> None:
@@ -70,12 +106,11 @@ def test_azure_managed_identity_signer_adapter_requires_managed_identity() -> No
 
 
 def test_azure_managed_identity_signer_adapter_requires_signer_configuration() -> None:
-    with pytest.raises(RuntimeError, match="ETS_AZURE_KEY_VERSION"):
+    with pytest.raises(RuntimeError, match="ETS_AZURE_KEY_NAME"):
         AzureManagedIdentitySignerAdapter.from_env(
             {
-                "ETS_AZURE_MANAGED_IDENTITY_ENABLED": "true",
                 "ETS_AZURE_KEY_VAULT_URL": "https://ets-hosted.vault.azure.net/",
-                "ETS_AZURE_KEY_NAME": "ets-tree-head",
+                "ETS_AZURE_KEY_VERSION": "version-002",
             },
             crypto_client_factory=lambda key_id: None,  # type: ignore[arg-type]
         )
@@ -100,12 +135,12 @@ def test_azure_managed_identity_signer_adapter_rejects_invalid_signature_result(
         adapter.as_tree_head_signer().sign(_tree_head())
 
 
-def test_runtime_azure_sdk_factory_uses_managed_identity(monkeypatch) -> None:
-    import types
-
+def test_runtime_azure_sdk_factory_uses_managed_identity_and_ps256(monkeypatch) -> None:
     from ets.api import azure_signing
 
     observed_credentials: list[object] = []
+    observed_algorithms: list[object] = []
+    sdk_ps256 = object()
 
     class FakeManagedIdentityCredential:
         def __init__(self, *, client_id: str | None = None) -> None:
@@ -117,14 +152,19 @@ def test_runtime_azure_sdk_factory_uses_managed_identity(monkeypatch) -> None:
             self.credential = credential
             observed_credentials.append(credential)
 
-        def sign(self, algorithm: str, digest: bytes) -> FakeSignResult:
+        def sign(self, algorithm: object, digest: bytes) -> FakeSignResult:
+            observed_algorithms.append(algorithm)
+            assert len(digest) == 32
             return FakeSignResult(signature=b"signed")
 
     def fake_import_module(name: str) -> object:
         if name == "azure.identity":
-            return types.SimpleNamespace(ManagedIdentityCredential=FakeManagedIdentityCredential)
+            return SimpleNamespace(ManagedIdentityCredential=FakeManagedIdentityCredential)
         if name == "azure.keyvault.keys.crypto":
-            return types.SimpleNamespace(CryptographyClient=FakeCryptographyClient)
+            return SimpleNamespace(
+                CryptographyClient=FakeCryptographyClient,
+                SignatureAlgorithm=SimpleNamespace(ps256=sdk_ps256),
+            )
         raise AssertionError(name)
 
     monkeypatch.setattr(azure_signing.importlib, "import_module", fake_import_module)
@@ -133,10 +173,44 @@ def test_runtime_azure_sdk_factory_uses_managed_identity(monkeypatch) -> None:
         {"ETS_AZURE_MANAGED_IDENTITY_CLIENT_ID": "client-id-from-ci-secret"}
     )
     client = factory("https://ets-hosted.vault.azure.net/keys/ets-tree-head/version-002")
+    result = client.sign("PS256", b"x" * 32)
 
-    assert isinstance(client, FakeCryptographyClient)
-    assert client.key_id.endswith("/version-002")
+    assert result.signature == b"signed"
+    assert observed_algorithms == [sdk_ps256]
     assert observed_credentials[0].client_id == "client-id-from-ci-secret"
+
+    with pytest.raises(RuntimeError, match="unsupported Azure signing algorithm"):
+        client.sign("RS256", b"x" * 32)
+
+
+def test_runtime_key_version_resolver_uses_latest_version(monkeypatch) -> None:
+    from ets.api import azure_signing
+
+    class FakeManagedIdentityCredential:
+        def __init__(self, *, client_id: str | None = None) -> None:
+            self.client_id = client_id
+
+    class FakeKeyClient:
+        def __init__(self, *, vault_url: str, credential: object) -> None:
+            self.vault_url = vault_url
+            self.credential = credential
+
+        def get_key(self, name: str, version: str | None = None) -> object:
+            assert name == "ets-tree-head"
+            assert version is None
+            return SimpleNamespace(properties=SimpleNamespace(version="version-latest"))
+
+    def fake_import_module(name: str) -> object:
+        if name == "azure.identity":
+            return SimpleNamespace(ManagedIdentityCredential=FakeManagedIdentityCredential)
+        if name == "azure.keyvault.keys":
+            return SimpleNamespace(KeyClient=FakeKeyClient)
+        raise AssertionError(name)
+
+    monkeypatch.setattr(azure_signing.importlib, "import_module", fake_import_module)
+    resolver = azure_signing.create_managed_identity_key_version_resolver({})
+
+    assert resolver("https://ets-hosted.vault.azure.net/", "ets-tree-head") == "version-latest"
 
 
 def test_signing_rbac_validation_requires_least_privilege_roles() -> None:

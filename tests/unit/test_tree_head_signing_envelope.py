@@ -84,30 +84,65 @@ def test_ed25519_tree_head_signer_round_trips_fixture_key() -> None:
     )
 
 
-def test_azure_key_vault_tree_head_signer_uses_external_signing_adapter() -> None:
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+def test_azure_key_vault_tree_head_signer_uses_ps256_digest_adapter() -> None:
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding, rsa
+    from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
 
     from ets.core.signing import AzureKeyVaultTreeHeadSigner
 
-    private_key = Ed25519PrivateKey.generate()
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public_key_hex = private_key.public_key().public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
     ).hex()
+    observed_digests: list[bytes] = []
+
+    def sign_digest(digest: bytes) -> bytes:
+        observed_digests.append(digest)
+        return private_key.sign(
+            digest,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=hashes.SHA256().digest_size,
+            ),
+            Prehashed(hashes.SHA256()),
+        )
+
     signer = AzureKeyVaultTreeHeadSigner(
         vault_url="https://ets-vault.vault.azure.net/",
         key_name="ets-tree-head",
         key_version="version-001",
-        sign_payload=private_key.sign,
+        sign_digest=sign_digest,
     )
 
     signed = signer.sign(_tree_head())
 
-    assert signed.signature_alg == "ed25519"
+    assert signed.signature_alg == "ps256"
     assert signed.public_key_id == "https://ets-vault.vault.azure.net/keys/ets-tree-head/version-001"
     assert signed.signature is not None
+    assert len(observed_digests) == 1
+    assert len(observed_digests[0]) == 32
     assert verify_tree_head_signature(signed, public_key_hex)
+
+
+def test_ps256_signature_verifier_rejects_non_rsa_public_key() -> None:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    tree_head = _tree_head().model_copy(
+        update={
+            "signature_alg": "ps256",
+            "signature": "00",
+            "public_key_id": "https://ets-vault.vault.azure.net/keys/ets-tree-head/version-001",
+        }
+    )
+    public_key_hex = Ed25519PrivateKey.generate().public_key().public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).hex()
+
+    assert verify_tree_head_signature(tree_head, public_key_hex) is False
 
 
 def test_azure_key_vault_tree_head_signer_rejects_non_https_vault_url() -> None:
@@ -120,5 +155,5 @@ def test_azure_key_vault_tree_head_signer_rejects_non_https_vault_url() -> None:
             vault_url="http://ets-vault.example",
             key_name="ets-tree-head",
             key_version="version-001",
-            sign_payload=lambda payload: payload,
+            sign_digest=lambda digest: digest,
         )
