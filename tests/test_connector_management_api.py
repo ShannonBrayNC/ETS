@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+from httpx import Response
 
 from ets.connectors.models import (
     ConnectorAuthentication,
@@ -14,6 +15,7 @@ from ets.connectors.models import (
     ConnectorConfigurationSchema,
     ConnectorDefinitionV1,
     ConnectorGapPolicy,
+    ConnectorHealthV1,
     ConnectorInstanceV1,
     ConnectorPolicyBinding,
     ConnectorRetryPolicy,
@@ -29,6 +31,7 @@ from ets.gateway.connector_management import (
 from ets.gateway.connector_management_api import create_connector_management_router
 
 NOW = datetime(2026, 8, 14, 2, 30, tzinfo=UTC)
+DIAGNOSTIC_SCHEMA = "ets.connector.diagnostic.v1"
 
 
 def definition() -> ConnectorDefinitionV1:
@@ -102,6 +105,12 @@ def client(tmp_path: Path) -> TestClient:
     return TestClient(app)
 
 
+def assert_diagnostic(response: Response, category: str, code: str) -> None:
+    assert response.headers["x-ets-connector-diagnostic-schema"] == DIAGNOSTIC_SCHEMA
+    assert response.headers["x-ets-connector-diagnostic-category"] == category
+    assert response.headers["x-ets-connector-diagnostic-code"] == code
+
+
 def test_management_api_crud_runtime_and_revision_conflict(tmp_path: Path) -> None:
     api = client(tmp_path)
     payload = instance().model_dump(mode="json")
@@ -130,6 +139,7 @@ def test_management_api_crud_runtime_and_revision_conflict(tmp_path: Path) -> No
         json={"expected_revision": 1},
     )
     assert conflict.status_code == 409
+    assert_diagnostic(conflict, "gateway_runtime", "revision_conflict")
 
 
 def test_management_api_enforces_injected_scope_authorization(tmp_path: Path) -> None:
@@ -142,6 +152,7 @@ def test_management_api_enforces_injected_scope_authorization(tmp_path: Path) ->
         headers={"x-tenant": "other-tenant"},
     )
     assert denied.status_code == 403
+    assert_diagnostic(denied, "authorization", "access_denied")
 
 
 def test_catalog_and_instance_list_require_read_or_management_authority(tmp_path: Path) -> None:
@@ -153,6 +164,8 @@ def test_catalog_and_instance_list_require_read_or_management_authority(tmp_path
 
     assert catalog.status_code == 403
     assert listed.status_code == 403
+    assert_diagnostic(catalog, "authorization", "access_denied")
+    assert_diagnostic(listed, "authorization", "access_denied")
 
 
 def test_read_only_principal_can_inspect_but_cannot_mutate(tmp_path: Path) -> None:
@@ -210,12 +223,16 @@ def test_read_only_principal_can_inspect_but_cannot_mutate(tmp_path: Path) -> No
         headers=read_only,
     )
 
-    assert create_denied.status_code == 403
-    assert disable_denied.status_code == 403
-    assert validate_denied.status_code == 403
-    assert test_denied.status_code == 403
-    assert checkpoint_denied.status_code == 403
-    assert gap_denied.status_code == 403
+    for response in (
+        create_denied,
+        disable_denied,
+        validate_denied,
+        test_denied,
+        checkpoint_denied,
+        gap_denied,
+    ):
+        assert response.status_code == 403
+        assert_diagnostic(response, "authorization", "access_denied")
 
 
 def test_read_only_principal_remains_scope_bound(tmp_path: Path) -> None:
@@ -238,6 +255,7 @@ def test_read_only_principal_remains_scope_bound(tmp_path: Path) -> None:
         headers=foreign_scope,
     )
     assert response.status_code == 403
+    assert_diagnostic(response, "authorization", "access_denied")
 
 
 def test_invalid_gap_checkpoint_is_422_without_persisted_mutation(tmp_path: Path) -> None:
@@ -259,12 +277,92 @@ def test_invalid_gap_checkpoint_is_422_without_persisted_mutation(tmp_path: Path
         },
     )
     assert invalid.status_code == 422
+    assert_diagnostic(invalid, "collection_continuity", "invalid_checkpoint")
 
     runtime = api.get("/gateway/connectors/v1/instances/api-source/runtime")
     assert runtime.status_code == 200
     assert runtime.json()["checkpoint_revision"] == 0
     assert runtime.json()["observation_state"] == "unknown_observation"
     assert runtime.json()["gap_open"] is False
+
+
+def test_management_diagnostics_cover_not_found_and_invalid_configuration(tmp_path: Path) -> None:
+    api = client(tmp_path)
+
+    missing = api.get("/gateway/connectors/v1/instances/missing")
+    assert missing.status_code == 404
+    assert_diagnostic(missing, "configuration_policy", "instance_not_found")
+
+    payload = instance().model_dump(mode="json")
+    created = api.post("/gateway/connectors/v1/instances", json=payload)
+    assert created.status_code == 201
+    mismatch = api.put(
+        "/gateway/connectors/v1/instances/not-the-body-id",
+        json={"instance": payload, "expected_revision": 1},
+    )
+    assert mismatch.status_code == 422
+    assert mismatch.json()["detail"] == "path instance id does not match request body"
+    assert_diagnostic(mismatch, "configuration_policy", "invalid_config")
+
+
+def test_management_dependency_unavailable_is_bounded_503(tmp_path: Path) -> None:
+    class UnavailableService(ConnectorManagementService):
+        def test_connection(
+            self,
+            principal: ConnectorManagementPrincipal,
+            instance_id: str,
+        ) -> ConnectorHealthV1:
+            self.get_instance(principal, instance_id)
+            raise RuntimeError("synthetic management dependency unavailable")
+
+    registry = ConnectorRegistry([definition()])
+    service = UnavailableService(
+        registry=registry,
+        store=ConnectorRuntimeStore(tmp_path / "unavailable.db"),
+        now=lambda: NOW,
+    )
+
+    def resolve(_request: Request) -> ConnectorManagementPrincipal:
+        return ConnectorManagementPrincipal(
+            actor_id="api-admin",
+            tenant_id="tenant-a",
+            workspace_id="workspace-a",
+        )
+
+    app = FastAPI()
+    app.include_router(create_connector_management_router(service, resolve))
+    api = TestClient(app)
+    assert (
+        api.post(
+            "/gateway/connectors/v1/instances",
+            json=instance().model_dump(mode="json"),
+        ).status_code
+        == 201
+    )
+
+    unavailable = api.post("/gateway/connectors/v1/instances/api-source/test-connection")
+    assert unavailable.status_code == 503
+    assert unavailable.json()["detail"] == "synthetic management dependency unavailable"
+    assert_diagnostic(
+        unavailable,
+        "gateway_runtime",
+        "management_dependency_unavailable",
+    )
+
+
+def test_diagnostic_headers_do_not_echo_detail_or_reusable_material(tmp_path: Path) -> None:
+    api = client(tmp_path)
+    missing = api.get("/gateway/connectors/v1/instances/missing")
+    assert missing.status_code == 404
+
+    header_values = " ".join(
+        value
+        for key, value in missing.headers.items()
+        if key.startswith("x-ets-connector-diagnostic-")
+    )
+    assert "missing" not in header_values
+    assert "token" not in header_values.casefold()
+    assert "secret" not in header_values.casefold()
 
 
 def test_management_api_does_not_supply_an_anonymous_auth_fallback(tmp_path: Path) -> None:
@@ -291,3 +389,4 @@ def test_management_api_does_not_supply_an_anonymous_auth_fallback(tmp_path: Pat
         json=instance().model_dump(mode="json"),
     )
     assert response.status_code == 403
+    assert_diagnostic(response, "authorization", "access_denied")
