@@ -31,11 +31,25 @@ def test_production_shell_uses_server_authorization_context_not_editable_scope()
     assert "console-user" not in source
 
 
-def test_connector_route_matches_current_fail_closed_management_authority() -> None:
+def test_connector_route_matches_split_read_manage_authority() -> None:
     source = _read("ProductionApp.tsx")
 
+    assert 'auth.capabilities.includes("connector.read")' in source
     assert 'auth.capabilities.includes("connector.manage")' in source
-    assert '<Denied capability="connector.manage" />' in source
+    assert "canReadConnectors" in source
+    assert "{canReadConnectors && <Nav" in source
+    assert 'canReadConnectors ? <ConnectorsPage auth={auth} /> : <Denied capability="connector.read" />' in source
+
+
+def test_connector_mutation_controls_require_management_authority() -> None:
+    source = _read("Connectors.tsx")
+
+    assert 'const canManage = auth.capabilities.includes("connector.manage")' in source
+    assert "Read-only connector access is active." in source
+    assert "Read-only auditor" in source
+    assert "Inspection only" in source
+    assert "{canManage ? <div className=\"drawer-actions\">" in source
+    assert "{canManage && wizard && <ConnectorWizard" in source
 
 
 def test_console_api_uses_versioned_management_contract() -> None:
