@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -56,6 +57,31 @@ def test_azure_managed_identity_signer_adapter_builds_tree_head_signer_from_env(
     assert verify_tree_head_signature(signed, public_key_hex)
 
 
+def test_azure_managed_identity_signer_adapter_resolves_latest_version_when_omitted() -> None:
+    observed_key_ids: list[str] = []
+
+    class ReadyCryptoClient:
+        def sign(self, algorithm: str, digest: bytes) -> FakeSignResult:
+            return FakeSignResult(signature=b"signature")
+
+    def crypto_client_factory(key_id: str) -> ReadyCryptoClient:
+        observed_key_ids.append(key_id)
+        return ReadyCryptoClient()
+
+    adapter = AzureManagedIdentitySignerAdapter.from_env(
+        {
+            "ETS_AZURE_KEY_VAULT_URL": "https://ets-hosted.vault.azure.net/",
+            "ETS_AZURE_KEY_NAME": "ets-tree-head",
+        },
+        crypto_client_factory=crypto_client_factory,
+        key_version_resolver=lambda vault_url, key_name: "resolved-version-003",
+    )
+
+    assert adapter.key_id.endswith("/resolved-version-003")
+    adapter.check_ready()
+    assert observed_key_ids == [adapter.key_id]
+
+
 def test_azure_managed_identity_signer_adapter_requires_managed_identity() -> None:
     with pytest.raises(RuntimeError, match="managed identity"):
         AzureManagedIdentitySignerAdapter.from_env(
@@ -70,12 +96,11 @@ def test_azure_managed_identity_signer_adapter_requires_managed_identity() -> No
 
 
 def test_azure_managed_identity_signer_adapter_requires_signer_configuration() -> None:
-    with pytest.raises(RuntimeError, match="ETS_AZURE_KEY_VERSION"):
+    with pytest.raises(RuntimeError, match="ETS_AZURE_KEY_NAME"):
         AzureManagedIdentitySignerAdapter.from_env(
             {
-                "ETS_AZURE_MANAGED_IDENTITY_ENABLED": "true",
                 "ETS_AZURE_KEY_VAULT_URL": "https://ets-hosted.vault.azure.net/",
-                "ETS_AZURE_KEY_NAME": "ets-tree-head",
+                "ETS_AZURE_KEY_VERSION": "version-002",
             },
             crypto_client_factory=lambda key_id: None,  # type: ignore[arg-type]
         )
@@ -101,8 +126,6 @@ def test_azure_managed_identity_signer_adapter_rejects_invalid_signature_result(
 
 
 def test_runtime_azure_sdk_factory_uses_managed_identity(monkeypatch) -> None:
-    import types
-
     from ets.api import azure_signing
 
     observed_credentials: list[object] = []
@@ -122,9 +145,9 @@ def test_runtime_azure_sdk_factory_uses_managed_identity(monkeypatch) -> None:
 
     def fake_import_module(name: str) -> object:
         if name == "azure.identity":
-            return types.SimpleNamespace(ManagedIdentityCredential=FakeManagedIdentityCredential)
+            return SimpleNamespace(ManagedIdentityCredential=FakeManagedIdentityCredential)
         if name == "azure.keyvault.keys.crypto":
-            return types.SimpleNamespace(CryptographyClient=FakeCryptographyClient)
+            return SimpleNamespace(CryptographyClient=FakeCryptographyClient)
         raise AssertionError(name)
 
     monkeypatch.setattr(azure_signing.importlib, "import_module", fake_import_module)
@@ -137,6 +160,36 @@ def test_runtime_azure_sdk_factory_uses_managed_identity(monkeypatch) -> None:
     assert isinstance(client, FakeCryptographyClient)
     assert client.key_id.endswith("/version-002")
     assert observed_credentials[0].client_id == "client-id-from-ci-secret"
+
+
+def test_runtime_key_version_resolver_uses_latest_version(monkeypatch) -> None:
+    from ets.api import azure_signing
+
+    class FakeManagedIdentityCredential:
+        def __init__(self, *, client_id: str | None = None) -> None:
+            self.client_id = client_id
+
+    class FakeKeyClient:
+        def __init__(self, *, vault_url: str, credential: object) -> None:
+            self.vault_url = vault_url
+            self.credential = credential
+
+        def get_key(self, name: str, version: str | None = None) -> object:
+            assert name == "ets-tree-head"
+            assert version is None
+            return SimpleNamespace(properties=SimpleNamespace(version="version-latest"))
+
+    def fake_import_module(name: str) -> object:
+        if name == "azure.identity":
+            return SimpleNamespace(ManagedIdentityCredential=FakeManagedIdentityCredential)
+        if name == "azure.keyvault.keys":
+            return SimpleNamespace(KeyClient=FakeKeyClient)
+        raise AssertionError(name)
+
+    monkeypatch.setattr(azure_signing.importlib, "import_module", fake_import_module)
+    resolver = azure_signing.create_managed_identity_key_version_resolver({})
+
+    assert resolver("https://ets-hosted.vault.azure.net/", "ets-tree-head") == "version-latest"
 
 
 def test_signing_rbac_validation_requires_least_privilege_roles() -> None:
