@@ -111,6 +111,11 @@ def test_hosted_bicep_uses_separate_least_privilege_identity_for_private_acr_pul
         "containerRegistryPullRoleDefinitionId",
         "registryPullIdentity",
         "scope: resourceGroup(containerRegistryResourceGroup)",
+        "identitySettings: [",
+        "identity: managedIdentity.id",
+        "lifecycle: 'Main'",
+        "identity: registryPullIdentity.id",
+        "lifecycle: 'None'",
         "registries: [",
         "server: registryPull.outputs.loginServer",
         "identity: registryPullIdentity.id",
@@ -130,9 +135,12 @@ def test_hosted_bicep_uses_separate_least_privilege_identity_for_private_acr_pul
     for term in module_required:
         assert term in module
 
-    # The runtime identity keeps Table/Key Vault access; image-pull identity is separate.
+    # Runtime identity is available only to main containers; pull identity is
+    # registered for image pull but unavailable to application code.
     assert "principalId: managedIdentity.properties.principalId" in text
     assert "principalId: registryPullIdentity.properties.principalId" in text
+    assert text.count("lifecycle: 'None'") == 1
+    assert text.count("lifecycle: 'Main'") == 1
     assert "listCredentials(" not in text
     assert "passwordSecretRef" not in text
 
