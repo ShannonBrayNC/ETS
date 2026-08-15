@@ -59,6 +59,12 @@ resource qualificationClient 'Microsoft.App/containerApps@2025-01-01' = {
     environmentId: managedEnvironment.id
     configuration: {
       activeRevisionsMode: 'Single'
+      identitySettings: [
+        {
+          identity: registryPullIdentityResourceId
+          lifecycle: 'None'
+        }
+      ]
       registries: [
         {
           server: registryServer
