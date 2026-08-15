@@ -13,6 +13,11 @@ import type {
   TenantScope,
   TreeHead,
 } from "./types";
+import {
+  ConnectorManagementError,
+  decorateConnectorHealth,
+  diagnosticFromResponse,
+} from "./connectorDiagnostics";
 
 const jsonHeaders = { "Content-Type": "application/json" } as const;
 const managementBase = (import.meta.env.VITE_ETS_MANAGEMENT_BASE ?? "").replace(/\/$/, "");
@@ -50,6 +55,8 @@ async function readJson<T>(response: Response): Promise<T> {
     } catch {
       // Keep the transport-level diagnostic when the body is not JSON.
     }
+    const diagnostic = diagnosticFromResponse(response, detail);
+    if (diagnostic) throw new ConnectorManagementError(diagnostic);
     throw new Error(detail);
   }
   return (await response.json()) as T;
@@ -209,7 +216,7 @@ export async function updateConnectorInstance(
 }
 
 export async function validateConnectorInstance(instance: ConnectorInstance): Promise<ConnectorHealth> {
-  return readJson<ConnectorHealth>(
+  const health = await readJson<ConnectorHealth>(
     await fetch(managementUrl("/gateway/connectors/v1/validate"), {
       method: "POST",
       credentials: "same-origin",
@@ -217,10 +224,11 @@ export async function validateConnectorInstance(instance: ConnectorInstance): Pr
       body: JSON.stringify(instance),
     }),
   );
+  return decorateConnectorHealth(health);
 }
 
 export async function testConnectorConnection(instanceId: string): Promise<ConnectorHealth> {
-  return readJson<ConnectorHealth>(
+  const health = await readJson<ConnectorHealth>(
     await fetch(
       managementUrl(
         `/gateway/connectors/v1/instances/${encodeURIComponent(instanceId)}/test-connection`,
@@ -228,6 +236,7 @@ export async function testConnectorConnection(instanceId: string): Promise<Conne
       { method: "POST", credentials: "same-origin", headers: managementHeaders() },
     ),
   );
+  return decorateConnectorHealth(health);
 }
 
 export async function setConnectorEnabled(
