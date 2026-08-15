@@ -1,0 +1,21 @@
+@media (max-width: 1080px) {
+  .scope-lock {
+    display: inline-flex;
+    font-size: .64rem;
+    padding: .3rem .45rem;
+  }
+}
+
+@media (max-width: 760px) {
+  .scope-lock {
+    grid-column: 1 / -1;
+    width: max-content;
+  }
+}
+
+@media (max-width: 520px) {
+  .scope-lock {
+    max-width: 100%;
+    white-space: normal;
+  }
+}
