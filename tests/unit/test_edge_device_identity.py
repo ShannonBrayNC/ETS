@@ -13,6 +13,7 @@ from ets.edge.device_identity import (
     load_device_identity,
     load_or_create_local_api_key,
     resolve_local_api_key_provisioning,
+    validate_or_record_local_api_key_verifier,
     write_device_identity,
 )
 
@@ -94,21 +95,49 @@ def test_local_api_key_file_configuration_fails_closed(tmp_path: Path) -> None:
         resolve_local_api_key_provisioning(None, str(short))
 
 
+def test_secret_file_provisioning_persists_only_a_verifier(tmp_path: Path) -> None:
+    verifier_path = tmp_path / "edge-local-api-key.sha256"
+    secret_file = tmp_path / "edge-api-key-secret"
+    secret = "A" * 32
+    secret_file.write_text(secret, encoding="utf-8")
+
+    resolved = resolve_local_api_key_provisioning(None, str(secret_file))
+    assert resolved is not None
+    assert validate_or_record_local_api_key_verifier(verifier_path, resolved) == secret
+    assert validate_or_record_local_api_key_verifier(verifier_path, resolved) == secret
+
+    persisted = verifier_path.read_text(encoding="utf-8").strip()
+    assert persisted == hashlib.sha256(secret.encode("utf-8")).hexdigest()
+    assert secret not in persisted
+    assert verifier_path.stat().st_mode & 0o777 == 0o600
+
+
 def test_secret_file_provisioning_preserves_no_implicit_rotation_rule(tmp_path: Path) -> None:
-    persisted = tmp_path / "edge-local-api-key"
+    verifier_path = tmp_path / "edge-local-api-key.sha256"
     secret_file = tmp_path / "edge-api-key-secret"
     secret_file.write_text("A" * 32, encoding="utf-8")
 
     first = resolve_local_api_key_provisioning(None, str(secret_file))
-    assert load_or_create_local_api_key(persisted, first) == "A" * 32
+    assert first is not None
+    assert validate_or_record_local_api_key_verifier(verifier_path, first) == "A" * 32
 
     secret_file.write_text("B" * 32, encoding="utf-8")
     conflicting = resolve_local_api_key_provisioning(None, str(secret_file))
-    with pytest.raises(RuntimeError, match="conflicts with persisted credential"):
-        load_or_create_local_api_key(persisted, conflicting)
+    assert conflicting is not None
+    with pytest.raises(RuntimeError, match="conflicts with persisted verifier"):
+        validate_or_record_local_api_key_verifier(verifier_path, conflicting)
 
-    assert persisted.read_text(encoding="utf-8").strip() == "A" * 32
-    assert persisted.stat().st_mode & 0o777 == 0o600
+    assert verifier_path.read_text(encoding="utf-8").strip() == hashlib.sha256(
+        ("A" * 32).encode("utf-8")
+    ).hexdigest()
+
+
+def test_secret_file_provisioning_rejects_corrupt_persisted_verifier(tmp_path: Path) -> None:
+    verifier_path = tmp_path / "edge-local-api-key.sha256"
+    verifier_path.write_text("not-a-verifier\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="verifier is invalid"):
+        validate_or_record_local_api_key_verifier(verifier_path, "A" * 32)
 
 
 def test_device_identity_is_stable_public_metadata(tmp_path: Path) -> None:
