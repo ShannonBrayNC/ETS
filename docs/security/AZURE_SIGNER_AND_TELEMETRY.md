@@ -19,18 +19,27 @@ Azure resource provisioning to SignalForge.
 ## Azure Signer Abstraction
 
 `AzureKeyVaultTreeHeadSigner` represents an Azure Key Vault or Managed HSM signer
-without embedding Azure credentials in ETS core. The signer accepts an injected
-payload-signing adapter, so production deployments can use Managed Identity and
-Azure SDK clients outside the repository core.
+without embedding Azure credentials in ETS core. Azure Key Vault does not provide
+Ed25519/EdDSA keys, so the hosted Azure profile uses an RSA key with `PS256`.
+ETS canonicalizes the tree head, computes its SHA-256 digest, and delegates only
+that digest to the Managed Identity-backed Azure signing client.
 
 Required hosted behavior:
 
 - private key material remains in Key Vault or Managed HSM;
-- `public_key_id` identifies vault URL, key name, and key version;
+- the configured Azure key must support RSA-PSS/SHA-256 signing;
+- `signature_alg=ps256` identifies the hosted Azure signing profile;
+- `public_key_id` identifies vault URL, key name, and concrete key version;
 - non-HTTPS vault URLs are rejected;
-- empty key names and versions are rejected;
+- empty key names are rejected;
+- a missing key version is resolved to a concrete current version before signing;
 - signing failures emit hosted security telemetry;
-- key rotations preserve old public key metadata for historical verification.
+- key rotations preserve old public key metadata for historical verification;
+- caller-supplied DER RSA public key material can independently verify retained
+  PS256 tree-head signatures without private-key access.
+
+Local ETS Ed25519 signing remains a separate supported profile and is not
+relabelled as Azure Key Vault signing.
 
 ## JWKS Refresh And Cache Behavior
 
