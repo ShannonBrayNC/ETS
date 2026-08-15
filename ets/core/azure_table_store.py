@@ -316,28 +316,28 @@ class AzureSdkTableBackend:
 
         credential_factory = cast(
             Callable[..., object],
-            getattr(identity_module, "ManagedIdentityCredential"),
+            identity_module.ManagedIdentityCredential,
         )
         table_client_factory = cast(
             Callable[..., _SdkTableClient],
-            getattr(tables_module, "TableClient"),
+            tables_module.TableClient,
         )
         self._resource_not_found_error = cast(
             type[Exception],
-            getattr(exceptions_module, "ResourceNotFoundError"),
+            exceptions_module.ResourceNotFoundError,
         )
         self._resource_exists_error = cast(
             type[Exception],
-            getattr(exceptions_module, "ResourceExistsError"),
+            exceptions_module.ResourceExistsError,
         )
         self._table_transaction_error = cast(
             type[Exception],
-            getattr(tables_module, "TableTransactionError"),
+            tables_module.TableTransactionError,
         )
-        update_mode = getattr(tables_module, "UpdateMode")
-        match_conditions = getattr(core_module, "MatchConditions")
-        self._replace_mode = cast(object, getattr(update_mode, "REPLACE"))
-        self._if_not_modified = cast(object, getattr(match_conditions, "IfNotModified"))
+        update_mode = tables_module.UpdateMode
+        match_conditions = core_module.MatchConditions
+        self._replace_mode = cast(object, update_mode.REPLACE)
+        self._if_not_modified = cast(object, match_conditions.IfNotModified)
 
         credential = credential_factory(client_id=managed_identity_client_id or None)
         self._client = table_client_factory(
