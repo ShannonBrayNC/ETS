@@ -17,8 +17,25 @@ on:
         required: true
         type: string
       container_image:
-        description: Immutable Q1 ETS image containing the live qualification client
+        description: Immutable private-ACR Q1 image as registry/repository@sha256:<digest>
         required: true
+        type: string
+      image_source_sha:
+        description: Exact Git commit used to build the immutable Q1 image; must equal this workflow source SHA
+        required: true
+        type: string
+      container_registry_name:
+        description: Existing private Azure Container Registry name in this subscription
+        required: true
+        type: string
+      container_registry_resource_group:
+        description: Resource group containing the private Azure Container Registry
+        required: true
+        type: string
+      container_registry_pull_role_definition_id:
+        description: AcrPull for RBAC-only ACR or Container Registry Repository Reader for ABAC-enabled ACR
+        required: true
+        default: 7f951dda-4ed3-4680-a7ca-43fe172d538d
         type: string
       log_id:
         description: Synthetic qualification log identifier
@@ -71,6 +88,8 @@ jobs:
 
       - name: Require qualification prerequisites
         shell: bash
+        env:
+          IMAGE_SOURCE_SHA: ${{ inputs.image_source_sha }}
         run: |
           set -euo pipefail
           command -v az >/dev/null
@@ -80,9 +99,13 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$ETS_Q1_BEARER_TOKEN"
+          if [ "$IMAGE_SOURCE_SHA" != "$GITHUB_SHA" ]; then
+            echo "Q1 image source SHA must equal the exact workflow source SHA." >&2
+            exit 1
+          fi
           mkdir -p evidence/host-az-q1
-          printf 'source_sha=%s\nworkflow_run_id=%s\n' \
-            "$GITHUB_SHA" "$GITHUB_RUN_ID" \
+          printf 'source_sha=%s\nimage_source_sha=%s\nworkflow_run_id=%s\n' \
+            "$GITHUB_SHA" "$IMAGE_SOURCE_SHA" "$GITHUB_RUN_ID" \
             > evidence/host-az-q1/source.txt
 
       - name: Azure login with workload identity
@@ -91,6 +114,73 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate private ACR and immutable image
+        id: registry
+        shell: bash
+        env:
+          REGISTRY_NAME: ${{ inputs.container_registry_name }}
+          REGISTRY_RESOURCE_GROUP: ${{ inputs.container_registry_resource_group }}
+          PULL_ROLE_DEFINITION_ID: ${{ inputs.container_registry_pull_role_definition_id }}
+          CONTAINER_IMAGE: ${{ inputs.container_image }}
+        run: |
+          set -euo pipefail
+          case "$PULL_ROLE_DEFINITION_ID" in
+            7f951dda-4ed3-4680-a7ca-43fe172d538d|b93aa761-3e63-49ed-ac28-beffa264f7ac)
+              ;;
+            *)
+              echo "Unsupported ACR pull role definition ID." >&2
+              exit 1
+              ;;
+          esac
+
+          active_subscription="$(az account show --query id -o tsv)"
+          registry_id="$(az acr show \
+            --name "$REGISTRY_NAME" \
+            --resource-group "$REGISTRY_RESOURCE_GROUP" \
+            --query id -o tsv)"
+          registry_server="$(az acr show \
+            --name "$REGISTRY_NAME" \
+            --resource-group "$REGISTRY_RESOURCE_GROUP" \
+            --query loginServer -o tsv)"
+          registry_subscription="$(printf '%s' "$registry_id" | cut -d/ -f3)"
+          if [ "${registry_subscription,,}" != "${active_subscription,,}" ]; then
+            echo "Q1 ACR must be in the active Azure subscription." >&2
+            exit 1
+          fi
+
+          arm_status="$(az acr config authentication-as-arm show \
+            --registry "$REGISTRY_NAME" \
+            --resource-group "$REGISTRY_RESOURCE_GROUP" \
+            --query status -o tsv | tr '[:upper:]' '[:lower:]')"
+          if [ "$arm_status" != "enabled" ]; then
+            echo "Q1 ACR must allow ARM-audience tokens for Container Apps managed-identity image pull." >&2
+            exit 1
+          fi
+
+          python - "$CONTAINER_IMAGE" "$registry_server" <<'PY'
+          import re
+          import sys
+
+          image, server = sys.argv[1:]
+          pattern = rf"^{re.escape(server)}/[^@\s]+@sha256:[0-9a-fA-F]{{64}}$"
+          if re.fullmatch(pattern, image) is None:
+              raise SystemExit(
+                  "container_image must use the selected private ACR server and an immutable sha256 digest"
+              )
+          PY
+
+          echo "registry_server=$registry_server" >> "$GITHUB_OUTPUT"
+          echo "registry_id=$registry_id" >> "$GITHUB_OUTPUT"
+          cat > evidence/host-az-q1/registry.txt <<EOF
+          registry_name=$REGISTRY_NAME
+          registry_resource_group=$REGISTRY_RESOURCE_GROUP
+          registry_server=$registry_server
+          pull_role_definition_id=$PULL_ROLE_DEFINITION_ID
+          image_reference=$CONTAINER_IMAGE
+          arm_audience_authentication=true
+          registry_credentials_retained=false
+          EOF
 
       - name: Require a clean resource group
         shell: bash
@@ -117,6 +207,10 @@ jobs:
           RESOURCE_GROUP: ${{ inputs.resource_group }}
           ENVIRONMENT_NAME: ${{ inputs.environment_name }}
           CONTAINER_IMAGE: ${{ inputs.container_image }}
+          REGISTRY_NAME: ${{ inputs.container_registry_name }}
+          REGISTRY_RESOURCE_GROUP: ${{ inputs.container_registry_resource_group }}
+          PULL_ROLE_DEFINITION_ID: ${{ inputs.container_registry_pull_role_definition_id }}
+          EXPECTED_REGISTRY_SERVER: ${{ steps.registry.outputs.registry_server }}
           LOG_ID: ${{ inputs.log_id }}
           AUTH_JWKS_URL: ${{ inputs.auth_jwks_url }}
           AUTH_ISSUER: ${{ inputs.auth_issuer }}
@@ -131,6 +225,9 @@ jobs:
             --parameters \
               environmentName="$ENVIRONMENT_NAME" \
               containerImage="$CONTAINER_IMAGE" \
+              containerRegistryName="$REGISTRY_NAME" \
+              containerRegistryResourceGroup="$REGISTRY_RESOURCE_GROUP" \
+              containerRegistryPullRoleDefinitionId="$PULL_ROLE_DEFINITION_ID" \
               logId="$LOG_ID" \
               authJwksUrl="$AUTH_JWKS_URL" \
               authIssuer="$AUTH_ISSUER" \
@@ -147,18 +244,36 @@ jobs:
             --resource-group "$RESOURCE_GROUP" \
             --query properties.outputs.internalIngressFqdn.value \
             -o tsv)"
+          registry_pull_identity="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.registryPullIdentityResourceId.value \
+            -o tsv)"
+          registry_server="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.containerRegistryServer.value \
+            -o tsv)"
           managed_environment="$(az containerapp env list \
             --resource-group "$RESOURCE_GROUP" \
             --query '[0].name' \
             -o tsv)"
           test -n "$app_name"
           test -n "$fqdn"
+          test -n "$registry_pull_identity"
+          test -n "$registry_server"
           test -n "$managed_environment"
+          if [ "$registry_server" != "$EXPECTED_REGISTRY_SERVER" ]; then
+            echo "Deployed registry server did not match the preflighted private ACR." >&2
+            exit 1
+          fi
 
           echo "deployment=$deployment" >> "$GITHUB_OUTPUT"
           echo "app_name=$app_name" >> "$GITHUB_OUTPUT"
           echo "managed_environment=$managed_environment" >> "$GITHUB_OUTPUT"
           echo "base_url=https://$fqdn" >> "$GITHUB_OUTPUT"
+          echo "registry_pull_identity=$registry_pull_identity" >> "$GITHUB_OUTPUT"
+          echo "registry_server=$registry_server" >> "$GITHUB_OUTPUT"
 
           az deployment group show \
             --name "$deployment" \
@@ -170,9 +285,12 @@ jobs:
         id: client
         shell: bash
         env:
+          LOCATION: ${{ inputs.location }}
           RESOURCE_GROUP: ${{ inputs.resource_group }}
           MANAGED_ENVIRONMENT: ${{ steps.deploy.outputs.managed_environment }}
           CONTAINER_IMAGE: ${{ inputs.container_image }}
+          REGISTRY_SERVER: ${{ steps.deploy.outputs.registry_server }}
+          REGISTRY_PULL_IDENTITY: ${{ steps.deploy.outputs.registry_pull_identity }}
           BASE_URL: ${{ steps.deploy.outputs.base_url }}
           TENANT_ID: ${{ inputs.tenant_id }}
           WORKSPACE_ID: ${{ inputs.workspace_id }}
@@ -180,33 +298,98 @@ jobs:
           set -euo pipefail
           client_name="ets-q1-client-${GITHUB_RUN_ID}"
           client_name="${client_name:0:31}"
+          client_deployment="ets-q1-client-${GITHUB_RUN_ID}"
+          params_file="$RUNNER_TEMP/q1-client-parameters.json"
           echo "client_name=$client_name" >> "$GITHUB_OUTPUT"
+          echo "client_deployment=$client_deployment" >> "$GITHUB_OUTPUT"
 
-          az containerapp create \
-            --name "$client_name" \
+          export Q1_CLIENT_NAME="$client_name"
+          export Q1_CLIENT_DEPLOYMENT="$client_deployment"
+          export Q1_PARAMS_FILE="$params_file"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["Q1_PARAMS_FILE"])
+          parameters = {
+              "location": {"value": os.environ["LOCATION"]},
+              "clientName": {"value": os.environ["Q1_CLIENT_NAME"]},
+              "managedEnvironmentName": {"value": os.environ["MANAGED_ENVIRONMENT"]},
+              "registryPullIdentityResourceId": {"value": os.environ["REGISTRY_PULL_IDENTITY"]},
+              "registryServer": {"value": os.environ["REGISTRY_SERVER"]},
+              "containerImage": {"value": os.environ["CONTAINER_IMAGE"]},
+              "baseUrl": {"value": os.environ["BASE_URL"]},
+              "runId": {"value": os.environ["GITHUB_RUN_ID"]},
+              "tenantId": {"value": os.environ["TENANT_ID"]},
+              "workspaceId": {"value": os.environ["WORKSPACE_ID"]},
+              "bearerToken": {"value": os.environ["ETS_Q1_BEARER_TOKEN"]},
+          }
+          payload = {
+              "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+              "contentVersion": "1.0.0.0",
+              "parameters": parameters,
+          }
+          path.write_text(json.dumps(payload), encoding="utf-8")
+          path.chmod(0o600)
+          PY
+
+          trap 'rm -f "$params_file"' EXIT
+          az deployment group create \
+            --name "$client_deployment" \
             --resource-group "$RESOURCE_GROUP" \
-            --environment "$MANAGED_ENVIRONMENT" \
-            --image "$CONTAINER_IMAGE" \
-            --min-replicas 1 \
-            --max-replicas 1 \
-            --cpu 0.25 \
-            --memory 0.5Gi \
-            --secrets q1-token="$ETS_Q1_BEARER_TOKEN" \
-            --env-vars \
-              ETS_Q1_BEARER_TOKEN=secretref:q1-token \
-              ETS_Q1_BASE_URL="$BASE_URL" \
-              ETS_Q1_RUN_ID="$GITHUB_RUN_ID" \
-              ETS_Q1_TENANT_ID="$TENANT_ID" \
-              ETS_Q1_WORKSPACE_ID="$WORKSPACE_ID" \
-            --command /bin/sh \
-            --args -c 'sleep 3600' \
+            --template-file infra/azure/ets-q1-client.bicep \
+            --parameters "@$params_file" \
             --output none
+          rm -f "$params_file"
+          trap - EXIT
 
+          # Remove the deployment-history record immediately. The secure parameter is never
+          # copied to evidence and the ephemeral Container App retains the secret only until cleanup.
+          az deployment group delete \
+            --name "$client_deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --only-show-errors
+
+          client_json="$RUNNER_TEMP/q1-client-app.json"
           az containerapp show \
             --name "$client_name" \
             --resource-group "$RESOURCE_GROUP" \
-            --query '{name:name,environmentId:properties.environmentId,provisioningState:properties.provisioningState}' \
-            -o json > evidence/host-az-q1/client-app.json
+            -o json > "$client_json"
+          python - "$client_json" \
+            evidence/host-az-q1/client-app.json \
+            "$REGISTRY_PULL_IDENTITY" "$REGISTRY_SERVER" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          source = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected_identity, expected_server = sys.argv[3:]
+          identities = set((source.get("identity") or {}).get("userAssignedIdentities") or {})
+          if identities != {expected_identity}:
+              raise SystemExit("qualification client must attach only the registry-pull identity")
+          registries = ((source.get("properties") or {}).get("configuration") or {}).get("registries") or []
+          if len(registries) != 1:
+              raise SystemExit("qualification client must have exactly one private registry binding")
+          registry = registries[0]
+          if registry.get("server") != expected_server or registry.get("identity") != expected_identity:
+              raise SystemExit("qualification client registry binding did not use the pull-only identity")
+          sanitized = {
+              "name": source.get("name"),
+              "environmentId": (source.get("properties") or {}).get("environmentId"),
+              "provisioningState": (source.get("properties") or {}).get("provisioningState"),
+              "userAssignedIdentityResourceIds": sorted(identities),
+              "registry": {"server": registry.get("server"), "identity": registry.get("identity")},
+              "ingressConfigured": bool(((source.get("properties") or {}).get("configuration") or {}).get("ingress")),
+          }
+          if sanitized["ingressConfigured"]:
+              raise SystemExit("qualification client must not configure ingress")
+          Path(sys.argv[2]).write_text(
+              json.dumps(sanitized, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          rm -f "$client_json"
 
       - name: Execute pre-restart source-to-proof qualification in environment
         id: pre
@@ -330,6 +513,8 @@ jobs:
           APP_NAME: ${{ steps.deploy.outputs.app_name }}
           CLIENT_NAME: ${{ steps.client.outputs.client_name }}
           REVISION: ${{ steps.restart.outputs.revision }}
+          REGISTRY_PULL_IDENTITY: ${{ steps.deploy.outputs.registry_pull_identity }}
+          REGISTRY_SERVER: ${{ steps.deploy.outputs.registry_server }}
         run: |
           set -euo pipefail
           az containerapp revision show \
@@ -342,6 +527,8 @@ jobs:
           cat > evidence/host-az-q1/manifest.txt <<EOF
           qualification=HOST-AZ-Q1
           source_sha=$GITHUB_SHA
+          image_source_sha=${{ inputs.image_source_sha }}
+          image_reference=${{ inputs.container_image }}
           workflow_run_id=$GITHUB_RUN_ID
           resource_group=${{ inputs.resource_group }}
           deployment=${{ steps.deploy.outputs.deployment }}
@@ -350,6 +537,11 @@ jobs:
           qualification_client=$CLIENT_NAME
           client_path=same_environment_ephemeral_container_app
           ingress_boundary=ets_internal_same_environment_only
+          registry_server=$REGISTRY_SERVER
+          registry_pull_identity=$REGISTRY_PULL_IDENTITY
+          registry_pull_role_definition_id=${{ inputs.container_registry_pull_role_definition_id }}
+          runtime_identity_attached_to_qualification_client=false
+          registry_credentials_retained=false
           evidence_scope=synthetic_metadata_only
           bearer_token_retained=false
           customer_identifiers_retained=false
@@ -363,12 +555,20 @@ jobs:
         env:
           RESOURCE_GROUP: ${{ inputs.resource_group }}
           CLIENT_NAME: ${{ steps.client.outputs.client_name }}
+          CLIENT_DEPLOYMENT: ${{ steps.client.outputs.client_deployment }}
         run: |
+          rm -f "$RUNNER_TEMP/q1-client-parameters.json" "$RUNNER_TEMP/q1-client-app.json"
           az containerapp delete \
             --name "$CLIENT_NAME" \
             --resource-group "$RESOURCE_GROUP" \
             --yes \
             --only-show-errors || true
+          if [ -n "$CLIENT_DEPLOYMENT" ]; then
+            az deployment group delete \
+              --name "$CLIENT_DEPLOYMENT" \
+              --resource-group "$RESOURCE_GROUP" \
+              --only-show-errors || true
+          fi
 
       - name: Upload sanitized qualification evidence
         if: always()
