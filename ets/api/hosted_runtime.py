@@ -6,19 +6,33 @@ import importlib
 import os
 import sys
 from collections.abc import Callable
+from datetime import UTC, datetime
 from types import ModuleType
 from typing import cast
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from pydantic import BaseModel, ConfigDict, Field
 
 from ets.api.auth import AuthPolicy, ProductionJWKSAuthPolicy
 from ets.api.azure_signing import AzureManagedIdentitySignerAdapter
-from ets.core import EventStore
-from ets.core.signing import TreeHeadSigner
+from ets.core import EventStore, SignedTreeHead
+from ets.core.signing import TreeHeadSigner, verify_tree_head_signature
 
 _AZURE_STORAGE_PROVIDER = "azure_table"
 _AZURE_SIGNING_MODE = "azure_key_vault"
 _AZURE_AUTH_MODE = "production_jwks"
+
+
+class HostedTreeHeadSignatureVerificationRequest(BaseModel):
+    """PS256 verification request for the hosted Azure profile."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    tree_head: SignedTreeHead
+    public_key_der_hex: str = Field(min_length=128, max_length=8192)
+    valid_at_utc: datetime | None = None
+    key_not_before_utc: datetime | None = None
+    key_not_after_utc: datetime | None = None
 
 
 def create_app_from_env() -> FastAPI:
@@ -57,7 +71,7 @@ def create_app_from_env() -> FastAPI:
 
     module = _load_app_module(sanitize_environment=True)
     create_app = cast(Callable[..., FastAPI], vars(module)["create_app"])
-    return create_app(
+    app = create_app(
         log=store,
         log_id=log_id,
         redaction_profile=os.getenv("ETS_REDACTION_PROFILE", "none"),
@@ -66,6 +80,43 @@ def create_app_from_env() -> FastAPI:
         auth_mode=_AZURE_AUTH_MODE,
         signing_mode=_AZURE_SIGNING_MODE,
     )
+    _install_hosted_signature_verifier(app, auth_policy)
+    return app
+
+
+def _install_hosted_signature_verifier(app: FastAPI, auth_policy: AuthPolicy) -> None:
+    @app.post("/api/v1/verify/tree-head-signature", tags=["verifier"])
+    def verify_hosted_tree_head_signature(
+        payload: HostedTreeHeadSignatureVerificationRequest,
+        request: Request,
+    ) -> dict[str, object]:
+        auth_policy.authenticate(request)
+        valid_at = payload.valid_at_utc or datetime.now(UTC)
+        if payload.key_not_before_utc is not None and valid_at < payload.key_not_before_utc:
+            return _hosted_signature_result(False, "key is not valid yet", payload.tree_head)
+        if payload.key_not_after_utc is not None and valid_at > payload.key_not_after_utc:
+            return _hosted_signature_result(False, "key is expired", payload.tree_head)
+        valid = verify_tree_head_signature(payload.tree_head, payload.public_key_der_hex)
+        return _hosted_signature_result(
+            valid,
+            "ok" if valid else "tree head signature is invalid",
+            payload.tree_head,
+        )
+
+
+def _hosted_signature_result(
+    valid: bool,
+    reason: str,
+    tree_head: SignedTreeHead,
+) -> dict[str, object]:
+    return {
+        "valid": valid,
+        "reason": reason,
+        "signature_alg": tree_head.signature_alg,
+        "public_key_id": tree_head.public_key_id,
+        "tree_size": tree_head.tree_size,
+        "root_hash": tree_head.root_hash,
+    }
 
 
 def _required_env(name: str) -> str:
