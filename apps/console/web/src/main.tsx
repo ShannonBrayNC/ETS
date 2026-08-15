@@ -4,6 +4,7 @@ import { ProductionApp } from "./ProductionApp";
 import { installOverlayAccessibility } from "./overlayAccessibility";
 import "./styles.css";
 import "./dark-pro.css";
+import "./responsive-accessibility.css";
 
 installOverlayAccessibility();
 
