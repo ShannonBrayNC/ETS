@@ -48,17 +48,26 @@ CI/CD or the Azure runtime environment.
 
 ## Bicep Reference
 
-`infra/azure/ets-hosted.bicep` provides a reference shape for:
+`infra/azure/ets-hosted.bicep` provides the hosted pilot deployment shape for:
 
 - User Assigned Managed Identity;
-- Key Vault with RBAC, soft delete, and purge protection;
+- dedicated Key Vault with RBAC, soft delete, and purge protection;
+- non-exportable RSA signing key with `sign` and `verify` operations;
+- Key Vault Crypto User access for the ETS managed identity;
+- OAuth-only Azure Table storage and table-scoped Storage Table Data Contributor;
+- internal-ingress Azure Container App with startup, liveness, and readiness probes;
 - App Configuration with local auth disabled;
-- Application Insights;
-- App Configuration keys for signer mode and non-secret signer references.
+- Application Insights and Azure Monitor-compatible platform logging.
 
-The Bicep file intentionally does not create or export private key material in
-this runtime-composition slice. A later infrastructure slice may provision an
-operator-approved non-exportable RSA key and least-privilege runtime RBAC.
+The template creates key metadata and the non-exportable Key Vault key through
+Azure Resource Manager. It never contains, returns, or exports private key
+material. The runtime resolves the current key to a concrete version when
+`ETS_AZURE_KEY_VERSION` is omitted.
+
+The current pilot keeps Storage and Key Vault public-network endpoints enabled so
+the Container App can reach them without an unqualified VNet/private-endpoint
+design. Authorization remains TLS + Microsoft Entra ID + least-privilege RBAC.
+Do not describe this pilot as private-endpoint or VNet-isolated.
 
 ## Hosted Integration Test Boundary
 
