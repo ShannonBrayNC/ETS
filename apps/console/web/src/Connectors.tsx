@@ -108,6 +108,7 @@ export function ConnectorsPage({ auth }: { auth: GatewayAuthorizationContext }) 
   const [wizard, setWizard] = useState<Wizard | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const canManage = auth.capabilities.includes("connector.manage");
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -199,11 +200,16 @@ export function ConnectorsPage({ auth }: { auth: GatewayAuthorizationContext }) 
           <h1>Connector operations</h1>
           <p>Source observation, Gateway health, ETS commitment, and cryptographic verification are separate states. No opaque trust score is used.</p>
         </div>
-        <button className="primary" disabled={catalog.length === 0} onClick={() => catalog[0] && setWizard(createWizard(catalog[0]))}>Add connector</button>
+        {canManage
+          ? <button className="primary" disabled={catalog.length === 0} onClick={() => catalog[0] && setWizard(createWizard(catalog[0]))}>Add connector</button>
+          : <Badge tone="neutral" label="Read-only auditor" />}
       </header>
 
       {auth.authorization_profile === "local_nonproduction" && (
         <div className="alert warning" role="status">Local non-production authorization is active. Production identity and scope must be server-derived.</div>
+      )}
+      {!canManage && (
+        <div className="alert info" role="status">Read-only connector access is active. Catalog, instance, runtime, observation, and gap posture are available; configuration, testing, activation, and reconciliation require connector.manage.</div>
       )}
       {error && <div className="alert danger" role="alert">{error}</div>}
 
@@ -246,7 +252,9 @@ export function ConnectorsPage({ auth }: { auth: GatewayAuthorizationContext }) 
             <div className="connector-card-topline"><span>{formatClass(definition.implementation_class)}</span><span>v{definition.adapter_version}</span></div>
             <h3>{definition.display_name}</h3><p>{definition.description}</p>
             <div className="tag-row">{definition.capabilities.delivery_modes.map((mode) => <span key={mode}>{mode}</span>)}{definition.source_classes.slice(0, 3).map((source) => <span key={source}>{source}</span>)}</div>
-            <button className="secondary" disabled={!supported} onClick={() => supported && setWizard(createWizard(definition))}>{supported ? "Configure" : "UX profile pending"}</button>
+            {canManage
+              ? <button className="secondary" disabled={!supported} onClick={() => supported && setWizard(createWizard(definition))}>{supported ? "Configure" : "UX profile pending"}</button>
+              : <Badge tone="neutral" label="Inspection only" />}
           </article>;
         })}
       </div>
@@ -262,17 +270,17 @@ export function ConnectorsPage({ auth }: { auth: GatewayAuthorizationContext }) 
           <div><dt>Connection test</dt><dd>{selectedHealth ? `${selectedHealth.state}: ${selectedHealth.message}` : "Not run in this session"}</dd></div>
         </dl>
         <p className="boundary-note">Operational health is not ETS cryptographic verification and does not establish source truth or completeness.</p>
-        <div className="drawer-actions">
+        {canManage ? <div className="drawer-actions">
           <button className="secondary" onClick={() => setWizard(editWizard(selectedRecord, catalog))}>Edit configuration</button>
           <button className="secondary" onClick={() => void testConnection(selectedRecord)}>Test connection</button>
           <button className={selectedRecord.instance.enabled ? "danger-button" : "primary"} onClick={() => void toggle(selectedRecord)}>{selectedRecord.instance.enabled ? "Disable" : "Activate"}</button>
           {selectedRuntime?.gap_open
             ? <button className="secondary" onClick={() => void changeGap(selectedRecord, true)}>Reconcile gap</button>
             : <button className="text-button" onClick={() => void changeGap(selectedRecord, false)}>Record known gap</button>}
-        </div>
+        </div> : <div className="alert info" role="status">Read-only access. Connector mutations require connector.manage.</div>}
       </aside>}
 
-      {wizard && <ConnectorWizard auth={auth} catalog={catalog} state={wizard} setState={setWizard} onSaved={onSaved} />}
+      {canManage && wizard && <ConnectorWizard auth={auth} catalog={catalog} state={wizard} setState={setWizard} onSaved={onSaved} />}
     </section>
   );
 }
