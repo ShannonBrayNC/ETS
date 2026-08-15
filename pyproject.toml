@@ -48,6 +48,7 @@ gateway = [
     "uvicorn>=0.47,<1",
 ]
 azure = [
+    "azure-data-tables>=12,<13",
     "azure-identity>=1.17,<2",
     "azure-keyvault-keys>=4.9,<5",
 ]
