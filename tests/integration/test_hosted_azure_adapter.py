@@ -4,8 +4,9 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 
 import pytest
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
 
 from ets.api.azure_signing import AzureManagedIdentitySignerAdapter
 from ets.core.signing import verify_tree_head_signature
@@ -18,20 +19,28 @@ class FakeSignResult:
 
 
 class FakeCryptoClient:
-    def __init__(self, private_key: Ed25519PrivateKey, observed_key_ids: list[str]) -> None:
+    def __init__(self, private_key: rsa.RSAPrivateKey, observed_key_ids: list[str]) -> None:
         self._private_key = private_key
         self._observed_key_ids = observed_key_ids
 
     def sign(self, algorithm: str, digest: bytes) -> FakeSignResult:
-        assert algorithm == "EdDSA"
-        return FakeSignResult(signature=self._private_key.sign(digest))
+        assert algorithm == "PS256"
+        signature = self._private_key.sign(
+            digest,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=hashes.SHA256().digest_size,
+            ),
+            Prehashed(hashes.SHA256()),
+        )
+        return FakeSignResult(signature=signature)
 
 
 def test_azure_managed_identity_signer_adapter_builds_tree_head_signer_from_env() -> None:
-    private_key = Ed25519PrivateKey.generate()
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public_key_hex = private_key.public_key().public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
     ).hex()
     observed_key_ids: list[str] = []
 
@@ -53,6 +62,7 @@ def test_azure_managed_identity_signer_adapter_builds_tree_head_signer_from_env(
     signed = signer.sign(_tree_head())
 
     assert observed_key_ids == ["https://ets-hosted.vault.azure.net/keys/ets-tree-head/version-002"]
+    assert signed.signature_alg == "ps256"
     assert signed.public_key_id == observed_key_ids[0]
     assert verify_tree_head_signature(signed, public_key_hex)
 
@@ -125,10 +135,12 @@ def test_azure_managed_identity_signer_adapter_rejects_invalid_signature_result(
         adapter.as_tree_head_signer().sign(_tree_head())
 
 
-def test_runtime_azure_sdk_factory_uses_managed_identity(monkeypatch) -> None:
+def test_runtime_azure_sdk_factory_uses_managed_identity_and_ps256(monkeypatch) -> None:
     from ets.api import azure_signing
 
     observed_credentials: list[object] = []
+    observed_algorithms: list[object] = []
+    sdk_ps256 = object()
 
     class FakeManagedIdentityCredential:
         def __init__(self, *, client_id: str | None = None) -> None:
@@ -140,14 +152,19 @@ def test_runtime_azure_sdk_factory_uses_managed_identity(monkeypatch) -> None:
             self.credential = credential
             observed_credentials.append(credential)
 
-        def sign(self, algorithm: str, digest: bytes) -> FakeSignResult:
+        def sign(self, algorithm: object, digest: bytes) -> FakeSignResult:
+            observed_algorithms.append(algorithm)
+            assert len(digest) == 32
             return FakeSignResult(signature=b"signed")
 
     def fake_import_module(name: str) -> object:
         if name == "azure.identity":
             return SimpleNamespace(ManagedIdentityCredential=FakeManagedIdentityCredential)
         if name == "azure.keyvault.keys.crypto":
-            return SimpleNamespace(CryptographyClient=FakeCryptographyClient)
+            return SimpleNamespace(
+                CryptographyClient=FakeCryptographyClient,
+                SignatureAlgorithm=SimpleNamespace(ps256=sdk_ps256),
+            )
         raise AssertionError(name)
 
     monkeypatch.setattr(azure_signing.importlib, "import_module", fake_import_module)
@@ -156,10 +173,14 @@ def test_runtime_azure_sdk_factory_uses_managed_identity(monkeypatch) -> None:
         {"ETS_AZURE_MANAGED_IDENTITY_CLIENT_ID": "client-id-from-ci-secret"}
     )
     client = factory("https://ets-hosted.vault.azure.net/keys/ets-tree-head/version-002")
+    result = client.sign("PS256", b"x" * 32)
 
-    assert isinstance(client, FakeCryptographyClient)
-    assert client.key_id.endswith("/version-002")
+    assert result.signature == b"signed"
+    assert observed_algorithms == [sdk_ps256]
     assert observed_credentials[0].client_id == "client-id-from-ci-secret"
+
+    with pytest.raises(RuntimeError, match="unsupported Azure signing algorithm"):
+        client.sign("RS256", b"x" * 32)
 
 
 def test_runtime_key_version_resolver_uses_latest_version(monkeypatch) -> None:
