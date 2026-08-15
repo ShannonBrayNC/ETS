@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 from ets.edge.device_identity import (
     build_device_identity,
     load_device_identity,
+    load_local_api_key,
     load_or_create_local_api_key,
     resolve_local_api_key_provisioning,
     validate_or_record_local_api_key_verifier,
@@ -23,15 +24,20 @@ def _private_key_hex() -> str:
     return key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption()).hex()
 
 
-def test_local_api_key_is_generated_once_and_persisted(tmp_path: Path) -> None:
+def test_local_api_key_is_generated_once_and_encrypted_at_rest(tmp_path: Path) -> None:
     path = tmp_path / "edge-local-api-key"
+    storage_key = _private_key_hex()
 
-    first = load_or_create_local_api_key(path)
-    second = load_or_create_local_api_key(path)
+    first = load_or_create_local_api_key(path, storage_key_material=storage_key)
+    second = load_or_create_local_api_key(path, storage_key_material=storage_key)
 
     assert first == second
     assert len(first.encode("utf-8")) >= 32
-    assert path.read_text(encoding="utf-8").strip() == first
+    serialized = path.read_text(encoding="utf-8")
+    payload = json.loads(serialized)
+    assert payload["schema_version"] == "ets.edge.local_api_key.encrypted.v1"
+    assert first not in serialized
+    assert load_local_api_key(path, storage_key_material=storage_key) == first
     assert path.stat().st_mode & 0o777 == 0o600
 
 
@@ -39,23 +45,54 @@ def test_explicit_local_api_key_is_first_boot_provisioning_not_implicit_rotation
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "edge-local-api-key"
+    storage_key = _private_key_hex()
     explicit = "A" * 32
 
-    assert load_or_create_local_api_key(path, explicit) == explicit
-    assert load_or_create_local_api_key(path, explicit) == explicit
-    assert path.read_text(encoding="utf-8").strip() == explicit
+    assert (
+        load_or_create_local_api_key(path, explicit, storage_key_material=storage_key) == explicit
+    )
+    assert (
+        load_or_create_local_api_key(path, explicit, storage_key_material=storage_key) == explicit
+    )
+    assert explicit not in path.read_text(encoding="utf-8")
 
     with pytest.raises(RuntimeError, match="conflicts with persisted credential"):
-        load_or_create_local_api_key(path, "B" * 32)
+        load_or_create_local_api_key(path, "B" * 32, storage_key_material=storage_key)
 
-    assert path.read_text(encoding="utf-8").strip() == explicit
+    assert load_local_api_key(path, storage_key_material=storage_key) == explicit
+
+
+def test_legacy_cleartext_local_api_key_is_migrated_in_place(tmp_path: Path) -> None:
+    path = tmp_path / "edge-local-api-key"
+    storage_key = _private_key_hex()
+    legacy = "L" * 32
+    path.write_text(legacy + "\n", encoding="utf-8")
+
+    assert load_or_create_local_api_key(path, storage_key_material=storage_key) == legacy
+    serialized = path.read_text(encoding="utf-8")
+    assert legacy not in serialized
+    assert json.loads(serialized)["schema_version"] == "ets.edge.local_api_key.encrypted.v1"
+    assert load_local_api_key(path, storage_key_material=storage_key) == legacy
+
+
+def test_encrypted_local_api_key_rejects_wrong_storage_key(tmp_path: Path) -> None:
+    path = tmp_path / "edge-local-api-key"
+    storage_key = _private_key_hex()
+    load_or_create_local_api_key(path, "A" * 32, storage_key_material=storage_key)
+
+    with pytest.raises(RuntimeError, match="storage is invalid"):
+        load_local_api_key(path, storage_key_material=_private_key_hex())
 
 
 def test_short_explicit_local_api_key_is_rejected(tmp_path: Path) -> None:
     path = tmp_path / "edge-local-api-key"
 
     with pytest.raises(RuntimeError, match="at least 32 bytes"):
-        load_or_create_local_api_key(path, "too-short")
+        load_or_create_local_api_key(
+            path,
+            "too-short",
+            storage_key_material=_private_key_hex(),
+        )
 
     assert not path.exists()
 
@@ -67,6 +104,7 @@ def test_local_api_key_can_be_provisioned_from_secret_file(tmp_path: Path) -> No
     resolved = resolve_local_api_key_provisioning(None, str(secret_file))
 
     assert resolved == "S" * 32
+    assert load_local_api_key(secret_file) == "S" * 32
 
 
 def test_local_api_key_file_and_environment_value_are_mutually_exclusive(
@@ -95,8 +133,8 @@ def test_local_api_key_file_configuration_fails_closed(tmp_path: Path) -> None:
         resolve_local_api_key_provisioning(None, str(short))
 
 
-def test_secret_file_provisioning_persists_only_a_verifier(tmp_path: Path) -> None:
-    verifier_path = tmp_path / "edge-local-api-key.sha256"
+def test_secret_file_provisioning_persists_only_salted_scrypt_verifier(tmp_path: Path) -> None:
+    verifier_path = tmp_path / "edge-local-api-key.scrypt"
     secret_file = tmp_path / "edge-api-key-secret"
     secret = "A" * 32
     secret_file.write_text(secret, encoding="utf-8")
@@ -104,22 +142,33 @@ def test_secret_file_provisioning_persists_only_a_verifier(tmp_path: Path) -> No
     resolved = resolve_local_api_key_provisioning(None, str(secret_file))
     assert resolved is not None
     assert validate_or_record_local_api_key_verifier(verifier_path, resolved) == secret
-    assert validate_or_record_local_api_key_verifier(verifier_path, resolved) == secret
-
     persisted = verifier_path.read_text(encoding="utf-8").strip()
-    assert persisted == hashlib.sha256(secret.encode("utf-8")).hexdigest()
+    assert persisted.startswith("scrypt-v1$")
     assert secret not in persisted
+    assert validate_or_record_local_api_key_verifier(verifier_path, resolved) == secret
     assert verifier_path.stat().st_mode & 0o777 == 0o600
 
 
+def test_secret_file_verifier_uses_random_salt(tmp_path: Path) -> None:
+    secret = "A" * 32
+    first = tmp_path / "first.scrypt"
+    second = tmp_path / "second.scrypt"
+
+    validate_or_record_local_api_key_verifier(first, secret)
+    validate_or_record_local_api_key_verifier(second, secret)
+
+    assert first.read_text(encoding="utf-8") != second.read_text(encoding="utf-8")
+
+
 def test_secret_file_provisioning_preserves_no_implicit_rotation_rule(tmp_path: Path) -> None:
-    verifier_path = tmp_path / "edge-local-api-key.sha256"
+    verifier_path = tmp_path / "edge-local-api-key.scrypt"
     secret_file = tmp_path / "edge-api-key-secret"
     secret_file.write_text("A" * 32, encoding="utf-8")
 
     first = resolve_local_api_key_provisioning(None, str(secret_file))
     assert first is not None
     assert validate_or_record_local_api_key_verifier(verifier_path, first) == "A" * 32
+    persisted = verifier_path.read_text(encoding="utf-8")
 
     secret_file.write_text("B" * 32, encoding="utf-8")
     conflicting = resolve_local_api_key_provisioning(None, str(secret_file))
@@ -127,13 +176,11 @@ def test_secret_file_provisioning_preserves_no_implicit_rotation_rule(tmp_path: 
     with pytest.raises(RuntimeError, match="conflicts with persisted verifier"):
         validate_or_record_local_api_key_verifier(verifier_path, conflicting)
 
-    assert verifier_path.read_text(encoding="utf-8").strip() == hashlib.sha256(
-        ("A" * 32).encode("utf-8")
-    ).hexdigest()
+    assert verifier_path.read_text(encoding="utf-8") == persisted
 
 
 def test_secret_file_provisioning_rejects_corrupt_persisted_verifier(tmp_path: Path) -> None:
-    verifier_path = tmp_path / "edge-local-api-key.sha256"
+    verifier_path = tmp_path / "edge-local-api-key.scrypt"
     verifier_path.write_text("not-a-verifier\n", encoding="utf-8")
 
     with pytest.raises(RuntimeError, match="verifier is invalid"):
