@@ -6,7 +6,7 @@
 - Review state: Requires Human Review.
 - Trust label: Real Analysis.
 - Approval state: Approval Required before hosted use.
-- Risk level: High until SignalForge deployment owners review identity, signing, telemetry, and incident response.
+- Risk level: High until SignalForge deployment owners review identity, signing, telemetry, registry access, and incident response.
 - Trace ID: `ets-hosted-readiness-3-2026-07-18`.
 
 ## Purpose
@@ -14,7 +14,8 @@
 This document defines the ETS-to-SignalForge boundary for hosted Azure signing
 and telemetry. ETS remains the evidence, consent, trust, and authenticity layer.
 SignalForge owns Azure resource provisioning, Managed Identity, App
-Configuration, Key Vault or Managed HSM access, and Application Insights routing.
+Configuration, Key Vault or Managed HSM access, private registry access, and
+Application Insights routing.
 
 ## Adapter Contract
 
@@ -45,24 +46,43 @@ Ed25519 verification route remains unchanged.
 
 Hosted deployments should source values from Azure App Configuration, Key Vault
 references, GitHub Actions secrets, or managed environment variables. **Do not commit real vault URLs**, key names, key versions, tenant IDs, client IDs, access
-tokens, private keys, or customer identifiers.
+tokens, private keys, registry credentials, or customer identifiers.
 
 `.env.example` contains placeholders only. Production values must be injected by
 CI/CD or the Azure runtime environment.
 
 ## Bicep Reference
 
-`infra/azure/ets-hosted.bicep` provides a reference shape for:
+`infra/azure/ets-hosted.bicep` provides the hosted pilot deployment shape for:
 
-- User Assigned Managed Identity;
-- Key Vault with RBAC, soft delete, and purge protection;
+- a runtime User Assigned Managed Identity used by Azure Table and Key Vault;
+- a separate image-pull User Assigned Managed Identity with no Table/Key Vault role;
+- a private existing Azure Container Registry bound through managed identity;
+- a registry-scoped pull role selected for RBAC-only or ABAC-enabled ACR;
+- dedicated Key Vault with RBAC, soft delete, and purge protection;
+- non-exportable RSA signing key with `sign` and `verify` operations;
+- Key Vault Crypto User access for the ETS runtime identity;
+- OAuth-only Azure Table storage and table-scoped Storage Table Data Contributor;
+- internal-ingress Azure Container App with startup, liveness, and readiness probes;
 - App Configuration with local auth disabled;
-- Application Insights;
-- App Configuration keys for signer mode and non-secret signer references.
+- Application Insights and Azure Monitor-compatible platform logging.
 
-The Bicep file intentionally does not create or export private key material in
-this runtime-composition slice. A later infrastructure slice may provision an
-operator-approved non-exportable RSA key and least-privilege runtime RBAC.
+The registry binding does not use ACR admin credentials, passwords, or
+`listCredentials`. The private image is pulled through the dedicated user-assigned
+identity. For an RBAC-only ACR, the bounded pull role is `AcrPull`; for an
+ABAC-enabled ACR it is `Container Registry Repository Reader`. The deployment
+owner must ensure the ACR allows ARM-audience tokens for managed-identity image
+pull and must supply an immutable image reference by digest for Q1 qualification.
+
+The template creates key metadata and the non-exportable Key Vault key through
+Azure Resource Manager. It never contains, returns, or exports private key
+material. The runtime resolves the current key to a concrete version when
+`ETS_AZURE_KEY_VERSION` is omitted.
+
+The current pilot keeps Storage and Key Vault public-network endpoints enabled so
+the Container App can reach them without an unqualified VNet/private-endpoint
+design. Authorization remains TLS + Microsoft Entra ID + least-privilege RBAC.
+Do not describe this pilot as private-endpoint or VNet-isolated.
 
 ## Hosted Integration Test Boundary
 
@@ -71,6 +91,7 @@ through environment variables or CI secret providers. Tests must not commit:
 
 - bearer tokens;
 - private keys;
+- registry credentials;
 - tenant IDs;
 - client IDs;
 - real issuer URLs;

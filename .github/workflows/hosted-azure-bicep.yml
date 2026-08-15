@@ -1,0 +1,31 @@
+name: Hosted Azure Bicep
+
+on:
+  pull_request:
+    paths:
+      - "infra/azure/**"
+      - "docs/operations/AZURE_CONTAINER_APPS_PILOT.md"
+      - "docs/security/AZURE_DEPLOYMENT_ADAPTER.md"
+      - "tests/unit/test_hosted_azure_container_apps_bicep.py"
+      - ".github/workflows/hosted-azure-bicep.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    name: Compile hosted Azure Bicep
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Compile Bicep
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az bicep install
+            az bicep build --file infra/azure/ets-hosted.bicep --stdout > /dev/null
