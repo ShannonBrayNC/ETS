@@ -1,0 +1,201 @@
+name: IPQ-F Frozen Package and Microsoft Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/ipq-f-frozen.yml"
+      - "docs/test/IPQ_F_FROZEN_EXECUTION.md"
+      - "docs/test/IPQ_F_FROZEN_RESULT.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipq-f-frozen-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  IPQ_F_SUT_SHA: 75927c5a6c3f35e56c4f6e2cd88947e18a2ff333
+
+jobs:
+  frozen-boundary:
+    name: Frozen ${{ matrix.label }} evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: package
+            label: connector package
+            tests: tests/test_connector_packages.py
+          - id: microsoft-common
+            label: Microsoft common readiness
+            tests: tests/test_microsoft_connector_common.py
+          - id: graph-source
+            label: Graph source boundary
+            tests: tests/test_microsoft_graph_notifications.py tests/test_microsoft_graph_subscriptions.py
+          - id: entra-delta
+            label: Entra delta boundary
+            tests: tests/test_microsoft_entra_connector.py tests/test_microsoft_entra_delta.py tests/test_microsoft_entra_delta_http.py tests/test_microsoft_entra_resync.py
+    steps:
+      - name: Check out qualification harness
+        uses: actions/checkout@v4
+        with:
+          path: harness
+
+      - name: Check out immutable SUT
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IPQ_F_SUT_SHA }}
+          path: sut
+          persist-credentials: false
+
+      - name: Assert exact SUT SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git -C sut rev-parse HEAD)"
+          test "$actual" = "$IPQ_F_SUT_SHA"
+          mkdir -p evidence
+          printf 'qualification=IPQ-FQ1\ngroup=%s\nharness_sha=%s\nsut_sha=%s\n' \
+            "${{ matrix.id }}" "$(git -C harness rev-parse HEAD)" "$actual" \
+            > "evidence/ipq-f-${{ matrix.id }}-identity.txt"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install frozen SUT dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e './sut[dev]'
+
+      - name: Execute frozen baseline-native tests
+        shell: bash
+        run: |
+          set +e
+          cd sut
+          python -m pytest -q ${{ matrix.tests }} \
+            --junitxml="../evidence/ipq-f-${{ matrix.id }}.xml" \
+            2>&1 | tee "../evidence/ipq-f-${{ matrix.id }}.txt"
+          status=${PIPESTATUS[0]}
+          set -e
+
+          case "$status" in
+            0) result=PASS ;;
+            1) result=FAIL ;;
+            *)
+              echo "Harness/collection error: pytest exit $status" >&2
+              exit "$status"
+              ;;
+          esac
+
+          {
+            echo "qualification=IPQ-FQ1"
+            echo "group=${{ matrix.id }}"
+            echo "sut_sha=$IPQ_F_SUT_SHA"
+            echo "harness_sha=$(git -C ../harness rev-parse HEAD)"
+            echo "pytest_exit=$status"
+            echo "result=$result"
+            echo "tests=${{ matrix.tests }}"
+          } > "../evidence/ipq-f-${{ matrix.id }}-manifest.txt"
+
+          exit 0
+
+      - name: Execute detached package negative probes
+        if: ${{ matrix.id == 'package' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee evidence/ipq-f-package-detached-probes.txt
+          import json
+          import os
+          import shutil
+          import tempfile
+          from pathlib import Path
+
+          from pydantic import ValidationError
+
+          from ets.connectors.packages import (
+              ConnectorPackageIntegrityError,
+              ConnectorPackageManifestV1,
+              verify_connector_package_directory,
+          )
+
+          source = Path("sut/examples/connectors/sample_third_party")
+
+          def expect_integrity(root: Path, phrase: str) -> None:
+              try:
+                  verify_connector_package_directory(root)
+              except ConnectorPackageIntegrityError as exc:
+                  if phrase not in str(exc):
+                      raise AssertionError(f"unexpected integrity error: {exc}") from exc
+              else:
+                  raise AssertionError(f"expected integrity failure containing {phrase!r}")
+
+          with tempfile.TemporaryDirectory() as temporary:
+              root = Path(temporary) / "missing"
+              shutil.copytree(source, root)
+              (root / "sample_connector.py").unlink()
+              expect_integrity(root, "exactly match")
+              print("missing_declared_file=PASS")
+
+          with tempfile.TemporaryDirectory() as temporary:
+              root = Path(temporary) / "special"
+              shutil.copytree(source, root)
+              declared = root / "sample_connector.py"
+              declared.unlink()
+              os.mkfifo(declared)
+              expect_integrity(root, "special files")
+              print("declared_path_fifo=PASS")
+
+          manifest = json.loads((source / "connector-package.json").read_text(encoding="utf-8"))
+          for publisher_class, qualification_state in (
+              ("lantern_builtin", "qualified"),
+              ("lantern_qualified_third_party", "qualified"),
+              ("community_unqualified", "unqualified"),
+          ):
+              candidate = json.loads(json.dumps(manifest))
+              candidate["publisher"]["publisher_class"] = publisher_class
+              candidate["publisher"]["qualification_state"] = qualification_state
+              ConnectorPackageManifestV1.model_validate(candidate)
+          print("publisher_classes=PASS")
+
+          candidate = json.loads(json.dumps(manifest))
+          candidate["publisher"]["publisher_class"] = "community_unqualified"
+          candidate["publisher"]["qualification_state"] = "qualified"
+          try:
+              ConnectorPackageManifestV1.model_validate(candidate)
+          except ValidationError:
+              print("community_cannot_claim_qualified=PASS")
+          else:
+              raise AssertionError("community_unqualified package claimed qualified state")
+          PY
+
+      - name: Record claim boundary
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          {
+            echo "qualification=IPQ-FQ1"
+            echo "group=${{ matrix.id }}"
+            echo "sut_sha=$IPQ_F_SUT_SHA"
+            echo "harness_sha=$(git -C harness rev-parse HEAD)"
+            if [ "${{ matrix.id }}" = "package" ]; then
+              echo "claim=Package integrity/provenance and activation policy only; this is not ETS evidence verification."
+            elif [ "${{ matrix.id }}" = "graph-source" ]; then
+              echo "claim=Graph notification/subscription source boundary only; no end-to-end Gateway commitment or closure of issue 305 is claimed."
+            else
+              echo "claim=Controlled frozen Microsoft source/readiness boundary only; live production Microsoft connectivity and source completeness are not claimed."
+            fi
+          } > "evidence/ipq-f-${{ matrix.id }}-claim.txt"
+
+      - name: Upload frozen evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipq-f-${{ matrix.id }}-frozen
+          path: evidence/ipq-f-${{ matrix.id }}*
+          if-no-files-found: error
+          retention-days: 90
