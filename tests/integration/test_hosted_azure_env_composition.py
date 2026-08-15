@@ -4,12 +4,13 @@ import json
 from datetime import UTC, datetime
 
 import pytest
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
 from ets.api import hosted_runtime
 from ets.api.auth import rsa_public_jwk
-from ets.core import EvidenceEvent
+from ets.core import EvidenceEvent, SignedTreeHead
 from ets.core.azure_table_store import AzureTableEventStore
 from ets.core.signing import NoOpTreeHeadSigner
 from tests.unit.test_azure_table_event_store import FakeAzureTableBackend
@@ -103,7 +104,8 @@ def test_hosted_azure_profile_composes_ready_app(monkeypatch) -> None:
         lambda: (NoOpTreeHeadSigner(), lambda: readiness_calls.append("signer")),
     )
 
-    client = TestClient(hosted_runtime.create_app_from_env())
+    app = hosted_runtime.create_app_from_env()
+    client = TestClient(app)
     ready = client.get("/ready")
 
     assert ready.status_code == 200
@@ -111,6 +113,28 @@ def test_hosted_azure_profile_composes_ready_app(monkeypatch) -> None:
     assert ready.json()["auth"] == "production_jwks"
     assert ready.json()["signing"] == "azure_key_vault"
     assert readiness_calls == ["signer"]
+    assert any(route.path == "/api/v1/verify/tree-head-signature" for route in app.routes)
+
+
+def test_hosted_ps256_verification_request_accepts_rsa_der_key_material() -> None:
+    public_key_hex = rsa.generate_private_key(public_exponent=65537, key_size=2048).public_key().public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).hex()
+    request = hosted_runtime.HostedTreeHeadSignatureVerificationRequest(
+        tree_head=SignedTreeHead(
+            tree_size=1,
+            root_hash="a" * 64,
+            created_at_utc=datetime(2026, 8, 15, 3, 45, tzinfo=UTC),
+            log_id="ets-hosted-pilot",
+            signature_alg="ps256",
+            signature="00",
+            public_key_id="https://ets-hosted.vault.azure.net/keys/ets-tree-head/version-001",
+        ),
+        public_key_der_hex=public_key_hex,
+    )
+
+    assert len(request.public_key_der_hex) > 64
 
 
 def test_hosted_azure_profile_fails_startup_when_signer_is_not_ready(monkeypatch) -> None:
