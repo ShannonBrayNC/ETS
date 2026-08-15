@@ -51,11 +51,11 @@ var containerAppName = take('ets-${resourceToken}-api', 32)
 var managedIdentityName = take('ets-${resourceToken}-identity', 128)
 var appInsightsName = take('ets-${resourceToken}-appi', 260)
 var keyVaultCryptoUserRoleId = subscriptionResourceId(
-  'Microsoft.Authorization/roleDefinitions'
+  'Microsoft.Authorization/roleDefinitions',
   '12338af0-0e69-4776-bea7-57ae8d297424'
 )
 var storageTableDataContributorRoleId = subscriptionResourceId(
-  'Microsoft.Authorization/roleDefinitions'
+  'Microsoft.Authorization/roleDefinitions',
   '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
 )
 
@@ -358,7 +358,6 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
   dependsOn: [
     keyVaultCryptoUser
     tableDataContributor
-    signingKey
   ]
 }
 
