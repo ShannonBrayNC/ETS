@@ -1,8 +1,11 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ProductionApp } from "./ProductionApp";
+import { installOverlayAccessibility } from "./overlayAccessibility";
 import "./styles.css";
 import "./dark-pro.css";
+
+installOverlayAccessibility();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
