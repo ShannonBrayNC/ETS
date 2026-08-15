@@ -266,8 +266,8 @@ test("read-only auditor can inspect connector posture but cannot mutate", async 
   await expect(page.getByText("Read-only auditor")).toBeVisible();
   await expect(page.getByRole("button", { name: "Add connector" })).toHaveCount(0);
   await expect(page.getByText("Inspection only")).toBeVisible();
-  await expect(page.getByText("Healthy", { exact: true })).toBeVisible();
-  await expect(page.getByText("No open gap")).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Healthy" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "No open gap" })).toBeVisible();
 
   const inspect = page.getByRole("button", { name: "Inspect" });
   await tabTo(page, inspect);
@@ -292,9 +292,9 @@ test("connector statuses and controls have semantic non-color meaning", async ({
 
   await expect(page.getByRole("table")).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Observation" })).toBeVisible();
-  await expect(page.getByText("Enabled", { exact: true })).toBeVisible();
-  await expect(page.getByText("Healthy", { exact: true })).toBeVisible();
-  await expect(page.getByText("No open gap", { exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Enabled" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Healthy" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "No open gap" })).toBeVisible();
   await expect(page.getByText("Server authorized", { exact: false })).toBeVisible();
 
   await pressButton(page, "Add connector");
@@ -316,5 +316,5 @@ test("narrow viewport keeps connector posture and authorization context availabl
   await expect(page.getByRole("button", { name: "Connectors" })).toBeVisible();
   await expect(page.getByText("Server authorized", { exact: false })).toBeVisible();
   await expect(page.getByText("Read-only auditor")).toBeVisible();
-  await expect(page.getByText("Healthy", { exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Healthy" })).toBeVisible();
 });
