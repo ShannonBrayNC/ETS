@@ -1,0 +1,184 @@
+name: IPQ-A Frozen Core Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/ipq-a-frozen.yml"
+      - "docs/test/IPQ_A_FROZEN_EXECUTION.md"
+      - "docs/test/IPQ_A_FROZEN_RESULT.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipq-a-frozen-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  IPQ_A_SUT_SHA: 75927c5a6c3f35e56c4f6e2cd88947e18a2ff333
+
+jobs:
+  frozen-core:
+    name: Frozen Core and Verify evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact qualification harness head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: harness
+          persist-credentials: false
+      - name: Check out immutable SUT
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IPQ_A_SUT_SHA }}
+          path: sut
+          persist-credentials: false
+      - name: Assert exact SUT and harness SHAs
+        shell: bash
+        env:
+          EXPECTED_HARNESS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual_sut="$(git -C sut rev-parse HEAD)"
+          actual_harness="$(git -C harness rev-parse HEAD)"
+          test "$actual_sut" = "$IPQ_A_SUT_SHA"
+          test "$actual_harness" = "$EXPECTED_HARNESS_SHA"
+          mkdir -p evidence
+          printf 'qualification=IPQ-AQ1\nharness_sha=%s\nsut_sha=%s\ngithub_event_sha=%s\n' \
+            "$actual_harness" "$actual_sut" "$GITHUB_SHA" > evidence/ipq-a-core-identity.txt
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install frozen SUT dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e './sut[dev]'
+      - name: Run frozen Core and Verify tests
+        shell: bash
+        run: |
+          set +e
+          cd sut
+          python -m pytest -q \
+            tests/unit/test_append_log.py \
+            tests/unit/test_merkle.py \
+            tests/unit/test_inclusion_proofs.py \
+            tests/unit/test_verifier.py \
+            tests/unit/test_verifier_golden.py \
+            tests/unit/test_verifier_cli_golden_paths.py \
+            tests/unit/test_tree_head_signing_envelope.py \
+            tests/unit/test_certificate_claim_safety.py \
+            tests/integration/test_api.py::test_inclusion_proof_route_and_verify_route_accept_valid_proof \
+            tests/integration/test_api.py::test_verify_route_rejects_tampered_proof_without_hidden_state \
+            tests/integration/test_api.py::test_consistency_proof_route_and_verify_route_accept_valid_proof \
+            tests/integration/test_api.py::test_consistency_verify_rejects_tampered_latest_root \
+            tests/integration/test_api.py::test_proof_bundle_route_returns_offline_verification_artifacts \
+            tests/integration/test_api.py::test_certificate_report_endpoint_generates_markdown \
+            --junitxml=../evidence/ipq-a-core.xml \
+            2>&1 | tee ../evidence/ipq-a-core.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then result=PASS; elif [ "$status" -eq 1 ]; then result=FAIL; else exit "$status"; fi
+          {
+            echo "result=$result"
+            echo "pytest_exit=$status"
+            echo "sut_sha=$IPQ_A_SUT_SHA"
+            echo "harness_sha=$(git -C ../harness rev-parse HEAD)"
+            echo "scope=C01,C02,C03,C04-ets-v1"
+            echo "claim=Frozen Core/Verify behavior including ETS v1 consistency verification; compact RFC6962 conformance is not claimed."
+          } > ../evidence/ipq-a-core-manifest.txt
+          exit "$status"
+      - name: Record consistency capability boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd sut
+          grep -R -E "consistency[_ -]?proof|verify_consistency|consistency proof" \
+            ets tests/unit tests/integration > ../evidence/ipq-a-consistency-search.txt
+          {
+            echo "row=C04"
+            echo "status=PASS_ETS_V1_LINEAR_CONSISTENCY"
+            echo "sut_sha=$IPQ_A_SUT_SHA"
+            echo "post_baseline_reference=#194"
+            echo "claim=Frozen ETS consistency generation/verification is executable and tested; compact RFC6962 consistency conformance remains post-baseline and is not claimed."
+          } > ../evidence/ipq-a-consistency-boundary.txt
+      - name: Upload Core evidence
+        if: ${{ always() && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipq-a-frozen-core
+          path: evidence/ipq-a-*
+          if-no-files-found: error
+          retention-days: 90
+
+  frozen-persistence:
+    name: Frozen persistence and artifact evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact qualification harness head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: harness
+          persist-credentials: false
+      - name: Check out immutable SUT
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IPQ_A_SUT_SHA }}
+          path: sut
+          persist-credentials: false
+      - name: Assert exact SUT and harness SHAs
+        shell: bash
+        env:
+          EXPECTED_HARNESS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual_sut="$(git -C sut rev-parse HEAD)"
+          actual_harness="$(git -C harness rev-parse HEAD)"
+          test "$actual_sut" = "$IPQ_A_SUT_SHA"
+          test "$actual_harness" = "$EXPECTED_HARNESS_SHA"
+          mkdir -p evidence
+          printf 'qualification=IPQ-AQ1\nharness_sha=%s\nsut_sha=%s\ngithub_event_sha=%s\n' \
+            "$actual_harness" "$actual_sut" "$GITHUB_SHA" > evidence/ipq-a-persistence-identity.txt
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install frozen SUT dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e './sut[dev]'
+      - name: Run frozen persistence tests
+        shell: bash
+        run: |
+          set +e
+          cd sut
+          python -m pytest -q \
+            tests/unit/test_artifact_registry.py \
+            tests/unit/test_artifacts.py \
+            tests/unit/test_sqlite_artifact_registry.py \
+            tests/unit/test_sqlite_event_store.py \
+            tests/integration/test_artifact_routes_sqlite_restart.py \
+            tests/integration/test_api_security_persistence.py \
+            --junitxml=../evidence/ipq-a-persistence.xml \
+            2>&1 | tee ../evidence/ipq-a-persistence.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then result=PASS; elif [ "$status" -eq 1 ]; then result=FAIL; else exit "$status"; fi
+          {
+            echo "result=$result"
+            echo "pytest_exit=$status"
+            echo "sut_sha=$IPQ_A_SUT_SHA"
+            echo "harness_sha=$(git -C ../harness rev-parse HEAD)"
+            echo "scope=P01,P02,P03,P04,P05"
+            echo "claim=Frozen SQLite/event/artifact restart, proof, fail-closed and metadata-only behavior as directly exercised by selected tests."
+          } > ../evidence/ipq-a-persistence-manifest.txt
+          exit "$status"
+      - name: Upload persistence evidence
+        if: ${{ always() && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipq-a-frozen-persistence
+          path: evidence/ipq-a-*
+          if-no-files-found: error
+          retention-days: 90
