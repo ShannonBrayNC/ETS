@@ -37,11 +37,19 @@ jobs:
       - name: Compile qualification client
         run: python -m py_compile scripts/qualify_hosted_azure_live.py
 
-      - name: Validate pre-execution claim and network boundary
+      - name: Compile ephemeral qualification-client Bicep
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az bicep install
+            az bicep build --file infra/azure/ets-q1-client.bicep --stdout > /dev/null
+
+      - name: Validate pre-execution claim, registry, identity, and network boundaries
         shell: bash
         run: |
           set -euo pipefail
           live=.github/workflows/hosted-azure-live-qualification.yml
+          client=infra/azure/ets-q1-client.bicep
           execution=docs/test/HOST_AZ_Q1_LIVE_EXECUTION.md
           result=docs/test/HOST_AZ_Q1_LIVE_RESULT.md
 
@@ -49,16 +57,45 @@ jobs:
           grep -q 'same Container Apps environment' "$execution"
           grep -q 'same_environment_ephemeral_container_app' \
             scripts/qualify_hosted_azure_live.py
-          grep -q 'az containerapp create' "$live"
+          grep -q 'container_registry_name' "$live"
+          grep -q 'container_registry_resource_group' "$live"
+          grep -q 'container_registry_pull_role_definition_id' "$live"
+          grep -q 'image_source_sha' "$live"
+          grep -q 'authentication-as-arm show' "$live"
+          grep -q '@sha256:' "$live"
+          grep -q 'containerRegistryName=' "$live"
+          grep -q 'containerRegistryResourceGroup=' "$live"
+          grep -q 'containerRegistryPullRoleDefinitionId=' "$live"
+          grep -q 'registryPullIdentityResourceId.value' "$live"
+          grep -q 'infra/azure/ets-q1-client.bicep' "$live"
           grep -q 'az containerapp exec' "$live"
           grep -q 'az containerapp delete' "$live"
-          grep -q 'ETS_Q1_BEARER_TOKEN=secretref:q1-token' "$live"
+          grep -q 'az deployment group delete' "$live"
+          grep -q 'runtime_identity_attached_to_qualification_client=false' "$live"
           grep -q 'az containerapp revision restart' "$live"
           grep -q 'COPY scripts/qualify_hosted_azure_live.py' Dockerfile
           grep -q 'expected=(409,)' scripts/qualify_hosted_azure_live.py
           grep -q 'production_jwks' scripts/qualify_hosted_azure_live.py
           grep -q 'azure_key_vault' scripts/qualify_hosted_azure_live.py
           grep -q 'azure_table' scripts/qualify_hosted_azure_live.py
+
+          grep -q '@secure()' "$client"
+          grep -q "secretRef: 'q1-token'" "$client"
+          grep -q 'registryPullIdentityResourceId' "$client"
+          grep -q 'registries:' "$client"
+          grep -q 'identity: registryPullIdentityResourceId' "$client"
+          if grep -q 'ingress:' "$client"; then
+            echo 'The ephemeral Q1 client must not configure ingress.' >&2
+            exit 1
+          fi
+          if grep -q 'az containerapp create' "$live"; then
+            echo 'Q1 must use declarative client deployment so CLI cannot add an unintended ACR role.' >&2
+            exit 1
+          fi
+          if grep -Eq 'registry-password|registry-username|listCredentials\(' "$live" "$client"; then
+            echo 'Q1 must not use reusable registry credentials.' >&2
+            exit 1
+          fi
           if grep -q -- '--ingress external' "$live"; then
             echo 'Q1 must not expose ETS or its ephemeral client through external ingress.' >&2
             exit 1
