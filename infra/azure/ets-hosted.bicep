@@ -5,9 +5,24 @@ param location string = resourceGroup().location
 @minLength(1)
 param environmentName string
 
-@description('OCI image containing the ETS hosted runtime.')
+@description('Immutable OCI image from the approved private Azure Container Registry. Use an @sha256 digest, not a mutable tag, for qualification.')
 @minLength(1)
 param containerImage string
+
+@description('Existing private Azure Container Registry name in the current subscription.')
+@minLength(5)
+param containerRegistryName string
+
+@description('Resource group containing the existing private Azure Container Registry.')
+@minLength(1)
+param containerRegistryResourceGroup string
+
+@description('Registry pull role: AcrPull for RBAC-only ACR, or Container Registry Repository Reader for ABAC-enabled ACR.')
+@allowed([
+  '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+  'b93aa761-3e63-49ed-ac28-beffa264f7ac'
+])
+param containerRegistryPullRoleDefinitionId string = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 
 @description('Deployment-authoritative ETS log identifier.')
 @minLength(1)
@@ -49,6 +64,7 @@ var appConfigName = take('ets-${resourceToken}-cfg', 50)
 var managedEnvironmentName = take('ets-${resourceToken}-cae', 60)
 var containerAppName = take('ets-${resourceToken}-api', 32)
 var managedIdentityName = take('ets-${resourceToken}-identity', 128)
+var registryPullIdentityName = take('ets-${resourceToken}-pull', 128)
 var appInsightsName = take('ets-${resourceToken}-appi', 260)
 var keyVaultCryptoUserRoleId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
@@ -62,6 +78,21 @@ var storageTableDataContributorRoleId = subscriptionResourceId(
 resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: managedIdentityName
   location: location
+}
+
+resource registryPullIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: registryPullIdentityName
+  location: location
+}
+
+module registryPull './modules/acr-pull-role.bicep' = {
+  name: 'ets-acr-pull-${resourceToken}'
+  scope: resourceGroup(containerRegistryResourceGroup)
+  params: {
+    registryName: containerRegistryName
+    principalId: registryPullIdentity.properties.principalId
+    pullRoleDefinitionId: containerRegistryPullRoleDefinitionId
+  }
 }
 
 resource keyVault 'Microsoft.KeyVault/vaults@2025-05-01' = {
@@ -230,12 +261,19 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
     type: 'UserAssigned'
     userAssignedIdentities: {
       '${managedIdentity.id}': {}
+      '${registryPullIdentity.id}': {}
     }
   }
   properties: {
     environmentId: managedEnvironment.id
     configuration: {
       activeRevisionsMode: 'Single'
+      registries: [
+        {
+          server: registryPull.outputs.loginServer
+          identity: registryPullIdentity.id
+        }
+      ]
       ingress: {
         external: false
         allowInsecure: false
@@ -362,6 +400,8 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
 }
 
 output managedIdentityResourceId string = managedIdentity.id
+output registryPullIdentityResourceId string = registryPullIdentity.id
+output containerRegistryServer string = registryPull.outputs.loginServer
 output appConfigurationEndpoint string = appConfig.properties.endpoint
 output keyVaultUri string = keyVault.properties.vaultUri
 output applicationInsightsName string = appInsights.name
