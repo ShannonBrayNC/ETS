@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
-from collections.abc import Callable, Iterable, ItemsView, Mapping, Sequence
+from collections.abc import Callable, ItemsView, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, cast
 
