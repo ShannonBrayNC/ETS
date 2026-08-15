@@ -25,7 +25,7 @@ from ets.edge.device_identity import (
 DATA_DIR = Path(os.getenv("ETS_EDGE_DATA_DIR", "/var/lib/ets"))
 KEY_PATH = DATA_DIR / "edge-demo-signing-key.hex"
 API_KEY_PATH = DATA_DIR / "edge-local-api-key"
-API_KEY_VERIFIER_PATH = DATA_DIR / "edge-local-api-key.sha256"
+API_KEY_VERIFIER_PATH = DATA_DIR / "edge-local-api-key.scrypt"
 DEVICE_IDENTITY_PATH = DATA_DIR / "edge-device-identity.json"
 
 
@@ -62,7 +62,11 @@ def main() -> None:
         )
         runtime_api_key_file = Path(explicit_api_key_file.strip())
     else:
-        local_api_key = load_or_create_local_api_key(API_KEY_PATH, explicit_api_key)
+        local_api_key = load_or_create_local_api_key(
+            API_KEY_PATH,
+            explicit_api_key,
+            storage_key_material=signing_key_hex,
+        )
         runtime_api_key_file = API_KEY_PATH
 
     identity = build_device_identity(signing_key_hex, public_key_id)
