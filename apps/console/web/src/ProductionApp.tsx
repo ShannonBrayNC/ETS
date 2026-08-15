@@ -66,6 +66,7 @@ export function ProductionApp() {
   const scope: TenantScope = { tenantId: auth.tenant_id, workspaceId: auth.workspace_id };
   const canCreate = auth.capabilities.includes("evidence.create");
   const canManageConnectors = auth.capabilities.includes("connector.manage");
+  const canReadConnectors = auth.capabilities.includes("connector.read") || canManageConnectors;
   const canAdmin = auth.capabilities.includes("admin.read");
 
   return <div className="app-shell">
@@ -76,7 +77,7 @@ export function ProductionApp() {
         <Nav active={route.name === "overview"} onClick={() => navigate("/")}>Overview</Nav>
         <Nav active={route.name === "evidence" || route.name === "evidence-detail"} onClick={() => navigate("/evidence")}>Evidence</Nav>
         {canCreate && <Nav active={route.name === "collect" || route.name === "collect-url"} onClick={() => navigate("/collect")}>Collect</Nav>}
-        {canManageConnectors && <Nav active={route.name === "collectors"} onClick={() => navigate("/collectors")}>Connectors</Nav>}
+        {canReadConnectors && <Nav active={route.name === "collectors"} onClick={() => navigate("/collectors")}>Connectors</Nav>}
         {canAdmin && <Nav active={route.name === "admin"} onClick={() => navigate("/admin")}>Administration</Nav>}
       </nav>
       <div className="sidebar-footer"><Status label="Service" value={health?.health ?? "checking"} good={health?.health === "ok"} /><Status label="Ready" value={health ? String(health.ready) : "checking"} good={health?.ready === true} /><div className="version">Version {health?.version ?? "…"}</div></div>
@@ -95,7 +96,7 @@ export function ProductionApp() {
         {route.name === "evidence" && <EvidenceIndex navigate={navigate} />}
         {route.name === "collect" && (canCreate ? <Collect scope={scope} actorId={auth.subject} navigate={navigate} /> : <Denied capability="evidence.create" />)}
         {route.name === "collect-url" && (canCreate ? <UrlPlaceholder /> : <Denied capability="evidence.create" />)}
-        {route.name === "collectors" && (canManageConnectors ? <ConnectorsPage auth={auth} /> : <Denied capability="connector.manage" />)}
+        {route.name === "collectors" && (canReadConnectors ? <ConnectorsPage auth={auth} /> : <Denied capability="connector.read" />)}
         {route.name === "admin" && (canAdmin ? <Administration auth={auth} /> : <Denied capability="admin.read" />)}
         {route.name === "evidence-detail" && route.artifactId && <EvidenceDetail scope={scope} artifactId={route.artifactId} />}
       </main>
