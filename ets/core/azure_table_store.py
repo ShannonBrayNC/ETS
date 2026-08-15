@@ -396,7 +396,9 @@ class AzureSdkTableBackend:
             f"PartitionKey eq '{partition_key}' and "
             f"RowKey ge '{_ENTRY_PREFIX}' and RowKey lt 'entry.'"
         )
-        entities = [dict(entity.items()) for entity in self._client.query_entities(query)]
+        entities: list[Mapping[str, object]] = [
+            dict(entity.items()) for entity in self._client.query_entities(query)
+        ]
         entities.sort(key=lambda entity: cast(str, entity.get("RowKey", "")))
         return entities
 
