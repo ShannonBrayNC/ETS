@@ -34,9 +34,9 @@ def resolve_local_api_key_provisioning(
     """Resolve optional first-boot local API-key provisioning without logging it.
 
     A direct environment value and a secret-file path are mutually exclusive.
-    The returned value is still validated and persisted by
-    ``load_or_create_local_api_key`` so the existing no-implicit-rotation rule
-    remains authoritative across restarts.
+    The returned value is still validated before use. Secret-file provisioning
+    is intentionally handled by ``validate_or_record_local_api_key_verifier``
+    so the mounted secret is never copied into Edge's persistent data volume.
     """
 
     if explicit_key is not None and explicit_key_file is not None:
@@ -63,12 +63,47 @@ def resolve_local_api_key_provisioning(
     return _validate_local_api_key(key)
 
 
+def validate_or_record_local_api_key_verifier(path: Path, explicit_key: str) -> str:
+    """Validate a mounted API key against a durable non-secret SHA-256 verifier.
+
+    Secret-file provisioning keeps the plaintext credential in the external
+    secret mount and process memory only. Edge persists only the SHA-256 digest
+    needed to detect an unexpected credential change across restarts. API keys
+    are required to contain at least 256 bits of material, so the verifier does
+    not make recovery of the original random credential practical.
+    """
+
+    key = _validate_local_api_key(explicit_key)
+    verifier = hashlib.sha256(key.encode("utf-8")).hexdigest()
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    if path.exists():
+        persisted = path.read_text(encoding="utf-8").strip()
+        if len(persisted) != 64:
+            raise RuntimeError("persisted ETS Edge local API key verifier is invalid")
+        try:
+            bytes.fromhex(persisted)
+        except ValueError as exc:
+            raise RuntimeError("persisted ETS Edge local API key verifier is invalid") from exc
+        if not hmac.compare_digest(persisted, verifier):
+            raise RuntimeError(
+                "mounted ETS Edge local API key conflicts with persisted verifier; "
+                "implicit rotation is not supported"
+            )
+        return key
+
+    path.write_text(verifier + "\n", encoding="utf-8")
+    path.chmod(0o600)
+    return key
+
+
 def load_or_create_local_api_key(path: Path, explicit_key: str | None = None) -> str:
     """Return a durable local API key, generating at least 256 bits on first boot.
 
-    Explicit injection is a first-boot provisioning mechanism, not an implicit
-    rotation mechanism. Once a durable key exists, a conflicting injected key
-    fails closed so a restart cannot silently replace the appliance credential.
+    Explicit direct injection is a first-boot provisioning mechanism, not an
+    implicit rotation mechanism. Secret-file provisioning uses the verifier
+    path above instead so its plaintext is not copied into persistent storage.
+    Once a durable key exists, a conflicting directly injected key fails closed.
     """
 
     path.parent.mkdir(parents=True, exist_ok=True)
