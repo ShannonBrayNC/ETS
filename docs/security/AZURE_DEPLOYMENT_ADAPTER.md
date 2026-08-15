@@ -36,11 +36,15 @@ SignalForge-provided crypto client factory. The adapter:
 Azure Key Vault does not support Ed25519/EdDSA keys. Local ETS Ed25519 signing is
 a separate profile and must not be represented as Key Vault signing.
 
+The hosted Azure runtime also exposes
+`POST /api/v1/verify/tree-head-signature` for independent PS256 verification using
+a caller-supplied DER SubjectPublicKeyInfo RSA public key. The existing local
+Ed25519 verification route remains unchanged.
+
 ## Required Configuration Sources
 
 Hosted deployments should source values from Azure App Configuration, Key Vault
-references, GitHub Actions secrets, or managed environment variables. Do not
-commit real vault URLs, key names, key versions, tenant IDs, client IDs, access
+references, GitHub Actions secrets, or managed environment variables. **Do not commit real vault URLs**, key names, key versions, tenant IDs, client IDs, access
 tokens, private keys, or customer identifiers.
 
 `.env.example` contains placeholders only. Production values must be injected by
