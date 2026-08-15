@@ -38,7 +38,11 @@ def test_connector_route_matches_split_read_manage_authority() -> None:
     assert 'auth.capabilities.includes("connector.manage")' in source
     assert "canReadConnectors" in source
     assert "{canReadConnectors && <Nav" in source
-    assert 'canReadConnectors ? <ConnectorsPage auth={auth} /> : <Denied capability="connector.read" />' in source
+    expected_route = (
+        'canReadConnectors ? <ConnectorsPage auth={auth} /> '
+        ': <Denied capability="connector.read" />'
+    )
+    assert expected_route in source
 
 
 def test_connector_mutation_controls_require_management_authority() -> None:
