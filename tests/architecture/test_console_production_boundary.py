@@ -85,6 +85,20 @@ def test_connector_diagnostics_use_bounded_codes_not_message_matching() -> None:
     assert "message.match" not in diagnostic_source
 
 
+def test_connector_overlays_install_keyboard_focus_management() -> None:
+    entrypoint = _read("main.tsx")
+    accessibility = _read("overlayAccessibility.ts")
+
+    assert 'from "./overlayAccessibility"' in entrypoint
+    assert "installOverlayAccessibility();" in entrypoint
+    assert 'const overlaySelector = ".connector-modal, .connector-drawer"' in accessibility
+    assert 'overlay.setAttribute("role", "dialog")' in accessibility
+    assert 'overlay.setAttribute("aria-modal", modal ? "true" : "false")' in accessibility
+    assert 'event.key === "Escape"' in accessibility
+    assert 'event.key !== "Tab"' in accessibility
+    assert "state.previous?.isConnected" in accessibility
+
+
 def test_connector_wizard_never_falls_back_to_raw_settings_editor() -> None:
     source = _read("Connectors.tsx")
 
