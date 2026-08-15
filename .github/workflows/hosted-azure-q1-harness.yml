@@ -1,0 +1,65 @@
+name: Hosted Azure Q1 Harness Qualification
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-azure-q1-harness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  harness:
+    name: Static qualification client and claim boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out stacked qualification source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install development package
+        run: python -m pip install -e '.[dev]'
+
+      - name: Ruff qualification client
+        run: ruff check scripts/qualify_hosted_azure_live.py
+
+      - name: Type-check qualification client
+        run: mypy scripts/qualify_hosted_azure_live.py
+
+      - name: Compile qualification client
+        run: python -m py_compile scripts/qualify_hosted_azure_live.py
+
+      - name: Validate pre-execution claim and network boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          live=.github/workflows/hosted-azure-live-qualification.yml
+          execution=docs/test/HOST_AZ_Q1_LIVE_EXECUTION.md
+          result=docs/test/HOST_AZ_Q1_LIVE_RESULT.md
+
+          grep -q 'NOT EXECUTED' "$result"
+          grep -q 'same Container Apps environment' "$execution"
+          grep -q 'same_environment_ephemeral_container_app' \
+            scripts/qualify_hosted_azure_live.py
+          grep -q 'az containerapp create' "$live"
+          grep -q 'az containerapp exec' "$live"
+          grep -q 'az containerapp delete' "$live"
+          grep -q 'ETS_Q1_BEARER_TOKEN=secretref:q1-token' "$live"
+          grep -q 'az containerapp revision restart' "$live"
+          grep -q 'COPY scripts/qualify_hosted_azure_live.py' Dockerfile
+          grep -q 'expected=(409,)' scripts/qualify_hosted_azure_live.py
+          grep -q 'production_jwks' scripts/qualify_hosted_azure_live.py
+          grep -q 'azure_key_vault' scripts/qualify_hosted_azure_live.py
+          grep -q 'azure_table' scripts/qualify_hosted_azure_live.py
+          if grep -q -- '--ingress external' "$live"; then
+            echo 'Q1 must not expose ETS or its ephemeral client through external ingress.' >&2
+            exit 1
+          fi

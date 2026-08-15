@@ -1,0 +1,380 @@
+name: Hosted Azure Live Pilot Qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      location:
+        description: Azure region for the clean qualification resource group
+        required: true
+        default: eastus
+        type: string
+      resource_group:
+        description: New resource group name; the workflow fails if it already exists
+        required: true
+        type: string
+      environment_name:
+        description: Non-customer qualification environment seed
+        required: true
+        type: string
+      container_image:
+        description: Immutable Q1 ETS image containing the live qualification client
+        required: true
+        type: string
+      log_id:
+        description: Synthetic qualification log identifier
+        required: true
+        type: string
+      auth_jwks_url:
+        description: Production JWKS endpoint for the qualification client identity
+        required: true
+        type: string
+      auth_issuer:
+        description: Expected JWT issuer
+        required: true
+        type: string
+      auth_audience:
+        description: Expected JWT audience
+        required: true
+        type: string
+      tenant_id:
+        description: Synthetic tenant scope matching the qualification token claims
+        required: true
+        type: string
+      workspace_id:
+        description: Synthetic workspace scope matching the qualification token claims
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: hosted-azure-live-q1
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: Clean deploy, restart, and source-to-proof qualification
+    runs-on: ubuntu-latest
+    environment: ets-azure-q1
+    timeout-minutes: 75
+    env:
+      ETS_Q1_BEARER_TOKEN: ${{ secrets.ETS_Q1_BEARER_TOKEN }}
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+
+    steps:
+      - name: Check out exact qualification source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require qualification prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v az >/dev/null
+          command -v python >/dev/null
+          if [ -z "$ETS_Q1_BEARER_TOKEN" ]; then
+            echo "ETS_Q1_BEARER_TOKEN is required in the ets-azure-q1 environment." >&2
+            exit 1
+          fi
+          echo "::add-mask::$ETS_Q1_BEARER_TOKEN"
+          mkdir -p evidence/host-az-q1
+          printf 'source_sha=%s\nworkflow_run_id=%s\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" \
+            > evidence/host-az-q1/source.txt
+
+      - name: Azure login with workload identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Require a clean resource group
+        shell: bash
+        env:
+          RESOURCE_GROUP: ${{ inputs.resource_group }}
+          LOCATION: ${{ inputs.location }}
+        run: |
+          set -euo pipefail
+          exists="$(az group exists --name "$RESOURCE_GROUP" -o tsv)"
+          if [ "$exists" = "true" ]; then
+            echo "Qualification requires a new resource group: $RESOURCE_GROUP already exists." >&2
+            exit 1
+          fi
+          az group create \
+            --name "$RESOURCE_GROUP" \
+            --location "$LOCATION" \
+            --tags etsQualification=HOST-AZ-Q1 syntheticOnly=true \
+            --output none
+
+      - name: Deploy retained hosted pilot Bicep
+        id: deploy
+        shell: bash
+        env:
+          RESOURCE_GROUP: ${{ inputs.resource_group }}
+          ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          CONTAINER_IMAGE: ${{ inputs.container_image }}
+          LOG_ID: ${{ inputs.log_id }}
+          AUTH_JWKS_URL: ${{ inputs.auth_jwks_url }}
+          AUTH_ISSUER: ${{ inputs.auth_issuer }}
+          AUTH_AUDIENCE: ${{ inputs.auth_audience }}
+        run: |
+          set -euo pipefail
+          deployment="ets-q1-${GITHUB_RUN_ID}"
+          az deployment group create \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/azure/ets-hosted.bicep \
+            --parameters \
+              environmentName="$ENVIRONMENT_NAME" \
+              containerImage="$CONTAINER_IMAGE" \
+              logId="$LOG_ID" \
+              authJwksUrl="$AUTH_JWKS_URL" \
+              authIssuer="$AUTH_ISSUER" \
+              authAudience="$AUTH_AUDIENCE" \
+            --output none
+
+          app_name="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.containerAppName.value \
+            -o tsv)"
+          fqdn="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.internalIngressFqdn.value \
+            -o tsv)"
+          managed_environment="$(az containerapp env list \
+            --resource-group "$RESOURCE_GROUP" \
+            --query '[0].name' \
+            -o tsv)"
+          test -n "$app_name"
+          test -n "$fqdn"
+          test -n "$managed_environment"
+
+          echo "deployment=$deployment" >> "$GITHUB_OUTPUT"
+          echo "app_name=$app_name" >> "$GITHUB_OUTPUT"
+          echo "managed_environment=$managed_environment" >> "$GITHUB_OUTPUT"
+          echo "base_url=https://$fqdn" >> "$GITHUB_OUTPUT"
+
+          az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query '{name:name,provisioningState:properties.provisioningState,outputs:properties.outputs}' \
+            -o json > evidence/host-az-q1/deployment.json
+
+      - name: Create ephemeral same-environment qualification client
+        id: client
+        shell: bash
+        env:
+          RESOURCE_GROUP: ${{ inputs.resource_group }}
+          MANAGED_ENVIRONMENT: ${{ steps.deploy.outputs.managed_environment }}
+          CONTAINER_IMAGE: ${{ inputs.container_image }}
+          BASE_URL: ${{ steps.deploy.outputs.base_url }}
+          TENANT_ID: ${{ inputs.tenant_id }}
+          WORKSPACE_ID: ${{ inputs.workspace_id }}
+        run: |
+          set -euo pipefail
+          client_name="ets-q1-client-${GITHUB_RUN_ID}"
+          client_name="${client_name:0:31}"
+          echo "client_name=$client_name" >> "$GITHUB_OUTPUT"
+
+          az containerapp create \
+            --name "$client_name" \
+            --resource-group "$RESOURCE_GROUP" \
+            --environment "$MANAGED_ENVIRONMENT" \
+            --image "$CONTAINER_IMAGE" \
+            --min-replicas 1 \
+            --max-replicas 1 \
+            --cpu 0.25 \
+            --memory 0.5Gi \
+            --secrets q1-token="$ETS_Q1_BEARER_TOKEN" \
+            --env-vars \
+              ETS_Q1_BEARER_TOKEN=secretref:q1-token \
+              ETS_Q1_BASE_URL="$BASE_URL" \
+              ETS_Q1_RUN_ID="$GITHUB_RUN_ID" \
+              ETS_Q1_TENANT_ID="$TENANT_ID" \
+              ETS_Q1_WORKSPACE_ID="$WORKSPACE_ID" \
+            --command /bin/sh \
+            --args -c 'sleep 3600' \
+            --output none
+
+          az containerapp show \
+            --name "$client_name" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query '{name:name,environmentId:properties.environmentId,provisioningState:properties.provisioningState}' \
+            -o json > evidence/host-az-q1/client-app.json
+
+      - name: Execute pre-restart source-to-proof qualification in environment
+        id: pre
+        shell: bash
+        env:
+          RESOURCE_GROUP: ${{ inputs.resource_group }}
+          CLIENT_NAME: ${{ steps.client.outputs.client_name }}
+        run: |
+          set -euo pipefail
+          command_line='python /app/scripts/qualify_hosted_azure_live.py pre --base-url "$ETS_Q1_BASE_URL" --run-id "$ETS_Q1_RUN_ID" --tenant-id "$ETS_Q1_TENANT_ID" --workspace-id "$ETS_Q1_WORKSPACE_ID"'
+          exec_log="$RUNNER_TEMP/q1-pre-exec.txt"
+          printf '%s\nexit\n' "$command_line" \
+            | az containerapp exec \
+                --name "$CLIENT_NAME" \
+                --resource-group "$RESOURCE_GROUP" \
+                --command /bin/sh \
+                > "$exec_log" 2>&1
+
+          python - "$exec_log" \
+            evidence/host-az-q1/pre-restart.json \
+            "$RUNNER_TEMP/q1-state.b64" <<'PY'
+          import base64
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          matches = re.findall(r"ETS_Q1_RESULT_B64=([A-Za-z0-9_=-]+)", source)
+          if not matches:
+              raise SystemExit("qualification client did not emit a pre-restart result marker")
+          result = json.loads(base64.urlsafe_b64decode(matches[-1]).decode("utf-8"))
+          if result.get("phase") != "pre":
+              raise SystemExit("qualification client emitted an unexpected phase")
+          Path(sys.argv[2]).write_text(
+              json.dumps(result, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          state = json.dumps(result["state"], separators=(",", ":"), sort_keys=True)
+          Path(sys.argv[3]).write_text(
+              base64.urlsafe_b64encode(state.encode("utf-8")).decode("ascii"),
+              encoding="ascii",
+          )
+          PY
+          rm -f "$exec_log"
+
+      - name: Restart the active ETS Container App revision
+        id: restart
+        shell: bash
+        env:
+          RESOURCE_GROUP: ${{ inputs.resource_group }}
+          APP_NAME: ${{ steps.deploy.outputs.app_name }}
+        run: |
+          set -euo pipefail
+          revision="$(az containerapp revision list \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query '[?properties.active].name | [0]' \
+            -o tsv)"
+          test -n "$revision"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+
+          az containerapp revision show \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --revision "$revision" \
+            --query '{name:name,active:properties.active,healthState:properties.healthState,runningState:properties.runningState}' \
+            -o json > evidence/host-az-q1/revision-before.json
+
+          az containerapp revision restart \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --revision "$revision" \
+            --only-show-errors
+          printf 'revision=%s\nrestarted_at_utc=%s\n' \
+            "$revision" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > evidence/host-az-q1/restart.txt
+
+      - name: Re-read and reverify from same-environment client
+        shell: bash
+        env:
+          RESOURCE_GROUP: ${{ inputs.resource_group }}
+          CLIENT_NAME: ${{ steps.client.outputs.client_name }}
+        run: |
+          set -euo pipefail
+          state_b64="$(cat "$RUNNER_TEMP/q1-state.b64")"
+          command_line="python /app/scripts/qualify_hosted_azure_live.py post --base-url \"\$ETS_Q1_BASE_URL\" --run-id \"\$ETS_Q1_RUN_ID\" --tenant-id \"\$ETS_Q1_TENANT_ID\" --workspace-id \"\$ETS_Q1_WORKSPACE_ID\" --state-b64 '$state_b64' --wait-seconds 300"
+          exec_log="$RUNNER_TEMP/q1-post-exec.txt"
+          printf '%s\nexit\n' "$command_line" \
+            | az containerapp exec \
+                --name "$CLIENT_NAME" \
+                --resource-group "$RESOURCE_GROUP" \
+                --command /bin/sh \
+                > "$exec_log" 2>&1
+
+          python - "$exec_log" evidence/host-az-q1/post-restart.json <<'PY'
+          import base64
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          matches = re.findall(r"ETS_Q1_RESULT_B64=([A-Za-z0-9_=-]+)", source)
+          if not matches:
+              raise SystemExit("qualification client did not emit a post-restart result marker")
+          result = json.loads(base64.urlsafe_b64decode(matches[-1]).decode("utf-8"))
+          if result.get("phase") != "post":
+              raise SystemExit("qualification client emitted an unexpected phase")
+          Path(sys.argv[2]).write_text(
+              json.dumps(result, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          rm -f "$exec_log" "$RUNNER_TEMP/q1-state.b64"
+
+      - name: Retain post-restart revision metadata
+        shell: bash
+        env:
+          RESOURCE_GROUP: ${{ inputs.resource_group }}
+          APP_NAME: ${{ steps.deploy.outputs.app_name }}
+          CLIENT_NAME: ${{ steps.client.outputs.client_name }}
+          REVISION: ${{ steps.restart.outputs.revision }}
+        run: |
+          set -euo pipefail
+          az containerapp revision show \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --revision "$REVISION" \
+            --query '{name:name,active:properties.active,healthState:properties.healthState,runningState:properties.runningState}' \
+            -o json > evidence/host-az-q1/revision-after.json
+
+          cat > evidence/host-az-q1/manifest.txt <<EOF
+          qualification=HOST-AZ-Q1
+          source_sha=$GITHUB_SHA
+          workflow_run_id=$GITHUB_RUN_ID
+          resource_group=${{ inputs.resource_group }}
+          deployment=${{ steps.deploy.outputs.deployment }}
+          container_app=$APP_NAME
+          revision=$REVISION
+          qualification_client=$CLIENT_NAME
+          client_path=same_environment_ephemeral_container_app
+          ingress_boundary=ets_internal_same_environment_only
+          evidence_scope=synthetic_metadata_only
+          bearer_token_retained=false
+          customer_identifiers_retained=false
+          raw_customer_evidence_retained=false
+          result=PASS_IF_WORKFLOW_SUCCESS
+          EOF
+
+      - name: Delete ephemeral qualification client
+        if: always() && steps.client.outputs.client_name != ''
+        shell: bash
+        env:
+          RESOURCE_GROUP: ${{ inputs.resource_group }}
+          CLIENT_NAME: ${{ steps.client.outputs.client_name }}
+        run: |
+          az containerapp delete \
+            --name "$CLIENT_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --yes \
+            --only-show-errors || true
+
+      - name: Upload sanitized qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-az-q1-live-${{ github.run_id }}
+          path: evidence/host-az-q1/
+          if-no-files-found: error
+          retention-days: 90
