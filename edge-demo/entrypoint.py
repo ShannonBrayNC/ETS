@@ -2,7 +2,7 @@
 
 This wrapper configures the existing ETS API as a single-node local virtual edge
 appliance with durable SQLite state, a persistent software Ed25519 signing
-identity, and a persistent local API key. It is not a production trust-service
+identity, and local API-key authentication. It is not a production trust-service
 or hardware-attested configuration.
 """
 
@@ -46,18 +46,19 @@ def _load_or_create_signing_key() -> str:
 def main() -> None:
     signing_key_hex = _load_or_create_signing_key()
     public_key_id = os.getenv("ETS_SIGNING_PUBLIC_KEY_ID", "ets-edge-virtual-demo-key")
+    explicit_api_key = os.getenv("ETS_LOCAL_API_KEY")
     explicit_api_key_file = os.getenv("ETS_LOCAL_API_KEY_FILE")
-    explicit_api_key = resolve_local_api_key_provisioning(
-        os.getenv("ETS_LOCAL_API_KEY"),
-        explicit_api_key_file,
-    )
 
     if explicit_api_key_file is not None:
-        if explicit_api_key is None:
+        mounted_api_key = resolve_local_api_key_provisioning(
+            explicit_api_key,
+            explicit_api_key_file,
+        )
+        if mounted_api_key is None:
             raise RuntimeError("ETS_LOCAL_API_KEY_FILE did not resolve a local API key")
         local_api_key = validate_or_record_local_api_key_verifier(
             API_KEY_VERIFIER_PATH,
-            explicit_api_key,
+            mounted_api_key,
         )
         runtime_api_key_file = Path(explicit_api_key_file.strip())
     else:
