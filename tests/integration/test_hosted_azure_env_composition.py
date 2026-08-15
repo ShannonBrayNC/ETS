@@ -117,7 +117,8 @@ def test_hosted_azure_profile_composes_ready_app(monkeypatch) -> None:
 
 
 def test_hosted_ps256_verification_request_accepts_rsa_der_key_material() -> None:
-    public_key_hex = rsa.generate_private_key(public_exponent=65537, key_size=2048).public_key().public_bytes(
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_key_hex = private_key.public_key().public_bytes(
         encoding=serialization.Encoding.DER,
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     ).hex()
@@ -129,7 +130,9 @@ def test_hosted_ps256_verification_request_accepts_rsa_der_key_material() -> Non
             log_id="ets-hosted-pilot",
             signature_alg="ps256",
             signature="00",
-            public_key_id="https://ets-hosted.vault.azure.net/keys/ets-tree-head/version-001",
+            public_key_id=(
+                "https://ets-hosted.vault.azure.net/keys/ets-tree-head/version-001"
+            ),
         ),
         public_key_der_hex=public_key_hex,
     )
