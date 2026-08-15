@@ -1,0 +1,120 @@
+name: Hosted Azure Q0 Image Harness
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/hosted-azure-q0-image.yml"
+      - ".github/workflows/hosted-azure-q0-image-harness.yml"
+      - "docs/operations/HOST_AZ_Q0_IMAGE_PUBLICATION.md"
+      - "Dockerfile"
+      - "scripts/acr_oauth_docker_login.py"
+      - "scripts/qualify_hosted_azure_live.py"
+      - "tests/unit/test_acr_oauth_docker_login.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-azure-q0-image-harness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Static Q0 image publication boundary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out stacked Q0 source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test package
+        run: python -m pip install -e '.[dev]'
+
+      - name: Validate protected OIDC and supply-chain contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow=.github/workflows/hosted-azure-q0-image.yml
+          oauth=scripts/acr_oauth_docker_login.py
+          docs=docs/operations/HOST_AZ_Q0_IMAGE_PUBLICATION.md
+
+          grep -q 'workflow_dispatch:' "$workflow"
+          grep -q 'environment: ets-azure-q1' "$workflow"
+          grep -q 'id-token: write' "$workflow"
+          grep -q 'attestations: write' "$workflow"
+          if grep -q 'packages: write' "$workflow"; then
+            echo 'Q0 ACR publication must not request unnecessary GitHub Packages write permission.' >&2
+            exit 1
+          fi
+          grep -q 'azure/login@v3.0.0' "$workflow"
+          grep -q 'adminUserEnabled' "$workflow"
+          grep -q 'authentication-as-arm show' "$workflow"
+          grep -q 'get-access-token' "$workflow"
+          grep -q 'https://containerregistry.azure.net/.default' "$workflow"
+          grep -q 'python scripts/acr_oauth_docker_login.py' "$workflow"
+          grep -q 'unset ACR_AAD_ACCESS_TOKEN ACR_TENANT_ID' "$workflow"
+          grep -q '/oauth2/exchange' "$oauth"
+          grep -q 'urllib.request.Request' "$oauth"
+          grep -q 'subprocess.run' "$oauth"
+          grep -q '00000000-0000-0000-0000-000000000000' "$oauth"
+          grep -q -- '--password-stdin' "$oauth"
+          grep -q 'direct_acr_oauth_exchange' "$workflow"
+          grep -q 'docker logout' "$workflow"
+          grep -q 'docker/setup-buildx-action@v4.2.0' "$workflow"
+          grep -q 'docker/build-push-action@v7.2.0' "$workflow"
+          grep -q 'provenance: mode=max' "$workflow"
+          grep -q 'sbom: true' "$workflow"
+          grep -q 'anchore/sbom-action@v0.24.0' "$workflow"
+          grep -q 'aquasecurity/trivy-action@v0.36.0' "$workflow"
+          test "$(grep -c 'actions/attest@v4.2.1' "$workflow")" -eq 2
+          grep -q 'actions/upload-artifact@v7.0.1' "$workflow"
+          grep -q 'immutable_ref' "$workflow"
+          grep -q '@$IMAGE_DIGEST' "$workflow"
+          grep -q 'HIGH,CRITICAL' "$workflow"
+          grep -q 'Enforce vulnerability gate' "$workflow"
+          grep -q 'registry_credentials_retained' "$workflow"
+          grep -q 'NOT EXECUTED' "$docs"
+
+          if grep -q 'az acr login' "$workflow"; then
+            echo 'Q0 must not require the broad ACR control-plane role used by az acr login.' >&2
+            exit 1
+          fi
+          if grep -Eq 'acr-refresh-token|refresh_response|curl .*oauth2/exchange' "$workflow" "$oauth"; then
+            echo 'Q0 OAuth tokens must not be written to temporary files or passed through curl argv.' >&2
+            exit 1
+          fi
+          if grep -Eq 'registry-password|registry-username|passwordSecretRef|listCredentials\(' "$workflow" "$oauth"; then
+            echo 'Q0 image publication must not use reusable registry credentials.' >&2
+            exit 1
+          fi
+          if grep -Eq 'AZURE_CLIENT_SECRET|client-secret:' "$workflow"; then
+            echo 'Q0 image publication must use workload identity, not an Azure client secret.' >&2
+            exit 1
+          fi
+
+      - name: Test OAuth exchange and Docker stdin boundary
+        run: python -m pytest -q tests/unit/test_acr_oauth_docker_login.py
+
+      - name: Ruff and type-check OAuth helper
+        run: |
+          ruff check scripts/acr_oauth_docker_login.py tests/unit/test_acr_oauth_docker_login.py
+          mypy scripts/acr_oauth_docker_login.py
+
+      - name: Build Q1 image locally without registry credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'COPY scripts/qualify_hosted_azure_live.py ./scripts/qualify_hosted_azure_live.py' Dockerfile
+          docker build --pull --tag "ets-q0-harness:${GITHUB_SHA}" .
+          docker image inspect "ets-q0-harness:${GITHUB_SHA}" \
+            --format '{{json .Config.Cmd}}' \
+            > q0-image-command.json
+          grep -q 'ets.api.container_entrypoint' q0-image-command.json

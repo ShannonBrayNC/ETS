@@ -1,0 +1,302 @@
+name: Hosted Azure Q0 Immutable Image Publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      container_registry_name:
+        description: Existing approved private Azure Container Registry name
+        required: true
+        type: string
+      container_registry_resource_group:
+        description: Resource group containing the approved private ACR
+        required: true
+        type: string
+      image_repository:
+        description: Non-customer ACR repository path for the hosted Q1 image
+        required: true
+        default: ets/hosted-q1
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: hosted-azure-q0-image
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build, scan, attest, and publish immutable Q1 image
+    runs-on: ubuntu-24.04
+    environment: ets-azure-q1
+    timeout-minutes: 60
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+
+    steps:
+      - name: Check out exact publication source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Assert exact source and Q1-capable Dockerfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$GITHUB_SHA"
+          test -f Dockerfile
+          test -f scripts/qualify_hosted_azure_live.py
+          test -f scripts/acr_oauth_docker_login.py
+          grep -q 'COPY scripts/qualify_hosted_azure_live.py ./scripts/qualify_hosted_azure_live.py' Dockerfile
+          mkdir -p evidence/host-az-q0-image
+          printf 'source_sha=%s\nworkflow_run_id=%s\n' "$actual" "$GITHUB_RUN_ID" \
+            > evidence/host-az-q0-image/source.txt
+
+      - name: Azure login with workload identity
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate approved private ACR posture
+        id: registry
+        shell: bash
+        env:
+          ACR_NAME: ${{ inputs.container_registry_name }}
+          ACR_RESOURCE_GROUP: ${{ inputs.container_registry_resource_group }}
+          IMAGE_REPOSITORY: ${{ inputs.image_repository }}
+        run: |
+          set -euo pipefail
+          python - "$IMAGE_REPOSITORY" <<'PY'
+          import re
+          import sys
+
+          repository = sys.argv[1]
+          if re.fullmatch(r"[a-z0-9]+(?:[._/-][a-z0-9]+)*", repository) is None:
+              raise SystemExit("image_repository must be a lowercase, non-empty ACR repository path")
+          PY
+
+          active_subscription="$(az account show --query id -o tsv)"
+          registry_id="$(az acr show \
+            --name "$ACR_NAME" \
+            --resource-group "$ACR_RESOURCE_GROUP" \
+            --query id -o tsv)"
+          registry_server="$(az acr show \
+            --name "$ACR_NAME" \
+            --resource-group "$ACR_RESOURCE_GROUP" \
+            --query loginServer -o tsv)"
+          admin_enabled="$(az acr show \
+            --name "$ACR_NAME" \
+            --resource-group "$ACR_RESOURCE_GROUP" \
+            --query adminUserEnabled -o tsv | tr '[:upper:]' '[:lower:]')"
+          registry_subscription="$(printf '%s' "$registry_id" | cut -d/ -f3)"
+          if [ "${registry_subscription,,}" != "${active_subscription,,}" ]; then
+            echo "Q0 ACR must be in the active Azure subscription." >&2
+            exit 1
+          fi
+          if [ "$admin_enabled" != "false" ]; then
+            echo "Q0 ACR admin user must be disabled." >&2
+            exit 1
+          fi
+          arm_status="$(az acr config authentication-as-arm show \
+            --registry "$ACR_NAME" \
+            --resource-group "$ACR_RESOURCE_GROUP" \
+            --query status -o tsv | tr '[:upper:]' '[:lower:]')"
+          if [ "$arm_status" != "enabled" ]; then
+            echo "Q0 ACR must allow ARM-audience authentication." >&2
+            exit 1
+          fi
+
+          tag="q1-${GITHUB_SHA:0:12}-${GITHUB_RUN_ID}"
+          subject_name="$registry_server/$IMAGE_REPOSITORY"
+          tag_ref="$subject_name:$tag"
+          echo "registry_server=$registry_server" >> "$GITHUB_OUTPUT"
+          echo "subject_name=$subject_name" >> "$GITHUB_OUTPUT"
+          echo "tag_ref=$tag_ref" >> "$GITHUB_OUTPUT"
+
+          cat > evidence/host-az-q0-image/registry.txt <<EOF
+          registry_name=$ACR_NAME
+          registry_resource_group=$ACR_RESOURCE_GROUP
+          registry_server=$registry_server
+          image_repository=$IMAGE_REPOSITORY
+          acr_admin_user_enabled=false
+          arm_audience_authentication=true
+          registry_credentials_retained=false
+          docker_authentication=direct_acr_oauth_exchange
+          EOF
+
+      - name: Authenticate Docker through ACR OAuth exchange
+        shell: bash
+        env:
+          REGISTRY_SERVER: ${{ steps.registry.outputs.registry_server }}
+        run: |
+          set -euo pipefail
+          export ACR_TENANT_ID="$(az account show --query tenantId -o tsv)"
+          export ACR_AAD_ACCESS_TOKEN="$(az account get-access-token \
+            --scope https://containerregistry.azure.net/.default \
+            --query accessToken -o tsv)"
+          python scripts/acr_oauth_docker_login.py
+          unset ACR_AAD_ACCESS_TOKEN ACR_TENANT_ID
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.2.0
+
+      - name: Build and push Q1 image
+        id: build
+        uses: docker/build-push-action@v7.2.0
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.registry.outputs.tag_ref }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=ETS Hosted Q1
+          provenance: mode=max
+          sbom: true
+
+      - name: Require immutable digest and verify registry subject
+        id: image
+        shell: bash
+        env:
+          SUBJECT_NAME: ${{ steps.registry.outputs.subject_name }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          python - "$IMAGE_DIGEST" <<'PY'
+          import re
+          import sys
+
+          digest = sys.argv[1]
+          if re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None:
+              raise SystemExit("build did not return a canonical sha256 image digest")
+          PY
+          immutable_ref="$SUBJECT_NAME@$IMAGE_DIGEST"
+          docker buildx imagetools inspect "$immutable_ref" >/dev/null
+          echo "immutable_ref=$immutable_ref" >> "$GITHUB_OUTPUT"
+          echo "digest=$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$immutable_ref" > evidence/host-az-q0-image/immutable-image.txt
+
+      - name: Generate retained SPDX JSON SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: ${{ steps.image.outputs.immutable_ref }}
+          format: spdx-json
+          output-file: evidence/host-az-q0-image/sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Generate retained HIGH/CRITICAL vulnerability report
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.image.outputs.immutable_ref }}
+          scan-type: image
+          format: json
+          output: evidence/host-az-q0-image/trivy-high-critical.json
+          exit-code: '0'
+          ignore-unfixed: false
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          scanners: vuln
+
+      - name: Summarize vulnerability gate and publication manifest
+        id: gate
+        shell: bash
+        env:
+          SUBJECT_NAME: ${{ steps.registry.outputs.subject_name }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          IMMUTABLE_REF: ${{ steps.image.outputs.immutable_ref }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report_path = Path("evidence/host-az-q0-image/trivy-high-critical.json")
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          counts = {"HIGH": 0, "CRITICAL": 0}
+          for result in report.get("Results") or []:
+              for finding in result.get("Vulnerabilities") or []:
+                  severity = str(finding.get("Severity", "")).upper()
+                  if severity in counts:
+                      counts[severity] += 1
+          gate = "PASS" if sum(counts.values()) == 0 else "FAIL"
+          summary = {
+              "high": counts["HIGH"],
+              "critical": counts["CRITICAL"],
+              "gate": gate,
+          }
+          Path("evidence/host-az-q0-image/vulnerability-gate.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          manifest = {
+              "schema_version": "ets.host_az.q0_image.v1",
+              "source_sha": os.environ["GITHUB_SHA"],
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "subject_name": os.environ["SUBJECT_NAME"],
+              "image_digest": os.environ["IMAGE_DIGEST"],
+              "immutable_image": os.environ["IMMUTABLE_REF"],
+              "sbom": "sbom.spdx.json",
+              "vulnerability_report": "trivy-high-critical.json",
+              "vulnerability_gate": gate,
+              "registry_credentials_retained": False,
+              "customer_identifiers_retained": False,
+          }
+          Path("evidence/host-az-q0-image/manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"vulnerability_gate={gate}\n")
+          PY
+
+      - name: Create GitHub build-provenance attestation
+        uses: actions/attest@v4.2.1
+        with:
+          subject-name: ${{ steps.registry.outputs.subject_name }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+
+      - name: Create GitHub SBOM attestation
+        uses: actions/attest@v4.2.1
+        with:
+          subject-name: ${{ steps.registry.outputs.subject_name }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          sbom-path: evidence/host-az-q0-image/sbom.spdx.json
+          push-to-registry: true
+
+      - name: Upload non-secret Q0 image evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: host-az-q0-image-${{ github.run_id }}
+          path: evidence/host-az-q0-image/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Log out Docker from ACR
+        if: always() && steps.registry.outputs.registry_server != ''
+        shell: bash
+        env:
+          REGISTRY_SERVER: ${{ steps.registry.outputs.registry_server }}
+        run: docker logout "$REGISTRY_SERVER" >/dev/null 2>&1 || true
+
+      - name: Enforce vulnerability gate
+        if: always()
+        shell: bash
+        env:
+          VULNERABILITY_GATE: ${{ steps.gate.outputs.vulnerability_gate }}
+        run: |
+          if [ "$VULNERABILITY_GATE" != "PASS" ]; then
+            echo "Q0 image contains retained HIGH/CRITICAL vulnerability findings." >&2
+            exit 1
+          fi
