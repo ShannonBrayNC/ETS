@@ -193,6 +193,10 @@ resource appConfig 'Microsoft.AppConfiguration/configurationStores@2024-05-01' =
   }
   properties: {
     disableLocalAuth: true
+    dataPlaneProxy: {
+      authenticationMode: 'Pass-through'
+      privateLinkDelegation: 'Disabled'
+    }
     enablePurgeProtection: true
     publicNetworkAccess: 'Enabled'
   }
