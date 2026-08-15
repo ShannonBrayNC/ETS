@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -27,6 +28,20 @@ from ets.gateway.connector_management import (
 )
 
 ConnectorPrincipalResolver = Callable[[Request], ConnectorManagementPrincipal]
+ConnectorDiagnosticCategory = Literal[
+    "authorization",
+    "configuration_policy",
+    "source_authentication",
+    "source_availability",
+    "collection_continuity",
+    "gateway_runtime",
+    "upstream_sync",
+]
+
+CONNECTOR_DIAGNOSTIC_SCHEMA_VERSION = "ets.connector.diagnostic.v1"
+_DIAGNOSTIC_SCHEMA_HEADER = "X-ETS-Connector-Diagnostic-Schema"
+_DIAGNOSTIC_CATEGORY_HEADER = "X-ETS-Connector-Diagnostic-Category"
+_DIAGNOSTIC_CODE_HEADER = "X-ETS-Connector-Diagnostic-Code"
 
 
 class StrictManagementModel(BaseModel):
@@ -54,6 +69,26 @@ class ConnectorCheckpointUpdateRequest(StrictManagementModel):
     last_success_at_utc: datetime | None = None
 
 
+def _diagnostic_exception(
+    *,
+    status_code: int,
+    detail: str,
+    category: ConnectorDiagnosticCategory,
+    code: str,
+) -> HTTPException:
+    """Preserve the existing response body while adding bounded machine-readable diagnostics."""
+
+    return HTTPException(
+        status_code=status_code,
+        detail=detail,
+        headers={
+            _DIAGNOSTIC_SCHEMA_HEADER: CONNECTOR_DIAGNOSTIC_SCHEMA_VERSION,
+            _DIAGNOSTIC_CATEGORY_HEADER: category,
+            _DIAGNOSTIC_CODE_HEADER: code,
+        },
+    )
+
+
 def create_connector_management_router(
     service: ConnectorManagementService,
     principal_resolver: ConnectorPrincipalResolver,
@@ -66,14 +101,24 @@ def create_connector_management_router(
         try:
             return principal_resolver(request)
         except ConnectorManagementAuthorizationError as exc:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+                category="authorization",
+                code="access_denied",
+            ) from exc
 
     @router.get("/catalog")
     def catalog(request: Request) -> tuple[object, ...]:
         try:
             definitions = service.catalog(principal(request))
         except ConnectorManagementAuthorizationError as exc:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+                category="authorization",
+                code="access_denied",
+            ) from exc
         return tuple(item.model_dump(mode="json") for item in definitions)
 
     @router.get("/instances", response_model=ConnectorInstanceListResponse)
@@ -81,7 +126,12 @@ def create_connector_management_router(
         try:
             items = service.list_instances(principal(request))
         except ConnectorManagementAuthorizationError as exc:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+                category="authorization",
+                code="access_denied",
+            ) from exc
         return ConnectorInstanceListResponse(items=items)
 
     @router.post(
@@ -96,23 +146,45 @@ def create_connector_management_router(
         try:
             return service.create_instance(principal(request), instance)
         except ConnectorInstanceExistsError as exc:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+                category="configuration_policy",
+                code="instance_exists",
+            ) from exc
         except (ConnectorRegistryError, ValueError) as exc:
-            raise HTTPException(
+            raise _diagnostic_exception(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=str(exc),
+                category="configuration_policy",
+                code="invalid_config",
             ) from exc
         except ConnectorManagementAuthorizationError as exc:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+                category="authorization",
+                code="access_denied",
+            ) from exc
 
     @router.get("/instances/{instance_id}", response_model=ConnectorInstanceRecordV1)
     def get_instance(request: Request, instance_id: str) -> ConnectorInstanceRecordV1:
         try:
             return service.get_instance(principal(request), instance_id)
         except ConnectorInstanceNotFoundError as exc:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(exc),
+                category="configuration_policy",
+                code="instance_not_found",
+            ) from exc
         except ConnectorManagementAuthorizationError as exc:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+                category="authorization",
+                code="access_denied",
+            ) from exc
 
     @router.put("/instances/{instance_id}", response_model=ConnectorInstanceRecordV1)
     def update_instance(
@@ -121,9 +193,11 @@ def create_connector_management_router(
         update: ConnectorInstanceUpdateRequest,
     ) -> ConnectorInstanceRecordV1:
         if update.instance.instance_id != instance_id:
-            raise HTTPException(
+            raise _diagnostic_exception(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="path instance id does not match request body",
+                category="configuration_policy",
+                code="invalid_config",
             )
         try:
             return service.update_instance(
@@ -132,16 +206,33 @@ def create_connector_management_router(
                 expected_revision=update.expected_revision,
             )
         except ConnectorInstanceNotFoundError as exc:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(exc),
+                category="configuration_policy",
+                code="instance_not_found",
+            ) from exc
         except ConnectorRevisionConflictError as exc:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+                category="gateway_runtime",
+                code="revision_conflict",
+            ) from exc
         except (ConnectorRegistryError, ValueError) as exc:
-            raise HTTPException(
+            raise _diagnostic_exception(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=str(exc),
+                category="configuration_policy",
+                code="invalid_config",
             ) from exc
         except ConnectorManagementAuthorizationError as exc:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+                category="authorization",
+                code="access_denied",
+            ) from exc
 
     @router.post("/instances/{instance_id}/enable", response_model=ConnectorInstanceRecordV1)
     def enable_instance(
@@ -173,36 +264,70 @@ def create_connector_management_router(
                 expected_revision=expected_revision,
             )
         except ConnectorInstanceNotFoundError as exc:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(exc),
+                category="configuration_policy",
+                code="instance_not_found",
+            ) from exc
         except ConnectorRevisionConflictError as exc:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+                category="gateway_runtime",
+                code="revision_conflict",
+            ) from exc
         except ConnectorManagementAuthorizationError as exc:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+                category="authorization",
+                code="access_denied",
+            ) from exc
 
     @router.post("/validate", response_model=ConnectorHealthV1)
     def validate_config(request: Request, instance: ConnectorInstanceV1) -> ConnectorHealthV1:
         try:
             return service.validate_config(principal(request), instance)
         except (ConnectorRegistryError, ValueError) as exc:
-            raise HTTPException(
+            raise _diagnostic_exception(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=str(exc),
+                category="configuration_policy",
+                code="invalid_config",
             ) from exc
         except ConnectorManagementAuthorizationError as exc:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+                category="authorization",
+                code="access_denied",
+            ) from exc
 
     @router.post("/instances/{instance_id}/test-connection", response_model=ConnectorHealthV1)
     def test_connection(request: Request, instance_id: str) -> ConnectorHealthV1:
         try:
             return service.test_connection(principal(request), instance_id)
         except ConnectorInstanceNotFoundError as exc:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(exc),
+                category="configuration_policy",
+                code="instance_not_found",
+            ) from exc
         except ConnectorManagementAuthorizationError as exc:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+                category="authorization",
+                code="access_denied",
+            ) from exc
         except RuntimeError as exc:
-            raise HTTPException(
+            raise _diagnostic_exception(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=str(exc),
+                category="gateway_runtime",
+                code="management_dependency_unavailable",
             ) from exc
 
     @router.get("/instances/{instance_id}/runtime", response_model=ConnectorRuntimeStateV1)
@@ -210,9 +335,19 @@ def create_connector_management_router(
         try:
             return service.get_runtime(principal(request), instance_id)
         except ConnectorInstanceNotFoundError as exc:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(exc),
+                category="configuration_policy",
+                code="instance_not_found",
+            ) from exc
         except ConnectorManagementAuthorizationError as exc:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+                category="authorization",
+                code="access_denied",
+            ) from exc
 
     @router.put(
         "/instances/{instance_id}/runtime/checkpoint",
@@ -234,15 +369,32 @@ def create_connector_management_router(
                 last_success_at_utc=update.last_success_at_utc,
             )
         except ConnectorInstanceNotFoundError as exc:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(exc),
+                category="configuration_policy",
+                code="instance_not_found",
+            ) from exc
         except ConnectorRevisionConflictError as exc:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+                category="gateway_runtime",
+                code="revision_conflict",
+            ) from exc
         except ConnectorManagementAuthorizationError as exc:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+                category="authorization",
+                code="access_denied",
+            ) from exc
         except ValueError as exc:
-            raise HTTPException(
+            raise _diagnostic_exception(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=str(exc),
+                category="collection_continuity",
+                code="invalid_checkpoint",
             ) from exc
 
     @router.post("/instances/{instance_id}/gaps/detect", response_model=ConnectorRuntimeStateV1)
@@ -250,17 +402,37 @@ def create_connector_management_router(
         try:
             return service.mark_gap(principal(request), instance_id)
         except ConnectorInstanceNotFoundError as exc:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(exc),
+                category="configuration_policy",
+                code="instance_not_found",
+            ) from exc
         except ConnectorManagementAuthorizationError as exc:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+                category="authorization",
+                code="access_denied",
+            ) from exc
 
     @router.post("/instances/{instance_id}/gaps/reconcile", response_model=ConnectorRuntimeStateV1)
     def reconcile_gap(request: Request, instance_id: str) -> ConnectorRuntimeStateV1:
         try:
             return service.reconcile_gap(principal(request), instance_id)
         except ConnectorInstanceNotFoundError as exc:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(exc),
+                category="configuration_policy",
+                code="instance_not_found",
+            ) from exc
         except ConnectorManagementAuthorizationError as exc:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+            raise _diagnostic_exception(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+                category="authorization",
+                code="access_denied",
+            ) from exc
 
     return router

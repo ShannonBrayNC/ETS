@@ -66,6 +66,25 @@ def test_console_api_uses_versioned_management_contract() -> None:
     assert "console-user" not in source
 
 
+def test_connector_diagnostics_use_bounded_codes_not_message_matching() -> None:
+    api_source = _read("api.ts")
+    diagnostic_source = _read("connectorDiagnostics.ts")
+
+    assert "diagnosticFromResponse(response, detail)" in api_source
+    assert "new ConnectorManagementError(diagnostic)" in api_source
+    assert "decorateConnectorHealth(health)" in api_source
+    assert 'const schemaVersion = "ets.connector.diagnostic.v1"' in diagnostic_source
+    assert 'const categoryHeader = "X-ETS-Connector-Diagnostic-Category"' in diagnostic_source
+    assert 'const codeHeader = "X-ETS-Connector-Diagnostic-Code"' in diagnostic_source
+    assert "healthCategories[health.code]" in diagnostic_source
+    assert "Next action:" in diagnostic_source
+    assert "source_authentication" in diagnostic_source
+    assert "collection_continuity" in diagnostic_source
+    assert "upstream_sync" in diagnostic_source
+    assert "message.includes" not in diagnostic_source
+    assert "message.match" not in diagnostic_source
+
+
 def test_connector_wizard_never_falls_back_to_raw_settings_editor() -> None:
     source = _read("Connectors.tsx")
 
