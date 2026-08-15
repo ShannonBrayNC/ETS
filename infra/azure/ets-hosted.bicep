@@ -268,6 +268,16 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
     environmentId: managedEnvironment.id
     configuration: {
       activeRevisionsMode: 'Single'
+      identitySettings: [
+        {
+          identity: managedIdentity.id
+          lifecycle: 'Main'
+        }
+        {
+          identity: registryPullIdentity.id
+          lifecycle: 'None'
+        }
+      ]
       registries: [
         {
           server: registryPull.outputs.loginServer
