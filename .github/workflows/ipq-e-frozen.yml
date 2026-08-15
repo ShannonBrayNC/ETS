@@ -1,0 +1,115 @@
+name: IPQ-E Frozen Enterprise Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/ipq-e-frozen.yml"
+      - "docs/test/IPQ_E_FROZEN_EXECUTION.md"
+      - "docs/test/IPQ_E_FROZEN_RESULT.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipq-e-frozen-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  IPQ_E_SUT_SHA: 75927c5a6c3f35e56c4f6e2cd88947e18a2ff333
+
+jobs:
+  frozen-enterprise:
+    name: Frozen ${{ matrix.label }} evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: github-audit
+            label: GitHub Audit
+            tests: tests/test_github_audit_connector.py tests/integration/test_gateway_github_connector.py
+          - id: aws-cloudtrail
+            label: AWS CloudTrail
+            tests: tests/test_aws_cloudtrail_connector.py tests/integration/test_gateway_aws_connector.py
+          - id: okta-system-log
+            label: Okta System Log
+            tests: tests/test_okta_system_log_connector.py tests/integration/test_gateway_okta_connector.py
+          - id: generic-rest
+            label: Generic REST
+            tests: tests/test_generic_rest_transport.py tests/test_generic_rest_extraction.py tests/integration/test_gateway_generic_rest_connector.py
+    steps:
+      - name: Check out qualification harness
+        uses: actions/checkout@v4
+        with:
+          path: harness
+
+      - name: Check out immutable SUT
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IPQ_E_SUT_SHA }}
+          path: sut
+          persist-credentials: false
+
+      - name: Assert exact SUT SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git -C sut rev-parse HEAD)"
+          test "$actual" = "$IPQ_E_SUT_SHA"
+          mkdir -p evidence
+          printf 'qualification=IPQ-EQ1\nadapter=%s\nharness_sha=%s\nsut_sha=%s\n' \
+            "${{ matrix.id }}" "$(git -C harness rev-parse HEAD)" "$actual" \
+            > "evidence/ipq-e-${{ matrix.id }}-identity.txt"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install frozen SUT dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e './sut[dev]'
+
+      - name: Execute frozen evidence group
+        id: frozen_tests
+        shell: bash
+        run: |
+          set +e
+          cd sut
+          python -m pytest -q ${{ matrix.tests }} \
+            --junitxml="../evidence/ipq-e-${{ matrix.id }}.xml" \
+            2>&1 | tee "../evidence/ipq-e-${{ matrix.id }}.txt"
+          status=${PIPESTATUS[0]}
+          set -e
+
+          case "$status" in
+            0) result=PASS ;;
+            1) result=FAIL ;;
+            *)
+              echo "Harness/collection error: pytest exit $status" >&2
+              exit "$status"
+              ;;
+          esac
+
+          {
+            echo "qualification=IPQ-EQ1"
+            echo "adapter=${{ matrix.id }}"
+            echo "sut_sha=$IPQ_E_SUT_SHA"
+            echo "harness_sha=$(git -C ../harness rev-parse HEAD)"
+            echo "pytest_exit=$status"
+            echo "result=$result"
+            echo "tests=${{ matrix.tests }}"
+            echo "claim=Controlled frozen-baseline evidence only; source truth/completeness and external service availability are not claimed."
+          } > "../evidence/ipq-e-${{ matrix.id }}-manifest.txt"
+
+          exit 0
+
+      - name: Upload frozen evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipq-e-${{ matrix.id }}-frozen
+          path: evidence/ipq-e-${{ matrix.id }}*
+          if-no-files-found: error
+          retention-days: 90
