@@ -1,0 +1,114 @@
+name: IPQ-C Frozen Gateway Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/ipq-c-frozen.yml"
+      - "docs/test/IPQ_C_FROZEN_EXECUTION.md"
+      - "docs/test/IPQ_C_FROZEN_RESULT.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipq-c-frozen-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  IPQ_C_SUT_SHA: 75927c5a6c3f35e56c4f6e2cd88947e18a2ff333
+
+jobs:
+  frozen-ingress:
+    name: Frozen ${{ matrix.label }} evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: https
+            label: HTTPS ingress
+            tests: tests/unit/test_gateway_http.py tests/unit/test_gateway_ingress.py tests/unit/test_gateway_ingress_representation.py tests/unit/test_gateway_host.py tests/unit/test_gateway_host_shutdown.py tests/integration/test_gateway_https_host.py
+          - id: syslog
+            label: Syslog TLS ingress
+            tests: tests/unit/test_gateway_syslog_host.py tests/unit/test_gateway_syslog_ingress.py tests/unit/test_gateway_syslog_tls_profile.py tests/unit/test_syslog_framing.py tests/integration/test_gateway_syslog_tls_host.py tests/integration/test_gateway_syslog_tls_limits.py tests/integration/test_gateway_syslog_tls_negative.py tests/integration/test_gateway_syslog_tls_shutdown_drain.py
+          - id: file-drop
+            label: File Drop ingress
+            tests: tests/unit/test_gateway_file_capture.py tests/unit/test_gateway_file_ingress.py tests/unit/test_capture_filesystem_object.py tests/unit/test_capture_object_digest.py tests/integration/test_gateway_file_drop_host.py
+          - id: otlp
+            label: OTLP ingress
+            tests: tests/unit/test_capture_otlp.py tests/unit/test_gateway_otlp_capture.py tests/unit/test_gateway_otlp_ingress.py tests/unit/test_gateway_otlp_protobuf.py tests/unit/test_gateway_otlp_partial_commit.py tests/integration/test_gateway_otlp_http.py tests/integration/test_gateway_otlp_grpc.py tests/integration/test_gateway_otlp_grpc_mtls.py
+    steps:
+      - name: Check out exact qualification harness head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: harness
+          persist-credentials: false
+
+      - name: Check out immutable SUT
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IPQ_C_SUT_SHA }}
+          path: sut
+          persist-credentials: false
+
+      - name: Assert exact SUT and harness SHAs
+        shell: bash
+        env:
+          EXPECTED_HARNESS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual_sut="$(git -C sut rev-parse HEAD)"
+          actual_harness="$(git -C harness rev-parse HEAD)"
+          test "$actual_sut" = "$IPQ_C_SUT_SHA"
+          test "$actual_harness" = "$EXPECTED_HARNESS_SHA"
+          mkdir -p evidence
+          printf 'qualification=IPQ-CQ1\ngroup=%s\nharness_sha=%s\nsut_sha=%s\ngithub_event_sha=%s\n' \
+            "${{ matrix.id }}" "$actual_harness" "$actual_sut" "$GITHUB_SHA" \
+            > "evidence/ipq-c-${{ matrix.id }}-identity.txt"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install frozen SUT dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e './sut[dev]'
+
+      - name: Execute frozen ingress group
+        shell: bash
+        run: |
+          set +e
+          cd sut
+          python -m pytest -q ${{ matrix.tests }} \
+            --junitxml="../evidence/ipq-c-${{ matrix.id }}.xml" \
+            2>&1 | tee "../evidence/ipq-c-${{ matrix.id }}.txt"
+          status=${PIPESTATUS[0]}
+          set -e
+          case "$status" in
+            0) result=PASS ;;
+            1) result=FAIL ;;
+            *) exit "$status" ;;
+          esac
+          {
+            echo "qualification=IPQ-CQ1"
+            echo "group=${{ matrix.id }}"
+            echo "sut_sha=$IPQ_C_SUT_SHA"
+            echo "harness_sha=$(git -C ../harness rev-parse HEAD)"
+            echo "pytest_exit=$status"
+            echo "result=$result"
+            echo "tests=${{ matrix.tests }}"
+            echo "claim=Controlled frozen native-ingress evidence only; source truth/completeness, HA and external-network availability are not claimed."
+          } > "../evidence/ipq-c-${{ matrix.id }}-manifest.txt"
+          exit "$status"
+
+      - name: Upload frozen ingress evidence
+        if: ${{ always() && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipq-c-${{ matrix.id }}-frozen
+          path: evidence/ipq-c-${{ matrix.id }}*
+          if-no-files-found: error
+          retention-days: 90
