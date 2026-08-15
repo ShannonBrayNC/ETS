@@ -9,7 +9,10 @@ import secrets
 from pathlib import Path
 from typing import TypedDict
 
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 
@@ -31,6 +34,9 @@ _SCRYPT_R = 8
 _SCRYPT_P = 1
 _SCRYPT_DKLEN = 32
 _SCRYPT_SALT_BYTES = 16
+_ENCRYPTED_API_KEY_SCHEMA = "ets.edge.local_api_key.encrypted.v1"
+_ENCRYPTED_API_KEY_AAD = _ENCRYPTED_API_KEY_SCHEMA.encode("ascii")
+_STORAGE_KEY_INFO = b"ets.edge.local-api-key.storage.v1"
 
 
 def resolve_local_api_key_provisioning(
@@ -108,19 +114,29 @@ def validate_or_record_local_api_key_verifier(path: Path, explicit_key: str) -> 
     return key
 
 
-def load_or_create_local_api_key(path: Path, explicit_key: str | None = None) -> str:
-    """Return a durable local API key, generating at least 256 bits on first boot.
+def load_or_create_local_api_key(
+    path: Path,
+    explicit_key: str | None = None,
+    *,
+    storage_key_material: str,
+) -> str:
+    """Return a durable local API key without storing that credential in clear text.
 
-    Explicit direct injection is a first-boot provisioning mechanism, not an
-    implicit rotation mechanism. Secret-file provisioning uses the verifier
-    path above instead so its plaintext is not copied into persistent storage.
-    Once a durable key exists, a conflicting directly injected key fails closed.
+    Generated or directly injected credentials are AES-256-GCM encrypted at rest
+    using a domain-separated storage key derived from the Edge software signing
+    key. Existing legacy clear-text files are migrated in place after validation.
+    Secret-file provisioning uses the scrypt-verifier path above instead.
     """
 
     path.parent.mkdir(parents=True, exist_ok=True)
 
     if path.exists():
-        persisted = _validate_local_api_key(path.read_text(encoding="utf-8").strip())
+        serialized = path.read_text(encoding="utf-8").strip()
+        persisted, legacy_cleartext = _decode_local_api_key_storage(
+            path,
+            serialized,
+            storage_key_material,
+        )
         if explicit_key is not None:
             injected = _validate_local_api_key(explicit_key)
             if not hmac.compare_digest(
@@ -131,22 +147,26 @@ def load_or_create_local_api_key(path: Path, explicit_key: str | None = None) ->
                     "injected ETS Edge local API key conflicts with persisted credential; "
                     "implicit rotation is not supported"
                 )
+        if legacy_cleartext:
+            _write_encrypted_local_api_key(path, persisted, storage_key_material)
         return persisted
 
-    if explicit_key is not None:
-        key = _validate_local_api_key(explicit_key)
-    else:
-        key = secrets.token_urlsafe(32)
-    _write_private_text(path, key)
+    key = _validate_local_api_key(explicit_key) if explicit_key is not None else secrets.token_urlsafe(32)
+    _write_encrypted_local_api_key(path, key, storage_key_material)
     return key
 
 
-def load_local_api_key(path: Path) -> str:
-    """Load the persisted Edge local API key without generating a replacement."""
+def load_local_api_key(path: Path, *, storage_key_material: str | None = None) -> str:
+    """Load an Edge API key from encrypted local storage or an external secret file."""
 
     if not path.exists():
         raise RuntimeError(f"ETS Edge local API key is missing: {path}")
-    return _validate_local_api_key(path.read_text(encoding="utf-8").strip())
+    serialized = path.read_text(encoding="utf-8").strip()
+    if serialized.startswith("{"):
+        material = storage_key_material or _load_default_storage_key_material(path)
+        key, _ = _decode_local_api_key_storage(path, serialized, material)
+        return key
+    return _validate_local_api_key(serialized)
 
 
 def build_device_identity(private_key_hex: str, public_key_id: str) -> EdgeDeviceIdentity:
@@ -285,6 +305,77 @@ def _parse_local_api_key_verifier(value: str) -> tuple[bytes, bytes]:
     return salt, verifier
 
 
-def _write_private_text(path: Path, value: str) -> None:
-    path.write_text(value + "\n", encoding="utf-8")
+def _derive_storage_key(storage_key_material: str) -> bytes:
+    try:
+        source = bytes.fromhex(storage_key_material.strip())
+    except ValueError as exc:
+        raise RuntimeError("ETS Edge credential storage key material is invalid") from exc
+    if len(source) != 32:
+        raise RuntimeError("ETS Edge credential storage key material must be 32 bytes")
+    return HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=None,
+        info=_STORAGE_KEY_INFO,
+    ).derive(source)
+
+
+def _write_encrypted_local_api_key(path: Path, key: str, storage_key_material: str) -> None:
+    nonce = secrets.token_bytes(12)
+    ciphertext = AESGCM(_derive_storage_key(storage_key_material)).encrypt(
+        nonce,
+        key.encode("utf-8"),
+        _ENCRYPTED_API_KEY_AAD,
+    )
+    payload = {
+        "schema_version": _ENCRYPTED_API_KEY_SCHEMA,
+        "nonce_hex": nonce.hex(),
+        "ciphertext_hex": ciphertext.hex(),
+    }
+    path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
     path.chmod(0o600)
+
+
+def _decode_local_api_key_storage(
+    path: Path,
+    serialized: str,
+    storage_key_material: str,
+) -> tuple[str, bool]:
+    if not serialized.startswith("{"):
+        return _validate_local_api_key(serialized), True
+    try:
+        payload = json.loads(serialized)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("persisted ETS Edge local API key storage is invalid") from exc
+    if not isinstance(payload, dict) or set(payload) != {
+        "schema_version",
+        "nonce_hex",
+        "ciphertext_hex",
+    }:
+        raise RuntimeError("persisted ETS Edge local API key storage is invalid")
+    if payload.get("schema_version") != _ENCRYPTED_API_KEY_SCHEMA:
+        raise RuntimeError("persisted ETS Edge local API key storage is invalid")
+    try:
+        nonce = bytes.fromhex(str(payload["nonce_hex"]))
+        ciphertext = bytes.fromhex(str(payload["ciphertext_hex"]))
+    except ValueError as exc:
+        raise RuntimeError("persisted ETS Edge local API key storage is invalid") from exc
+    if len(nonce) != 12 or len(ciphertext) < 16:
+        raise RuntimeError("persisted ETS Edge local API key storage is invalid")
+    try:
+        plaintext = AESGCM(_derive_storage_key(storage_key_material)).decrypt(
+            nonce,
+            ciphertext,
+            _ENCRYPTED_API_KEY_AAD,
+        )
+        key = plaintext.decode("utf-8")
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise RuntimeError("persisted ETS Edge local API key storage is invalid") from exc
+    return _validate_local_api_key(key), False
+
+
+def _load_default_storage_key_material(path: Path) -> str:
+    key_path = path.parent / "edge-demo-signing-key.hex"
+    if not key_path.exists():
+        raise RuntimeError("ETS Edge credential storage key material is unavailable")
+    return key_path.read_text(encoding="utf-8").strip()
