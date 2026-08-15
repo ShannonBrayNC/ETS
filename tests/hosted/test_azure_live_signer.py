@@ -13,7 +13,6 @@ REQUIRED_ENV = [
     "ETS_AZURE_MANAGED_IDENTITY_ENABLED",
     "ETS_AZURE_KEY_VAULT_URL",
     "ETS_AZURE_KEY_NAME",
-    "ETS_AZURE_KEY_VERSION",
 ]
 
 
@@ -36,7 +35,7 @@ def hosted_tree_head() -> SignedTreeHead:
     not hosted_azure_enabled(),
     reason="Hosted Azure signer tests require CI-provided Azure resource references.",
 )
-def test_hosted_azure_signer_can_sign_and_emit_sanitized_evidence() -> None:
+def test_hosted_azure_signer_can_sign_ps256_and_emit_sanitized_evidence() -> None:
     adapter = AzureManagedIdentitySignerAdapter.from_env()
     signer = adapter.as_tree_head_signer()
 
@@ -52,6 +51,7 @@ def test_hosted_azure_signer_can_sign_and_emit_sanitized_evidence() -> None:
         trace_id="ets-hosted-readiness-5-live-validation",
     )
 
+    assert signed.signature_alg == "ps256"
     assert signed.signature is not None
     assert signed.public_key_id == adapter.key_id
     assert adapter.key_id not in evidence.model_dump_json()

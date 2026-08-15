@@ -20,26 +20,36 @@ Key Vault or Managed HSM RBAC, App Configuration, and CI secret providers.
 
 `create_managed_identity_crypto_client_factory` loads Azure SDK modules only when
 the hosted Azure signer path is used. The runtime path uses
-`ManagedIdentityCredential` and creates `CryptographyClient` instances for the
-Key Vault or Managed HSM key ID supplied by ETS.
+`ManagedIdentityCredential`, creates `CryptographyClient` instances for the
+resolved Key Vault or Managed HSM key ID, and binds ETS hosted signing to the SDK
+`SignatureAlgorithm.ps256` value. ETS passes a SHA-256 digest, not raw tree-head
+bytes, to the SDK sign operation.
 
 Required configuration:
 
-- `ETS_AZURE_MANAGED_IDENTITY_ENABLED=true`;
+- hosted deployments set `ETS_AZURE_MANAGED_IDENTITY_ENABLED=true`;
 - `ETS_AZURE_KEY_VAULT_URL` from App Configuration or runtime environment;
-- `ETS_AZURE_KEY_NAME` from App Configuration or runtime environment;
-- `ETS_AZURE_KEY_VERSION` from App Configuration or runtime environment;
+- `ETS_AZURE_KEY_NAME` identifying an RSA signing key;
+- optional `ETS_AZURE_KEY_VERSION`; when omitted, the adapter resolves the latest
+  key and pins its concrete version;
 - optional `ETS_AZURE_MANAGED_IDENTITY_CLIENT_ID` from CI or runtime environment
   only when using user-assigned managed identity.
 
 Do not commit real managed identity client IDs, tenant IDs, tokens, vault URLs,
 key names, key versions, private keys, or customer data.
 
+## Cryptographic Boundary
+
+Azure Key Vault supports RSA/EC signing algorithms but not Ed25519/EdDSA. The ETS
+hosted Azure profile therefore uses RSA-PSS with SHA-256 (`PS256`). Local ETS
+Ed25519 remains independently supported and is not treated as a Key Vault
+algorithm. Historical verification must select the verifier from the retained
+`signature_alg` and public-key metadata.
+
 ## Least-Privilege RBAC
 
 Before hosted signing is enabled, SignalForge deployment evidence must prove the
-runtime managed identity has exactly the signing role needed for the selected key
-service:
+runtime managed identity has the signing role needed for the selected key service:
 
 | Key service | Required role |
 | --- | --- |
