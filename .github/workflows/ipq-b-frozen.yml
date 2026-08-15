@@ -1,0 +1,251 @@
+name: IPQ-B Frozen Edge Qualification
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipq-b-frozen-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IPQ_B_SUT_SHA: 75927c5a6c3f35e56c4f6e2cd88947e18a2ff333
+
+jobs:
+  native-edge:
+    name: Frozen Edge native evidence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact qualification harness head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: harness
+          persist-credentials: false
+
+      - name: Check out immutable SUT
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IPQ_B_SUT_SHA }}
+          path: sut
+          persist-credentials: false
+
+      - name: Assert exact SUT and harness SHAs
+        shell: bash
+        env:
+          EXPECTED_HARNESS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual_sut="$(git -C sut rev-parse HEAD)"
+          actual_harness="$(git -C harness rev-parse HEAD)"
+          test "$actual_sut" = "$IPQ_B_SUT_SHA"
+          test "$actual_harness" = "$EXPECTED_HARNESS_SHA"
+          mkdir -p evidence
+          printf 'qualification=IPQ-BQ1\nharness_sha=%s\nsut_sha=%s\ngithub_event_sha=%s\n' \
+            "$actual_harness" "$actual_sut" "$GITHUB_SHA" \
+            > evidence/ipq-b-native-identity.txt
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install frozen SUT dependencies
+        run: python -m pip install -e './sut[dev]'
+
+      - name: Execute frozen Edge-native suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd sut
+          python -m pytest -q \
+            tests/unit/test_edge_device_identity.py \
+            tests/unit/test_edge_protected_ingress.py \
+            tests/unit/test_edge_runtime_facade.py \
+            tests/unit/test_edge_sync_queue.py \
+            tests/unit/test_edge_syslog_adapter.py \
+            tests/unit/test_edge_upstream_demo.py \
+            tests/unit/test_edge_webhook_adapter.py \
+            --junitxml=../evidence/ipq-b-native.xml \
+            2>&1 | tee ../evidence/ipq-b-native.txt
+
+      - name: Retain native evidence manifest
+        shell: bash
+        run: |
+          cat > evidence/ipq-b-native-manifest.txt <<EOF
+          qualification=IPQ-BQ1
+          sut_sha=$IPQ_B_SUT_SHA
+          harness_sha=$(git -C harness rev-parse HEAD)
+          result=PASS_IF_PYTEST_EXIT_0
+          scope=device identity; protected ingress; proof facade; durable sync queue; syslog; upstream idempotency; webhook exact-byte capture
+          claim=Controlled frozen Edge behavior only. Software-held identity is not hardware attestation and source truth/completeness is not claimed.
+          EOF
+
+      - name: Upload native evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipq-b-native-frozen
+          path: evidence/ipq-b-native*
+          if-no-files-found: error
+          retention-days: 90
+
+  lifecycle-boundary:
+    name: Frozen Edge lifecycle and secret boundary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact qualification harness head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: harness
+          persist-credentials: false
+
+      - name: Check out immutable SUT
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IPQ_B_SUT_SHA }}
+          path: sut
+          persist-credentials: false
+
+      - name: Assert exact SUT and harness SHAs
+        shell: bash
+        env:
+          EXPECTED_HARNESS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual_sut="$(git -C sut rev-parse HEAD)"
+          actual_harness="$(git -C harness rev-parse HEAD)"
+          test "$actual_sut" = "$IPQ_B_SUT_SHA"
+          test "$actual_harness" = "$EXPECTED_HARNESS_SHA"
+          mkdir -p evidence
+          printf 'qualification=IPQ-BQ1\nharness_sha=%s\nsut_sha=%s\ngithub_event_sha=%s\n' \
+            "$actual_harness" "$actual_sut" "$GITHUB_SHA" \
+            > evidence/ipq-b-lifecycle-identity.txt
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install frozen SUT dependencies
+        run: python -m pip install -e './sut[dev]'
+
+      - name: Execute detached restart reconnect replay probe
+        working-directory: sut
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' 2>&1 | tee ../evidence/ipq-b-lifecycle.txt
+          from __future__ import annotations
+
+          import os
+          import tempfile
+          from pathlib import Path
+
+          from fastapi.testclient import TestClient
+
+          from ets.edge.device_identity import load_or_create_local_api_key
+          from ets.edge.sync_queue import SyncQueue, SyncState
+          from ets.edge import upstream_demo
+
+          root = Path(tempfile.mkdtemp(prefix="ipq-b-"))
+          queue_path = root / "sync.db"
+          upstream_path = root / "upstream.db"
+          secret_path = root / "edge-local-api-key"
+
+          # First boot: persisted local credential exists and is stable across restart.
+          first_key = load_or_create_local_api_key(secret_path)
+          second_key = load_or_create_local_api_key(secret_path)
+          assert first_key == second_key
+          assert secret_path.stat().st_mode & 0o777 == 0o600
+
+          payload = {
+              "sync_schema": "ets.edge.sync.v1",
+              "idempotency_key": "ets-edge-sync-v1:ipq-b-lifecycle",
+              "tenant_id": "tenant_ipq",
+              "workspace_id": "workspace_ipq",
+              "event_id": "evt_ipq_b_001",
+              "event_hash": "a" * 64,
+              "raw_payload_included": False,
+              "tree_head": {
+                  "root_hash": "b" * 64,
+                  "tree_size": 1,
+                  "signature": "frozen-demo-signature",
+              },
+          }
+
+          # Upstream is intentionally absent: capture is committed to the durable queue.
+          queue = SyncQueue(queue_path)
+          queued = queue.enqueue(payload)
+          assert queued.state is SyncState.PENDING
+          assert queue.status(upstream_status="offline").queue_depth == 1
+
+          # Restart while disconnected: pending work survives local process loss.
+          restarted = SyncQueue(queue_path)
+          recovered = restarted.get(queued.idempotency_key)
+          assert recovered.state is SyncState.PENDING
+          assert restarted.status(upstream_status="offline").queue_depth == 1
+
+          # Reconnect and drain through the frozen upstream acceptance boundary.
+          os.environ["ETS_EDGE_UPSTREAM_DB"] = str(upstream_path)
+          client = TestClient(upstream_demo.app)
+          [claimed] = restarted.claim_batch()
+          response = client.post("/edge/v1/upstream/records", json=payload)
+          assert response.status_code == 200, response.text
+          acknowledgement = response.json()
+          restarted.mark_synchronized(claimed.idempotency_key, acknowledgement)
+          assert restarted.status(upstream_status="connected").queue_depth == 0
+          assert restarted.status(upstream_status="connected").synchronized == 1
+
+          # Replay is idempotent at the receiving boundary.
+          replay = client.post("/edge/v1/upstream/records", json=payload)
+          assert replay.status_code == 200
+          assert replay.json() == acknowledgement
+          assert client.get("/edge/v1/upstream/status").json()["accepted_records"] == 1
+
+          # Raw evidence is not present in the synchronization payload.
+          assert payload["raw_payload_included"] is False
+          assert "raw_payload" not in payload
+
+          # Frozen B05 finding: reusable API key is plaintext at rest despite mode 0600.
+          persisted = secret_path.read_text(encoding="utf-8").strip()
+          assert persisted == first_key
+
+          print("lifecycle_result=PASS")
+          print("offline_restart_reconnect=PASS")
+          print("ordered_single_record_drain=PASS")
+          print("duplicate_safe_replay=PASS")
+          print("raw_payload_replication=ABSENT")
+          print("credential_file_mode=0600")
+          print("credential_at_rest=FAIL_PLAINTEXT_REUSABLE_API_KEY")
+          print("hardware_attested=FALSE")
+          PY
+
+      - name: Retain lifecycle disposition
+        shell: bash
+        run: |
+          cat > evidence/ipq-b-lifecycle-manifest.txt <<EOF
+          qualification=IPQ-BQ1
+          sut_sha=$IPQ_B_SUT_SHA
+          harness_sha=$(git -C harness rev-parse HEAD)
+          lifecycle=PASS
+          first_boot_restart_identity=PASS_SOFTWARE_VOLUME_ONLY
+          offline_restart_reconnect_replay=PASS
+          raw_payload_replication=ABSENT
+          credential_at_rest=FAIL_PLAINTEXT_REUSABLE_API_KEY
+          credential_permissions=0600
+          post_baseline_repair=PR_334
+          hardware_attested=false
+          claim=The frozen baseline persists a reusable local API key in plaintext. PR #334 is later repair evidence and is not attributed to the frozen SUT.
+          EOF
+
+      - name: Upload lifecycle evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipq-b-lifecycle-frozen
+          path: evidence/ipq-b-lifecycle*
+          if-no-files-found: error
+          retention-days: 90
