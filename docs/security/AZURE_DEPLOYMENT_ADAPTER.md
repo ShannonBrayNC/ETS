@@ -23,6 +23,7 @@ SignalForge-provided crypto client factory. The adapter:
 
 - reads only non-secret configuration from environment or App Configuration;
 - uses Managed Identity and rejects an explicitly disabled managed-identity flag;
+- hosted deployments set `ETS_AZURE_MANAGED_IDENTITY_ENABLED=true`;
 - requires `ETS_AZURE_KEY_VAULT_URL` and `ETS_AZURE_KEY_NAME`;
 - accepts optional `ETS_AZURE_KEY_VERSION`; when omitted, resolves the current key
   to a concrete version before signing;
@@ -55,9 +56,9 @@ CI/CD or the Azure runtime environment.
 - Application Insights;
 - App Configuration keys for signer mode and non-secret signer references.
 
-The Bicep file intentionally does not create or export private key material.
-Deployment owners must provision or approve an RSA signing key and grant the
-managed identity least-privilege signing access.
+The Bicep file intentionally does not create or export private key material in
+this runtime-composition slice. A later infrastructure slice may provision an
+operator-approved non-exportable RSA key and least-privilege runtime RBAC.
 
 ## Hosted Integration Test Boundary
 
