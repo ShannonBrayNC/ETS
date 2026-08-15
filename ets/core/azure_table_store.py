@@ -403,7 +403,14 @@ def _validate_azure_table_endpoint(endpoint: str) -> tuple[str, str]:
         ".table.core.usgovcloudapi.net": "https://storage.azure.us",
         ".table.core.chinacloudapi.cn": "https://storage.azure.cn",
     }
-    audience = next((value for suffix, value in suffixes.items() if hostname.endswith(suffix)), None)
+    audience = next(
+        (
+            value
+            for suffix, value in suffixes.items()
+            if hostname.endswith(suffix)
+        ),
+        None,
+    )
     if audience is None:
         raise ValueError("Azure Table endpoint must use a supported Azure Storage hostname")
     return f"https://{hostname}", audience
