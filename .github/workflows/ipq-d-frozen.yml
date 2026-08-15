@@ -1,0 +1,255 @@
+name: IPQ-D Frozen Baseline Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/ipq-d-frozen.yml"
+      - "docs/test/IPQ_D_FROZEN_EXECUTION.md"
+      - "docs/test/IPQ_D_FROZEN_RESULT.md"
+      - "tests/e2e/ipq-d-frozen/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipq-d-frozen-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  IPQ_D_SUT_SHA: 75927c5a6c3f35e56c4f6e2cd88947e18a2ff333
+
+jobs:
+  connector-baseline:
+    name: Frozen connector platform
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out qualification harness
+        uses: actions/checkout@v4
+        with:
+          path: harness
+
+      - name: Check out immutable SUT
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IPQ_D_SUT_SHA }}
+          path: sut
+          persist-credentials: false
+
+      - name: Assert exact SUT SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git -C sut rev-parse HEAD)"
+          test "$actual" = "$IPQ_D_SUT_SHA"
+          mkdir -p evidence
+          printf 'harness_sha=%s\nsut_sha=%s\n' \
+            "$(git -C harness rev-parse HEAD)" "$actual" > evidence/identity.txt
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install frozen SUT dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e './sut[dev]'
+
+      - name: Run frozen connector qualification tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd sut
+          python -m pytest -q \
+            tests/test_connector_models.py \
+            tests/test_connector_schemas.py \
+            tests/test_connector_registry.py \
+            tests/test_connector_conformance.py \
+            tests/test_connector_credentials.py \
+            tests/test_connector_management_api.py \
+            tests/test_connector_runtime.py \
+            tests/test_native_connectors.py \
+            tests/architecture/test_console_production_boundary.py \
+            --junitxml=../evidence/ipq-d-frozen-pytest.xml \
+            | tee ../evidence/ipq-d-frozen-pytest.txt
+
+      - name: Record Python qualification manifest
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          {
+            echo "qualification=IPQ-DQ1"
+            echo "sut_sha=$IPQ_D_SUT_SHA"
+            echo "harness_sha=$(git -C harness rev-parse HEAD)"
+            echo "runner=ubuntu-24.04"
+            echo "python=3.12"
+            echo "scope=D01,D02,D03,D04,D05,D06,D07,D08,D09,D11,D12"
+            echo "claim=Frozen baseline test evidence only; later hardening is not substituted."
+          } > evidence/ipq-d-python-manifest.txt
+
+      - name: Upload frozen connector evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipq-d-frozen-connector-platform
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 90
+
+  console-baseline:
+    name: Frozen Dark Pro build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out qualification harness
+        uses: actions/checkout@v4
+        with:
+          path: harness
+
+      - name: Check out immutable SUT
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IPQ_D_SUT_SHA }}
+          path: sut
+          persist-credentials: false
+
+      - name: Assert exact SUT SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git -C sut rev-parse HEAD)"
+          test "$actual" = "$IPQ_D_SUT_SHA"
+          mkdir -p evidence
+          printf 'harness_sha=%s\nsut_sha=%s\n' \
+            "$(git -C harness rev-parse HEAD)" "$actual" > evidence/identity.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: sut/apps/console/web/package-lock.json
+
+      - name: Install frozen Console dependencies
+        run: npm ci --prefix sut/apps/console/web --no-audit --no-fund
+
+      - name: Build frozen Console
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build --prefix sut/apps/console/web | tee evidence/ipq-d-frozen-console-build.txt
+
+      - name: Record frozen Console boundary evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          src=sut/apps/console/web/src
+          grep -F 'getAuthorizationContext' "$src/ProductionApp.tsx" > /dev/null
+          grep -F 'connector.manage' "$src/ProductionApp.tsx" > /dev/null
+          grep -F 'pre-commit evidence candidate' "$src/Connectors.tsx" > /dev/null
+          grep -F 'commitment: "not performed in preview"' "$src/Connectors.tsx" > /dev/null
+          grep -F 'Operational health is not ETS cryptographic verification' "$src/Connectors.tsx" > /dev/null
+          grep -F ':focus-visible' "$src/dark-pro.css" > /dev/null
+          grep -F 'data-theme="light"' "$src/dark-pro.css" > /dev/null
+          grep -F 'state-badge' "$src/dark-pro.css" > /dev/null
+          {
+            echo "qualification=IPQ-DQ1"
+            echo "sut_sha=$IPQ_D_SUT_SHA"
+            echo "harness_sha=$(git -C harness rev-parse HEAD)"
+            echo "node=22"
+            echo "scope=D09,D11,D12,D13-static"
+            echo "browser_status=NOT_RUN_IN_THIS_JOB"
+            echo "claim=Static/build evidence is not keyboard/browser qualification."
+          } > evidence/ipq-d-console-manifest.txt
+
+      - name: Upload frozen Console evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipq-d-frozen-console-build
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 90
+
+  browser-baseline:
+    name: Frozen Dark Pro browser evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out qualification harness
+        uses: actions/checkout@v4
+        with:
+          path: harness
+
+      - name: Check out immutable SUT
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IPQ_D_SUT_SHA }}
+          path: sut
+          persist-credentials: false
+
+      - name: Assert exact SUT SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git -C sut rev-parse HEAD)"
+          test "$actual" = "$IPQ_D_SUT_SHA"
+          mkdir -p evidence
+          printf 'harness_sha=%s\nsut_sha=%s\n' \
+            "$(git -C harness rev-parse HEAD)" "$actual" > evidence/identity.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            sut/apps/console/web/package-lock.json
+            harness/tests/e2e/ipq-d-frozen/package-lock.json
+
+      - name: Install frozen Console dependencies
+        run: npm ci --prefix sut/apps/console/web --no-audit --no-fund
+
+      - name: Install locked browser harness
+        run: npm ci --prefix harness/tests/e2e/ipq-d-frozen --no-audit --no-fund
+
+      - name: Install Chromium
+        working-directory: harness/tests/e2e/ipq-d-frozen
+        run: npx playwright install --with-deps chromium
+
+      - name: Execute D10 and D13 browser evidence
+        id: browser
+        working-directory: harness/tests/e2e/ipq-d-frozen
+        shell: bash
+        run: |
+          set +e
+          npx playwright test --grep 'IPQ-D10' 2>&1 | tee ../../../../evidence/ipq-d10-browser.txt
+          d10=${PIPESTATUS[0]}
+          rm -rf test-results
+          npx playwright test --grep 'IPQ-D13' 2>&1 | tee ../../../../evidence/ipq-d13-browser.txt
+          d13=${PIPESTATUS[0]}
+          set -e
+          if [ "$d10" -eq 0 ]; then d10_status=PASS; else d10_status=FAIL; fi
+          if [ "$d13" -eq 0 ]; then d13_status=PASS; else d13_status=FAIL; fi
+          {
+            echo "qualification=IPQ-DQ1-browser"
+            echo "sut_sha=$IPQ_D_SUT_SHA"
+            echo "harness_sha=$(git -C ../../../../harness rev-parse HEAD)"
+            echo "d10_guided_workflow=$d10_status"
+            echo "d13_browser_accessibility=$d13_status"
+            echo "d10_exit=$d10"
+            echo "d13_exit=$d13"
+            echo "claim=Browser result records frozen behavior; FAIL is evidence and does not authorize patching the SUT."
+          } > ../../../../evidence/ipq-d-browser-manifest.txt
+          exit 0
+
+      - name: Upload frozen browser evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipq-d-frozen-browser
+          path: |
+            evidence/
+            harness/tests/e2e/ipq-d-frozen/test-results/
+          if-no-files-found: error
+          retention-days: 90
