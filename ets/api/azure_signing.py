@@ -14,13 +14,26 @@ class AzureCryptoClient(Protocol):
     """Minimal Azure Key Vault / Managed HSM crypto client surface."""
 
     def sign(self, algorithm: str, digest: bytes) -> Any:
-        """Sign bytes with a key identified by the hosting adapter."""
+        """Sign a digest with a key identified by the hosting adapter."""
 
 
 class AzureKeyClient(Protocol):
     """Minimal Azure Key Vault key client surface used to resolve a concrete version."""
 
     def get_key(self, name: str, version: str | None = None) -> Any: ...
+
+
+class _AzureSdkCryptoClient:
+    """Typed ETS wrapper around the dynamically loaded Azure SDK crypto client."""
+
+    def __init__(self, client: Any, ps256_algorithm: object) -> None:
+        self._client = client
+        self._ps256_algorithm = ps256_algorithm
+
+    def sign(self, algorithm: str, digest: bytes) -> Any:
+        if algorithm != AzureManagedIdentitySignerAdapter.algorithm:
+            raise RuntimeError(f"unsupported Azure signing algorithm: {algorithm}")
+        return self._client.sign(self._ps256_algorithm, digest)
 
 
 KEY_VAULT_SIGN_ROLE = "Key Vault Crypto User"
@@ -35,7 +48,7 @@ class AzureManagedIdentitySignerAdapter:
     tokens, secrets, and private key material.
     """
 
-    algorithm = "EdDSA"
+    algorithm = "PS256"
 
     def __init__(
         self,
@@ -49,7 +62,7 @@ class AzureManagedIdentitySignerAdapter:
             vault_url=vault_url,
             key_name=key_name,
             key_version=key_version,
-            sign_payload=self.sign,
+            sign_digest=self.sign,
         )
         self._crypto_client_factory = crypto_client_factory
 
@@ -97,8 +110,8 @@ class AzureManagedIdentitySignerAdapter:
 
         self._crypto_client_factory(self.key_id)
 
-    def sign(self, payload: bytes) -> bytes:
-        result = self._crypto_client_factory(self.key_id).sign(self.algorithm, payload)
+    def sign(self, digest: bytes) -> bytes:
+        result = self._crypto_client_factory(self.key_id).sign(self.algorithm, digest)
         signature = getattr(result, "signature", None)
         if signature is None and isinstance(result, dict):
             signature = result.get("signature")
@@ -152,16 +165,19 @@ def create_managed_identity_crypto_client_factory(
     """Create an Azure SDK crypto client factory using Managed Identity.
 
     Azure SDK modules are loaded at runtime so local ETS development does not
-    require Azure dependencies unless the hosted signer path is used.
+    require Azure dependencies unless the hosted signer path is used. The wrapper
+    binds ETS PS256 to the SDK's concrete SignatureAlgorithm enum.
     """
 
     env = environ or os.environ
     crypto_module = importlib.import_module("azure.keyvault.keys.crypto")
     cryptography_client = crypto_module.CryptographyClient
+    ps256_algorithm = crypto_module.SignatureAlgorithm.ps256
     credential = _managed_identity_credential(env)
 
     def create_client(key_id: str) -> AzureCryptoClient:
-        return cast(AzureCryptoClient, cryptography_client(key_id, credential=credential))
+        client = cryptography_client(key_id, credential=credential)
+        return _AzureSdkCryptoClient(client, ps256_algorithm)
 
     return create_client
 
