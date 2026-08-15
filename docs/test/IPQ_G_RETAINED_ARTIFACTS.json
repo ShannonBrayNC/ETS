@@ -1,0 +1,158 @@
+{
+  "schema_version": "ets.ipq_g.retained_artifacts.v1",
+  "frozen_sut_sha": "75927c5a6c3f35e56c4f6e2cd88947e18a2ff333",
+  "artifacts": [
+    {
+      "family": "A",
+      "id": 9240401305,
+      "name": "ipq-a-frozen-core",
+      "run_id": 31860458736,
+      "head_sha": "084bf3ea54e3d1821a25fc6252c36a0889c987b7",
+      "digest": "sha256:2a1fad7343cd1f02f5463a26c0b02c8b808c22c27f0885da330556304e4c451d"
+    },
+    {
+      "family": "A",
+      "id": 9240400741,
+      "name": "ipq-a-frozen-persistence",
+      "run_id": 31860458736,
+      "head_sha": "084bf3ea54e3d1821a25fc6252c36a0889c987b7",
+      "digest": "sha256:04f49a6c8563e2fca362aa54e91d78e5c1655f67773ee48b570aa1bff6d252e4"
+    },
+    {
+      "family": "B",
+      "id": 9242163833,
+      "name": "ipq-b-lifecycle-frozen",
+      "run_id": 31866484647,
+      "head_sha": "0b95ef925d3a8f7693100d0e20925d61f8305929",
+      "digest": "sha256:a9a7582fe41293d4bbd9b635f71c50c9c32ee616168cd4cad7dc8007df63ac0c"
+    },
+    {
+      "family": "B",
+      "id": 9242163652,
+      "name": "ipq-b-native-frozen",
+      "run_id": 31866484647,
+      "head_sha": "0b95ef925d3a8f7693100d0e20925d61f8305929",
+      "digest": "sha256:0c3062aa16c9d006cb24bfece4cc440f2438ce67488ca94832aac8c47b09701d"
+    },
+    {
+      "family": "C",
+      "id": 9240413827,
+      "name": "ipq-c-https-frozen",
+      "run_id": 31860502073,
+      "head_sha": "d16edb1c930e5095995deb7520b1a2096fa94540",
+      "digest": "sha256:a3993c53d356b90fc38d35aaa80395553a7c2091e9bd2462106b3d1653ba6d54"
+    },
+    {
+      "family": "C",
+      "id": 9240410479,
+      "name": "ipq-c-syslog-frozen",
+      "run_id": 31860502073,
+      "head_sha": "d16edb1c930e5095995deb7520b1a2096fa94540",
+      "digest": "sha256:77973c2a777d65605f8b68f4ce39af43ca4769fe1d1cc1ee99a0357553c56031"
+    },
+    {
+      "family": "C",
+      "id": 9240412414,
+      "name": "ipq-c-file-drop-frozen",
+      "run_id": 31860502073,
+      "head_sha": "d16edb1c930e5095995deb7520b1a2096fa94540",
+      "digest": "sha256:e506acc1794f48d4b898c16ad69ed404a9c95985544f850cda904c371f6fe648"
+    },
+    {
+      "family": "C",
+      "id": 9240411506,
+      "name": "ipq-c-otlp-frozen",
+      "run_id": 31860502073,
+      "head_sha": "d16edb1c930e5095995deb7520b1a2096fa94540",
+      "digest": "sha256:6cf06a233ba31d02f9784a1229ef13bb9e3dc487bfdd34ea6b55ab1afb6572b1"
+    },
+    {
+      "family": "D",
+      "id": 9239712925,
+      "name": "ipq-d-frozen-connector-platform",
+      "run_id": 31858256730,
+      "head_sha": "f5f7e0fd2e559551ee0186ca96df57e364b7fea3",
+      "digest": "sha256:066d9a25bb4b2d221f50ce278e53711a92bf27cf29cd77a0ac92ab69472c1442"
+    },
+    {
+      "family": "D",
+      "id": 9239721660,
+      "name": "ipq-d-frozen-console-build",
+      "run_id": 31858256730,
+      "head_sha": "f5f7e0fd2e559551ee0186ca96df57e364b7fea3",
+      "digest": "sha256:f8450279da89e6bf84ad0bc8cd76360a998950fbdf9767eea806172511827c18"
+    },
+    {
+      "family": "D",
+      "id": 9239723989,
+      "name": "ipq-d-frozen-browser",
+      "run_id": 31858256730,
+      "head_sha": "f5f7e0fd2e559551ee0186ca96df57e364b7fea3",
+      "digest": "sha256:2ad0bd815b38a7844860a22da8746e4a5d8c3fb88d0877257cf27bdb3e1925fe"
+    },
+    {
+      "family": "E",
+      "id": 9239846763,
+      "name": "ipq-e-github-audit-frozen",
+      "run_id": 31858741473,
+      "head_sha": "edac8b453a89a61887bebf27ce18fd4a12961ca1",
+      "digest": "sha256:099fa172a17e25ba6770eb255d65fc059ffe83d428fccd1c472207b9393d25ea"
+    },
+    {
+      "family": "E",
+      "id": 9239847187,
+      "name": "ipq-e-aws-cloudtrail-frozen",
+      "run_id": 31858741473,
+      "head_sha": "edac8b453a89a61887bebf27ce18fd4a12961ca1",
+      "digest": "sha256:203a933987b63797fabd9a5eb46c0f39942c10da055459dda818a4f6ead4dfb7"
+    },
+    {
+      "family": "E",
+      "id": 9239844981,
+      "name": "ipq-e-okta-system-log-frozen",
+      "run_id": 31858741473,
+      "head_sha": "edac8b453a89a61887bebf27ce18fd4a12961ca1",
+      "digest": "sha256:da00e59526310f6e70487d1d26c31c083e670cb3c5f39bffaf24d90854445dbc"
+    },
+    {
+      "family": "E",
+      "id": 9239846106,
+      "name": "ipq-e-generic-rest-frozen",
+      "run_id": 31858741473,
+      "head_sha": "edac8b453a89a61887bebf27ce18fd4a12961ca1",
+      "digest": "sha256:34fbe093fad7eefa4ee5faf83f346dc516c808cf983791ac159313a7e85a3e53"
+    },
+    {
+      "family": "F",
+      "id": 9239924438,
+      "name": "ipq-f-package-frozen",
+      "run_id": 31859009394,
+      "head_sha": "88a3d75b55737a97a2a0ca07c83a296a35c0cabe",
+      "digest": "sha256:0b791fc6062755b638ef84971603411c7c9dde160e19e5b9e1d79c4d026fb77a"
+    },
+    {
+      "family": "F",
+      "id": 9239924469,
+      "name": "ipq-f-microsoft-common-frozen",
+      "run_id": 31859009394,
+      "head_sha": "88a3d75b55737a97a2a0ca07c83a296a35c0cabe",
+      "digest": "sha256:c9b7e3afc8cff54c39d5ac1a7adfce737041b7b29635ac1f497aa3eedf59419d"
+    },
+    {
+      "family": "F",
+      "id": 9239924025,
+      "name": "ipq-f-graph-source-frozen",
+      "run_id": 31859009394,
+      "head_sha": "88a3d75b55737a97a2a0ca07c83a296a35c0cabe",
+      "digest": "sha256:5c7f24be78a47619ec56db52e7c9a1897ce42aec873a12d1ee6d7149ab479c41"
+    },
+    {
+      "family": "F",
+      "id": 9239924611,
+      "name": "ipq-f-entra-delta-frozen",
+      "run_id": 31859009394,
+      "head_sha": "88a3d75b55737a97a2a0ca07c83a296a35c0cabe",
+      "digest": "sha256:1b9ba085eeac5ec55ea2f169d70a07a05e55774c85b6868ebdc734f13fab86a9"
+    }
+  ]
+}
