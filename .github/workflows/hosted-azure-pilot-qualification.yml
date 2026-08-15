@@ -1,0 +1,348 @@
+name: Hosted Azure Pilot Qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      resource_group:
+        description: Azure resource group containing the ETS hosted pilot
+        required: true
+        type: string
+      container_app_name:
+        description: ETS Container App name created by HOST-AZ-C
+        required: true
+        type: string
+      tenant_id:
+        description: Synthetic tenant ID matching the qualification bearer-token claim
+        required: true
+        default: tenant_qualification
+        type: string
+      workspace_id:
+        description: Synthetic workspace ID matching the qualification bearer-token claim
+        required: true
+        default: workspace_qualification
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  qualify:
+    name: Clean deploy source-to-proof qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RESOURCE_GROUP: ${{ inputs.resource_group }}
+      CONTAINER_APP_NAME: ${{ inputs.container_app_name }}
+      QUAL_TENANT_ID: ${{ inputs.tenant_id }}
+      QUAL_WORKSPACE_ID: ${{ inputs.workspace_id }}
+      QUAL_TOKEN: ${{ secrets.ETS_AZURE_QUALIFICATION_BEARER_TOKEN }}
+
+    steps:
+      - name: Check out exact qualification source
+        uses: actions/checkout@v4
+
+      - name: Azure login through GitHub OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate qualification prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$QUAL_TOKEN"
+          test -n "$RESOURCE_GROUP"
+          test -n "$CONTAINER_APP_NAME"
+          test -n "$QUAL_TENANT_ID"
+          test -n "$QUAL_WORKSPACE_ID"
+          az extension add --name containerapp --upgrade --only-show-errors
+          mkdir -p artifacts/hosted-azure-q1
+
+      - name: Discover internal pilot runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_json="$(az containerapp show \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --output json)"
+
+          environment_id="$(jq -r '.properties.environmentId // empty' <<<"$app_json")"
+          fqdn="$(jq -r '.properties.configuration.ingress.fqdn // empty' <<<"$app_json")"
+          image="$(jq -r '.properties.template.containers[0].image // empty' <<<"$app_json")"
+          identity_id="$(jq -r '.identity.userAssignedIdentities | keys[0] // empty' <<<"$app_json")"
+          client_id="$(az identity show --ids "$identity_id" --query clientId --output tsv)"
+
+          test -n "$environment_id"
+          test -n "$fqdn"
+          test -n "$image"
+          test -n "$identity_id"
+          test -n "$client_id"
+
+          job_name="etsq-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          event_id="host-az-q1-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          created_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          revision="$(az containerapp revision list \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query '[?properties.active].name | [0]' \
+            --output tsv)"
+          test -n "$revision"
+
+          {
+            echo "ETS_QUAL_ENVIRONMENT_ID=$environment_id"
+            echo "ETS_QUAL_FQDN=$fqdn"
+            echo "ETS_QUAL_IMAGE=$image"
+            echo "ETS_QUAL_IDENTITY_ID=$identity_id"
+            echo "ETS_QUAL_MANAGED_IDENTITY_CLIENT_ID=$client_id"
+            echo "ETS_QUAL_JOB_NAME=$job_name"
+            echo "ETS_QUAL_EVENT_ID=$event_id"
+            echo "ETS_QUAL_CREATED_AT_UTC=$created_at"
+            echo "ETS_QUAL_REVISION=$revision"
+          } >> "$GITHUB_ENV"
+
+      - name: Create temporary in-environment qualification job
+        shell: bash
+        run: |
+          set -euo pipefail
+          az containerapp job create \
+            --name "$ETS_QUAL_JOB_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --environment "$ETS_QUAL_ENVIRONMENT_ID" \
+            --trigger-type Manual \
+            --replica-timeout 300 \
+            --replica-retry-limit 0 \
+            --image "$ETS_QUAL_IMAGE" \
+            --container-name ets-qual \
+            --cpu 0.5 \
+            --memory 1Gi \
+            --mi-user-assigned "$ETS_QUAL_IDENTITY_ID" \
+            --secrets qualtoken="$QUAL_TOKEN" \
+            --env-vars \
+              ETS_QUAL_BASE_URL="https://$ETS_QUAL_FQDN" \
+              ETS_QUAL_BEARER_TOKEN=secretref:qualtoken \
+              ETS_QUAL_TENANT_ID="$QUAL_TENANT_ID" \
+              ETS_QUAL_WORKSPACE_ID="$QUAL_WORKSPACE_ID" \
+              ETS_QUAL_EVENT_ID="$ETS_QUAL_EVENT_ID" \
+              ETS_QUAL_CREATED_AT_UTC="$ETS_QUAL_CREATED_AT_UTC" \
+              ETS_AZURE_MANAGED_IDENTITY_CLIENT_ID="$ETS_QUAL_MANAGED_IDENTITY_CLIENT_ID" \
+            --command python \
+            --args "-m" "ets.qualification.hosted_azure" "pre" \
+            --output none
+
+      - name: Run pre-restart qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          execution="$(az containerapp job start \
+            --name "$ETS_QUAL_JOB_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query name \
+            --output tsv)"
+          if [[ -z "$execution" ]]; then
+            execution="$(az containerapp job execution list \
+              --name "$ETS_QUAL_JOB_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --query '[0].name' \
+              --output tsv)"
+          fi
+          test -n "$execution"
+
+          for attempt in $(seq 1 60); do
+            status="$(az containerapp job execution show \
+              --name "$ETS_QUAL_JOB_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --job-execution-name "$execution" \
+              --query properties.status \
+              --output tsv)"
+            if [[ "$status" == "Succeeded" ]]; then
+              break
+            fi
+            if [[ "$status" == "Failed" ]]; then
+              echo "Qualification pre execution failed." >&2
+              exit 1
+            fi
+            sleep 5
+          done
+          test "${status:-}" = "Succeeded"
+
+          log_file="artifacts/hosted-azure-q1/pre.log"
+          for attempt in $(seq 1 12); do
+            if az containerapp job logs show \
+              --name "$ETS_QUAL_JOB_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --execution "$execution" \
+              --container ets-qual \
+              --format text \
+              --tail 300 > "$log_file" 2>/dev/null; then
+              if grep -q 'ETS_QUAL_RESULT=' "$log_file"; then
+                break
+              fi
+            fi
+            sleep 5
+          done
+
+          result="$(grep -o 'ETS_QUAL_RESULT=.*' "$log_file" | tail -1 | sed 's/^ETS_QUAL_RESULT=//')"
+          test -n "$result"
+          jq -e '.phase == "pre" and .proof_verified.valid == true and .signature_verified.valid == true and .duplicate_status == 409' \
+            <<<"$result" > /dev/null
+          printf '%s\n' "$result" > artifacts/hosted-azure-q1/pre.json
+          rm -f "$log_file"
+
+      - name: Restart active ETS revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          az containerapp revision restart \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --revision "$ETS_QUAL_REVISION" \
+            --output none
+
+          for attempt in $(seq 1 60); do
+            revision_json="$(az containerapp revision show \
+              --name "$CONTAINER_APP_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --revision "$ETS_QUAL_REVISION" \
+              --output json)"
+            running="$(jq -r '.properties.runningState // empty' <<<"$revision_json")"
+            health="$(jq -r '.properties.healthState // empty' <<<"$revision_json")"
+            if [[ "$running" == "Running" && "$health" == "Healthy" ]]; then
+              break
+            fi
+            if [[ "$running" == "Failed" || "$health" == "Unhealthy" ]]; then
+              echo "ETS revision failed to recover after restart." >&2
+              exit 1
+            fi
+            sleep 5
+          done
+          test "${running:-}" = "Running"
+          test "${health:-}" = "Healthy"
+
+      - name: Run post-restart qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          az containerapp job update \
+            --name "$ETS_QUAL_JOB_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --args "-m" "ets.qualification.hosted_azure" "post" \
+            --output none
+
+          execution="$(az containerapp job start \
+            --name "$ETS_QUAL_JOB_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query name \
+            --output tsv)"
+          if [[ -z "$execution" ]]; then
+            execution="$(az containerapp job execution list \
+              --name "$ETS_QUAL_JOB_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --query '[0].name' \
+              --output tsv)"
+          fi
+          test -n "$execution"
+
+          for attempt in $(seq 1 60); do
+            status="$(az containerapp job execution show \
+              --name "$ETS_QUAL_JOB_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --job-execution-name "$execution" \
+              --query properties.status \
+              --output tsv)"
+            if [[ "$status" == "Succeeded" ]]; then
+              break
+            fi
+            if [[ "$status" == "Failed" ]]; then
+              echo "Qualification post execution failed." >&2
+              exit 1
+            fi
+            sleep 5
+          done
+          test "${status:-}" = "Succeeded"
+
+          log_file="artifacts/hosted-azure-q1/post.log"
+          for attempt in $(seq 1 12); do
+            if az containerapp job logs show \
+              --name "$ETS_QUAL_JOB_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --execution "$execution" \
+              --container ets-qual \
+              --format text \
+              --tail 300 > "$log_file" 2>/dev/null; then
+              if grep -q 'ETS_QUAL_RESULT=' "$log_file"; then
+                break
+              fi
+            fi
+            sleep 5
+          done
+
+          result="$(grep -o 'ETS_QUAL_RESULT=.*' "$log_file" | tail -1 | sed 's/^ETS_QUAL_RESULT=//')"
+          test -n "$result"
+          jq -e '.phase == "post" and .proof_verified.valid == true and .signature_verified.valid == true and .persisted_event_match == true' \
+            <<<"$result" > /dev/null
+          printf '%s\n' "$result" > artifacts/hosted-azure-q1/post.json
+          rm -f "$log_file"
+
+      - name: Build sanitized qualification manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          pre_hash="$(jq -r '.event_hash' artifacts/hosted-azure-q1/pre.json)"
+          post_hash="$(jq -r '.event_hash' artifacts/hosted-azure-q1/post.json)"
+          test "$pre_hash" = "$post_hash"
+
+          jq -n \
+            --arg schema_version 'ets.hosted_azure_q1_manifest.v1' \
+            --arg source_sha "$GITHUB_SHA" \
+            --arg resource_group "$RESOURCE_GROUP" \
+            --arg container_app "$CONTAINER_APP_NAME" \
+            --arg revision "$ETS_QUAL_REVISION" \
+            --arg event_id "$ETS_QUAL_EVENT_ID" \
+            --arg created_at_utc "$ETS_QUAL_CREATED_AT_UTC" \
+            --slurpfile pre artifacts/hosted-azure-q1/pre.json \
+            --slurpfile post artifacts/hosted-azure-q1/post.json \
+            '{
+              schema_version: $schema_version,
+              source_sha: $source_sha,
+              resource_group: $resource_group,
+              container_app: $container_app,
+              revision: $revision,
+              event_id: $event_id,
+              created_at_utc: $created_at_utc,
+              pre: $pre[0],
+              post: $post[0],
+              exclusions: [
+                "source truth/completeness",
+                "HA/GA",
+                "cross-region DR",
+                "legal admissibility",
+                "compliance certification",
+                "hardware appliance equivalence",
+                "private-endpoint/VNet isolation"
+              ]
+            }' > artifacts/hosted-azure-q1/manifest.json
+
+      - name: Upload sanitized qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hosted-azure-q1-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/hosted-azure-q1/
+          if-no-files-found: warn
+
+      - name: Delete temporary qualification job
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${ETS_QUAL_JOB_NAME:-}" ]]; then
+            az containerapp job delete \
+              --name "$ETS_QUAL_JOB_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --yes \
+              --output none || true
+          fi
