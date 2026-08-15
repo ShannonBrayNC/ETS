@@ -28,10 +28,8 @@ def create_app_from_env() -> FastAPI:
     signing_mode = os.getenv("ETS_SIGNING_MODE", "local_unsigned")
     azure_hosted = provider == _AZURE_STORAGE_PROVIDER or signing_mode == _AZURE_SIGNING_MODE
     if not azure_hosted:
-        factory = cast(
-            Callable[[], FastAPI],
-            getattr(_load_app_module(sanitize_environment=False), "create_app_from_env"),
-        )
+        module = _load_app_module(sanitize_environment=False)
+        factory = cast(Callable[[], FastAPI], vars(module)["create_app_from_env"])
         return factory()
 
     auth_mode = os.getenv("ETS_AUTH_MODE", "local_header")
@@ -57,10 +55,8 @@ def create_app_from_env() -> FastAPI:
     store.list_entries()
     signer_readiness()
 
-    create_app = cast(
-        Callable[..., FastAPI],
-        getattr(_load_app_module(sanitize_environment=True), "create_app"),
-    )
+    module = _load_app_module(sanitize_environment=True)
+    create_app = cast(Callable[..., FastAPI], vars(module)["create_app"])
     return create_app(
         log=store,
         log_id=log_id,
