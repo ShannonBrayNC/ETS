@@ -65,9 +65,12 @@ jobs:
 
       - name: Confirm protected durable signed demo profile
         run: |
-          docker compose -f edge-demo/docker-compose.yml exec -T edge-api \
-            cat /var/lib/ets/edge-local-api-key > /tmp/edge-api-key
+          docker compose -f edge-demo/docker-compose.yml exec -T edge-api python -c \
+            'from pathlib import Path; from ets.edge.device_identity import load_local_api_key; print(load_local_api_key(Path("/var/lib/ets/edge-local-api-key")))' \
+            > /tmp/edge-api-key
           chmod 600 /tmp/edge-api-key
+          docker compose -f edge-demo/docker-compose.yml exec -T edge-api \
+            cat /var/lib/ets/edge-local-api-key > /tmp/edge-api-key-storage
 
           python - <<'PY'
           import json
@@ -75,11 +78,15 @@ jobs:
 
           ready = json.loads(Path('/tmp/ready.json').read_text())
           key = Path('/tmp/edge-api-key').read_text().strip()
+          storage = Path('/tmp/edge-api-key-storage').read_text()
+          payload = json.loads(storage)
           assert ready['status'] == 'ready', ready
           assert ready['storage'] == 'sqlite', ready
           assert ready['signing'] == 'ed25519', ready
           assert ready['auth'] == 'local_api_key', ready
           assert len(key.encode('utf-8')) >= 32
+          assert payload['schema_version'] == 'ets.edge.local_api_key.encrypted.v1', payload
+          assert key not in storage
           PY
 
           MISSING_CODE="$(curl -q --silent --output /tmp/auth-missing.json \
@@ -352,8 +359,7 @@ jobs:
             sleep 2
           done
 
-          RESTARTED_KEY="$(docker compose -f edge-demo/docker-compose.yml exec -T edge-api \
-            cat /var/lib/ets/edge-local-api-key)"
+          RESTARTED_KEY="$(docker compose -f edge-demo/docker-compose.yml exec -T edge-api python -c 'from pathlib import Path; from ets.edge.device_identity import load_local_api_key; print(load_local_api_key(Path("/var/lib/ets/edge-local-api-key")))')"
           ORIGINAL_KEY="$(cat /tmp/edge-api-key)"
           test "${RESTARTED_KEY}" = "${ORIGINAL_KEY}"
 
