@@ -9,6 +9,7 @@ import secrets
 from pathlib import Path
 from typing import TypedDict
 
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -133,7 +134,6 @@ def load_or_create_local_api_key(
     if path.exists():
         serialized = path.read_text(encoding="utf-8").strip()
         persisted, legacy_cleartext = _decode_local_api_key_storage(
-            path,
             serialized,
             storage_key_material,
         )
@@ -151,7 +151,10 @@ def load_or_create_local_api_key(
             _write_encrypted_local_api_key(path, persisted, storage_key_material)
         return persisted
 
-    key = _validate_local_api_key(explicit_key) if explicit_key is not None else secrets.token_urlsafe(32)
+    if explicit_key is not None:
+        key = _validate_local_api_key(explicit_key)
+    else:
+        key = secrets.token_urlsafe(32)
     _write_encrypted_local_api_key(path, key, storage_key_material)
     return key
 
@@ -164,7 +167,7 @@ def load_local_api_key(path: Path, *, storage_key_material: str | None = None) -
     serialized = path.read_text(encoding="utf-8").strip()
     if serialized.startswith("{"):
         material = storage_key_material or _load_default_storage_key_material(path)
-        key, _ = _decode_local_api_key_storage(path, serialized, material)
+        key, _ = _decode_local_api_key_storage(serialized, material)
         return key
     return _validate_local_api_key(serialized)
 
@@ -337,7 +340,6 @@ def _write_encrypted_local_api_key(path: Path, key: str, storage_key_material: s
 
 
 def _decode_local_api_key_storage(
-    path: Path,
     serialized: str,
     storage_key_material: str,
 ) -> tuple[str, bool]:
@@ -369,7 +371,7 @@ def _decode_local_api_key_storage(
             _ENCRYPTED_API_KEY_AAD,
         )
         key = plaintext.decode("utf-8")
-    except (ValueError, UnicodeDecodeError) as exc:
+    except (InvalidTag, ValueError, UnicodeDecodeError) as exc:
         raise RuntimeError("persisted ETS Edge local API key storage is invalid") from exc
     return _validate_local_api_key(key), False
 
