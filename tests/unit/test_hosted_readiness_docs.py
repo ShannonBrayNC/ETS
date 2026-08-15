@@ -171,6 +171,7 @@ def test_azure_bicep_reference_uses_managed_identity_and_no_secret_values() -> N
         "enablePurgeProtection: true",
         "Microsoft.AppConfiguration/configurationStores",
         "disableLocalAuth: true",
+        "authenticationMode: 'Pass-through'",
         "Microsoft.Insights/components",
         "ETS_AZURE_MANAGED_IDENTITY_ENABLED",
         "ETS_AZURE_KEY_VAULT_URL",
