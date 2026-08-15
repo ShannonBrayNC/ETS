@@ -82,6 +82,8 @@ jobs:
           grep -q '@secure()' "$client"
           grep -q "secretRef: 'q1-token'" "$client"
           grep -q 'registryPullIdentityResourceId' "$client"
+          grep -q 'identitySettings:' "$client"
+          grep -q "lifecycle: 'None'" "$client"
           grep -q 'registries:' "$client"
           grep -q 'identity: registryPullIdentityResourceId' "$client"
           if grep -q 'ingress:' "$client"; then
