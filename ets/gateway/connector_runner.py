@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Protocol
 
 from pydantic import JsonValue
 
 from ets.connectors.models import (
     ConnectorCheckpointV1,
+    ConnectorCollectionResultV1,
+    ConnectorEvidenceCandidateV1,
     ConnectorInstanceV1,
     ConnectorOperationCode,
 )
@@ -21,6 +24,26 @@ from ets.gateway.ingress import (
     GatewayIngressError,
     GatewayPartialCommitError,
 )
+
+
+class GatewayConnectorReleaseError(RuntimeError):
+    """Raised when post-commit operational state cannot be durably released."""
+
+
+class GatewayConnectorCandidateHook(Protocol):
+    """Optional deterministic pre-commit transformation of a normalized candidate."""
+
+    def transform(
+        self,
+        record: Mapping[str, JsonValue],
+        candidate: ConnectorEvidenceCandidateV1,
+    ) -> ConnectorEvidenceCandidateV1: ...
+
+
+class GatewayConnectorReleaseHook(Protocol):
+    """Optional operational release step invoked only after all evidence is queued."""
+
+    def release(self, collection: ConnectorCollectionResultV1) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +73,8 @@ class GatewayConnectorCollectionRunner:
         instance: ConnectorInstanceV1,
         principal: str,
         checkpoint: ConnectorCheckpointV1 | None,
+        candidate_hook: GatewayConnectorCandidateHook | None = None,
+        release_hook: GatewayConnectorReleaseHook | None = None,
     ) -> GatewayConnectorRunResult:
         collection = adapter.collect(instance, checkpoint)
         if collection.code != "ok":
@@ -72,6 +97,7 @@ class GatewayConnectorCollectionRunner:
                 instance=instance,
                 principal=principal,
                 record=record,
+                candidate_hook=candidate_hook,
             )
             if result is not None:
                 return GatewayConnectorRunResult(
@@ -86,6 +112,24 @@ class GatewayConnectorCollectionRunner:
                 )
             committed_local += 1
             sync_queued += 1
+
+        if release_hook is not None:
+            try:
+                release_hook.release(collection)
+            except GatewayConnectorReleaseError:
+                return GatewayConnectorRunResult(
+                    code="retryable_error",
+                    source_records=len(collection.records),
+                    committed_local=committed_local,
+                    sync_queued=sync_queued,
+                    partial_commit=0,
+                    checkpoint_to_persist=None,
+                    has_more=collection.has_more,
+                    message=(
+                        "connector evidence reached durable queued state but operational "
+                        "state release requires retry"
+                    ),
+                )
 
         return GatewayConnectorRunResult(
             code="ok",
@@ -105,9 +149,12 @@ class GatewayConnectorCollectionRunner:
         instance: ConnectorInstanceV1,
         principal: str,
         record: Mapping[str, JsonValue],
+        candidate_hook: GatewayConnectorCandidateHook | None,
     ) -> GatewayConnectorRunResult | None:
         try:
             candidate = adapter.normalize(instance, record)
+            if candidate_hook is not None:
+                candidate = candidate_hook.transform(record, candidate)
             receipt = self._ingress.ingest_candidate(
                 principal,
                 GatewayConnectorCandidateRequest(candidate=candidate),
