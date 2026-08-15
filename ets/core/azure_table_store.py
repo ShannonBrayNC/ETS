@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, cast
 
@@ -279,6 +279,31 @@ def _required_int(entity: Mapping[str, object], key: str) -> int:
     return value
 
 
+class _SdkEntityMetadata(Protocol):
+    etag: str | None
+
+
+class _SdkEntity(Mapping[str, Any], Protocol):
+    metadata: _SdkEntityMetadata
+
+
+class _SdkTableClient(Protocol):
+    def get_entity(self, partition_key: str, row_key: str) -> _SdkEntity:
+        """Fetch one entity."""
+
+    def create_entity(self, entity: Mapping[str, object]) -> Mapping[str, Any]:
+        """Create one entity."""
+
+    def submit_transaction(
+        self,
+        operations: Sequence[tuple[Any, ...]],
+    ) -> list[Mapping[str, Any]]:
+        """Submit one atomic same-partition transaction."""
+
+    def query_entities(self, query_filter: str) -> Iterable[_SdkEntity]:
+        """Query entities."""
+
+
 class AzureSdkTableBackend:
     """Lazy Azure SDK adapter using Managed Identity and conditional transactions."""
 
@@ -295,15 +320,36 @@ class AzureSdkTableBackend:
 
         identity_module = importlib.import_module("azure.identity")
         tables_module = importlib.import_module("azure.data.tables")
-        self._exceptions = importlib.import_module("azure.core.exceptions")
-        azure_core = importlib.import_module("azure.core")
-        self._table_transaction_error = tables_module.TableTransactionError
-        self._update_mode = tables_module.UpdateMode
-        self._if_not_modified = azure_core.MatchConditions.IfNotModified
-        credential = identity_module.ManagedIdentityCredential(
-            client_id=managed_identity_client_id or None
+        exceptions_module = importlib.import_module("azure.core.exceptions")
+        core_module = importlib.import_module("azure.core")
+
+        credential_factory = cast(
+            Callable[..., object],
+            getattr(identity_module, "ManagedIdentityCredential"),
         )
-        self._client = tables_module.TableClient(
+        table_client_factory = cast(
+            Callable[..., _SdkTableClient],
+            getattr(tables_module, "TableClient"),
+        )
+        self._resource_not_found_error = cast(
+            type[Exception],
+            getattr(exceptions_module, "ResourceNotFoundError"),
+        )
+        self._resource_exists_error = cast(
+            type[Exception],
+            getattr(exceptions_module, "ResourceExistsError"),
+        )
+        self._table_transaction_error = cast(
+            type[Exception],
+            getattr(tables_module, "TableTransactionError"),
+        )
+        update_mode = getattr(tables_module, "UpdateMode")
+        match_conditions = getattr(core_module, "MatchConditions")
+        self._replace_mode = cast(object, getattr(update_mode, "REPLACE"))
+        self._if_not_modified = cast(object, getattr(match_conditions, "IfNotModified"))
+
+        credential = credential_factory(client_id=managed_identity_client_id or None)
+        self._client = table_client_factory(
             endpoint=normalized_endpoint,
             table_name=table_name,
             credential=credential,
@@ -313,17 +359,17 @@ class AzureSdkTableBackend:
     def get(self, partition_key: str, row_key: str) -> VersionedTableEntity | None:
         try:
             entity = self._client.get_entity(partition_key, row_key)
-        except self._exceptions.ResourceNotFoundError:
+        except self._resource_not_found_error:
             return None
-        etag = getattr(getattr(entity, "metadata", None), "etag", None)
+        etag = entity.metadata.etag
         if not isinstance(etag, str) or not etag:
             raise StorageValidationError("Azure Table entity ETag is missing")
         return VersionedTableEntity(values=dict(entity), etag=etag)
 
     def create(self, values: Mapping[str, object]) -> None:
         try:
-            self._client.create_entity(dict(values))
-        except self._exceptions.ResourceExistsError as exc:
+            self._client.create_entity(values)
+        except self._resource_exists_error as exc:
             raise AzureTableConflictError("Azure Table entity already exists") from exc
 
     def transact(self, actions: Sequence[TableAction]) -> None:
@@ -340,7 +386,7 @@ class AzureSdkTableBackend:
                     "update",
                     entity,
                     {
-                        "mode": self._update_mode.REPLACE,
+                        "mode": self._replace_mode,
                         "etag": action.etag,
                         "match_condition": self._if_not_modified,
                     },
