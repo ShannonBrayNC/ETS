@@ -25,6 +25,12 @@ class EdgeDeviceIdentity(TypedDict):
 
 
 _IDENTITY_FIELDS = frozenset(EdgeDeviceIdentity.__annotations__)
+_SCRYPT_SCHEMA = "scrypt-v1"
+_SCRYPT_N = 2**14
+_SCRYPT_R = 8
+_SCRYPT_P = 1
+_SCRYPT_DKLEN = 32
+_SCRYPT_SALT_BYTES = 16
 
 
 def resolve_local_api_key_provisioning(
@@ -64,35 +70,40 @@ def resolve_local_api_key_provisioning(
 
 
 def validate_or_record_local_api_key_verifier(path: Path, explicit_key: str) -> str:
-    """Validate a mounted API key against a durable non-secret SHA-256 verifier.
+    """Validate a mounted API key against a durable salted scrypt verifier.
 
     Secret-file provisioning keeps the plaintext credential in the external
-    secret mount and process memory only. Edge persists only the SHA-256 digest
-    needed to detect an unexpected credential change across restarts. API keys
-    are required to contain at least 256 bits of material, so the verifier does
-    not make recovery of the original random credential practical.
+    secret mount and process memory only. Edge persists a versioned, salted,
+    memory-hard verifier solely to detect unexpected credential changes across
+    restarts; it does not persist a recoverable copy of the mounted credential.
     """
 
     key = _validate_local_api_key(explicit_key)
-    verifier = hashlib.sha256(key.encode("utf-8")).hexdigest()
     path.parent.mkdir(parents=True, exist_ok=True)
 
     if path.exists():
-        persisted = path.read_text(encoding="utf-8").strip()
-        if len(persisted) != 64:
-            raise RuntimeError("persisted ETS Edge local API key verifier is invalid")
-        try:
-            bytes.fromhex(persisted)
-        except ValueError as exc:
-            raise RuntimeError("persisted ETS Edge local API key verifier is invalid") from exc
-        if not hmac.compare_digest(persisted, verifier):
+        salt, expected = _parse_local_api_key_verifier(path.read_text(encoding="utf-8"))
+        actual = _derive_local_api_key_verifier(key, salt)
+        if not hmac.compare_digest(expected, actual):
             raise RuntimeError(
                 "mounted ETS Edge local API key conflicts with persisted verifier; "
                 "implicit rotation is not supported"
             )
         return key
 
-    path.write_text(verifier + "\n", encoding="utf-8")
+    salt = secrets.token_bytes(_SCRYPT_SALT_BYTES)
+    verifier = _derive_local_api_key_verifier(key, salt)
+    payload = "$".join(
+        (
+            _SCRYPT_SCHEMA,
+            str(_SCRYPT_N),
+            str(_SCRYPT_R),
+            str(_SCRYPT_P),
+            salt.hex(),
+            verifier.hex(),
+        )
+    )
+    path.write_text(payload + "\n", encoding="utf-8")
     path.chmod(0o600)
     return key
 
@@ -241,6 +252,37 @@ def _validate_local_api_key(value: str) -> str:
     if len(key.encode("utf-8")) < 32:
         raise RuntimeError("ETS Edge local API key must contain at least 32 bytes")
     return key
+
+
+def _derive_local_api_key_verifier(key: str, salt: bytes) -> bytes:
+    return hashlib.scrypt(
+        key.encode("utf-8"),
+        salt=salt,
+        n=_SCRYPT_N,
+        r=_SCRYPT_R,
+        p=_SCRYPT_P,
+        dklen=_SCRYPT_DKLEN,
+    )
+
+
+def _parse_local_api_key_verifier(value: str) -> tuple[bytes, bytes]:
+    parts = value.strip().split("$")
+    if len(parts) != 6:
+        raise RuntimeError("persisted ETS Edge local API key verifier is invalid")
+    schema, n_value, r_value, p_value, salt_hex, verifier_hex = parts
+    if schema != _SCRYPT_SCHEMA:
+        raise RuntimeError("persisted ETS Edge local API key verifier is invalid")
+    try:
+        parameters = (int(n_value), int(r_value), int(p_value))
+        salt = bytes.fromhex(salt_hex)
+        verifier = bytes.fromhex(verifier_hex)
+    except ValueError as exc:
+        raise RuntimeError("persisted ETS Edge local API key verifier is invalid") from exc
+    if parameters != (_SCRYPT_N, _SCRYPT_R, _SCRYPT_P):
+        raise RuntimeError("persisted ETS Edge local API key verifier is invalid")
+    if len(salt) != _SCRYPT_SALT_BYTES or len(verifier) != _SCRYPT_DKLEN:
+        raise RuntimeError("persisted ETS Edge local API key verifier is invalid")
+    return salt, verifier
 
 
 def _write_private_text(path: Path, value: str) -> None:
