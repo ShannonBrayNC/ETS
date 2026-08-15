@@ -52,6 +52,12 @@ azure = [
     "azure-identity>=1.17,<2",
     "azure-keyvault-keys>=4.9,<5",
 ]
+hosted = [
+    "azure-data-tables>=12,<13",
+    "azure-identity>=1.17,<2",
+    "azure-keyvault-keys>=4.9,<5",
+    "uvicorn>=0.47,<1",
+]
 
 [tool.setuptools.packages.find]
 include = ["ets*"]
