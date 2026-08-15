@@ -42,11 +42,12 @@ jobs:
       - name: Start local Edge Virtual topology
         run: docker compose -f edge-demo/docker-compose.yml up -d --build
 
-      - name: Load generated local API key
+      - name: Load encrypted local API key
         run: |
           for attempt in {1..30}; do
-            if docker compose -f edge-demo/docker-compose.yml exec -T edge-api \
-              cat /var/lib/ets/edge-local-api-key > /tmp/edge-api-key 2>/dev/null; then
+            if docker compose -f edge-demo/docker-compose.yml exec -T edge-api python -c \
+              'from pathlib import Path; from ets.edge.device_identity import load_local_api_key; print(load_local_api_key(Path("/var/lib/ets/edge-local-api-key")))' \
+              > /tmp/edge-api-key 2>/dev/null; then
               if test "$(wc -c < /tmp/edge-api-key)" -ge 33; then
                 break
               fi
