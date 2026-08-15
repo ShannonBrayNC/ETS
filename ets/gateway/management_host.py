@@ -60,6 +60,7 @@ def create_gateway_management_app(
             actor_id=subject,
             tenant_id=tenant_id,
             workspace_id=workspace_id,
+            can_read=context.has_capability("connector.read"),
             can_manage=context.has_capability("connector.manage"),
         )
 

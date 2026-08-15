@@ -68,10 +68,14 @@ claim production authorization. The returned authorization profile is always
 - `/api/v2/auth/context` for the Console identity/capability contract;
 - the versioned `/gateway/connectors/v1` G2C management router.
 
-The outer host authenticates the request once and adapts it to `ConnectorManagementPrincipal`.
-Connector administration is enabled only when the derived capability set contains
-`connector.manage`. The G2C service still enforces tenant/workspace equality for instance-specific
-operations.
+The outer host authenticates the request once and adapts it to `ConnectorManagementPrincipal` with
+read and manage authority represented separately. `connector.manage` implies connector read access
+inside the service, but `connector.read` never implies mutation authority.
+
+The G2C service requires connector read authority for catalog, instance-list, instance-detail, and
+runtime-state inspection. Create, update, enable/disable, validation, connection testing, checkpoint
+changes, and gap-state changes continue to require `connector.manage`. Tenant/workspace equality is
+enforced for both read and management access to instance-specific resources.
 
 This composition keeps the generic ETS transparency-log API independent from Gateway connector
 management while giving the production Console one coherent authenticated management surface.
@@ -95,6 +99,7 @@ The browser never receives:
 - unknown signed ETS role: HTTP 401;
 - missing required management identity/scope: HTTP 403;
 - browser scope override conflicting with signed scope: HTTP 403;
+- authenticated identity without `connector.read` or `connector.manage`: HTTP 403 for connector read;
 - authenticated identity without `connector.manage`: HTTP 403 for connector administration.
 
 Failures return bounded diagnostics and do not expose policy internals or credentials.
