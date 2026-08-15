@@ -4,10 +4,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BICEP = ROOT / "infra" / "azure" / "ets-hosted.bicep"
+ACR_PULL_MODULE = ROOT / "infra" / "azure" / "modules" / "acr-pull-role.bicep"
 
 
 def _template() -> str:
     return BICEP.read_text(encoding="utf-8")
+
+
+def _acr_pull_module() -> str:
+    return ACR_PULL_MODULE.read_text(encoding="utf-8")
 
 
 def test_hosted_bicep_deploys_internal_container_app_and_probes() -> None:
@@ -94,6 +99,42 @@ def test_hosted_bicep_requires_production_jwks_and_managed_identity() -> None:
     ]
     for term in required:
         assert term in text
+
+
+def test_hosted_bicep_uses_separate_least_privilege_identity_for_private_acr_pull() -> None:
+    text = _template()
+    module = _acr_pull_module()
+
+    required = [
+        "containerRegistryName",
+        "containerRegistryResourceGroup",
+        "containerRegistryPullRoleDefinitionId",
+        "registryPullIdentity",
+        "scope: resourceGroup(containerRegistryResourceGroup)",
+        "registries: [",
+        "server: registryPull.outputs.loginServer",
+        "identity: registryPullIdentity.id",
+        "output registryPullIdentityResourceId string = registryPullIdentity.id",
+        "output containerRegistryServer string = registryPull.outputs.loginServer",
+    ]
+    for term in required:
+        assert term in text
+
+    module_required = [
+        "Microsoft.ContainerRegistry/registries@2023-07-01",
+        "scope: registry",
+        "principalType: 'ServicePrincipal'",
+        "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+        "b93aa761-3e63-49ed-ac28-beffa264f7ac",
+    ]
+    for term in module_required:
+        assert term in module
+
+    # The runtime identity keeps Table/Key Vault access; image-pull identity is separate.
+    assert "principalId: managedIdentity.properties.principalId" in text
+    assert "principalId: registryPullIdentity.properties.principalId" in text
+    assert "listCredentials(" not in text
+    assert "passwordSecretRef" not in text
 
 
 def test_hosted_bicep_outputs_only_non_secret_infrastructure_references() -> None:

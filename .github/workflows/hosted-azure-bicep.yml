@@ -3,7 +3,7 @@ name: Hosted Azure Bicep
 on:
   pull_request:
     paths:
-      - "infra/azure/ets-hosted.bicep"
+      - "infra/azure/**"
       - "docs/operations/AZURE_CONTAINER_APPS_PILOT.md"
       - "docs/security/AZURE_DEPLOYMENT_ADAPTER.md"
       - "tests/unit/test_hosted_azure_container_apps_bicep.py"
