@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, ItemsView, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, cast
 
@@ -41,17 +41,13 @@ class TableAction:
 
 
 class AzureTableBackend(Protocol):
-    def get(self, partition_key: str, row_key: str) -> VersionedTableEntity | None:
-        """Read one entity and its concurrency token."""
+    def get(self, partition_key: str, row_key: str) -> VersionedTableEntity | None: ...
 
-    def create(self, values: Mapping[str, object]) -> None:
-        """Create one entity or raise AzureTableConflictError when it exists."""
+    def create(self, values: Mapping[str, object]) -> None: ...
 
-    def transact(self, actions: Sequence[TableAction]) -> None:
-        """Commit one same-partition transaction atomically."""
+    def transact(self, actions: Sequence[TableAction]) -> None: ...
 
-    def list_entries(self, partition_key: str) -> list[Mapping[str, object]]:
-        """Return entry rows for one log partition in row-key order."""
+    def list_entries(self, partition_key: str) -> list[Mapping[str, object]]: ...
 
 
 class AzureTableEventStore:
@@ -283,25 +279,20 @@ class _SdkEntityMetadata(Protocol):
     etag: str | None
 
 
-class _SdkEntity(Mapping[str, Any], Protocol):
+class _SdkEntity(Protocol):
     metadata: _SdkEntityMetadata
+
+    def items(self) -> ItemsView[str, object]: ...
 
 
 class _SdkTableClient(Protocol):
-    def get_entity(self, partition_key: str, row_key: str) -> _SdkEntity:
-        """Fetch one entity."""
+    def get_entity(self, partition_key: str, row_key: str) -> _SdkEntity: ...
 
-    def create_entity(self, entity: Mapping[str, object]) -> Mapping[str, Any]:
-        """Create one entity."""
+    def create_entity(self, entity: Mapping[str, object]) -> object: ...
 
-    def submit_transaction(
-        self,
-        operations: Sequence[tuple[Any, ...]],
-    ) -> list[Mapping[str, Any]]:
-        """Submit one atomic same-partition transaction."""
+    def submit_transaction(self, operations: Sequence[tuple[Any, ...]]) -> object: ...
 
-    def query_entities(self, query_filter: str) -> Iterable[_SdkEntity]:
-        """Query entities."""
+    def query_entities(self, query_filter: str) -> Iterable[_SdkEntity]: ...
 
 
 class AzureSdkTableBackend:
@@ -364,7 +355,7 @@ class AzureSdkTableBackend:
         etag = entity.metadata.etag
         if not isinstance(etag, str) or not etag:
             raise StorageValidationError("Azure Table entity ETag is missing")
-        return VersionedTableEntity(values=dict(entity), etag=etag)
+        return VersionedTableEntity(values=dict(entity.items()), etag=etag)
 
     def create(self, values: Mapping[str, object]) -> None:
         try:
@@ -405,7 +396,7 @@ class AzureSdkTableBackend:
             f"PartitionKey eq '{partition_key}' and "
             f"RowKey ge '{_ENTRY_PREFIX}' and RowKey lt 'entry.'"
         )
-        entities = [dict(entity) for entity in self._client.query_entities(query)]
+        entities = [dict(entity.items()) for entity in self._client.query_entities(query)]
         entities.sort(key=lambda entity: cast(str, entity.get("RowKey", "")))
         return entities
 
