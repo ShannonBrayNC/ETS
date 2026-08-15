@@ -13,11 +13,13 @@ source completeness.
 
 - one Azure Container Apps environment;
 - one internal-ingress ETS API Container App;
-- one User Assigned Managed Identity;
+- one runtime User Assigned Managed Identity for Azure Table and Key Vault;
+- one separate User Assigned Managed Identity used only for private ACR image pull;
 - one Azure Storage account and one dedicated Table for ETS event persistence;
 - one dedicated Azure Key Vault and a non-exportable RSA signing key;
-- Key Vault Crypto User RBAC for the ETS managed identity;
+- Key Vault Crypto User RBAC for the ETS runtime identity;
 - Storage Table Data Contributor RBAC scoped to the dedicated evidence table;
+- a registry-scoped pull role for the image-pull identity;
 - App Configuration support resources;
 - Application Insights support resources;
 - startup, liveness, and readiness probes against `/version`, `/health`, and
@@ -37,8 +39,29 @@ The deployment selects the hosted runtime using:
 - an explicit JWKS URL, issuer, and audience;
 - Managed Identity-backed Azure Table and Key Vault configuration.
 
-No local signing private key, storage account key, SAS token, or bearer token is
-placed in the template or its outputs.
+No local signing private key, storage account key, SAS token, registry password,
+or bearer token is placed in the template or its outputs.
+
+## Private image-pull boundary
+
+The pilot requires an existing private Azure Container Registry in the same Azure
+subscription as the qualification deployment. The deployment owner supplies the
+registry name and resource group plus the correct built-in pull-role ID for the
+registry permissions mode:
+
+- `AcrPull` (`7f951dda-4ed3-4680-a7ca-43fe172d538d`) for RBAC-only registries;
+- `Container Registry Repository Reader`
+  (`b93aa761-3e63-49ed-ac28-beffa264f7ac`) for ABAC-enabled registries.
+
+The ACR must allow ARM-audience tokens for managed-identity image pull. The
+Container App binds its registry configuration to the dedicated image-pull
+identity rather than the ETS runtime identity. This prevents a qualification
+client from inheriting Azure Table or Key Vault privileges merely to pull the Q1
+image.
+
+For live qualification, `containerImage` must identify the immutable approved image
+by digest (`...@sha256:<64 hex>`), not by a mutable tag. The Q1 workflow validates
+that invariant against the configured registry before deployment.
 
 ## Signing boundary
 
@@ -71,7 +94,7 @@ The Storage account:
 - disables Shared Key authorization;
 - defaults to OAuth authentication;
 - requires HTTPS and TLS 1.2;
-- grants the ETS managed identity Storage Table Data Contributor only at the
+- grants the ETS runtime identity Storage Table Data Contributor only at the
   dedicated table scope.
 
 The Azure Table event store retains validated event JSON, event hashes, leaf
@@ -83,7 +106,10 @@ into canonical ETS storage.
 A deployment owner supplies:
 
 - `environmentName` — a non-customer naming seed;
-- `containerImage` — the ETS hosted OCI image;
+- `containerImage` — immutable private-ACR image reference by digest;
+- `containerRegistryName` — existing ACR name;
+- `containerRegistryResourceGroup` — resource group containing that ACR;
+- `containerRegistryPullRoleDefinitionId` — one of the two bounded pull roles above;
 - `logId` — the authoritative hosted ETS log ID;
 - `authJwksUrl` — production JWKS endpoint;
 - `authIssuer` — expected token issuer;
