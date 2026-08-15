@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY ets ./ets
+COPY scripts/qualify_hosted_azure_live.py ./scripts/qualify_hosted_azure_live.py
 
 RUN python -m pip install --no-cache-dir -e ".[hosted]"
 
