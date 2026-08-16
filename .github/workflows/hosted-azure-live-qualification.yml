@@ -42,7 +42,7 @@ on:
         required: true
         type: string
       auth_jwks_url:
-        description: Production JWKS endpoint for the qualification client identity
+        description: Production JWKS endpoint for the qualification job identity
         required: true
         type: string
       auth_issuer:
@@ -352,7 +352,7 @@ jobs:
             --only-show-errors
 
           client_json="$RUNNER_TEMP/q1-client-app.json"
-          az containerapp show \
+          az containerapp job show \
             --name "$client_name" \
             --resource-group "$RESOURCE_GROUP" \
             -o json > "$client_json"
@@ -403,68 +403,38 @@ jobs:
           CLIENT_NAME: ${{ steps.client.outputs.client_name }}
         run: |
           set -euo pipefail
-          command_line='python /app/scripts/qualify_hosted_azure_live.py pre --base-url "$ETS_Q1_BASE_URL" --run-id "$ETS_Q1_RUN_ID" --tenant-id "$ETS_Q1_TENANT_ID" --workspace-id "$ETS_Q1_WORKSPACE_ID"'
-          exec_log="$RUNNER_TEMP/q1-pre-exec.txt"
-          printf '%s\nexit\n' "$command_line" \
-            | az containerapp exec \
-                --name "$CLIENT_NAME" \
-                --resource-group "$RESOURCE_GROUP" \
-                --command /bin/sh \
-                > "$exec_log" 2>&1 || exec_status=$?
-
-          python - "$exec_log" "evidence/host-az-q1/pre-exec-diagnostic.txt" <<'PY'
-          import re
-          import sys
-          from pathlib import Path
-
-          source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
-          source = re.sub(
-              r"(?i)(authorization:\s*bearer\s+)[^\s]+",
-              r"\1***",
-              source,
-          )
-          source = re.sub(
-              r"\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b",
-              "***",
-              source,
-          )
-          source = re.sub(r"ETS_Q1_RESULT_B64=[A-Za-z0-9_=-]+", "ETS_Q1_RESULT_B64=***", source)
-          lines = source.splitlines()
-          Path(sys.argv[2]).write_text(
-              "\n".join(lines[-200:]) + ("\n" if lines else ""),
-              encoding="utf-8",
-          )
-          PY
-          if [ "${exec_status:-0}" -ne 0 ]; then
-            echo "Same-environment pre-restart client execution failed; sanitized diagnostics were retained." >&2
-            exit "$exec_status"
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+          execution="$(az containerapp job start --name "$CLIENT_NAME" --resource-group "$RESOURCE_GROUP" --query name -o tsv)"
+          test -n "$execution"
+          for _ in $(seq 1 60); do
+            status="$(az containerapp job execution show --name "$CLIENT_NAME" --resource-group "$RESOURCE_GROUP" --job-execution-name "$execution" --query properties.status -o tsv)"
+            case "$status" in
+              Succeeded) break ;;
+              Failed|Canceled) echo "Q1 pre-restart job execution ended with $status." >&2; exit 1 ;;
+            esac
+            sleep 5
+          done
+          if [ "${status:-}" != "Succeeded" ]; then
+            echo "Q1 pre-restart job execution did not complete successfully." >&2
+            exit 1
           fi
-
-          python - "$exec_log" \
-            evidence/host-az-q1/pre-restart.json \
-            "$RUNNER_TEMP/q1-state.b64" <<'PY'
-          import base64
-          import json
-          import re
-          import sys
+          exec_log="$RUNNER_TEMP/q1-pre-job.log"
+          az containerapp job logs show --name "$CLIENT_NAME" --resource-group "$RESOURCE_GROUP" --execution "$execution" --container q1-client --tail 200 > "$exec_log" 2>&1
+          python - "$exec_log" evidence/host-az-q1/pre-exec-diagnostic.txt evidence/host-az-q1/pre-restart.json "$RUNNER_TEMP/q1-state.b64" <<'PY'
+          import base64, json, re, sys
           from pathlib import Path
-
           source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          safe = re.sub(r"(?i)(authorization:\s*bearer\s+)[^\s]+", r"\1***", source)
+          safe = re.sub(r"\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b", "***", safe)
+          safe = re.sub(r"ETS_Q1_RESULT_B64=[A-Za-z0-9_=-]+", "ETS_Q1_RESULT_B64=***", safe)
+          Path(sys.argv[2]).write_text("\n".join(safe.splitlines()[-200:]) + "\n", encoding="utf-8")
           matches = re.findall(r"ETS_Q1_RESULT_B64=([A-Za-z0-9_=-]+)", source)
-          if not matches:
-              raise SystemExit("qualification client did not emit a pre-restart result marker")
-          result = json.loads(base64.urlsafe_b64decode(matches[-1]).decode("utf-8"))
-          if result.get("phase") != "pre":
-              raise SystemExit("qualification client emitted an unexpected phase")
-          Path(sys.argv[2]).write_text(
-              json.dumps(result, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
+          if not matches: raise SystemExit("qualification job did not emit a pre-restart result marker")
+          result = json.loads(base64.urlsafe_b64decode(matches[-1]).decode())
+          if result.get("phase") != "pre": raise SystemExit("qualification job emitted an unexpected phase")
+          Path(sys.argv[3]).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
           state = json.dumps(result["state"], separators=(",", ":"), sort_keys=True)
-          Path(sys.argv[3]).write_text(
-              base64.urlsafe_b64encode(state.encode("utf-8")).decode("ascii"),
-              encoding="ascii",
-          )
+          Path(sys.argv[4]).write_text(base64.urlsafe_b64encode(state.encode()).decode(), encoding="ascii")
           PY
           rm -f "$exec_log"
 
@@ -500,69 +470,46 @@ jobs:
             "$revision" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             > evidence/host-az-q1/restart.txt
 
-      - name: Re-read and reverify from same-environment client
+      - name: Re-read and reverify from same-environment job
         shell: bash
         env:
           RESOURCE_GROUP: ${{ inputs.resource_group }}
           CLIENT_NAME: ${{ steps.client.outputs.client_name }}
+          BASE_URL: ${{ steps.deploy.outputs.base_url }}
+          TENANT_ID: ${{ inputs.tenant_id }}
+          WORKSPACE_ID: ${{ inputs.workspace_id }}
         run: |
           set -euo pipefail
           state_b64="$(cat "$RUNNER_TEMP/q1-state.b64")"
-          command_line="python /app/scripts/qualify_hosted_azure_live.py post --base-url \"\$ETS_Q1_BASE_URL\" --run-id \"\$ETS_Q1_RUN_ID\" --tenant-id \"\$ETS_Q1_TENANT_ID\" --workspace-id \"\$ETS_Q1_WORKSPACE_ID\" --state-b64 '$state_b64' --wait-seconds 300"
-          exec_log="$RUNNER_TEMP/q1-post-exec.txt"
-          printf '%s\nexit\n' "$command_line" \
-            | az containerapp exec \
-                --name "$CLIENT_NAME" \
-                --resource-group "$RESOURCE_GROUP" \
-                --command /bin/sh \
-                > "$exec_log" 2>&1 || exec_status=$?
-
-          python - "$exec_log" "evidence/host-az-q1/post-exec-diagnostic.txt" <<'PY'
-          import re
-          import sys
-          from pathlib import Path
-
-          source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
-          source = re.sub(
-              r"(?i)(authorization:\s*bearer\s+)[^\s]+",
-              r"\1***",
-              source,
-          )
-          source = re.sub(
-              r"\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b",
-              "***",
-              source,
-          )
-          source = re.sub(r"ETS_Q1_RESULT_B64=[A-Za-z0-9_=-]+", "ETS_Q1_RESULT_B64=***", source)
-          lines = source.splitlines()
-          Path(sys.argv[2]).write_text(
-              "\n".join(lines[-200:]) + ("\n" if lines else ""),
-              encoding="utf-8",
-          )
-          PY
-          if [ "${exec_status:-0}" -ne 0 ]; then
-            echo "Same-environment post-restart client execution failed; sanitized diagnostics were retained." >&2
-            exit "$exec_status"
+          execution="$(az containerapp job start --name "$CLIENT_NAME" --resource-group "$RESOURCE_GROUP" --args post --base-url "$BASE_URL" --run-id "$GITHUB_RUN_ID" --tenant-id "$TENANT_ID" --workspace-id "$WORKSPACE_ID" --state-b64 "$state_b64" --wait-seconds 300 --query name -o tsv)"
+          test -n "$execution"
+          for _ in $(seq 1 72); do
+            status="$(az containerapp job execution show --name "$CLIENT_NAME" --resource-group "$RESOURCE_GROUP" --job-execution-name "$execution" --query properties.status -o tsv)"
+            case "$status" in
+              Succeeded) break ;;
+              Failed|Canceled) echo "Q1 post-restart job execution ended with $status." >&2; exit 1 ;;
+            esac
+            sleep 5
+          done
+          if [ "${status:-}" != "Succeeded" ]; then
+            echo "Q1 post-restart job execution did not complete successfully." >&2
+            exit 1
           fi
-
-          python - "$exec_log" evidence/host-az-q1/post-restart.json <<'PY'
-          import base64
-          import json
-          import re
-          import sys
+          exec_log="$RUNNER_TEMP/q1-post-job.log"
+          az containerapp job logs show --name "$CLIENT_NAME" --resource-group "$RESOURCE_GROUP" --execution "$execution" --container q1-client --tail 200 > "$exec_log" 2>&1
+          python - "$exec_log" evidence/host-az-q1/post-exec-diagnostic.txt evidence/host-az-q1/post-restart.json <<'PY'
+          import base64, json, re, sys
           from pathlib import Path
-
           source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          safe = re.sub(r"(?i)(authorization:\s*bearer\s+)[^\s]+", r"\1***", source)
+          safe = re.sub(r"\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b", "***", safe)
+          safe = re.sub(r"ETS_Q1_RESULT_B64=[A-Za-z0-9_=-]+", "ETS_Q1_RESULT_B64=***", safe)
+          Path(sys.argv[2]).write_text("\n".join(safe.splitlines()[-200:]) + "\n", encoding="utf-8")
           matches = re.findall(r"ETS_Q1_RESULT_B64=([A-Za-z0-9_=-]+)", source)
-          if not matches:
-              raise SystemExit("qualification client did not emit a post-restart result marker")
-          result = json.loads(base64.urlsafe_b64decode(matches[-1]).decode("utf-8"))
-          if result.get("phase") != "post":
-              raise SystemExit("qualification client emitted an unexpected phase")
-          Path(sys.argv[2]).write_text(
-              json.dumps(result, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
+          if not matches: raise SystemExit("qualification job did not emit a post-restart result marker")
+          result = json.loads(base64.urlsafe_b64decode(matches[-1]).decode())
+          if result.get("phase") != "post": raise SystemExit("qualification job emitted an unexpected phase")
+          Path(sys.argv[3]).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
           PY
           rm -f "$exec_log" "$RUNNER_TEMP/q1-state.b64"
 
@@ -618,7 +565,7 @@ jobs:
           CLIENT_DEPLOYMENT: ${{ steps.client.outputs.client_deployment }}
         run: |
           rm -f "$RUNNER_TEMP/q1-client-parameters.json" "$RUNNER_TEMP/q1-client-app.json"
-          az containerapp delete \
+          az containerapp job delete \
             --name "$CLIENT_NAME" \
             --resource-group "$RESOURCE_GROUP" \
             --yes \
