@@ -55,11 +55,11 @@ from ets.core import (
     normalize_artifact_metadata,
     verify_anchor_export,
 )
-from ets.core.azure_table_store import create_azure_table_event_store
 from ets.core.artifact_registry import (
     DurableArtifactRegistry,
     load_artifact_registry,
 )
+from ets.core.azure_table_store import create_azure_table_event_store
 from ets.core.merkle import merkle_root
 from ets.core.proofs import (
     generate_consistency_proof,
