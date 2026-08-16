@@ -96,6 +96,8 @@ jobs:
           grep -q 'registryPullIdentityResourceId' "$client"
           grep -q "triggerType: 'Manual'" "$client"
           grep -q "manualTriggerConfig:" "$client"
+          grep -q "identitySettings:" "$client"
+          grep -q "lifecycle: 'None'" "$client"
           grep -q "Microsoft.App/jobs@" "$client"
           grep -q 'registries:' "$client"
           grep -q 'identity: registryPullIdentityResourceId' "$client"
