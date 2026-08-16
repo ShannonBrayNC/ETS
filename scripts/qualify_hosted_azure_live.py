@@ -84,7 +84,7 @@ def _request_json(
     except HTTPError as exc:
         status = exc.code
         body = exc.read()
-    except URLError as exc:
+    except (TimeoutError, URLError) as exc:
         raise RuntimeError(f"qualification endpoint was unreachable: {url}") from exc
 
     decoded = _decode_json(body)
