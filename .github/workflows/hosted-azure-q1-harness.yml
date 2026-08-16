@@ -70,12 +70,18 @@ jobs:
           grep -q 'normalized_identities' "$live"
           grep -q 'casefold()' "$live"
           grep -q 'infra/azure/ets-q1-client.bicep' "$live"
-          grep -q 'az containerapp exec' "$live"
+          grep -q 'az containerapp job start' "$live"
+          grep -q 'az containerapp job execution show' "$live"
+          grep -q 'az containerapp job logs show' "$live"
+          if grep -q 'az containerapp exec' "$live"; then
+            echo 'Q1 must not use an interactive Container Apps exec session.' >&2
+            exit 1
+          fi
           grep -q 'pre-exec-diagnostic.txt' "$live"
           grep -q 'post-exec-diagnostic.txt' "$live"
           grep -q 'authorization:\\s\*bearer' "$live"
           grep -q 'ETS_Q1_RESULT_B64=\*\*\*' "$live"
-          grep -q 'az containerapp delete' "$live"
+          grep -q 'az containerapp job delete' "$live"
           grep -q 'az deployment group delete' "$live"
           grep -q 'runtime_identity_attached_to_qualification_client=false' "$live"
           grep -q 'az containerapp revision restart' "$live"
@@ -88,8 +94,9 @@ jobs:
           grep -q '@secure()' "$client"
           grep -q "secretRef: 'q1-token'" "$client"
           grep -q 'registryPullIdentityResourceId' "$client"
-          grep -q 'identitySettings:' "$client"
-          grep -q "lifecycle: 'None'" "$client"
+          grep -q "triggerType: 'Manual'" "$client"
+          grep -q "manualTriggerConfig:" "$client"
+          grep -q "Microsoft.App/jobs@" "$client"
           grep -q 'registries:' "$client"
           grep -q 'identity: registryPullIdentityResourceId' "$client"
           if grep -q 'ingress:' "$client"; then
