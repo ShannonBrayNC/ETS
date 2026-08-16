@@ -65,6 +65,12 @@ resource qualificationClient 'Microsoft.App/jobs@2025-01-01' = {
       }
       replicaRetryLimit: 0
       replicaTimeout: 600
+      identitySettings: [
+        {
+          identity: registryPullIdentityResourceId
+          lifecycle: 'None'
+        }
+      ]
       registries: [
         {
           server: registryServer
