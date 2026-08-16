@@ -27,6 +27,8 @@ from ets.api.authorization import (
     parse_role_claim,
 )
 
+AppScopeMap = dict[str, tuple[str, str]]
+
 
 class AuthError(PermissionError):
     """Raised when API authentication fails."""
@@ -139,12 +141,16 @@ class ProductionJWKSAuthPolicy(AuthPolicy):
         *,
         issuer: str | None = None,
         audience: str | None = None,
+        tenant_id: str | None = None,
+        app_scope_map: AppScopeMap | None = None,
         jwks_loader: Callable[[], dict[str, Any]] | None = None,
         cache_ttl_seconds: int = 300,
     ) -> None:
         self._keys = _keys_from_jwks(jwks)
         self._issuer = issuer
         self._audience = audience
+        self._tenant_id = tenant_id
+        self._app_scope_map = _normalize_app_scope_map(app_scope_map)
         self._jwks_loader = jwks_loader
         self._cache_ttl_seconds = cache_ttl_seconds
         self._cache_expires_at = int(time.time()) + cache_ttl_seconds
@@ -156,8 +162,16 @@ class ProductionJWKSAuthPolicy(AuthPolicy):
         *,
         issuer: str | None = None,
         audience: str | None = None,
+        tenant_id: str | None = None,
+        app_scope_map: AppScopeMap | None = None,
     ) -> ProductionJWKSAuthPolicy:
-        return cls(cast(dict[str, Any], json.loads(jwks_json)), issuer=issuer, audience=audience)
+        return cls(
+            cast(dict[str, Any], json.loads(jwks_json)),
+            issuer=issuer,
+            audience=audience,
+            tenant_id=tenant_id,
+            app_scope_map=app_scope_map,
+        )
 
     @classmethod
     def from_url(
@@ -166,11 +180,20 @@ class ProductionJWKSAuthPolicy(AuthPolicy):
         *,
         issuer: str | None = None,
         audience: str | None = None,
+        tenant_id: str | None = None,
+        app_scope_map: AppScopeMap | None = None,
     ) -> ProductionJWKSAuthPolicy:
         def load_jwks() -> dict[str, Any]:
             return _load_jwks_from_url(jwks_url)
 
-        return cls(load_jwks(), issuer=issuer, audience=audience, jwks_loader=load_jwks)
+        return cls(
+            load_jwks(),
+            issuer=issuer,
+            audience=audience,
+            tenant_id=tenant_id,
+            app_scope_map=app_scope_map,
+            jwks_loader=load_jwks,
+        )
 
     def authenticate(self, request: Request) -> AuthContext:
         _reject_production_scope_headers(request)
@@ -180,7 +203,10 @@ class ProductionJWKSAuthPolicy(AuthPolicy):
             raise AuthError("missing bearer token")
 
         claims = self._decode_token(token)
-        return _context_from_production_claims(claims)
+        return _context_from_production_claims(
+            claims,
+            app_scope_map=self._app_scope_map,
+        )
 
     def _decode_token(self, token: str) -> dict[str, Any]:
         parts = token.split(".")
@@ -202,7 +228,12 @@ class ProductionJWKSAuthPolicy(AuthPolicy):
             raise AuthError("invalid bearer token signature") from exc
 
         claims = _decode_json_object(parts[1], "bearer token claims")
-        _validate_registered_claims(claims, issuer=self._issuer, audience=self._audience)
+        _validate_registered_claims(
+            claims,
+            issuer=self._issuer,
+            audience=self._audience,
+            tenant_id=self._tenant_id,
+        )
         return claims
 
     def _trusted_key(self, kid: str) -> dict[str, Any]:
@@ -279,19 +310,69 @@ def _reject_production_scope_headers(request: Request) -> None:
         raise AuthError("production tenant/workspace scope must come from bearer token claims")
 
 
-def _context_from_production_claims(claims: dict[str, Any]) -> AuthContext:
+def _context_from_production_claims(
+    claims: dict[str, Any],
+    *,
+    app_scope_map: AppScopeMap | None = None,
+) -> AuthContext:
     try:
         roles = parse_role_claim(claims.get("roles"))
     except AuthRoleError as exc:
         raise AuthError(str(exc)) from exc
+
+    tenant_id = _optional_str(claims.get("tenant_id"), "tenant_id")
+    workspace_id = _optional_str(claims.get("workspace_id"), "workspace_id")
+    if (tenant_id is None) != (workspace_id is None):
+        raise AuthError("bearer token must provide tenant_id and workspace_id claims together")
+    if tenant_id is None or workspace_id is None:
+        tenant_id, workspace_id = _mapped_app_scope(claims, app_scope_map)
+
     return AuthContext(
         subject=_optional_str(claims.get("sub"), "sub"),
-        tenant_id=_required_claim_str(claims.get("tenant_id"), "tenant_id"),
-        workspace_id=_required_claim_str(claims.get("workspace_id"), "workspace_id"),
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
         roles=roles,
         capabilities=capabilities_for_roles(roles),
         authorization_profile="production",
     )
+
+
+def _mapped_app_scope(
+    claims: dict[str, Any],
+    app_scope_map: AppScopeMap | None,
+) -> tuple[str, str]:
+    if not app_scope_map:
+        raise AuthError("bearer token tenant_id and workspace_id claims are required")
+    if claims.get("idtyp") != "app":
+        raise AuthError("server-mapped ETS scope requires an app-only bearer token")
+
+    azp = _optional_str(claims.get("azp"), "azp")
+    appid = _optional_str(claims.get("appid"), "appid")
+    if azp is not None and appid is not None and azp.casefold() != appid.casefold():
+        raise AuthError("bearer token application identity claims disagree")
+    client_id = azp or appid
+    if client_id is None:
+        raise AuthError("app-only bearer token is missing azp/appid identity")
+    scope = app_scope_map.get(client_id.casefold())
+    if scope is None:
+        raise AuthError("bearer token application is not authorized for an ETS scope")
+    return scope
+
+
+def _normalize_app_scope_map(app_scope_map: AppScopeMap | None) -> AppScopeMap:
+    if app_scope_map is None:
+        return {}
+    normalized: AppScopeMap = {}
+    for client_id, scope in app_scope_map.items():
+        if not isinstance(client_id, str) or not client_id.strip():
+            raise RuntimeError("production app scope map requires non-empty client IDs")
+        if not isinstance(scope, tuple) or len(scope) != 2:
+            raise RuntimeError("production app scope map values must be tenant/workspace tuples")
+        tenant_id, workspace_id = scope
+        if not tenant_id or not workspace_id:
+            raise RuntimeError("production app scope map requires non-empty tenant/workspace values")
+        normalized[client_id.strip().casefold()] = (tenant_id, workspace_id)
+    return normalized
 
 
 def _b64encode(value: bytes) -> str:
@@ -328,12 +409,6 @@ def _optional_str(value: Any, field_name: str) -> str | None:
     return value
 
 
-def _required_claim_str(value: Any, field_name: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise AuthError(f"bearer token {field_name} claim must be a non-empty string")
-    return value
-
-
 def _required_str(value: Any, field_name: str) -> str:
     if not isinstance(value, str) or not value:
         raise AuthError(f"bearer token {field_name} must be a non-empty string")
@@ -345,6 +420,7 @@ def _validate_registered_claims(
     *,
     issuer: str | None,
     audience: str | None,
+    tenant_id: str | None = None,
 ) -> None:
     now = int(time.time())
     exp = claims.get("exp")
@@ -357,6 +433,8 @@ def _validate_registered_claims(
         raise AuthError("bearer token issuer mismatch")
     if audience is not None and not _audience_matches(claims.get("aud"), audience):
         raise AuthError("bearer token audience mismatch")
+    if tenant_id is not None and claims.get("tid") != tenant_id:
+        raise AuthError("bearer token tenant mismatch")
 
 
 def _audience_matches(value: Any, expected: str) -> bool:
