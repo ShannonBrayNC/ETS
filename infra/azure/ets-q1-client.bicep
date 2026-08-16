@@ -110,16 +110,16 @@ resource qualificationClient 'Microsoft.App/jobs@2025-01-01' = {
               secretRef: 'q1-token'
             }
           ]
+          probes: []
+          volumeMounts: []
           resources: {
             cpu: json('0.25')
             memory: '0.5Gi'
           }
         }
       ]
-      scale: {
-        minReplicas: 1
-        maxReplicas: 1
-      }
+      initContainers: []
+      volumes: []
     }
   }
 }
