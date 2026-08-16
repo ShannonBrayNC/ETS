@@ -1,7 +1,7 @@
 @description('Azure region used by the existing qualification Container Apps environment.')
 param location string
 
-@description('Ephemeral qualification Container App name.')
+@description('Ephemeral qualification Container Apps Job name.')
 @minLength(2)
 @maxLength(32)
 param clientName string
@@ -46,7 +46,7 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2026-01-01' exist
   name: managedEnvironmentName
 }
 
-resource qualificationClient 'Microsoft.App/containerApps@2025-01-01' = {
+resource qualificationClient 'Microsoft.App/jobs@2025-01-01' = {
   name: clientName
   location: location
   identity: {
@@ -58,13 +58,13 @@ resource qualificationClient 'Microsoft.App/containerApps@2025-01-01' = {
   properties: {
     environmentId: managedEnvironment.id
     configuration: {
-      activeRevisionsMode: 'Single'
-      identitySettings: [
-        {
-          identity: registryPullIdentityResourceId
-          lifecycle: 'None'
-        }
-      ]
+      triggerType: 'Manual'
+      manualTriggerConfig: {
+        parallelism: 1
+        replicaCompletionCount: 1
+      }
+      replicaRetryLimit: 0
+      replicaTimeout: 600
       registries: [
         {
           server: registryServer
@@ -84,32 +84,24 @@ resource qualificationClient 'Microsoft.App/containerApps@2025-01-01' = {
           name: 'q1-client'
           image: containerImage
           command: [
-            '/bin/sh'
+            'python'
+            '/app/scripts/qualify_hosted_azure_live.py'
           ]
           args: [
-            '-c'
-            'sleep 3600'
+            'pre'
+            '--base-url'
+            baseUrl
+            '--run-id'
+            runId
+            '--tenant-id'
+            tenantId
+            '--workspace-id'
+            workspaceId
           ]
           env: [
             {
               name: 'ETS_Q1_BEARER_TOKEN'
               secretRef: 'q1-token'
-            }
-            {
-              name: 'ETS_Q1_BASE_URL'
-              value: baseUrl
-            }
-            {
-              name: 'ETS_Q1_RUN_ID'
-              value: runId
-            }
-            {
-              name: 'ETS_Q1_TENANT_ID'
-              value: tenantId
-            }
-            {
-              name: 'ETS_Q1_WORKSPACE_ID'
-              value: workspaceId
             }
           ]
           resources: {
