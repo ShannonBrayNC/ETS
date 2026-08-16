@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from ets.core import EventNotFoundError, EventStore, LogEntry
-from ets.runtime.sync_queue import SyncConflictError, SyncQueue, SyncRecord
+from ets.runtime.sync_queue import SyncQueue, SyncRecord
 
 
 class CoreRelayError(RuntimeError):
@@ -110,15 +110,6 @@ class GatewayCoreRelayWorker:
                     record.idempotency_key,
                     "ETS Core relay failed a terminal integrity or authorization check",
                 )
-            except SyncConflictError as exc:
-                terminal += 1
-                self._sync_queue.mark_terminal(
-                    record.idempotency_key,
-                    "ETS Core acknowledgement conflicted with durable synchronization state",
-                )
-                raise CoreRelayTerminalError(
-                    "durable Core acknowledgement conflict"
-                ) from exc
             else:
                 synchronized += 1
 
