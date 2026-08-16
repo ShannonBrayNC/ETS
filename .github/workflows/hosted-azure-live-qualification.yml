@@ -410,7 +410,35 @@ jobs:
                 --name "$CLIENT_NAME" \
                 --resource-group "$RESOURCE_GROUP" \
                 --command /bin/sh \
-                > "$exec_log" 2>&1
+                > "$exec_log" 2>&1 || exec_status=$?
+
+          python - "$exec_log" "evidence/host-az-q1/pre-exec-diagnostic.txt" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          source = re.sub(
+              r"(?i)(authorization:\s*bearer\s+)[^\s]+",
+              r"\1***",
+              source,
+          )
+          source = re.sub(
+              r"\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b",
+              "***",
+              source,
+          )
+          source = re.sub(r"ETS_Q1_RESULT_B64=[A-Za-z0-9_=-]+", "ETS_Q1_RESULT_B64=***", source)
+          lines = source.splitlines()
+          Path(sys.argv[2]).write_text(
+              "\n".join(lines[-200:]) + ("\n" if lines else ""),
+              encoding="utf-8",
+          )
+          PY
+          if [ "${exec_status:-0}" -ne 0 ]; then
+            echo "Same-environment pre-restart client execution failed; sanitized diagnostics were retained." >&2
+            exit "$exec_status"
+          fi
 
           python - "$exec_log" \
             evidence/host-az-q1/pre-restart.json \
@@ -487,7 +515,35 @@ jobs:
                 --name "$CLIENT_NAME" \
                 --resource-group "$RESOURCE_GROUP" \
                 --command /bin/sh \
-                > "$exec_log" 2>&1
+                > "$exec_log" 2>&1 || exec_status=$?
+
+          python - "$exec_log" "evidence/host-az-q1/post-exec-diagnostic.txt" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          source = re.sub(
+              r"(?i)(authorization:\s*bearer\s+)[^\s]+",
+              r"\1***",
+              source,
+          )
+          source = re.sub(
+              r"\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b",
+              "***",
+              source,
+          )
+          source = re.sub(r"ETS_Q1_RESULT_B64=[A-Za-z0-9_=-]+", "ETS_Q1_RESULT_B64=***", source)
+          lines = source.splitlines()
+          Path(sys.argv[2]).write_text(
+              "\n".join(lines[-200:]) + ("\n" if lines else ""),
+              encoding="utf-8",
+          )
+          PY
+          if [ "${exec_status:-0}" -ne 0 ]; then
+            echo "Same-environment post-restart client execution failed; sanitized diagnostics were retained." >&2
+            exit "$exec_status"
+          fi
 
           python - "$exec_log" evidence/host-az-q1/post-restart.json <<'PY'
           import base64
