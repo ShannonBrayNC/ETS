@@ -229,8 +229,7 @@ def _persist_post(evidence_dir: Path, result: JsonObject) -> None:
 
 
 def run_pre(args: argparse.Namespace, token: str) -> JsonObject:
-    _, health = _request_json("GET", _endpoint(args.base_url, "/health"))
-    ready = _assert_ready(args.base_url)
+    health, ready = _wait_for_ready(args.base_url, args.wait_seconds)
     _, version = _request_json("GET", _endpoint(args.base_url, "/version"))
 
     event = _synthetic_event(args.run_id, args.tenant_id, args.workspace_id)
