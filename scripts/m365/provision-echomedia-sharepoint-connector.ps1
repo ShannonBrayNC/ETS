@@ -10,7 +10,7 @@ param(
     [string]$SharePointHostname,
 
     [Parameter(Mandatory = $true)]
-    [ValidatePattern('^/')]
+    [ValidatePattern('^/(sites|teams)/[^/]+')]
     [string]$SitePath,
 
     [ValidateSet('read', 'write')]
@@ -50,8 +50,7 @@ function Get-ServicePrincipalByAppId {
     param([Parameter(Mandatory = $true)][string]$AppId)
 
     $filter = [uri]::EscapeDataString("appId eq '$AppId'")
-    $uri = "https://graph.microsoft.com/v1.0/servicePrincipals?`$filter=$filter&" +
-        '`$select=id,appId,displayName,appRoles'
+    $uri = "https://graph.microsoft.com/v1.0/servicePrincipals?`$filter=$filter&`$select=id,appId,displayName,appRoles"
     $response = Invoke-GraphGet -Uri $uri
     $matches = @($response.value)
     if ($matches.Count -ne 1) {
@@ -98,8 +97,13 @@ function Get-PermissionApplicationIds {
 
 Assert-Command -Name 'az'
 Assert-Command -Name 'Connect-MgGraph'
+Assert-Command -Name 'Disconnect-MgGraph'
 Assert-Command -Name 'Get-MgContext'
 Assert-Command -Name 'Invoke-MgGraphRequest'
+
+if ($SharePointHostname -notmatch '\.sharepoint\.com$') {
+    throw 'SharePointHostname must be a SharePoint Online hostname ending in .sharepoint.com.'
+}
 
 $azureAccount = az account show --output json | ConvertFrom-Json
 if (-not $azureAccount.tenantId) {
@@ -129,8 +133,7 @@ try {
     }
 
     $organization = Invoke-GraphGet -Uri (
-        'https://graph.microsoft.com/v1.0/organization?' +
-        '`$select=id,displayName,verifiedDomains'
+        "https://graph.microsoft.com/v1.0/organization?`$select=id,displayName,verifiedDomains"
     )
     $organizations = @($organization.value)
     if ($organizations.Count -ne 1) {
@@ -161,7 +164,7 @@ try {
     $managedIdentitySp = Get-ManagedIdentityServicePrincipal -ClientId $identity.clientId
     $assignmentsUri = (
         "https://graph.microsoft.com/v1.0/servicePrincipals/$($managedIdentitySp.id)/" +
-        'appRoleAssignments?`$select=id,appRoleId,resourceId,principalId'
+        "appRoleAssignments?`$select=id,appRoleId,resourceId,principalId"
     )
     $assignments = Invoke-GraphGet -Uri $assignmentsUri
     $existingRole = @($assignments.value | Where-Object {
@@ -189,7 +192,7 @@ try {
 
     $siteUri = (
         "https://graph.microsoft.com/v1.0/sites/$SharePointHostname`:$SitePath?" +
-        '`$select=id,displayName,webUrl'
+        "`$select=id,displayName,webUrl"
     )
     $site = Invoke-GraphGet -Uri $siteUri
     if (-not $site.id -or -not $site.webUrl) {
@@ -198,7 +201,7 @@ try {
 
     $permissions = Invoke-GraphGet -Uri (
         "https://graph.microsoft.com/v1.0/sites/$($site.id)/permissions?" +
-        '`$select=id,roles,grantedToIdentities,grantedToIdentitiesV2'
+        "`$select=id,roles,grantedToIdentities,grantedToIdentitiesV2"
     )
     $siteGrants = @($permissions.value | Where-Object {
         @(Get-PermissionApplicationIds -Permission $_) -contains $identity.clientId
