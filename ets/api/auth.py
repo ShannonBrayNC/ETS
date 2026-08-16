@@ -370,7 +370,9 @@ def _normalize_app_scope_map(app_scope_map: AppScopeMap | None) -> AppScopeMap:
             raise RuntimeError("production app scope map values must be tenant/workspace tuples")
         tenant_id, workspace_id = scope
         if not tenant_id or not workspace_id:
-            raise RuntimeError("production app scope map requires non-empty tenant/workspace values")
+            raise RuntimeError(
+                "production app scope map requires non-empty tenant/workspace values"
+            )
         normalized[client_id.strip().casefold()] = (tenant_id, workspace_id)
     return normalized
 
