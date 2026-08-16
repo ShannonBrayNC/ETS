@@ -1,0 +1,118 @@
+name: Hosted Azure Runtime Diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      resource_group:
+        description: Resource group containing the hosted ETS Container App
+        required: true
+        type: string
+      container_app_name:
+        description: Hosted ETS Container App name
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: hosted-azure-runtime-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    name: Capture sanitized hosted runtime diagnostics
+    runs-on: ubuntu-latest
+    environment: ets-azure-q1
+    timeout-minutes: 15
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      RESOURCE_GROUP: ${{ inputs.resource_group }}
+      APP_NAME: ${{ inputs.container_app_name }}
+
+    steps:
+      - name: Check out diagnostic source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Azure login with workload identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture bounded runtime diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/host-az-diagnostics raw
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+          az containerapp show \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query '{name:name,location:location,provisioningState:properties.provisioningState,latestRevisionName:properties.latestRevisionName,latestReadyRevisionName:properties.latestReadyRevisionName,ingress:properties.configuration.ingress,scale:properties.template.scale}' \
+            -o json > evidence/host-az-diagnostics/app.json
+
+          az containerapp revision list \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query '[].{name:name,active:properties.active,healthState:properties.healthState,runningState:properties.runningState,provisioningState:properties.provisioningState,replicas:properties.replicas,createdTime:properties.createdTime}' \
+            -o json > evidence/host-az-diagnostics/revisions.json
+
+          latest_revision="$(az containerapp show \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.latestRevisionName -o tsv)"
+          test -n "$latest_revision"
+          printf 'resource_group=%s\ncontainer_app=%s\nrevision=%s\nsource_sha=%s\nworkflow_run_id=%s\n' \
+            "$RESOURCE_GROUP" "$APP_NAME" "$latest_revision" "$GITHUB_SHA" "$GITHUB_RUN_ID" \
+            > evidence/host-az-diagnostics/manifest.txt
+
+          az containerapp logs show \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --type system \
+            --tail 200 > raw/system.log 2>&1 || true
+
+          az containerapp logs show \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --revision "$latest_revision" \
+            --container ets-api \
+            --type console \
+            --tail 200 > raw/console.log 2>&1 || true
+
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          patterns = (
+              (re.compile(r'(?i)(authorization:\s*bearer\s+)[^\s]+'), r'\1***'),
+              (re.compile(r'\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b'), '***'),
+              (re.compile(r'(?i)((?:token|secret|password|client_secret|api[_-]?key)\s*[=:]\s*)[^\s,;]+'), r'\1***'),
+          )
+          for name in ('system', 'console'):
+              source = Path(f'raw/{name}.log').read_text(encoding='utf-8', errors='replace')
+              safe = source
+              for pattern, replacement in patterns:
+                  safe = pattern.sub(replacement, safe)
+              lines = safe.splitlines()[-200:]
+              Path(f'evidence/host-az-diagnostics/{name}.log').write_text(
+                  '\n'.join(lines) + ('\n' if lines else ''),
+                  encoding='utf-8',
+              )
+          PY
+          rm -rf raw
+
+      - name: Upload sanitized diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-az-runtime-diagnostics-${{ github.run_id }}
+          path: evidence/host-az-diagnostics
+          if-no-files-found: error
+          retention-days: 14
