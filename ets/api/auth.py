@@ -93,6 +93,7 @@ class ProductionJWTAuthPolicy(AuthPolicy):
         self._issuer = issuer
 
     def authenticate(self, request: Request) -> AuthContext:
+        _reject_production_scope_headers(request)
         authorization = request.headers.get("Authorization", "")
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() != "bearer" or not token:
@@ -172,6 +173,7 @@ class ProductionJWKSAuthPolicy(AuthPolicy):
         return cls(load_jwks(), issuer=issuer, audience=audience, jwks_loader=load_jwks)
 
     def authenticate(self, request: Request) -> AuthContext:
+        _reject_production_scope_headers(request)
         authorization = request.headers.get("Authorization", "")
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() != "bearer" or not token:
@@ -267,6 +269,16 @@ def rsa_public_jwk(public_key: rsa.RSAPublicKey, *, kid: str) -> dict[str, str]:
     }
 
 
+def _reject_production_scope_headers(request: Request) -> None:
+    """Require production tenant/workspace scope to come only from authenticated claims."""
+
+    if (
+        request.headers.get("X-ETS-Tenant") is not None
+        or request.headers.get("X-ETS-Workspace") is not None
+    ):
+        raise AuthError("production tenant/workspace scope must come from bearer token claims")
+
+
 def _context_from_production_claims(claims: dict[str, Any]) -> AuthContext:
     try:
         roles = parse_role_claim(claims.get("roles"))
@@ -274,8 +286,8 @@ def _context_from_production_claims(claims: dict[str, Any]) -> AuthContext:
         raise AuthError(str(exc)) from exc
     return AuthContext(
         subject=_optional_str(claims.get("sub"), "sub"),
-        tenant_id=_optional_str(claims.get("tenant_id"), "tenant_id"),
-        workspace_id=_optional_str(claims.get("workspace_id"), "workspace_id"),
+        tenant_id=_required_claim_str(claims.get("tenant_id"), "tenant_id"),
+        workspace_id=_required_claim_str(claims.get("workspace_id"), "workspace_id"),
         roles=roles,
         capabilities=capabilities_for_roles(roles),
         authorization_profile="production",
@@ -311,6 +323,12 @@ def _decode_json_object(value: str, label: str) -> dict[str, Any]:
 def _optional_str(value: Any, field_name: str) -> str | None:
     if value is None:
         return None
+    if not isinstance(value, str) or not value:
+        raise AuthError(f"bearer token {field_name} claim must be a non-empty string")
+    return value
+
+
+def _required_claim_str(value: Any, field_name: str) -> str:
     if not isinstance(value, str) or not value:
         raise AuthError(f"bearer token {field_name} claim must be a non-empty string")
     return value
