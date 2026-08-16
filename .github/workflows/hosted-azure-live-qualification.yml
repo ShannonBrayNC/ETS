@@ -409,18 +409,14 @@ jobs:
           for _ in $(seq 1 60); do
             status="$(az containerapp job execution show --name "$CLIENT_NAME" --resource-group "$RESOURCE_GROUP" --job-execution-name "$execution" --query properties.status -o tsv)"
             case "$status" in
-              Succeeded) break ;;
-              Failed|Canceled) echo "Q1 pre-restart job execution ended with $status." >&2; exit 1 ;;
+              Succeeded|Failed|Canceled) break ;;
             esac
             sleep 5
           done
-          if [ "${status:-}" != "Succeeded" ]; then
-            echo "Q1 pre-restart job execution did not complete successfully." >&2
-            exit 1
-          fi
           exec_log="$RUNNER_TEMP/q1-pre-job.log"
-          az containerapp job logs show --name "$CLIENT_NAME" --resource-group "$RESOURCE_GROUP" --execution "$execution" --container q1-client --tail 200 > "$exec_log" 2>&1
-          python - "$exec_log" evidence/host-az-q1/pre-exec-diagnostic.txt evidence/host-az-q1/pre-restart.json "$RUNNER_TEMP/q1-state.b64" <<'PY'
+          az containerapp job logs show --name "$CLIENT_NAME" --resource-group "$RESOURCE_GROUP" --execution "$execution" --container q1-client --tail 200 > "$exec_log" 2>&1 || true
+          printf 'execution=%s\nstatus=%s\n' "$execution" "${status:-unknown}" > evidence/host-az-q1/pre-execution-status.txt
+          python - "$exec_log" evidence/host-az-q1/pre-exec-diagnostic.txt evidence/host-az-q1/pre-restart.json "$RUNNER_TEMP/q1-state.b64" "${status:-}" <<'PY'
           import base64, json, re, sys
           from pathlib import Path
           source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
@@ -428,6 +424,8 @@ jobs:
           safe = re.sub(r"\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b", "***", safe)
           safe = re.sub(r"ETS_Q1_RESULT_B64=[A-Za-z0-9_=-]+", "ETS_Q1_RESULT_B64=***", safe)
           Path(sys.argv[2]).write_text("\n".join(safe.splitlines()[-200:]) + "\n", encoding="utf-8")
+          if sys.argv[5] != "Succeeded":
+              raise SystemExit(f"Q1 pre-restart job execution ended with {sys.argv[5] or 'unknown'}")
           matches = re.findall(r"ETS_Q1_RESULT_B64=([A-Za-z0-9_=-]+)", source)
           if not matches: raise SystemExit("qualification job did not emit a pre-restart result marker")
           result = json.loads(base64.urlsafe_b64decode(matches[-1]).decode())
@@ -486,18 +484,14 @@ jobs:
           for _ in $(seq 1 72); do
             status="$(az containerapp job execution show --name "$CLIENT_NAME" --resource-group "$RESOURCE_GROUP" --job-execution-name "$execution" --query properties.status -o tsv)"
             case "$status" in
-              Succeeded) break ;;
-              Failed|Canceled) echo "Q1 post-restart job execution ended with $status." >&2; exit 1 ;;
+              Succeeded|Failed|Canceled) break ;;
             esac
             sleep 5
           done
-          if [ "${status:-}" != "Succeeded" ]; then
-            echo "Q1 post-restart job execution did not complete successfully." >&2
-            exit 1
-          fi
           exec_log="$RUNNER_TEMP/q1-post-job.log"
-          az containerapp job logs show --name "$CLIENT_NAME" --resource-group "$RESOURCE_GROUP" --execution "$execution" --container q1-client --tail 200 > "$exec_log" 2>&1
-          python - "$exec_log" evidence/host-az-q1/post-exec-diagnostic.txt evidence/host-az-q1/post-restart.json <<'PY'
+          az containerapp job logs show --name "$CLIENT_NAME" --resource-group "$RESOURCE_GROUP" --execution "$execution" --container q1-client --tail 200 > "$exec_log" 2>&1 || true
+          printf 'execution=%s\nstatus=%s\n' "$execution" "${status:-unknown}" > evidence/host-az-q1/post-execution-status.txt
+          python - "$exec_log" evidence/host-az-q1/post-exec-diagnostic.txt evidence/host-az-q1/post-restart.json "${status:-}" <<'PY'
           import base64, json, re, sys
           from pathlib import Path
           source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
@@ -505,6 +499,8 @@ jobs:
           safe = re.sub(r"\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b", "***", safe)
           safe = re.sub(r"ETS_Q1_RESULT_B64=[A-Za-z0-9_=-]+", "ETS_Q1_RESULT_B64=***", safe)
           Path(sys.argv[2]).write_text("\n".join(safe.splitlines()[-200:]) + "\n", encoding="utf-8")
+          if sys.argv[4] != "Succeeded":
+              raise SystemExit(f"Q1 post-restart job execution ended with {sys.argv[4] or 'unknown'}")
           matches = re.findall(r"ETS_Q1_RESULT_B64=([A-Za-z0-9_=-]+)", source)
           if not matches: raise SystemExit("qualification job did not emit a post-restart result marker")
           result = json.loads(base64.urlsafe_b64decode(matches[-1]).decode())
