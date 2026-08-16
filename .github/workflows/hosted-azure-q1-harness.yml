@@ -67,6 +67,8 @@ jobs:
           grep -q 'containerRegistryResourceGroup=' "$live"
           grep -q 'containerRegistryPullRoleDefinitionId=' "$live"
           grep -q 'registryPullIdentityResourceId.value' "$live"
+          grep -q 'normalized_identities' "$live"
+          grep -q 'casefold()' "$live"
           grep -q 'infra/azure/ets-q1-client.bicep' "$live"
           grep -q 'az containerapp exec' "$live"
           grep -q 'az containerapp delete' "$live"

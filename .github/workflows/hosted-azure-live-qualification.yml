@@ -366,13 +366,17 @@ jobs:
           source = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           expected_identity, expected_server = sys.argv[3:]
           identities = set((source.get("identity") or {}).get("userAssignedIdentities") or {})
-          if identities != {expected_identity}:
+          normalized_identities = {identity.casefold() for identity in identities}
+          if normalized_identities != {expected_identity.casefold()}:
               raise SystemExit("qualification client must attach only the registry-pull identity")
           registries = ((source.get("properties") or {}).get("configuration") or {}).get("registries") or []
           if len(registries) != 1:
               raise SystemExit("qualification client must have exactly one private registry binding")
           registry = registries[0]
-          if registry.get("server") != expected_server or registry.get("identity") != expected_identity:
+          if (
+              str(registry.get("server") or "").casefold() != expected_server.casefold()
+              or str(registry.get("identity") or "").casefold() != expected_identity.casefold()
+          ):
               raise SystemExit("qualification client registry binding did not use the pull-only identity")
           sanitized = {
               "name": source.get("name"),
