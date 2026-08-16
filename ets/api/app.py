@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -58,6 +59,7 @@ from ets.core.artifact_registry import (
     DurableArtifactRegistry,
     load_artifact_registry,
 )
+from ets.core.azure_table_store import create_azure_table_event_store
 from ets.core.merkle import merkle_root
 from ets.core.proofs import (
     generate_consistency_proof,
@@ -67,6 +69,7 @@ from ets.core.proofs import (
 )
 from ets.core.redaction import apply_redaction_profile
 from ets.core.signing import (
+    AzureKeyVaultTreeHeadSigner,
     Ed25519TreeHeadSigner,
     NoOpTreeHeadSigner,
     TreeHeadSigner,
@@ -985,11 +988,21 @@ def create_app_from_env() -> FastAPI:
     provider = os.getenv("ETS_STORAGE_PROVIDER", "in_memory")
     signing_mode = os.getenv("ETS_SIGNING_MODE", "local_unsigned")
     auth_mode = os.getenv("ETS_AUTH_MODE", "local_header")
+    log_id = os.getenv("ETS_LOG_ID", DEFAULT_LOG_ID)
 
     if provider == "in_memory":
         store: EventStore = InMemoryAppendOnlyLog()
     elif provider == "sqlite":
         store = SQLiteEventStore(os.getenv("ETS_SQLITE_PATH", ".data/ets.db"))
+    elif provider == "azure_table":
+        endpoint = _required_environment_value("ETS_AZURE_TABLE_ENDPOINT")
+        table_name = _required_environment_value("ETS_AZURE_TABLE_NAME")
+        store = create_azure_table_event_store(
+            endpoint=endpoint,
+            table_name=table_name,
+            log_id=log_id,
+            managed_identity_client_id=os.getenv("ETS_AZURE_MANAGED_IDENTITY_CLIENT_ID"),
+        )
     else:
         raise RuntimeError(f"unsupported ETS_STORAGE_PROVIDER: {provider}")
 
@@ -1002,6 +1015,12 @@ def create_app_from_env() -> FastAPI:
         if private_key_hex is None or public_key_id is None:
             raise RuntimeError("Ed25519 signing requires private key hex and public key id")
         signer = Ed25519TreeHeadSigner(private_key_hex, public_key_id)
+    elif signing_mode == "azure_key_vault":
+        signer = _create_azure_key_vault_signer(
+            vault_url=_required_environment_value("ETS_AZURE_KEY_VAULT_URL"),
+            key_name=_required_environment_value("ETS_AZURE_KEY_NAME"),
+            managed_identity_client_id=os.getenv("ETS_AZURE_MANAGED_IDENTITY_CLIENT_ID"),
+        )
     else:
         raise RuntimeError(f"unsupported ETS_SIGNING_MODE: {signing_mode}")
 
@@ -1041,12 +1060,63 @@ def create_app_from_env() -> FastAPI:
 
     return create_app(
         log=store,
-        log_id=os.getenv("ETS_LOG_ID", DEFAULT_LOG_ID),
+        log_id=log_id,
         redaction_profile=os.getenv("ETS_REDACTION_PROFILE", "none"),
         signer=signer,
         auth_policy=auth_policy,
         auth_mode=auth_mode,
         signing_mode=signing_mode,
+    )
+
+
+def _required_environment_value(name: str) -> str:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        raise RuntimeError(f"{name} is required for the selected hosted runtime configuration")
+    return value
+
+
+def _create_azure_key_vault_signer(
+    *,
+    vault_url: str,
+    key_name: str,
+    managed_identity_client_id: str | None,
+) -> AzureKeyVaultTreeHeadSigner:
+    """Build a managed-identity Key Vault signer and pin its resolved key version."""
+
+    identity_module = importlib.import_module("azure.identity")
+    key_module = importlib.import_module("azure.keyvault.keys")
+    crypto_module = importlib.import_module("azure.keyvault.keys.crypto")
+
+    credential = identity_module.ManagedIdentityCredential(
+        client_id=managed_identity_client_id or None,
+    )
+    key = key_module.KeyClient(vault_url=vault_url, credential=credential).get_key(key_name)
+    key_id = getattr(key, "id", None)
+    if not isinstance(key_id, str) or not key_id:
+        raise RuntimeError("Azure Key Vault returned a key without an immutable identifier")
+    parts = key_id.rstrip("/").split("/")
+    if len(parts) < 3 or parts[-3] != "keys" or not parts[-1]:
+        raise RuntimeError("Azure Key Vault returned an invalid key identifier")
+    resolved_key_name = parts[-2]
+    key_version = parts[-1]
+    if resolved_key_name != key_name:
+        raise RuntimeError("Azure Key Vault returned a key with an unexpected name")
+
+    crypto_client = crypto_module.CryptographyClient(key_id, credential)
+
+    def sign_digest(digest: bytes) -> bytes:
+        result = crypto_client.sign(crypto_module.SignatureAlgorithm.ps256, digest)
+        signature = getattr(result, "signature", None)
+        if not isinstance(signature, bytes) or not signature:
+            raise RuntimeError("Azure Key Vault returned an invalid signature")
+        return signature
+
+    return AzureKeyVaultTreeHeadSigner(
+        vault_url=vault_url,
+        key_name=key_name,
+        key_version=key_version,
+        sign_digest=sign_digest,
     )
 
 
