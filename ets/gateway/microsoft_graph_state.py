@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from collections.abc import Mapping
 from pathlib import Path
@@ -196,9 +195,8 @@ class SQLiteMicrosoftGraphSubscriptionStore:
     @staticmethod
     def _decode(payload: str) -> MicrosoftGraphSubscriptionStateV1:
         try:
-            decoded = json.loads(payload)
-            return MicrosoftGraphSubscriptionStateV1.model_validate(decoded)
-        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            return MicrosoftGraphSubscriptionStateV1.model_validate_json(payload)
+        except (TypeError, ValueError) as exc:
             raise MicrosoftGraphSubscriptionStateStoreError(
                 "persisted Graph subscription state is invalid"
             ) from exc
