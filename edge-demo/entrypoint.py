@@ -84,8 +84,8 @@ def main() -> None:
     os.environ["ETS_EDGE_API_KEY_FILE"] = str(runtime_api_key_file)
     os.environ["ETS_EDGE_DEVICE_IDENTITY_FILE"] = str(DEVICE_IDENTITY_PATH)
 
-    # Import the ETS API package only after the complete protected pilot
-    # environment exists. Package initialization constructs the configured app.
+    # Import the ETS ASGI module only after the complete protected pilot
+    # environment exists. Uvicorn then constructs the configured app.
     from ets.api.profile_guard import validate_environment
 
     validate_environment()
