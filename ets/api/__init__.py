@@ -1,25 +1,17 @@
-"""ETS API package bootstrap and runtime safety enforcement."""
+"""ETS API package bootstrap without runtime composition side effects."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
-from fastapi import FastAPI
-
-from ets.api import app as _app
-from ets.api.profile_guard import validate_environment
-
-_unguarded_create_app_from_env: Callable[[], FastAPI] = _app.create_app_from_env
-
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 def create_app_from_env() -> FastAPI:
-    """Create the environment-configured API only after profile validation."""
+    """Create the guarded API while deferring the heavyweight app import."""
 
-    validate_environment()
-    return _unguarded_create_app_from_env()
+    from ets.api.app import create_app_from_env as factory
 
-
-# Ensure callers importing the historical module path receive the guarded bootstrap.
-_app.create_app_from_env = create_app_from_env
+    return factory()
 
 __all__ = ["create_app_from_env"]

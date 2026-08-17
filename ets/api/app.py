@@ -23,6 +23,7 @@ from ets.api.auth import (
     ProductionJWKSAuthPolicy,
     ProductionJWTAuthPolicy,
 )
+from ets.api.profile_guard import validate_environment
 from ets.api.telemetry import emit_security_event
 from ets.core import (
     GENESIS_BLOCK_HASH,
@@ -984,7 +985,7 @@ def create_app(
     return app
 
 
-def create_app_from_env() -> FastAPI:
+def _create_app_from_env_unchecked() -> FastAPI:
     provider = os.getenv("ETS_STORAGE_PROVIDER", "in_memory")
     signing_mode = os.getenv("ETS_SIGNING_MODE", "local_unsigned")
     auth_mode = os.getenv("ETS_AUTH_MODE", "local_header")
@@ -1067,6 +1068,13 @@ def create_app_from_env() -> FastAPI:
         auth_mode=auth_mode,
         signing_mode=signing_mode,
     )
+
+
+def create_app_from_env() -> FastAPI:
+    """Create an environment-configured app after enforcing runtime profile safety."""
+
+    validate_environment()
+    return _create_app_from_env_unchecked()
 
 
 def _required_environment_value(name: str) -> str:
@@ -1328,7 +1336,10 @@ def _get_scoped_artifact_record(
     _ensure_entry_matches_scope(entry, scope)
     return record
 
-app = create_app_from_env()
+# Keep the importable ASGI object for local tooling. Container launches use
+# ``ets.api.container_entrypoint``, which validates and composes the selected
+# runtime explicitly without importing this module through package bootstrap.
+app = _create_app_from_env_unchecked()
 
 
 try:
