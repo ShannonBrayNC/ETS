@@ -108,7 +108,7 @@ def test_production_context_uses_signed_scope_and_rejects_browser_override(tmp_p
     assert context.json()["tenant_id"] == "tenant-a"
     assert context.json()["workspace_id"] == "workspace-a"
     assert context.json()["authorization_profile"] == "production"
-    assert tampered.status_code == 403
+    assert tampered.status_code == 401
 
 
 def test_auditor_can_read_connector_catalog_without_management_authority(tmp_path: Path) -> None:

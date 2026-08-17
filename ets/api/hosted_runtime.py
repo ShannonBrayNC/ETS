@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
 from types import ModuleType
-from typing import cast
+from typing import Any, cast
 
 from fastapi import FastAPI, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from ets.api.auth import AuthPolicy, ProductionJWKSAuthPolicy
+from ets.api.auth import AppScopeMap, AuthPolicy, ProductionJWKSAuthPolicy
 from ets.api.azure_signing import AzureManagedIdentitySignerAdapter
 from ets.core import EventStore, SignedTreeHead
 from ets.core.signing import TreeHeadSigner, verify_tree_head_signature
@@ -145,19 +146,58 @@ def _create_azure_key_vault_signer() -> tuple[TreeHeadSigner, Callable[[], None]
 def _create_jwks_auth_policy(*, issuer: str, audience: str) -> AuthPolicy:
     jwks_json = os.getenv("ETS_AUTH_JWKS_JSON")
     jwks_url = os.getenv("ETS_AUTH_JWKS_URL")
+    app_scope_map = _load_app_scope_map()
+    tenant_id = os.getenv("ETS_AUTH_TENANT_ID") or None
+    if app_scope_map and tenant_id is None:
+        raise RuntimeError(
+            "ETS_AUTH_TENANT_ID is required when ETS_AUTH_APP_SCOPE_MAP_JSON is configured"
+        )
+
     if jwks_json is not None:
         return ProductionJWKSAuthPolicy.from_json(
             jwks_json,
             issuer=issuer,
             audience=audience,
+            tenant_id=tenant_id,
+            app_scope_map=app_scope_map,
         )
     if jwks_url is not None:
         return ProductionJWKSAuthPolicy.from_url(
             jwks_url,
             issuer=issuer,
             audience=audience,
+            tenant_id=tenant_id,
+            app_scope_map=app_scope_map,
         )
     raise RuntimeError("production JWKS auth requires ETS_AUTH_JWKS_JSON or URL")
+
+
+def _load_app_scope_map() -> AppScopeMap:
+    raw = os.getenv("ETS_AUTH_APP_SCOPE_MAP_JSON")
+    if raw is None or not raw.strip():
+        return {}
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("ETS_AUTH_APP_SCOPE_MAP_JSON must be valid JSON") from exc
+    if not isinstance(decoded, dict):
+        raise RuntimeError("ETS_AUTH_APP_SCOPE_MAP_JSON must be a JSON object")
+
+    scope_map: AppScopeMap = {}
+    for client_id, value in decoded.items():
+        if not isinstance(client_id, str) or not client_id.strip():
+            raise RuntimeError("app scope map keys must be non-empty client IDs")
+        if not isinstance(value, dict):
+            raise RuntimeError("app scope map values must be JSON objects")
+        typed_value = cast(dict[str, Any], value)
+        tenant_id = typed_value.get("tenant_id")
+        workspace_id = typed_value.get("workspace_id")
+        if not isinstance(tenant_id, str) or not tenant_id:
+            raise RuntimeError("app scope map tenant_id must be a non-empty string")
+        if not isinstance(workspace_id, str) or not workspace_id:
+            raise RuntimeError("app scope map workspace_id must be a non-empty string")
+        scope_map[client_id] = (tenant_id, workspace_id)
+    return scope_map
 
 
 def _load_app_module(*, sanitize_environment: bool) -> ModuleType:
