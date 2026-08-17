@@ -137,7 +137,7 @@ def test_production_jwt_auth_requires_bearer_token_and_enforces_claim_scope() ->
 
     assert unauthenticated.status_code == 401
     assert authenticated.status_code == 201
-    assert mismatch.status_code == 404
+    assert mismatch.status_code == 401
 
 
 def test_production_jwks_auth_verifies_rs256_token_and_enforces_audience() -> None:
@@ -200,6 +200,8 @@ def test_create_app_from_env_supports_static_jwks_json(monkeypatch) -> None:
     token = make_rs256_token(
         {
             "sub": "alice",
+            "tenant_id": "tenant_a",
+            "workspace_id": "workspace_a",
             "iss": "https://issuer.example",
             "aud": "ets-api",
             "exp": 4_102_444_800,
@@ -470,6 +472,8 @@ def test_production_jwks_auth_refreshes_cached_keys_for_rotation() -> None:
     token = make_rs256_token(
         {
             "sub": "alice",
+            "tenant_id": "tenant_a",
+            "workspace_id": "workspace_a",
             "iss": "https://issuer.example",
             "aud": "ets-api",
             "exp": 4_102_444_800,
