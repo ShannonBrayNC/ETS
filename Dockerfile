@@ -10,6 +10,7 @@ RUN apt-get update \
 
 COPY pyproject.toml README.md ./
 COPY ets ./ets
+COPY config/connectors ./config/connectors
 COPY scripts/qualify_hosted_azure_live.py ./scripts/qualify_hosted_azure_live.py
 
 RUN python -m pip install --no-cache-dir -e ".[hosted]"
