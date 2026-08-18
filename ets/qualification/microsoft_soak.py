@@ -99,6 +99,7 @@ class MicrosoftSoakSummaryV1(StrictSoakModel):
     workspace_id: str = Field(min_length=1, max_length=128)
     source_id: str = Field(min_length=1, max_length=200)
     microsoft_tenant_id: str = Field(min_length=36, max_length=36)
+    subscription_id: str = Field(min_length=1, max_length=200)
     operational_policy_profile_id: str = Field(min_length=1, max_length=200)
     started_at_utc: datetime
     ended_at_utc: datetime
@@ -179,6 +180,7 @@ def summarize_microsoft_soak(
         workspace_id=reference.posture.workspace_id,
         source_id=reference.posture.source_id,
         microsoft_tenant_id=reference.posture.microsoft_tenant_id,
+        subscription_id=reference.posture.subscription_id,
         operational_policy_profile_id=reference.posture.policy_profile_id,
         started_at_utc=started,
         ended_at_utc=ended,
