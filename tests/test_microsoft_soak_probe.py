@@ -126,6 +126,74 @@ def test_management_scope_mismatch_fails_before_posture_read(
     assert calls == 1
 
 
+def test_core_scope_uses_server_derived_scope_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    def fake_request(method: str, url: str, **kwargs: Any) -> dict[str, Any]:
+        calls.append((method, url, kwargs))
+        return {"tenant_id": TENANT, "workspace_id": WORKSPACE}
+
+    monkeypatch.setattr(probe_module, "_request_json", fake_request)
+
+    probe_module._require_core_auth_scope(
+        "https://core.example.test",
+        "core-token",
+        TENANT,
+        WORKSPACE,
+    )
+
+    assert len(calls) == 1
+    _method, _url, kwargs = calls[0]
+    assert kwargs["token"] == "core-token"
+    assert "tenant_id" not in kwargs
+    assert "workspace_id" not in kwargs
+
+
+def test_core_proof_requests_use_server_derived_scope_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    def fake_request(method: str, url: str, **kwargs: Any) -> dict[str, Any]:
+        calls.append((method, url, kwargs))
+        if url.endswith("/api/v1/events"):
+            return {"event_hash": "a" * 64}
+        if "/api/v1/proofs/inclusion/" in url:
+            return {"synthetic": "proof"}
+        if url.endswith("/api/v1/verify/inclusion"):
+            return {"valid": True}
+        raise AssertionError(f"unexpected URL {url}")
+
+    class FakeInclusionProof:
+        @classmethod
+        def model_validate(cls, payload: dict[str, Any]) -> dict[str, Any]:
+            return payload
+
+    class ValidResult:
+        valid = True
+
+    monkeypatch.setattr(probe_module, "_request_json", fake_request)
+    monkeypatch.setattr(probe_module, "InclusionProof", FakeInclusionProof)
+    monkeypatch.setattr(probe_module, "verify_inclusion_proof", lambda _proof: ValidResult())
+
+    proof_reference, proof_valid = probe_module._append_and_verify_probe_proof(
+        "https://core.example.test",
+        "core-token",
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        workflow_run_id="32100000000",
+        collected_at=NOW,
+    )
+
+    assert proof_reference.startswith("/api/v1/proofs/inclusion/")
+    assert proof_valid is True
+    assert len(calls) == 3
+    for _method, _url, kwargs in calls:
+        assert kwargs["token"] == "core-token"
+        assert "tenant_id" not in kwargs
+        assert "workspace_id" not in kwargs
+
+
 def test_collect_probe_retains_no_bearer_tokens(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
