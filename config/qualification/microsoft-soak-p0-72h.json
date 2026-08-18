@@ -1,0 +1,12 @@
+{
+  "schema_version": "ets.qualification.microsoft_soak_policy.v1",
+  "profile_id": "microsoft-p0-72h-hourly",
+  "minimum_duration_seconds": 259200,
+  "minimum_probe_count": 73,
+  "maximum_probe_interval_seconds": 5400,
+  "maximum_evaluation_age_seconds": 300,
+  "required_health_state": "healthy",
+  "require_zero_terminal_failures": true,
+  "require_verified_proof_each_probe": true,
+  "require_final_healthy": true
+}
