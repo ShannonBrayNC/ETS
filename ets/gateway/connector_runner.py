@@ -162,6 +162,7 @@ class GatewayConnectorCollectionRunner:
                 principal,
                 GatewayConnectorCandidateRequest(
                     candidate=candidate,
+                    connector_instance_id=instance.instance_id,
                     correlation_id=correlation_id,
                 ),
             )
