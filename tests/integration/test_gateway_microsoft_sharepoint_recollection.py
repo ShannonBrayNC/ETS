@@ -208,7 +208,10 @@ def _page() -> MicrosoftSharePointDeltaPageV1:
                     "size": 1234,
                     "parent": {"id": "folder-001", "drive_id": "drive-001"},
                     "file": {
-                        "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "mime_type": (
+                            "application/vnd.openxmlformats-officedocument."
+                            "wordprocessingml.document"
+                        ),
                         "hashes": {"quick_xor_hash": "source-fingerprint-002"},
                     },
                 },
