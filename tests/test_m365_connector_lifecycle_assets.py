@@ -3,14 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 OFFBOARDING_SCRIPT = Path("scripts/m365/offboard-echomedia-sharepoint-connector.ps1")
-LIFECYCLE_RUNBOOK = Path("docs/connectors/MICROSOFT_CONNECTOR_LIFECYCLE_RUNBOOK_V1.md")
+LIFECYCLE_RUNBOOK = Path(
+    "docs/connectors/MICROSOFT_CONNECTOR_LIFECYCLE_RUNBOOK_V1.md"
+)
 
 
 def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_offboarding_is_dry_run_by_default_and_delete_calls_are_apply_guarded() -> None:
+def test_offboarding_is_dry_run_by_default_and_delete_calls_are_guarded() -> None:
     script = _text(OFFBOARDING_SCRIPT)
 
     apply_guard = script.index("if ($Apply) {")
@@ -29,15 +31,19 @@ def test_offboarding_is_dry_run_by_default_and_delete_calls_are_apply_guarded() 
     assert "mode = if ($Apply) { 'apply' } else { 'dry_run' }" in script
 
 
-def test_offboarding_fails_closed_on_tenant_or_ambiguous_permission_state() -> None:
+def test_offboarding_fails_closed_on_tenant_or_permission_ambiguity() -> None:
     script = _text(OFFBOARDING_SCRIPT)
+    required_guards = (
+        "Microsoft Graph tenant does not match the active Azure subscription tenant",
+        "Authenticated tenant does not contain required verified domain",
+        "Multiple SharePoint site grants were found for the managed identity",
+        "Target SharePoint permission also grants another application",
+        "Duplicate Sites.Selected app-role assignments",
+        "SharePoint site permission remained after offboarding mutation",
+    )
 
-    assert "Microsoft Graph tenant does not match the active Azure subscription tenant" in script
-    assert "Authenticated tenant does not contain required verified domain" in script
-    assert "Multiple SharePoint site grants were found for the managed identity" in script
-    assert "Target SharePoint permission also grants another application" in script
-    assert "Duplicate Sites.Selected app-role assignments" in script
-    assert "SharePoint site permission remained after offboarding mutation" in script
+    for guard in required_guards:
+        assert guard in script
 
 
 def test_offboarding_does_not_delete_identity_or_ets_history() -> None:
@@ -52,26 +58,33 @@ def test_offboarding_does_not_delete_identity_or_ets_history() -> None:
 
 def test_sites_selected_role_removal_requires_explicit_second_switch() -> None:
     script = _text(OFFBOARDING_SCRIPT)
+    guarded_removal = (
+        "if ($RemoveSitesSelectedRole -and $sitesSelectedAssignmentPresentBefore)"
+    )
 
     assert "[switch]$RemoveSitesSelectedRole" in script
-    assert "if ($RemoveSitesSelectedRole -and $sitesSelectedAssignmentPresentBefore)" in script
+    assert guarded_removal in script
     assert "if ($RemoveSitesSelectedRole)" in script
-    assert "Sites.Selected app-role assignment remained after requested removal" in script
+    assert "Sites.Selected app-role assignment remained" in script
 
 
-def test_lifecycle_runbook_preserves_evidence_and_separates_runtime_access_proof() -> None:
+def test_lifecycle_runbook_preserves_evidence_and_runtime_access_proof() -> None:
     runbook = _text(LIFECYCLE_RUNBOOK)
+    required_boundaries = (
+        "disable the connector with its current expected",
+        "does not fabricate a destructive connector-delete operation",
+        "offboarding must not erase them",
+        "final evidence package",
+        "prove that the former SharePoint target can no longer be read",
+        "Operator Graph credentials",
+        "historical ETS events or proofs",
+    )
 
-    assert "disable the connector with its current expected" in runbook
-    assert "does not fabricate a destructive connector-delete operation" in runbook
-    assert "offboarding must not erase them" in runbook
-    assert "final evidence package" in runbook
-    assert "prove that the former SharePoint target can no longer be read" in runbook
-    assert "Operator Graph credentials" in runbook
-    assert "historical ETS events or proofs" in runbook
+    for boundary in required_boundaries:
+        assert boundary in runbook
 
 
-def test_lifecycle_runbook_keeps_operational_state_separate_from_verification() -> None:
+def test_lifecycle_runbook_keeps_operations_separate_from_verification() -> None:
     runbook = _text(LIFECYCLE_RUNBOOK)
 
     assert "without changing ETS cryptographic verification semantics" in runbook
