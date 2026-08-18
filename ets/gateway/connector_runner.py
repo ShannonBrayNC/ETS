@@ -73,6 +73,7 @@ class GatewayConnectorCollectionRunner:
         instance: ConnectorInstanceV1,
         principal: str,
         checkpoint: ConnectorCheckpointV1 | None,
+        correlation_id: str | None = None,
         candidate_hook: GatewayConnectorCandidateHook | None = None,
         release_hook: GatewayConnectorReleaseHook | None = None,
     ) -> GatewayConnectorRunResult:
@@ -97,6 +98,7 @@ class GatewayConnectorCollectionRunner:
                 instance=instance,
                 principal=principal,
                 record=record,
+                correlation_id=correlation_id,
                 candidate_hook=candidate_hook,
             )
             if result is not None:
@@ -149,6 +151,7 @@ class GatewayConnectorCollectionRunner:
         instance: ConnectorInstanceV1,
         principal: str,
         record: Mapping[str, JsonValue],
+        correlation_id: str | None,
         candidate_hook: GatewayConnectorCandidateHook | None,
     ) -> GatewayConnectorRunResult | None:
         try:
@@ -157,7 +160,10 @@ class GatewayConnectorCollectionRunner:
                 candidate = candidate_hook.transform(record, candidate)
             receipt = self._ingress.ingest_candidate(
                 principal,
-                GatewayConnectorCandidateRequest(candidate=candidate),
+                GatewayConnectorCandidateRequest(
+                    candidate=candidate,
+                    correlation_id=correlation_id,
+                ),
             )
         except GatewayPartialCommitError:
             return GatewayConnectorRunResult(
