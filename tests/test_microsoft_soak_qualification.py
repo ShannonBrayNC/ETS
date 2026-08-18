@@ -34,6 +34,7 @@ def _posture(
     state: str = "healthy",
     code: str = "ok",
     instance_id: str = "microsoft-sharepoint-prod",
+    subscription_id: str = "subscription-001",
     terminal_failure_count: int = 0,
 ) -> MicrosoftOperationalPostureV1:
     return MicrosoftOperationalPostureV1.model_validate(
@@ -44,14 +45,16 @@ def _posture(
             "workspace_id": "workspace-authoritative",
             "source_id": "microsoft-sharepoint-source",
             "microsoft_tenant_id": "11111111-1111-1111-1111-111111111111",
-            "subscription_id": "subscription-001",
+            "subscription_id": subscription_id,
             "evaluated_at_utc": instant,
             "policy_profile_id": "microsoft-p0-demo",
-            "health": ConnectorHealthV1(
-                schema_version="ets.connector.health.v1",
-                state=state,
-                code=code,
-                message=f"fixture posture is {state}",
+            "health": ConnectorHealthV1.model_validate(
+                {
+                    "schema_version": "ets.connector.health.v1",
+                    "state": state,
+                    "code": code,
+                    "message": f"fixture posture is {state}",
+                }
             ),
             "subscription_status": "active",
             "subscription_expiration_date_time": instant + timedelta(days=3),
@@ -103,6 +106,7 @@ def test_full_72_hour_hourly_window_qualifies() -> None:
     assert summary.degraded_probe_count == 0
     assert summary.failed_probe_count == 0
     assert summary.proof_failure_count == 0
+    assert summary.subscription_id == "subscription-001"
     assert summary.blockers == ()
     assert summary.verification_claimed_by_soak is False
     assert summary.source_truth_claimed is False
@@ -166,6 +170,18 @@ def test_release_candidate_identity_cannot_drift_during_soak() -> None:
     probes[-1] = _probe(
         START + timedelta(hours=72),
         source_sha="c" * 40,
+    )
+
+    with pytest.raises(MicrosoftSoakQualificationError, match="identity changed"):
+        summarize_microsoft_soak(tuple(probes), _policy())
+
+
+def test_subscription_identity_cannot_drift_during_soak() -> None:
+    probes = list(_hourly_probes())
+    instant = START + timedelta(hours=72)
+    probes[-1] = _probe(
+        instant,
+        posture=_posture(instant, subscription_id="subscription-replacement"),
     )
 
     with pytest.raises(MicrosoftSoakQualificationError, match="identity changed"):
