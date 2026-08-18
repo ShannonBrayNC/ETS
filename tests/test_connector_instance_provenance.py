@@ -172,6 +172,14 @@ def _candidate() -> ConnectorEvidenceCandidateV1:
     )
 
 
+def test_candidate_request_preserves_legacy_positional_field_order() -> None:
+    request = GatewayConnectorCandidateRequest(_candidate(), "correlation-001", NOW)
+
+    assert request.correlation_id == "correlation-001"
+    assert request.received_at_utc == NOW
+    assert request.connector_instance_id is None
+
+
 def test_runner_commits_instance_id_into_hashed_event_provenance(tmp_path: Path) -> None:
     event_log = InMemoryAppendOnlyLog()
     ingress = GatewayConnectorIngressService(
