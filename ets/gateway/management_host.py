@@ -15,6 +15,10 @@ from ets.gateway.connector_management import (
     ConnectorManagementService,
 )
 from ets.gateway.connector_management_api import create_connector_management_router
+from ets.gateway.microsoft_operational_posture_api import (
+    GatewayMicrosoftOperationalPostureService,
+    create_microsoft_operational_posture_router,
+)
 
 
 class GatewayAuthorizationContextV2(BaseModel):
@@ -37,6 +41,7 @@ def create_gateway_management_app(
     *,
     auth_policy: AuthPolicy | None = None,
     auth_mode: str = "local_header",
+    microsoft_posture_service: GatewayMicrosoftOperationalPostureService | None = None,
 ) -> FastAPI:
     """Create the authenticated Gateway connector-management application."""
 
@@ -83,6 +88,10 @@ def create_gateway_management_app(
         )
 
     app.include_router(create_connector_management_router(service, principal))
+    if microsoft_posture_service is not None:
+        app.include_router(
+            create_microsoft_operational_posture_router(microsoft_posture_service, principal)
+        )
     return app
 
 
