@@ -226,6 +226,48 @@ export interface ConnectorInstanceListResponse {
   items: ConnectorInstanceRecord[];
 }
 
+export type MicrosoftSubscriptionStatus =
+  | "active"
+  | "reauthorization_required"
+  | "removed"
+  | "disabled";
+
+export type MicrosoftReconciliationStatus =
+  | "possible"
+  | "reconciling"
+  | "recovered"
+  | "partial"
+  | "unrecoverable"
+  | "acknowledged";
+
+export type MicrosoftReconciliationOutcome = "recovered" | "partial" | "unrecoverable";
+
+export interface MicrosoftOperationalPosture {
+  schema_version: "ets.connector.microsoft.operational_posture.v1";
+  instance_id: string;
+  ets_tenant_id: string;
+  workspace_id: string;
+  source_id: string;
+  microsoft_tenant_id: string;
+  subscription_id: string;
+  evaluated_at_utc: string;
+  policy_profile_id: string;
+  health: ConnectorHealth;
+  subscription_status: MicrosoftSubscriptionStatus;
+  subscription_expiration_date_time: string;
+  seconds_until_subscription_expiration: number;
+  collection_lag_seconds: number | null;
+  queue_depth: number;
+  oldest_unsynchronized_age_seconds: number | null;
+  retryable_failure_count: number;
+  terminal_failure_count: number;
+  reconciliation_status: MicrosoftReconciliationStatus | null;
+  reconciliation_outcome: MicrosoftReconciliationOutcome | null;
+  verification_claimed: false;
+  source_truth_claimed: false;
+  completeness_claimed: false;
+}
+
 export interface ConnectorSettingField {
   key: string;
   label: string;
