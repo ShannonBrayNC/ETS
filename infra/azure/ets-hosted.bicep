@@ -40,6 +40,12 @@ param authIssuer string
 @minLength(1)
 param authAudience string
 
+@description('Expected Entra tenant claim when a server-owned app scope map is configured.')
+param authTenantId string = ''
+
+@description('Server-owned JSON map from application/client ID to ETS tenant/workspace scope.')
+param authAppScopeMapJson string = ''
+
 @description('Azure Table name used for ETS event persistence.')
 @minLength(3)
 @maxLength(63)
@@ -352,6 +358,14 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
             {
               name: 'ETS_AUTH_AUDIENCE'
               value: authAudience
+            }
+            {
+              name: 'ETS_AUTH_TENANT_ID'
+              value: authTenantId
+            }
+            {
+              name: 'ETS_AUTH_APP_SCOPE_MAP_JSON'
+              value: authAppScopeMapJson
             }
           ]
           probes: [
