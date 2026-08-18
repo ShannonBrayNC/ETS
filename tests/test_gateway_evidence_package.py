@@ -141,10 +141,15 @@ def _package(
     provenance: ConnectorSourceProvenanceV1 | None = None,
     gaps: tuple[ConnectorGapDeclarationV1, ...] | None = None,
 ) -> GatewayEvidencePackageV1:
+    declarations = (
+        (microsoft_gap_declaration(_acknowledged_gap()),)
+        if gaps is None
+        else gaps
+    )
     return GatewayEvidencePackageV1(
         proof_bundle=bundle or _bundle(),
         source_provenance=provenance or _provenance(),
-        gap_declarations=(microsoft_gap_declaration(_acknowledged_gap()),) if gaps is None else gaps,
+        gap_declarations=declarations,
         exported_at_utc=NOW + timedelta(minutes=1),
     )
 
