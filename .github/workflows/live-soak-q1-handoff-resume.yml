@@ -1,0 +1,450 @@
+name: Live Soak Q1 Handoff Resume
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/live-soak-q1-handoff-resume.yml
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: live-soak-q1-handoff-resume
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    name: Recover and revalidate immutable Q0 handoff
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CANDIDATE_SHA: 4a01e15c1082c1fe800e6a55666cee384c26536d
+      LAUNCH_WORKFLOW: live-soak-q0-launch.yml
+      APPROVED_SUBJECT: etsq1a352eb89.azurecr.io/ets/hosted-q1
+      APPROVED_REGISTRY: etsq1a352eb89
+      APPROVED_REGISTRY_RESOURCE_GROUP: rg-ets-q1-eastus
+      APPROVED_IMAGE_REPOSITORY: ets/hosted-q1
+      HANDOFF_ISSUE: '389'
+
+    steps:
+      - name: Recover exact successful launcher and Q0 evidence
+        id: recover
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ORCHESTRATOR_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import io
+          import json
+          import os
+          import re
+          import zipfile
+          from pathlib import Path
+          from urllib.error import HTTPError
+          from urllib.parse import urlencode, urlparse
+          from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
+
+          repository = os.environ["REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          candidate_sha = os.environ["CANDIDATE_SHA"]
+          orchestrator_sha = os.environ["ORCHESTRATOR_SHA"]
+          launch_workflow = os.environ["LAUNCH_WORKFLOW"]
+          approved_subject = os.environ["APPROVED_SUBJECT"]
+          approved_registry = os.environ["APPROVED_REGISTRY"]
+          approved_registry_resource_group = os.environ["APPROVED_REGISTRY_RESOURCE_GROUP"]
+          approved_image_repository = os.environ["APPROVED_IMAGE_REPOSITORY"]
+
+          if re.fullmatch(r"[0-9a-f]{40}", candidate_sha) is None:
+              raise RuntimeError("candidate source SHA is not canonical")
+          if candidate_sha == orchestrator_sha:
+              raise RuntimeError(
+                  "resume orchestration must remain distinct from the frozen image source"
+              )
+
+          api_version = "2026-03-10"
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {token}",
+              "X-GitHub-Api-Version": api_version,
+          }
+
+          def get_json(url: str) -> dict:
+              try:
+                  with urlopen(Request(url, headers=headers), timeout=30.0) as response:
+                      return json.loads(response.read().decode("utf-8"))
+              except HTTPError as exc:
+                  raise RuntimeError(
+                      f"GitHub API lookup failed with HTTP {exc.code}"
+                  ) from exc
+
+          def signed_artifact_url(archive_url: str) -> str:
+              class NoRedirect(HTTPRedirectHandler):
+                  def redirect_request(
+                      self, req, fp, code, msg, hdrs, newurl
+                  ):  # type: ignore[no-untyped-def]
+                      return None
+
+              opener = build_opener(NoRedirect)
+              try:
+                  opener.open(Request(archive_url, headers=headers), timeout=30.0)
+              except HTTPError as exc:
+                  if exc.code not in {302, 307}:
+                      raise RuntimeError(
+                          f"artifact redirect failed with HTTP {exc.code}"
+                      ) from exc
+                  location = exc.headers.get("Location")
+              else:
+                  raise RuntimeError("artifact endpoint did not return a signed redirect")
+
+              if not isinstance(location, str):
+                  raise RuntimeError("artifact redirect omitted signed URL")
+              parsed = urlparse(location)
+              if parsed.scheme != "https" or not parsed.hostname:
+                  raise RuntimeError("artifact redirect was not HTTPS")
+              if parsed.hostname == "api.github.com":
+                  raise RuntimeError(
+                      "artifact redirect did not leave authenticated API origin"
+                  )
+              return location
+
+          def download_zip(archive_url: str, max_bytes: int) -> bytes:
+              signed_url = signed_artifact_url(archive_url)
+              chunks: list[bytes] = []
+              copied = 0
+              with urlopen(signed_url, timeout=60.0) as response:
+                  while True:
+                      chunk = response.read(1024 * 1024)
+                      if not chunk:
+                          break
+                      copied += len(chunk)
+                      if copied > max_bytes:
+                          raise RuntimeError("artifact exceeded bounded download limit")
+                      chunks.append(chunk)
+              return b"".join(chunks)
+
+          params = urlencode(
+              {
+                  "event": "push",
+                  "branch": "main",
+                  "status": "success",
+                  "per_page": "100",
+              }
+          )
+          launcher_runs_url = (
+              f"https://api.github.com/repos/{repository}/actions/workflows/"
+              f"{launch_workflow}/runs?{params}"
+          )
+          launcher_listing = get_json(launcher_runs_url)
+          launcher_matches = [
+              run
+              for run in launcher_listing.get("workflow_runs", [])
+              if run.get("head_sha") == candidate_sha
+              and run.get("event") == "push"
+              and run.get("head_branch") == "main"
+              and run.get("status") == "completed"
+              and run.get("conclusion") == "success"
+          ]
+          if len(launcher_matches) != 1:
+              raise RuntimeError(
+                  "expected exactly one successful launcher run for the frozen candidate"
+              )
+          launcher = launcher_matches[0]
+          launcher_run_id = launcher.get("id")
+          if not isinstance(launcher_run_id, int) or launcher_run_id <= 0:
+              raise RuntimeError("launcher run omitted valid ID")
+          launcher_url = launcher.get("url")
+          expected_launcher_url = (
+              f"https://api.github.com/repos/{repository}/actions/runs/{launcher_run_id}"
+          )
+          if launcher_url != expected_launcher_url:
+              raise RuntimeError("launcher run URL was not canonical")
+
+          launcher_artifact_name = f"live-soak-q0-launch-{launcher_run_id}"
+          launcher_artifacts = get_json(
+              f"{expected_launcher_url}/artifacts?per_page=100"
+          ).get("artifacts", [])
+          artifact_matches = [
+              item
+              for item in launcher_artifacts
+              if item.get("name") == launcher_artifact_name
+              and item.get("expired") is False
+          ]
+          if len(artifact_matches) != 1:
+              raise RuntimeError(
+                  "expected exactly one retained launcher evidence artifact"
+              )
+          launcher_artifact = artifact_matches[0]
+          launcher_archive_url = launcher_artifact.get("archive_download_url")
+          if not isinstance(launcher_archive_url, str) or not launcher_archive_url.startswith(
+              f"https://api.github.com/repos/{repository}/actions/artifacts/"
+          ):
+              raise RuntimeError("launcher artifact archive URL was not canonical")
+
+          launcher_zip = download_zip(
+              launcher_archive_url,
+              max_bytes=8 * 1024 * 1024,
+          )
+          with zipfile.ZipFile(io.BytesIO(launcher_zip)) as archive:
+              names = set(archive.namelist())
+              required = {"launch.json", "q1-handoff.json"}
+              if not required.issubset(names):
+                  raise RuntimeError(
+                      "launcher evidence artifact omitted required handoff files"
+                  )
+              launch = json.loads(archive.read("launch.json").decode("utf-8"))
+              handoff = json.loads(archive.read("q1-handoff.json").decode("utf-8"))
+
+          if launch.get("schema_version") != "ets.live_soak.q0_launch.v1":
+              raise RuntimeError("launcher evidence schema was unexpected")
+          if launch.get("source_sha") != candidate_sha:
+              raise RuntimeError("launcher evidence source differs from frozen candidate")
+          if launch.get("q0_conclusion") != "success":
+              raise RuntimeError(
+                  "launcher evidence does not record successful Q0 publication"
+              )
+          if launch.get("container_registry_name") != approved_registry:
+              raise RuntimeError(
+                  "launcher registry differs from approved live-soak registry"
+              )
+          if (
+              launch.get("container_registry_resource_group")
+              != approved_registry_resource_group
+          ):
+              raise RuntimeError(
+                  "launcher registry resource group differs from approved boundary"
+              )
+          if launch.get("image_repository") != approved_image_repository:
+              raise RuntimeError(
+                  "launcher image repository differs from approved boundary"
+              )
+          if launch.get("reusable_credential_retained") is not False:
+              raise RuntimeError(
+                  "launcher evidence does not prove credential non-retention"
+              )
+
+          if handoff.get("schema_version") != "ets.live_soak.q0_handoff.v1":
+              raise RuntimeError("Q0 handoff schema was unexpected")
+          if handoff.get("source_sha") != candidate_sha:
+              raise RuntimeError("Q0 handoff source differs from frozen candidate")
+          if handoff.get("vulnerability_gate") != "PASS":
+              raise RuntimeError("Q0 handoff vulnerability gate did not pass")
+          if handoff.get("registry_credentials_retained") is not False:
+              raise RuntimeError(
+                  "Q0 handoff does not prove registry credential non-retention"
+              )
+          if handoff.get("customer_identifiers_retained") is not False:
+              raise RuntimeError(
+                  "Q0 handoff does not prove customer identifier non-retention"
+              )
+
+          q0_run_id = handoff.get("q0_workflow_run_id")
+          q0_artifact_id = handoff.get("q0_artifact_id")
+          if not isinstance(q0_run_id, int) or q0_run_id <= 0:
+              raise RuntimeError("Q0 handoff omitted valid workflow run ID")
+          if launch.get("q0_workflow_run_id") != q0_run_id:
+              raise RuntimeError("launcher evidence and Q0 handoff disagree on run ID")
+          if not isinstance(q0_artifact_id, int) or q0_artifact_id <= 0:
+              raise RuntimeError("Q0 handoff omitted valid artifact ID")
+
+          digest = handoff.get("image_digest")
+          immutable_image = handoff.get("immutable_image")
+          if not isinstance(digest, str) or re.fullmatch(
+              r"sha256:[0-9a-f]{64}", digest
+          ) is None:
+              raise RuntimeError("Q0 handoff image digest is not canonical")
+          if immutable_image != f"{approved_subject}@{digest}":
+              raise RuntimeError(
+                  "Q0 handoff immutable image differs from approved subject"
+              )
+
+          q0_run_url = f"https://api.github.com/repos/{repository}/actions/runs/{q0_run_id}"
+          q0_run = get_json(q0_run_url)
+          if q0_run.get("id") != q0_run_id:
+              raise RuntimeError("Q0 run lookup returned a different run ID")
+          if q0_run.get("event") != "workflow_dispatch":
+              raise RuntimeError("Q0 publisher was not workflow_dispatch")
+          if q0_run.get("head_branch") != "main":
+              raise RuntimeError("Q0 publisher was not pinned to main")
+          if q0_run.get("head_sha") != candidate_sha:
+              raise RuntimeError("Q0 publisher source differs from frozen candidate")
+          if q0_run.get("status") != "completed" or q0_run.get("conclusion") != "success":
+              raise RuntimeError("Q0 publisher is not successfully completed")
+
+          q0_artifacts = get_json(f"{q0_run_url}/artifacts?per_page=100").get(
+              "artifacts", []
+          )
+          expected_q0_name = f"host-az-q0-image-{q0_run_id}"
+          q0_matches = [
+              item
+              for item in q0_artifacts
+              if item.get("id") == q0_artifact_id
+              and item.get("name") == expected_q0_name
+              and item.get("expired") is False
+          ]
+          if len(q0_matches) != 1:
+              raise RuntimeError(
+                  "retained Q0 artifact identity no longer matches handoff"
+              )
+          q0_archive_url = q0_matches[0].get("archive_download_url")
+          if not isinstance(q0_archive_url, str) or not q0_archive_url.startswith(
+              f"https://api.github.com/repos/{repository}/actions/artifacts/"
+          ):
+              raise RuntimeError("Q0 artifact archive URL was not canonical")
+
+          q0_zip = download_zip(
+              q0_archive_url,
+              max_bytes=128 * 1024 * 1024,
+          )
+          with zipfile.ZipFile(io.BytesIO(q0_zip)) as archive:
+              if "manifest.json" not in archive.namelist():
+                  raise RuntimeError("Q0 artifact omitted manifest.json")
+              manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+
+          if manifest.get("schema_version") != "ets.host_az.q0_image.v1":
+              raise RuntimeError("Q0 manifest schema was unexpected")
+          if manifest.get("source_sha") != candidate_sha:
+              raise RuntimeError("Q0 manifest source differs from frozen candidate")
+          if str(manifest.get("workflow_run_id")) != str(q0_run_id):
+              raise RuntimeError("Q0 manifest workflow run ID differs from handoff")
+          if manifest.get("vulnerability_gate") != "PASS":
+              raise RuntimeError("Q0 manifest vulnerability gate did not pass")
+          if manifest.get("registry_credentials_retained") is not False:
+              raise RuntimeError(
+                  "Q0 manifest does not prove registry credential non-retention"
+              )
+          if manifest.get("customer_identifiers_retained") is not False:
+              raise RuntimeError(
+                  "Q0 manifest does not prove customer identifier non-retention"
+              )
+          if manifest.get("subject_name") != approved_subject:
+              raise RuntimeError(
+                  "Q0 manifest subject differs from approved live-soak repository"
+              )
+          if manifest.get("image_digest") != digest:
+              raise RuntimeError("Q0 manifest digest differs from handoff")
+          if manifest.get("immutable_image") != immutable_image:
+              raise RuntimeError("Q0 manifest immutable image differs from handoff")
+
+          evidence_dir = Path("evidence/live-soak-q1-resume")
+          evidence_dir.mkdir(parents=True, exist_ok=True)
+          resume = {
+              "schema_version": "ets.live_soak.q1_resume.v1",
+              "candidate_source_sha": candidate_sha,
+              "orchestrator_sha": orchestrator_sha,
+              "launcher_workflow_run_id": launcher_run_id,
+              "q0_workflow_run_id": q0_run_id,
+              "q0_artifact_id": q0_artifact_id,
+              "image_digest": digest,
+              "immutable_image": immutable_image,
+              "vulnerability_gate": "PASS",
+              "registry_credentials_retained": False,
+              "customer_identifiers_retained": False,
+              "azure_deployment_claimed": False,
+              "m365_source_to_proof_claimed": False,
+              "soak_clock_started": False,
+          }
+          (evidence_dir / "handoff.json").write_text(
+              json.dumps(resume, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          output = Path(os.environ["GITHUB_OUTPUT"])
+          with output.open("a", encoding="utf-8") as handle:
+              handle.write(f"launcher_run_id={launcher_run_id}\n")
+              handle.write(f"q0_run_id={q0_run_id}\n")
+              handle.write(f"image_digest={digest}\n")
+              handle.write(f"immutable_image={immutable_image}\n")
+
+          print(
+              "Recovered and independently revalidated exact Q0 handoff for "
+              f"{candidate_sha}: {immutable_image}"
+          )
+          PY
+
+      - name: Retain deployment-ready sanitized handoff
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-soak-q1-resume-${{ github.run_id }}
+          path: evidence/live-soak-q1-resume/handoff.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish authoritative handoff to Gateway release issue
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ORCHESTRATOR_SHA: ${{ github.sha }}
+          LAUNCHER_RUN_ID: ${{ steps.recover.outputs.launcher_run_id }}
+          Q0_RUN_ID: ${{ steps.recover.outputs.q0_run_id }}
+          IMAGE_DIGEST: ${{ steps.recover.outputs.image_digest }}
+          IMMUTABLE_IMAGE: ${{ steps.recover.outputs.immutable_image }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+
+          repository = os.environ["REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          candidate_sha = os.environ["CANDIDATE_SHA"]
+          orchestrator_sha = os.environ["ORCHESTRATOR_SHA"]
+          launcher_run_id = os.environ["LAUNCHER_RUN_ID"]
+          q0_run_id = os.environ["Q0_RUN_ID"]
+          digest = os.environ["IMAGE_DIGEST"]
+          immutable_image = os.environ["IMMUTABLE_IMAGE"]
+          issue = os.environ["HANDOFF_ISSUE"]
+
+          body = (
+              "### Live-soak Q0 handoff recovered and revalidated\n\n"
+              f"- frozen candidate source: `{candidate_sha}`\n"
+              f"- recovery orchestrator: `{orchestrator_sha}`\n"
+              f"- launcher workflow run: `{launcher_run_id}`\n"
+              f"- Q0 publication run: `{q0_run_id}`\n"
+              f"- immutable image: `{immutable_image}`\n"
+              f"- image digest: `{digest}`\n"
+              "- vulnerability gate: **PASS**\n"
+              "- reusable registry credentials retained: **false**\n"
+              "- customer identifiers retained: **false**\n"
+              "- Azure deployment claimed: **false**\n"
+              "- #390 source-to-proof claimed: **false**\n"
+              "- 72-hour soak clock started: **false**\n\n"
+              "Next gate: deploy live Core/Gateway from this exact immutable image, "
+              "qualify #390 against the approved EchoMedia SharePoint scope, then "
+              "start probe 1 only after the first retained proof succeeds."
+          )
+          endpoint = (
+              f"https://api.github.com/repos/{repository}/issues/{issue}/comments"
+          )
+          request = Request(
+              endpoint,
+              data=json.dumps({"body": body}, separators=(",", ":")).encode("utf-8"),
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {token}",
+                  "X-GitHub-Api-Version": "2026-03-10",
+                  "Content-Type": "application/json",
+              },
+              method="POST",
+          )
+          try:
+              with urlopen(request, timeout=30.0) as response:
+                  if response.status != 201:
+                      raise RuntimeError(
+                          f"issue comment returned HTTP {response.status}; expected 201"
+                      )
+          except HTTPError as exc:
+              raise RuntimeError(
+                  "authoritative handoff issue publication failed with HTTP "
+                  f"{exc.code}"
+              ) from exc
+          PY
