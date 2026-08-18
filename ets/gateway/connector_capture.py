@@ -33,9 +33,9 @@ class GatewayConnectorCaptureError(ValueError):
 @dataclass(frozen=True, slots=True)
 class GatewayConnectorCandidateRequest:
     candidate: ConnectorEvidenceCandidateV1
-    connector_instance_id: str | None = None
     correlation_id: str | None = None
     received_at_utc: datetime | None = None
+    connector_instance_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
