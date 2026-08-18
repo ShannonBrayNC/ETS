@@ -36,6 +36,10 @@ def _client(policy: AuthPolicy) -> TestClient:
     return TestClient(app)
 
 
+def _client_for_context(context: AuthContext) -> TestClient:
+    return _client(StaticAuthPolicy(context))
+
+
 def _context(
     *,
     roles: tuple[AuthRole, ...],
@@ -55,7 +59,9 @@ def _context(
 def test_hosted_ingestion_rejects_authenticated_principal_without_create_capability(
     path: str,
 ) -> None:
-    client = _client(_context(roles=("viewer",), capabilities=("evidence.read",)))
+    client = _client_for_context(
+        _context(roles=("viewer",), capabilities=("evidence.read",))
+    )
 
     response = client.post(path, json={})
 
@@ -70,7 +76,7 @@ def test_hosted_ingestion_rejects_authenticated_principal_without_create_capabil
 
 @pytest.mark.parametrize("path", ["/api/v1/events", "/evidence", "/evidence/register"])
 def test_hosted_ingestion_allows_evidence_producer_through_capability_guard(path: str) -> None:
-    client = _client(
+    client = _client_for_context(
         _context(
             roles=("evidence_producer",),
             capabilities=(
@@ -98,7 +104,9 @@ def test_hosted_capability_guard_preserves_existing_authentication_failure_shape
 
 
 def test_hosted_capability_guard_does_not_convert_reads_into_create_checks() -> None:
-    client = _client(_context(roles=("viewer",), capabilities=("evidence.read",)))
+    client = _client_for_context(
+        _context(roles=("viewer",), capabilities=("evidence.read",))
+    )
 
     response = client.get("/api/v1/events")
 
