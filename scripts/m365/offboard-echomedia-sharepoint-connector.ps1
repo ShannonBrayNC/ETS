@@ -17,7 +17,9 @@ param(
 
     [switch]$Apply,
 
-    [switch]$RemoveSitesSelectedRole
+    [switch]$RemoveSitesSelectedRole,
+
+    [switch]$ConfirmDedicatedIdentity
 )
 
 Set-StrictMode -Version Latest
@@ -104,6 +106,12 @@ Assert-Command -Name 'Invoke-MgGraphRequest'
 
 if ($SharePointHostname -notmatch '\.sharepoint\.com$') {
     throw 'SharePointHostname must be a SharePoint Online hostname ending in .sharepoint.com.'
+}
+if ($RemoveSitesSelectedRole -and -not $ConfirmDedicatedIdentity) {
+    throw (
+        'Removing the Sites.Selected app role requires -ConfirmDedicatedIdentity. ' +
+        'The script cannot prove that the managed identity has no other governed site use.'
+    )
 }
 
 $azureAccount = az account show --output json | ConvertFrom-Json
@@ -260,6 +268,7 @@ try {
         sitePermissionRemoved = $sitePermissionRemoved
         sitesSelectedAssignmentPresentBefore = $sitesSelectedAssignmentPresentBefore
         removeSitesSelectedRoleRequested = [bool]$RemoveSitesSelectedRole
+        dedicatedIdentityConfirmed = [bool]$ConfirmDedicatedIdentity
         sitesSelectedAssignmentRemoved = $sitesSelectedAssignmentRemoved
         managedIdentityDeleted = $false
         connectorHistoryDeleted = $false
