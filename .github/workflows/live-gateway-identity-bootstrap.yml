@@ -1,0 +1,269 @@
+name: Live Gateway Identity Bootstrap
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/live-gateway-identity-bootstrap.yml
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+concurrency:
+  group: live-gateway-identity-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Pre-create persistent live Gateway managed identity
+    runs-on: ubuntu-24.04
+    environment: ets-azure-q1
+    timeout-minutes: 20
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      LOCATION: eastus
+      RESOURCE_GROUP: rg-ets-live-eastus
+      ENVIRONMENT_NAME: ets-live
+      CONNECTOR_INSTANCE_ID: m365-sharepoint-primary
+      HANDOFF_ISSUE: '389'
+      Q0_SOURCE_SHA: 332d7db3a69acd826a2a000264e81a179894e278
+      Q0_IMAGE_DIGEST: sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c
+
+    steps:
+      - name: Check out bootstrap source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Assert one-shot release boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_EVENT_NAME" = "push"
+          test -f infra/azure/ets-gateway-identity.bicep
+          test -n "$RESOURCE_GROUP"
+          test -n "$ENVIRONMENT_NAME"
+          test -n "$CONNECTOR_INSTANCE_ID"
+
+      - name: Azure login with workload identity
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Require expected Azure tenant and subscription
+        shell: bash
+        env:
+          EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          set -euo pipefail
+          active_tenant="$(az account show --query tenantId -o tsv)"
+          active_subscription="$(az account show --query id -o tsv)"
+          test -n "$active_tenant"
+          test -n "$active_subscription"
+          if [ "${active_tenant,,}" != "${EXPECTED_TENANT_ID,,}" ]; then
+            echo "Active Azure tenant differs from the protected deployment tenant." >&2
+            exit 1
+          fi
+          if [ "${active_subscription,,}" != "${EXPECTED_SUBSCRIPTION_ID,,}" ]; then
+            echo "Active Azure subscription differs from the protected deployment subscription." >&2
+            exit 1
+          fi
+
+      - name: Require or create bounded live resource group
+        id: group
+        shell: bash
+        run: |
+          set -euo pipefail
+          exists="$(az group exists --name "$RESOURCE_GROUP" -o tsv)"
+          created=false
+          if [ "$exists" = "false" ]; then
+            az group create \
+              --name "$RESOURCE_GROUP" \
+              --location "$LOCATION" \
+              --tags etsEnvironment=live etsOwner=lantern-protocol etsPurpose=hosted-gateway \
+              --output none
+            created=true
+          else
+            group_json="$RUNNER_TEMP/live-group.json"
+            az group show --name "$RESOURCE_GROUP" -o json > "$group_json"
+            python - "$group_json" "$LOCATION" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected_location = sys.argv[2].casefold()
+          if str(payload.get("location") or "").casefold() != expected_location:
+              raise SystemExit("existing live resource group is in an unexpected Azure region")
+          tags = payload.get("tags") or {}
+          expected = {
+              "etsEnvironment": "live",
+              "etsOwner": "lantern-protocol",
+              "etsPurpose": "hosted-gateway",
+          }
+          for key, value in expected.items():
+              if str(tags.get(key) or "").casefold() != value.casefold():
+                  raise SystemExit(
+                      f"existing resource group is missing required ownership tag {key}={value}"
+                  )
+          PY
+          fi
+          echo "created=$created" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy deterministic Gateway identity
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployment="ets-live-gateway-identity-${GITHUB_RUN_ID}"
+          az deployment group create \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/azure/ets-gateway-identity.bicep \
+            --parameters \
+              location="$LOCATION" \
+              environmentName="$ENVIRONMENT_NAME" \
+              connectorInstanceId="$CONNECTOR_INSTANCE_ID" \
+            --output none
+
+          identity_name="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.gatewayManagedIdentityName.value -o tsv)"
+          identity_resource_id="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.gatewayManagedIdentityResourceId.value -o tsv)"
+          client_id="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.gatewayManagedIdentityClientId.value -o tsv)"
+          principal_id="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.gatewayManagedIdentityPrincipalId.value -o tsv)"
+
+          test -n "$identity_name"
+          test -n "$identity_resource_id"
+          test -n "$client_id"
+          test -n "$principal_id"
+          echo "::add-mask::$identity_resource_id"
+          echo "::add-mask::$client_id"
+          echo "::add-mask::$principal_id"
+
+          identity_json="$RUNNER_TEMP/live-gateway-identity.json"
+          az identity show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$identity_name" \
+            -o json > "$identity_json"
+          python - "$identity_json" "$identity_resource_id" "$client_id" "$principal_id" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected_resource_id, expected_client_id, expected_principal_id = sys.argv[2:]
+          actual = {
+              "resource_id": str(payload.get("id") or ""),
+              "client_id": str(payload.get("clientId") or ""),
+              "principal_id": str(payload.get("principalId") or ""),
+          }
+          expected = {
+              "resource_id": expected_resource_id,
+              "client_id": expected_client_id,
+              "principal_id": expected_principal_id,
+          }
+          for key in expected:
+              if actual[key].casefold() != expected[key].casefold():
+                  raise SystemExit(f"Gateway identity {key} did not match deployment output")
+          PY
+
+          echo "name=$identity_name" >> "$GITHUB_OUTPUT"
+
+      - name: Retain sanitized identity handoff
+        shell: bash
+        env:
+          IDENTITY_NAME: ${{ steps.identity.outputs.name }}
+          RESOURCE_GROUP_CREATED: ${{ steps.group.outputs.created }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/live-gateway-identity
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schema_version": "ets.live_gateway.identity_bootstrap.v1",
+              "orchestrator_source_sha": os.environ["GITHUB_SHA"],
+              "q0_image_source_sha": os.environ["Q0_SOURCE_SHA"],
+              "q0_image_digest": os.environ["Q0_IMAGE_DIGEST"],
+              "location": os.environ["LOCATION"],
+              "resource_group": os.environ["RESOURCE_GROUP"],
+              "resource_group_created": os.environ["RESOURCE_GROUP_CREATED"].lower() == "true",
+              "environment_name": os.environ["ENVIRONMENT_NAME"],
+              "connector_instance_id": os.environ["CONNECTOR_INSTANCE_ID"],
+              "gateway_managed_identity_name": os.environ["IDENTITY_NAME"],
+              "gateway_identity_ready": True,
+              "gateway_client_id_retained": False,
+              "gateway_principal_id_retained": False,
+              "reusable_credential_retained": False,
+              "core_producer_role_assigned": False,
+              "core_scope_map_configured": False,
+              "azure_runtime_deployed": False,
+              "m365_source_to_proof_claimed": False,
+              "soak_clock_started": False,
+          }
+          Path("evidence/live-gateway-identity/handoff.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload sanitized identity evidence
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-gateway-identity-${{ github.run_id }}
+          path: evidence/live-gateway-identity/handoff.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish bounded identity status to Gateway issue
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IDENTITY_NAME: ${{ steps.identity.outputs.name }}
+        run: |
+          set -euo pipefail
+          body=$(cat <<EOF
+          ### Live Gateway identity bootstrap
+
+          - release image source: \`$Q0_SOURCE_SHA\`
+          - release image digest: \`$Q0_IMAGE_DIGEST\`
+          - Azure resource group: \`$RESOURCE_GROUP\`
+          - Gateway managed identity: \`$IDENTITY_NAME\`
+          - deterministic environment seed: \`$ENVIRONMENT_NAME\`
+          - deterministic connector seed: \`$CONNECTOR_INSTANCE_ID\`
+          - Gateway identity ready: **true**
+          - client/principal IDs retained in public evidence: **false**
+          - Core \`evidence_producer\` role assigned: **false**
+          - Core app-to-ETS-scope map configured: **false**
+          - Azure Core/Gateway runtime deployed: **false**
+          - M365 source-to-proof claimed: **false**
+          - 72-hour soak clock started: **false**
+
+          Next gate: use the governed #414 operator scripts in the EchoMedia tenant to validate/create the Core \`evidence_producer\` app role and assign it to this exact managed identity, then deploy Core/Gateway from the authoritative immutable image.
+          EOF
+          )
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/issues/$HANDOFF_ISSUE/comments" \
+            -f body="$body" >/dev/null
