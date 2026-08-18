@@ -63,6 +63,10 @@ def _candidate(record: dict[str, JsonValue]) -> ConnectorEvidenceCandidateV1:
     )
 
 
+class FixtureInstance:
+    instance_id = "sharepoint-fixture"
+
+
 class FixtureAdapter:
     def __init__(self, record: dict[str, JsonValue]) -> None:
         self.record = record
@@ -93,6 +97,7 @@ class FixtureAdapter:
 class FixtureIngress:
     def __init__(self) -> None:
         self.candidates: list[ConnectorEvidenceCandidateV1] = []
+        self.requests: list[GatewayConnectorCandidateRequest] = []
 
     def ingest_candidate(
         self,
@@ -101,6 +106,7 @@ class FixtureIngress:
     ) -> ConnectorOperationReceiptV1:
         del principal
         self.candidates.append(request.candidate)
+        self.requests.append(request)
         return ConnectorOperationReceiptV1(
             schema_version="ets.connector.operation_receipt.v1",
             instance_id="sharepoint-fixture",
@@ -121,11 +127,12 @@ def test_candidate_classification_precedes_commit_and_state_release_follows_queu
     release_hook = SharePointMetadataStateReleaseHook(store, source_key=SOURCE_KEY)
     ingress = FixtureIngress()
     runner = GatewayConnectorCollectionRunner(ingress)
+    instance = FixtureInstance()
     baseline_adapter = FixtureAdapter(_record("drive:item-001:baseline", "report.docx"))
 
     baseline = runner.run(
         adapter=baseline_adapter,
-        instance=object(),
+        instance=instance,
         principal="fixture-principal",
         checkpoint=None,
         candidate_hook=candidate_hook,
@@ -133,6 +140,7 @@ def test_candidate_classification_precedes_commit_and_state_release_follows_queu
     )
 
     assert baseline.code == "ok"
+    assert ingress.requests[0].connector_instance_id == "sharepoint-fixture"
     first_claim = ingress.candidates[0].metadata["derived_transition"]
     assert isinstance(first_claim, dict)
     assert first_claim["kinds"] == ["baseline_observation"]
@@ -144,7 +152,7 @@ def test_candidate_classification_precedes_commit_and_state_release_follows_queu
     renamed_adapter = FixtureAdapter(_record("drive:item-001:renamed", "renamed.docx"))
     renamed = runner.run(
         adapter=renamed_adapter,
-        instance=object(),
+        instance=instance,
         principal="fixture-principal",
         checkpoint=baseline.checkpoint_to_persist,
         candidate_hook=candidate_hook,
@@ -152,6 +160,7 @@ def test_candidate_classification_precedes_commit_and_state_release_follows_queu
     )
 
     assert renamed.code == "ok"
+    assert ingress.requests[1].connector_instance_id == "sharepoint-fixture"
     second_claim = ingress.candidates[1].metadata["derived_transition"]
     assert isinstance(second_claim, dict)
     assert second_claim["kinds"] == ["renamed"]

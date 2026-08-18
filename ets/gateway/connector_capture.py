@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final
@@ -22,6 +23,7 @@ from ets.gateway.source_registry import SourceRegistration
 CONNECTOR_CANDIDATE_MEDIA_TYPE: Final = "application/vnd.ets.connector-candidate+json;version=1"
 CONNECTOR_COMMITTED_REPRESENTATION: Final = "ets.gateway.connector-candidate-metadata.v1"
 DEFAULT_MAX_CONNECTOR_COMMITTED_BYTES: Final = 16 * 1024
+CONNECTOR_INSTANCE_ID_PATTERN: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 class GatewayConnectorCaptureError(ValueError):
@@ -31,6 +33,7 @@ class GatewayConnectorCaptureError(ValueError):
 @dataclass(frozen=True, slots=True)
 class GatewayConnectorCandidateRequest:
     candidate: ConnectorEvidenceCandidateV1
+    connector_instance_id: str | None = None
     correlation_id: str | None = None
     received_at_utc: datetime | None = None
 
@@ -56,6 +59,11 @@ def build_connector_capture(
         raise ValueError("maximum_committed_bytes must be positive")
     if request.correlation_id is not None and len(request.correlation_id) > 200:
         raise GatewayConnectorCaptureError("correlation_id exceeds configured limit")
+    if (
+        request.connector_instance_id is not None
+        and CONNECTOR_INSTANCE_ID_PATTERN.fullmatch(request.connector_instance_id) is None
+    ):
+        raise GatewayConnectorCaptureError("connector_instance_id is outside configured bounds")
 
     candidate = request.candidate
     if candidate.source_system != registration.source_system:
@@ -72,7 +80,7 @@ def build_connector_capture(
         candidate.metadata,
         registration.redacted_keys,
     )
-    representation = {
+    representation: dict[str, Any] = {
         "schema": CONNECTOR_COMMITTED_REPRESENTATION,
         "source_system": candidate.source_system,
         "source_record_id": candidate.source_record_id,
@@ -111,6 +119,20 @@ def build_connector_capture(
             ]
         )
     ).hexdigest()
+
+    capture_metadata: dict[str, Any] = {
+        "connector_source_system": candidate.source_system,
+        "connector_source_record_id": candidate.source_record_id,
+        "connector_source_event_type_claim": candidate.event_type,
+        "connector_transformation_profile": candidate.transformation_profile,
+        "connector_lossless_claim": candidate.lossless,
+        "redacted_field_count": redacted_count,
+        "committed_representation_length": len(committed),
+        "committed_connector_metadata": minimized_metadata,
+        "raw_source_payload_retained": False,
+    }
+    if request.connector_instance_id is not None:
+        capture_metadata["connector_instance_id"] = request.connector_instance_id
 
     envelope = CaptureEnvelopeV1(
         schema_version="ets.capture.v1",
@@ -156,17 +178,7 @@ def build_connector_capture(
             ),
         ),
         correlation_id=request.correlation_id,
-        metadata={
-            "connector_source_system": candidate.source_system,
-            "connector_source_record_id": candidate.source_record_id,
-            "connector_source_event_type_claim": candidate.event_type,
-            "connector_transformation_profile": candidate.transformation_profile,
-            "connector_lossless_claim": candidate.lossless,
-            "redacted_field_count": redacted_count,
-            "committed_representation_length": len(committed),
-            "committed_connector_metadata": minimized_metadata,
-            "raw_source_payload_retained": False,
-        },
+        metadata=capture_metadata,
         privacy=CapturePrivacy(
             classification=registration.classification,
             redaction_profile=registration.redaction_profile,
