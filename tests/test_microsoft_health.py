@@ -157,6 +157,11 @@ def test_healthy_posture_is_operational_and_never_a_verification_claim() -> None
 
     assert posture.health.state == "healthy"
     assert posture.health.code == "ok"
+    assert posture.ets_tenant_id == ETS_TENANT
+    assert posture.workspace_id == WORKSPACE
+    assert posture.source_id == SOURCE
+    assert posture.microsoft_tenant_id == GRAPH_TENANT
+    assert posture.subscription_id == "subscription-001"
     assert posture.verification_claimed is False
     assert posture.source_truth_claimed is False
     assert posture.completeness_claimed is False
