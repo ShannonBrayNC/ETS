@@ -13,8 +13,10 @@ from typing import Any, cast
 
 from fastapi import FastAPI, Request
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.middleware.base import RequestResponseEndpoint
+from starlette.responses import JSONResponse, Response
 
-from ets.api.auth import AppScopeMap, AuthPolicy, ProductionJWKSAuthPolicy
+from ets.api.auth import AppScopeMap, AuthError, AuthPolicy, ProductionJWKSAuthPolicy
 from ets.api.azure_signing import AzureManagedIdentitySignerAdapter
 from ets.core import EventStore, SignedTreeHead
 from ets.core.signing import TreeHeadSigner, verify_tree_head_signature
@@ -22,6 +24,13 @@ from ets.core.signing import TreeHeadSigner, verify_tree_head_signature
 _AZURE_STORAGE_PROVIDER = "azure_table"
 _AZURE_SIGNING_MODE = "azure_key_vault"
 _AZURE_AUTH_MODE = "production_jwks"
+_EVIDENCE_CREATE_PATHS = frozenset(
+    {
+        "/api/v1/events",
+        "/evidence",
+        "/evidence/register",
+    }
+)
 
 
 class HostedTreeHeadSignatureVerificationRequest(BaseModel):
@@ -82,7 +91,37 @@ def create_app_from_env() -> FastAPI:
         signing_mode=_AZURE_SIGNING_MODE,
     )
     _install_hosted_signature_verifier(app, auth_policy)
+    _install_hosted_capability_guard(app, auth_policy)
     return app
+
+
+def _install_hosted_capability_guard(app: FastAPI, auth_policy: AuthPolicy) -> None:
+    """Require producer authority for hosted evidence-ingestion mutations."""
+
+    @app.middleware("http")
+    async def require_hosted_capabilities(
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
+        if request.method == "POST" and request.url.path in _EVIDENCE_CREATE_PATHS:
+            try:
+                context = auth_policy.authenticate(request)
+            except AuthError:
+                # Preserve the API's existing bounded authentication-error response.
+                return await call_next(request)
+            if not context.has_capability("evidence.create"):
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "error": {
+                            "code": "ETS_AUTH_FORBIDDEN",
+                            "message": (
+                                "authenticated principal lacks evidence.create capability"
+                            ),
+                        }
+                    },
+                )
+        return await call_next(request)
 
 
 def _install_hosted_signature_verifier(app: FastAPI, auth_policy: AuthPolicy) -> None:
