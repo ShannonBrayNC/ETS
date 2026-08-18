@@ -11,6 +11,7 @@ import {
   updateConnectorInstance,
   validateConnectorInstance,
 } from "./api";
+import { MicrosoftPosturePanel } from "./MicrosoftPosturePanel";
 import type {
   ConnectorDefinition,
   ConnectorHealth,
@@ -269,7 +270,9 @@ export function ConnectorsPage({ auth }: { auth: GatewayAuthorizationContext }) 
           <div><dt>Observation</dt><dd>{humanObservation(selectedRuntime?.observation_state)}</dd></div>
           <div><dt>Connection test</dt><dd>{selectedHealth ? `${selectedHealth.state}: ${selectedHealth.message}` : "Not run in this session"}</dd></div>
         </dl>
-        <p className="boundary-note">Operational health is not ETS cryptographic verification and does not establish source truth or completeness.</p>
+        {selectedRecord.instance.connector_id.startsWith("microsoft.")
+          ? <MicrosoftPosturePanel instanceId={selectedRecord.instance.instance_id} />
+          : <p className="boundary-note">Operational health is not ETS cryptographic verification and does not establish source truth or completeness.</p>}
         {canManage ? <div className="drawer-actions">
           <button className="secondary" onClick={() => setWizard(editWizard(selectedRecord, catalog))}>Edit configuration</button>
           <button className="secondary" onClick={() => void testConnection(selectedRecord)}>Test connection</button>
