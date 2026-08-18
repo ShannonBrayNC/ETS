@@ -167,7 +167,7 @@ def _synthetic_event(
 ) -> JsonObject:
     marker = (
         f"g2e-f-soak:{workflow_run_id}:{tenant_id}:{workspace_id}:{collected_at.isoformat()}"
-    ).encode("utf-8")
+    ).encode()
     return {
         "event_id": f"g2e-f-soak-{workflow_run_id}",
         "tenant_id": tenant_id,
