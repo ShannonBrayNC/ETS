@@ -109,12 +109,12 @@ def _require_core_auth_scope(
     tenant_id: str,
     workspace_id: str,
 ) -> None:
+    # Production Core scope is derived from authenticated claims or the server-owned
+    # app-to-scope map. X-ETS-Tenant/X-ETS-Workspace are explicitly rejected there.
     context = _request_json(
         "GET",
         _endpoint(core_base_url, "/api/v1/auth/context"),
         token=token,
-        tenant_id=tenant_id,
-        workspace_id=workspace_id,
     )
     if context.get("tenant_id") != tenant_id or context.get("workspace_id") != workspace_id:
         raise RuntimeError("hosted ETS auth context does not match expected soak scope")
@@ -206,8 +206,6 @@ def _append_and_verify_probe_proof(
         "POST",
         _endpoint(core_base_url, "/api/v1/events"),
         token=token,
-        tenant_id=tenant_id,
-        workspace_id=workspace_id,
         payload=event,
         expected=(201,),
     )
@@ -217,8 +215,6 @@ def _append_and_verify_probe_proof(
         "GET",
         _endpoint(core_base_url, proof_path),
         token=token,
-        tenant_id=tenant_id,
-        workspace_id=workspace_id,
     )
     proof = InclusionProof.model_validate(proof_payload)
     local_result = verify_inclusion_proof(proof)
@@ -226,8 +222,6 @@ def _append_and_verify_probe_proof(
         "POST",
         _endpoint(core_base_url, "/api/v1/verify/inclusion"),
         token=token,
-        tenant_id=tenant_id,
-        workspace_id=workspace_id,
         payload=proof_payload,
     )
     if append.get("event_hash") is None:
