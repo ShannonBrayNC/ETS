@@ -39,7 +39,10 @@ from ets.gateway.evidence_package import (
     verify_gateway_evidence_package,
 )
 from ets.runtime.sync_queue import SyncQueue
-from ets.runtime.sync_queue_scope import GATEWAY_SYNC_SCHEMA, source_scoped_sync_queue_status
+from ets.runtime.sync_queue_scope import (
+    GATEWAY_SYNC_SCHEMA,
+    source_scoped_sync_queue_status,
+)
 from ets.verifier import verify_inclusion
 
 NOW = datetime(2026, 8, 18, 5, 30, tzinfo=UTC)
@@ -99,7 +102,9 @@ def _instance(
         collection=ConnectorCollection(mode="poll", interval_seconds=60),
         policy=ConnectorPolicyBinding(
             capture_profile="capture.microsoft.sharepoint.v1",
-            normalization_profile="ets.connector.microsoft.sharepoint-onedrive-metadata.v1",
+            normalization_profile=(
+                "ets.connector.microsoft.sharepoint-onedrive-metadata.v1"
+            ),
         ),
         settings={},
     )
@@ -118,7 +123,9 @@ def _principal(
     )
 
 
-def _management_client(tmp_path: Path) -> tuple[TestClient, ConnectorManagementService]:
+def _management_client(
+    tmp_path: Path,
+) -> tuple[TestClient, ConnectorManagementService]:
     management = ConnectorManagementService(
         registry=ConnectorRegistry([_definition()]),
         store=ConnectorRuntimeStore(tmp_path / "connector-runtime.db"),
@@ -243,13 +250,17 @@ def _package(
             source_id=SOURCE_ID,
             source_system=SOURCE_SYSTEM,
             source_record_id=source_record_id,
-            transformation_profile="ets.connector.microsoft.sharepoint-onedrive-metadata.v1",
+            transformation_profile=(
+                "ets.connector.microsoft.sharepoint-onedrive-metadata.v1"
+            ),
         ),
         exported_at_utc=NOW,
     )
 
 
-def test_connector_management_api_and_runtime_store_are_tenant_isolated(tmp_path: Path) -> None:
+def test_management_api_and_runtime_store_are_tenant_isolated(
+    tmp_path: Path,
+) -> None:
     api, management = _management_client(tmp_path)
     headers_a = {"x-tenant": TENANT_A, "x-workspace": WORKSPACE_A}
     headers_b = {"x-tenant": TENANT_B, "x-workspace": WORKSPACE_B}
@@ -259,8 +270,14 @@ def test_connector_management_api_and_runtime_store_are_tenant_isolated(tmp_path
 
     assert list_a.status_code == 200
     assert list_b.status_code == 200
-    assert [item["instance"]["instance_id"] for item in list_a.json()["items"]] == [INSTANCE_A]
-    assert [item["instance"]["instance_id"] for item in list_b.json()["items"]] == [INSTANCE_B]
+    instances_a = [
+        item["instance"]["instance_id"] for item in list_a.json()["items"]
+    ]
+    instances_b = [
+        item["instance"]["instance_id"] for item in list_b.json()["items"]
+    ]
+    assert instances_a == [INSTANCE_A]
+    assert instances_b == [INSTANCE_B]
 
     cross_get = api.get(
         f"/gateway/connectors/v1/instances/{INSTANCE_B}",
@@ -278,10 +295,16 @@ def test_connector_management_api_and_runtime_store_are_tenant_isolated(tmp_path
     assert cross_get.status_code == 403
     assert cross_runtime.status_code == 403
     assert cross_mutation.status_code == 403
-    assert management.get_runtime(_principal(TENANT_B, WORKSPACE_B), INSTANCE_B).gap_open is False
+    tenant_b_runtime = management.get_runtime(
+        _principal(TENANT_B, WORKSPACE_B),
+        INSTANCE_B,
+    )
+    assert tenant_b_runtime.gap_open is False
 
 
-def test_shared_sync_queue_isolates_same_source_id_by_tenant_and_workspace(tmp_path: Path) -> None:
+def test_shared_queue_isolates_same_source_id_by_tenant_and_workspace(
+    tmp_path: Path,
+) -> None:
     queue = SyncQueue(tmp_path / "shared-sync.db")
     record_a = queue.enqueue(
         _gateway_payload("tenant-a", tenant_id=TENANT_A, workspace_id=WORKSPACE_A)
@@ -351,12 +374,14 @@ def test_evidence_packages_bind_tenant_and_instance_provenance() -> None:
     assert package_b.source_provenance.source_id == SOURCE_ID
     assert package_a.source_provenance.connector_instance_id == INSTANCE_A
     assert package_b.source_provenance.connector_instance_id == INSTANCE_B
-    assert TENANT_B not in package_a.model_dump_json()
-    assert WORKSPACE_B not in package_a.model_dump_json()
-    assert INSTANCE_B not in package_a.model_dump_json()
-    assert TENANT_A not in package_b.model_dump_json()
-    assert WORKSPACE_A not in package_b.model_dump_json()
-    assert INSTANCE_A not in package_b.model_dump_json()
+    serialized_a = package_a.model_dump_json()
+    serialized_b = package_b.model_dump_json()
+    assert TENANT_B not in serialized_a
+    assert WORKSPACE_B not in serialized_a
+    assert INSTANCE_B not in serialized_a
+    assert TENANT_A not in serialized_b
+    assert WORKSPACE_A not in serialized_b
+    assert INSTANCE_A not in serialized_b
 
     with pytest.raises(ValidationError, match="tenant/workspace"):
         _package(
