@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
-import pytest
 
 from ets.api import hosted_runtime
 from ets.api.app import create_app
 from ets.api.auth import AuthContext, AuthError, AuthPolicy
+from ets.api.authorization import AuthCapability, AuthRole
 from ets.core import InMemoryAppendOnlyLog
 
 
@@ -35,13 +36,17 @@ def _client(policy: AuthPolicy) -> TestClient:
     return TestClient(app)
 
 
-def _context(*, roles: tuple[str, ...], capabilities: tuple[str, ...]) -> AuthContext:
+def _context(
+    *,
+    roles: tuple[AuthRole, ...],
+    capabilities: tuple[AuthCapability, ...],
+) -> AuthContext:
     return AuthContext(
         subject="test-principal",
         tenant_id="tenant-demo",
         workspace_id="workspace-demo",
-        roles=roles,  # type: ignore[arg-type]
-        capabilities=capabilities,  # type: ignore[arg-type]
+        roles=roles,
+        capabilities=capabilities,
         authorization_profile="production",
     )
 
@@ -68,14 +73,18 @@ def test_hosted_ingestion_allows_evidence_producer_through_capability_guard(path
     client = _client(
         _context(
             roles=("evidence_producer",),
-            capabilities=("evidence.read", "evidence.create", "evidence.verify", "evidence.export"),
+            capabilities=(
+                "evidence.read",
+                "evidence.create",
+                "evidence.verify",
+                "evidence.export",
+            ),
         )
     )
 
     response = client.post(path, json={})
 
-    # The deliberately invalid body reaches normal route validation instead of being denied by the
-    # hosted capability guard.
+    # The invalid body reaches normal validation rather than the capability denial path.
     assert response.status_code == 422
 
 
