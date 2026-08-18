@@ -151,7 +151,11 @@ def _read_management_posture(
         ),
         token=token,
     )
-    posture = MicrosoftOperationalPostureV1.model_validate(payload)
+    # Validate through the JSON path so strict models accept native JSON datetime strings
+    # without enabling general Python-object coercion.
+    posture = MicrosoftOperationalPostureV1.model_validate_json(
+        json.dumps(payload, separators=(",", ":"))
+    )
     if posture.instance_id != instance_id:
         raise RuntimeError("Microsoft posture returned a different connector instance")
     if posture.ets_tenant_id != tenant_id or posture.workspace_id != workspace_id:
