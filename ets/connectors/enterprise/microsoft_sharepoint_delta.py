@@ -22,6 +22,7 @@ SHAREPOINT_DELTA_DEFAULT_MAXIMUM_BODY_BYTES: Final = 1024 * 1024
 SHAREPOINT_DELTA_DEFAULT_MAXIMUM_RECORDS: Final = 1000
 SHAREPOINT_DELTA_MAXIMUM_CHECKPOINT_CHARACTERS: Final = 4000
 SHAREPOINT_DELTA_MAXIMUM_IDENTIFIER_CHARACTERS: Final = 500
+SHAREPOINT_DELTA_MAXIMUM_SOURCE_HASH_CHARACTERS: Final = 1024
 
 SharePointDeltaScope = Literal["drive", "list"]
 
@@ -252,6 +253,7 @@ def _minimize_record(
             raise MicrosoftSharePointDeltaError("file facet must be an object")
         minimized_file: dict[str, JsonValue] = {}
         _copy_bounded_string(file_facet, minimized_file, "mimeType", 500, output_key="mime_type")
+        _copy_minimized_file_hashes(file_facet, minimized_file)
         metadata["file"] = minimized_file
 
     folder_facet = raw.get("folder")
@@ -308,6 +310,35 @@ def _minimize_record(
         source_modified_at_utc=modified,
         metadata=metadata,
     )
+
+
+def _copy_minimized_file_hashes(
+    file_facet: dict[str, object],
+    minimized_file: dict[str, JsonValue],
+) -> None:
+    """Copy supported source-reported hashes without retrieving file content."""
+
+    hashes = file_facet.get("hashes")
+    if hashes is None:
+        return
+    if not isinstance(hashes, dict):
+        raise MicrosoftSharePointDeltaError("file hashes facet must be an object")
+
+    minimized_hashes: dict[str, JsonValue] = {}
+    for source_key, output_key in (
+        ("crc32Hash", "crc32_hash"),
+        ("quickXorHash", "quick_xor_hash"),
+        ("sha1Hash", "sha1_hash"),
+    ):
+        _copy_bounded_string(
+            hashes,
+            minimized_hashes,
+            source_key,
+            SHAREPOINT_DELTA_MAXIMUM_SOURCE_HASH_CHARACTERS,
+            output_key=output_key,
+        )
+    if minimized_hashes:
+        minimized_file["hashes"] = minimized_hashes
 
 
 def _copy_minimized_sharing(
