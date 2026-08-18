@@ -148,12 +148,23 @@ Repeat the same command with `-Apply`. The script:
 ### 5. Optionally remove the Graph app-role assignment
 
 `Sites.Selected` without a site-specific grant does not itself grant access to a SharePoint site.
-If the managed identity is dedicated to this connector and the operator intends full Graph-role
-removal, use both `-Apply` and `-RemoveSitesSelectedRole`.
+Removing the broader app-role assignment can nevertheless disrupt other governed sites if the same
+managed identity is intentionally reused.
 
-Do not remove the app-role assignment merely to make an offboarding report look complete when the
-same managed identity is intentionally reused by another governed connector/site. Shared-identity
-reuse must be explicit and separately qualified.
+The script cannot prove global non-reuse by inspecting one target site's permission collection.
+Therefore full role removal requires three explicit operator choices:
+
+- `-Apply`
+- `-RemoveSitesSelectedRole`
+- `-ConfirmDedicatedIdentity`
+
+`-ConfirmDedicatedIdentity` is an operator attestation that the managed identity is dedicated to the
+offboarded connector/site scope and is not intentionally required by another governed site. The tool
+fails closed if `-RemoveSitesSelectedRole` is supplied without that attestation.
+
+Do not provide the attestation merely to make an offboarding report look complete. If identity reuse
+is intentional, remove only the target site's permission and preserve the `Sites.Selected` assignment.
+Shared-identity reuse must be explicit and separately qualified.
 
 ### 6. Prove access loss
 
