@@ -209,9 +209,10 @@ def _append_and_verify_probe_proof(
         expected=(201,),
     )
     event_id = str(event["event_id"])
+    proof_path = f"/api/v1/proofs/inclusion/{event_id}"
     proof_payload = _request_json(
         "GET",
-        _endpoint(core_base_url, f"/api/v1/proofs/inclusion/{event_id}"),
+        _endpoint(core_base_url, proof_path),
         token=token,
         tenant_id=tenant_id,
         workspace_id=workspace_id,
@@ -228,10 +229,7 @@ def _append_and_verify_probe_proof(
     )
     if append.get("event_hash") is None:
         raise RuntimeError("hosted ETS append response omitted event hash")
-    return (
-        f"{core_base_url.rstrip('/')}/api/v1/proofs/inclusion/{event_id}",
-        bool(local_result.valid and api_result.get("valid") is True),
-    )
+    return proof_path, bool(local_result.valid and api_result.get("valid") is True)
 
 
 def collect_probe(args: argparse.Namespace) -> MicrosoftSoakProbeV1:
