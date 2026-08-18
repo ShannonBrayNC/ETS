@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -40,13 +40,17 @@ WORKSPACE = "workspace-a"
 
 
 def _definition(connector_id: str) -> ConnectorDefinitionV1:
+    implementation_class = "enterprise_api" if connector_id == MICROSOFT_CONNECTOR else "generic"
+    source_classes = (
+        ("microsoft",) if connector_id == MICROSOFT_CONNECTOR else ("synthetic",)
+    )
     return ConnectorDefinitionV1(
         schema_version="ets.connector.definition.v1",
         connector_id=connector_id,
         display_name=connector_id,
         description="Operational posture API fixture.",
-        implementation_class="enterprise_api" if connector_id == MICROSOFT_CONNECTOR else "generic",
-        source_classes=("microsoft",) if connector_id == MICROSOFT_CONNECTOR else ("synthetic",),
+        implementation_class=implementation_class,
+        source_classes=source_classes,
         adapter_version="1.0",
         sdk_contract_version="ets.connector.sdk.v1",
         capture_envelope_versions=("ets.capture.v1",),
@@ -145,11 +149,11 @@ def _principal(
     )
 
 
-def _setup(tmp_path: Path, *, provider: _Provider | None = None) -> tuple[
-    TestClient,
-    ConnectorManagementService,
-    _Provider | None,
-]:
+def _setup(
+    tmp_path: Path,
+    *,
+    provider: _Provider | None = None,
+) -> tuple[TestClient, ConnectorManagementService, _Provider | None]:
     registry = ConnectorRegistry(
         [_definition(MICROSOFT_CONNECTOR), _definition(SYNTHETIC_CONNECTOR)]
     )
@@ -176,7 +180,9 @@ def _setup(tmp_path: Path, *, provider: _Provider | None = None) -> tuple[
         )
 
     app = FastAPI()
-    app.include_router(create_microsoft_operational_posture_router(posture_service, resolve))
+    app.include_router(
+        create_microsoft_operational_posture_router(posture_service, resolve)
+    )
     return TestClient(app), management, provider
 
 
@@ -186,7 +192,9 @@ def test_read_only_principal_can_read_posture_without_mutating_runtime(tmp_path:
     reader = _principal()
     before = management.get_runtime(reader, "microsoft-source")
 
-    response = api.get("/gateway/connectors/v1/instances/microsoft-source/microsoft/posture")
+    response = api.get(
+        "/gateway/connectors/v1/instances/microsoft-source/microsoft/posture"
+    )
 
     after = management.get_runtime(reader, "microsoft-source")
     assert response.status_code == 200
@@ -237,11 +245,13 @@ def test_unsupported_connector_and_missing_instance_are_bounded(tmp_path: Path) 
 
 
 def test_provider_scope_mismatch_fails_closed(tmp_path: Path) -> None:
-    wrong = replace(_posture(), workspace_id="workspace-other")
+    wrong = _posture().model_copy(update={"workspace_id": "workspace-other"})
     provider = _Provider(wrong)
     api, _, _ = _setup(tmp_path, provider=provider)
 
-    response = api.get("/gateway/connectors/v1/instances/microsoft-source/microsoft/posture")
+    response = api.get(
+        "/gateway/connectors/v1/instances/microsoft-source/microsoft/posture"
+    )
 
     assert response.status_code == 503
     assert (
