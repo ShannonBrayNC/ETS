@@ -1,0 +1,57 @@
+name: M365 Lifecycle Assets Qualification
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/m365-lifecycle-assets.yml"
+      - "scripts/m365/offboard-echomedia-sharepoint-connector.ps1"
+      - "docs/connectors/MICROSOFT_CONNECTOR_LIFECYCLE_RUNBOOK_V1.md"
+      - "tests/test_m365_connector_lifecycle_assets.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m365-lifecycle-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    name: Parse and test M365 lifecycle assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Parse offboarding PowerShell
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:GITHUB_WORKSPACE `
+            'scripts/m365/offboard-echomedia-sharepoint-connector.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $path,
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "Offboarding PowerShell contains parser errors."
+          }
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: python -m pip install -e ".[dev]"
+
+      - name: Test lifecycle boundaries
+        run: pytest -q tests/test_m365_connector_lifecycle_assets.py
