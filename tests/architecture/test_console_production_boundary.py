@@ -66,6 +66,21 @@ def test_console_api_uses_versioned_management_contract() -> None:
     assert "console-user" not in source
 
 
+def test_microsoft_posture_uses_read_only_versioned_management_contract() -> None:
+    api_source = _read("api.ts")
+    connector_source = _read("Connectors.tsx")
+    posture_source = _read("MicrosoftPosturePanel.tsx")
+
+    assert "/gateway/connectors/v1/instances/" in api_source
+    assert "/microsoft/posture" in api_source
+    assert 'connector_id.startsWith("microsoft.")' in connector_source
+    assert "getMicrosoftOperationalPosture" in posture_source
+    assert "ETS cryptographic verification" in posture_source
+    assert "Microsoft source" in posture_source
+    assert "source completeness" in posture_source
+    assert "trust score" not in posture_source.casefold()
+
+
 def test_connector_diagnostics_use_bounded_codes_not_message_matching() -> None:
     api_source = _read("api.ts")
     diagnostic_source = _read("connectorDiagnostics.ts")

@@ -9,6 +9,7 @@ import type {
   ConnectorRuntimeState,
   GatewayAuthorizationContext,
   HealthSnapshot,
+  MicrosoftOperationalPosture,
   ProofBundle,
   TenantScope,
   TreeHead,
@@ -264,6 +265,19 @@ export async function getConnectorRuntime(instanceId: string): Promise<Connector
     await fetch(
       managementUrl(
         `/gateway/connectors/v1/instances/${encodeURIComponent(instanceId)}/runtime`,
+      ),
+      { credentials: "same-origin", headers: managementHeaders() },
+    ),
+  );
+}
+
+export async function getMicrosoftOperationalPosture(
+  instanceId: string,
+): Promise<MicrosoftOperationalPosture> {
+  return readJson<MicrosoftOperationalPosture>(
+    await fetch(
+      managementUrl(
+        `/gateway/connectors/v1/instances/${encodeURIComponent(instanceId)}/microsoft/posture`,
       ),
       { credentials: "same-origin", headers: managementHeaders() },
     ),
