@@ -78,7 +78,10 @@ class GatewayMicrosoftOperationalPostureService:
         runtime: ConnectorRuntimeStateV1,
         posture: MicrosoftOperationalPostureV1,
     ) -> None:
-        if posture.instance_id != instance.instance_id or posture.instance_id != runtime.instance_id:
+        if (
+            posture.instance_id != instance.instance_id
+            or posture.instance_id != runtime.instance_id
+        ):
             raise MicrosoftOperationalPostureScopeError(
                 "Microsoft posture instance does not match authorized connector runtime"
             )
