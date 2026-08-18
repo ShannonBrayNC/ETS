@@ -9,6 +9,7 @@ from ets.connectors.credentials.models import CredentialReferenceV1
 from ets.connectors.enterprise.microsoft import MicrosoftTenantProfileV1
 from ets.connectors.enterprise.microsoft_sharepoint_delta import (
     MicrosoftSharePointDeltaError,
+    MicrosoftSharePointDeltaRequestProfile,
     parse_sharepoint_delta_page,
     sharepoint_drive_delta_request_profile,
     sharepoint_list_delta_request_profile,
@@ -33,12 +34,14 @@ def _tenant() -> MicrosoftTenantProfileV1:
     )
 
 
-def _drive_page(profile: object, value: list[dict[str, object]]) -> bytes:
-    initial_url = getattr(profile, "initial_url")
+def _drive_page(
+    profile: MicrosoftSharePointDeltaRequestProfile,
+    value: list[dict[str, object]],
+) -> bytes:
     return json.dumps(
         {
             "value": value,
-            "@odata.nextLink": initial_url + "?$skiptoken=page-two",
+            "@odata.nextLink": profile.initial_url + "?$skiptoken=page-two",
         }
     ).encode("utf-8")
 
