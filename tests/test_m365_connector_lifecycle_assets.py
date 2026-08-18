@@ -56,15 +56,19 @@ def test_offboarding_does_not_delete_identity_or_ets_history() -> None:
     assert "reusableCredentialRetained = $false" in script
 
 
-def test_sites_selected_role_removal_requires_explicit_second_switch() -> None:
+def test_sites_selected_role_removal_requires_two_explicit_attestations() -> None:
     script = _text(OFFBOARDING_SCRIPT)
     guarded_removal = (
         "if ($RemoveSitesSelectedRole -and $sitesSelectedAssignmentPresentBefore)"
     )
 
     assert "[switch]$RemoveSitesSelectedRole" in script
+    assert "[switch]$ConfirmDedicatedIdentity" in script
+    assert "$RemoveSitesSelectedRole -and -not $ConfirmDedicatedIdentity" in script
+    assert "script cannot prove that the managed identity" in script
     assert guarded_removal in script
     assert "if ($RemoveSitesSelectedRole)" in script
+    assert "dedicatedIdentityConfirmed = [bool]$ConfirmDedicatedIdentity" in script
     assert "Sites.Selected app-role assignment remained" in script
 
 
@@ -92,3 +96,5 @@ def test_lifecycle_runbook_keeps_operations_separate_from_verification() -> None
     assert "source" in runbook and "completeness" in runbook
     assert "immutable image digest" in runbook
     assert "checkpoint reset without an explicit reconciliation gap" in runbook
+    assert "-ConfirmDedicatedIdentity" in runbook
+    assert "cannot prove global non-reuse" in runbook
