@@ -280,7 +280,7 @@ class _SdkEntityMetadata(Protocol):
 
 
 class _SdkEntity(Protocol):
-    metadata: _SdkEntityMetadata
+    metadata: object
 
     def items(self) -> ItemsView[str, object]: ...
 
@@ -352,7 +352,11 @@ class AzureSdkTableBackend:
             entity = self._client.get_entity(partition_key, row_key)
         except self._resource_not_found_error:
             return None
-        etag = entity.metadata.etag
+        metadata = entity.metadata
+        if isinstance(metadata, Mapping):
+            etag = metadata.get("etag")
+        else:
+            etag = getattr(cast(_SdkEntityMetadata, metadata), "etag", None)
         if not isinstance(etag, str) or not etag:
             raise StorageValidationError("Azure Table entity ETag is missing")
         return VersionedTableEntity(values=dict(entity.items()), etag=etag)
