@@ -50,6 +50,21 @@ collection request:
 - Core resource scope;
 - management JWKS issuer/audience/tenant and app-to-ETS-scope mapping.
 
+The Core app-to-ETS-scope map establishes **where** the Gateway application may act; it is
+not itself permission to create evidence. The exact Gateway managed-identity service
+principal must also hold the Core application's `evidence_producer` app role so its
+app-only bearer contains the server-recognized producer role. Hosted Core rejects evidence
+ingestion from an authenticated principal that lacks `evidence.create`, even when its
+tenant/workspace mapping is otherwise valid.
+
+The live deployment gate must therefore prove all three identity bindings before relay is
+qualified:
+
+1. the token application/client ID is the exact pre-created Gateway runtime identity;
+2. that client ID maps to the deployment-authoritative ETS tenant/workspace in Core; and
+3. the app-only token carries `evidence_producer`, yielding `evidence.create` and no
+   connector-administration authority by implication.
+
 On restart, if the persisted connector instance differs from the deployment-authoritative
 instance, startup fails closed. Configuration drift is not silently rewritten.
 
@@ -111,15 +126,20 @@ identity/hash and upstream acknowledgement before marking a queue row synchroniz
 
 ## Sequence to the live soak
 
-1. Merge and qualify this hosted Gateway composition.
+1. Merge and qualify this hosted Gateway composition and its hosted evidence-create guard.
 2. Publish a new immutable image from that final source commit.
-3. Deploy Core and Gateway from the same approved image/source release identity.
-4. Provision the Gateway managed identity with EchoMedia `Sites.Selected` access to the
+3. Pre-create the exact Gateway runtime identity and grant its service principal the Core
+   `evidence_producer` app role.
+4. Deploy Core and Gateway from the same approved image/source release identity, with the
+   exact Gateway client ID in Core's server-owned ETS scope map.
+5. Prove the Gateway app-only Core token carries `evidence_producer` and that a principal
+   without `evidence.create` is denied ingestion.
+6. Provision the Gateway managed identity with EchoMedia `Sites.Selected` access to the
    designated SharePoint site.
-5. Create/register the real Microsoft Graph subscription and enable the exact posture
+7. Create/register the real Microsoft Graph subscription and enable the exact posture
    configuration.
-6. Complete #390 source-to-proof qualification, including notification/delta recovery.
-7. Freeze source SHA, image digest, connector instance, ETS scope, Microsoft tenant and
+8. Complete #390 source-to-proof qualification, including notification/delta recovery.
+9. Freeze source SHA, image digest, connector instance, ETS scope, Microsoft tenant and
    subscription, and health-policy profile.
-8. Run probe 1 of the governed 72-hour soak. The clock begins only at that successful
-   first retained probe.
+10. Run probe 1 of the governed 72-hour soak. The clock begins only at that successful
+    first retained probe.
