@@ -9,6 +9,7 @@ from ets.connectors.credentials.models import CredentialReferenceV1
 from ets.connectors.enterprise.microsoft import MicrosoftTenantProfileV1
 from ets.connectors.enterprise.microsoft_sharepoint_delta import (
     MicrosoftSharePointDeltaError,
+    MicrosoftSharePointDeltaRequestProfile,
     parse_sharepoint_delta_page,
     sharepoint_drive_delta_request_profile,
     sharepoint_list_delta_request_profile,
@@ -31,6 +32,18 @@ def _tenant() -> MicrosoftTenantProfileV1:
         ),
         consent_state="granted",
     )
+
+
+def _drive_page(
+    profile: MicrosoftSharePointDeltaRequestProfile,
+    value: list[dict[str, object]],
+) -> bytes:
+    return json.dumps(
+        {
+            "value": value,
+            "@odata.nextLink": profile.initial_url + "?$skiptoken=page-two",
+        }
+    ).encode("utf-8")
 
 
 def test_drive_profile_is_server_owned_and_continuation_stays_on_approved_path() -> None:
@@ -91,7 +104,13 @@ def test_delta_page_minimizes_metadata_and_excludes_content_and_actor_fields() -
                             "application/vnd.openxmlformats-officedocument."
                             "wordprocessingml.document"
                         ),
-                        "hashes": {"quickXorHash": "must-not-copy"},
+                        "hashes": {
+                            "crc32Hash": "A1B2C3D4",
+                            "quickXorHash": "quick-source-fingerprint",
+                            "sha1Hash": "sha1-source-fingerprint",
+                            "sha256Hash": "unsupported-must-not-copy",
+                            "futureHash": "unknown-must-not-copy",
+                        },
                     },
                     "webUrl": "https://contoso.sharepoint.com/raw-location",
                     "@microsoft.graph.downloadUrl": "https://download.example/secret",
@@ -122,7 +141,12 @@ def test_delta_page_minimizes_metadata_and_excludes_content_and_actor_fields() -
     assert record.metadata["file"] == {
         "mime_type": (
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+        ),
+        "hashes": {
+            "crc32_hash": "A1B2C3D4",
+            "quick_xor_hash": "quick-source-fingerprint",
+            "sha1_hash": "sha1-source-fingerprint",
+        },
     }
     serialized = json.dumps(record.metadata, sort_keys=True)
     for forbidden in (
@@ -131,10 +155,60 @@ def test_delta_page_minimizes_metadata_and_excludes_content_and_actor_fields() -
         "contoso.sharepoint.com",
         "Alice",
         "Bob",
-        "quickXorHash",
-        "must-not-copy",
+        "unsupported-must-not-copy",
+        "unknown-must-not-copy",
+        "sha256Hash",
+        "futureHash",
     ):
         assert forbidden not in serialized
+
+
+def test_source_hash_change_changes_observation_fingerprint() -> None:
+    profile = sharepoint_drive_delta_request_profile("tenant-prod", _tenant(), "drive-001")
+    page = parse_sharepoint_delta_page(
+        _drive_page(
+            profile,
+            [
+                {
+                    "id": "item-001",
+                    "name": "same.txt",
+                    "file": {"hashes": {"quickXorHash": "fingerprint-one"}},
+                },
+                {
+                    "id": "item-001",
+                    "name": "same.txt",
+                    "file": {"hashes": {"quickXorHash": "fingerprint-two"}},
+                },
+            ],
+        ),
+        profile,
+    )
+
+    assert page.records[0].source_record_id != page.records[1].source_record_id
+
+
+def test_file_hashes_fail_closed_when_malformed_or_unbounded() -> None:
+    profile = sharepoint_drive_delta_request_profile("tenant-prod", _tenant(), "drive-001")
+
+    with pytest.raises(MicrosoftSharePointDeltaError, match="file hashes facet"):
+        parse_sharepoint_delta_page(
+            _drive_page(profile, [{"id": "item-001", "file": {"hashes": "invalid"}}]),
+            profile,
+        )
+
+    with pytest.raises(MicrosoftSharePointDeltaError, match="quickXorHash"):
+        parse_sharepoint_delta_page(
+            _drive_page(
+                profile,
+                [
+                    {
+                        "id": "item-001",
+                        "file": {"hashes": {"quickXorHash": "x" * 1025}},
+                    }
+                ],
+            ),
+            profile,
+        )
 
 
 def test_deleted_and_repeated_latest_state_records_remain_explicit_observations() -> None:
