@@ -22,7 +22,6 @@ from ets.core import (
 from ets.gateway.evidence_package import (
     ConnectorGapDeclarationV1,
     ConnectorSourceProvenanceV1,
-    GatewayEvidencePackageError,
     GatewayEvidencePackageV1,
     microsoft_gap_declaration,
     verify_gateway_evidence_package,
@@ -188,8 +187,12 @@ def test_operational_gap_declarations_do_not_change_cryptographic_verification()
     original_result = verify_gateway_evidence_package(package)
     changed_result = verify_gateway_evidence_package(changed)
 
-    assert original_result == changed_result
     assert original_result.valid is True
+    assert changed_result.valid is True
+    assert original_result.reason == changed_result.reason == "ok"
+    assert original_result.root_hash == changed_result.root_hash
+    assert original_result.leaf_hash == changed_result.leaf_hash
+    assert original_result.tree_size == changed_result.tree_size
 
 
 def test_tampered_embedded_proof_fails_regardless_of_operational_declarations() -> None:
@@ -216,23 +219,32 @@ def test_tampered_embedded_proof_fails_regardless_of_operational_declarations() 
     ],
 )
 def test_provenance_mismatch_fails_closed(field: str, value: str, match: str) -> None:
-    with pytest.raises(GatewayEvidencePackageError, match=match):
+    with pytest.raises(ValidationError, match=match):
         _package(provenance=_provenance(**{field: value}))
 
 
 def test_package_rejects_connector_event_that_retained_raw_source_payload() -> None:
-    with pytest.raises(GatewayEvidencePackageError, match="no-raw-payload"):
+    with pytest.raises(ValidationError, match="no-raw-payload"):
         _package(bundle=_bundle(raw_source_payload_retained=True))
 
 
 def test_gap_declaration_source_and_export_time_fail_closed() -> None:
     declaration = microsoft_gap_declaration(_acknowledged_gap())
     wrong_source = declaration.model_copy(update={"source_system": "other.source"})
-    with pytest.raises(ValueError, match="source_system"):
+    with pytest.raises(ValidationError, match="source_system"):
         _package(gaps=(wrong_source,))
 
-    future = declaration.model_copy(update={"detected_at_utc": NOW + timedelta(hours=2)})
-    with pytest.raises(ValueError, match="detected after package export"):
+    future_time = NOW + timedelta(hours=2)
+    future = ConnectorGapDeclarationV1(
+        gap_id="gap-future",
+        instance_id=INSTANCE,
+        source_system=SOURCE_SYSTEM,
+        reason="worker_outage",
+        status="possible",
+        detected_at_utc=future_time,
+        updated_at_utc=future_time,
+    )
+    with pytest.raises(ValidationError, match="detected after package export"):
         _package(gaps=(future,))
 
 
