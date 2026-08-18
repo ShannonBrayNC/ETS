@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from ets.connectors.enterprise.microsoft_reconciliation import (
+    MicrosoftReconciliationGapV1,
     acknowledge_microsoft_reconciliation_gap,
     begin_microsoft_reconciliation,
     open_microsoft_reconciliation_gap,
@@ -93,20 +94,19 @@ def _bundle(*, raw_source_payload_retained: bool = False) -> EvidenceProofBundle
 
 
 def _provenance(**overrides: str) -> ConnectorSourceProvenanceV1:
-    values = {
-        "tenant_id": TENANT,
-        "workspace_id": WORKSPACE,
-        "connector_id": CONNECTOR_ID,
-        "source_id": SOURCE_ID,
-        "source_system": SOURCE_SYSTEM,
-        "source_record_id": SOURCE_RECORD,
-        "transformation_profile": TRANSFORMATION,
-    }
-    values.update(overrides)
-    return ConnectorSourceProvenanceV1(**values)
+    provenance = ConnectorSourceProvenanceV1(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        connector_id=CONNECTOR_ID,
+        source_id=SOURCE_ID,
+        source_system=SOURCE_SYSTEM,
+        source_record_id=SOURCE_RECORD,
+        transformation_profile=TRANSFORMATION,
+    )
+    return provenance.model_copy(update=overrides)
 
 
-def _acknowledged_gap():
+def _acknowledged_gap() -> MicrosoftReconciliationGapV1:
     possible = open_microsoft_reconciliation_gap(
         gap_id="gap-001",
         instance_id=INSTANCE,
