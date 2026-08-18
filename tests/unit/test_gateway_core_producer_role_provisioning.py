@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLE_SCRIPT = ROOT / "scripts" / "azure" / "ensure-core-evidence-producer-app-role.ps1"
@@ -81,6 +85,29 @@ def test_gateway_assignment_is_idempotent_and_rechecks_after_apply() -> None:
         "assignmentCreated = $created",
     ):
         assert required in text
+
+
+@pytest.mark.parametrize("script", [ROLE_SCRIPT, ASSIGN_SCRIPT])
+def test_provisioning_powershell_parses_when_pwsh_is_available(script: Path) -> None:
+    pwsh = shutil.which("pwsh")
+    if pwsh is None:
+        pytest.skip("PowerShell is not available in this environment")
+
+    script_path = str(script).replace("'", "''")
+    command = (
+        "$tokens = $null; $errors = $null; "
+        f"[System.Management.Automation.Language.Parser]::ParseFile('{script_path}', "
+        "[ref]$tokens, [ref]$errors) | Out-Null; "
+        "if ($errors.Count -gt 0) { "
+        "$errors | ForEach-Object { Write-Error $_.Message }; exit 1 }"
+    )
+    result = subprocess.run(
+        [pwsh, "-NoProfile", "-NonInteractive", "-Command", command],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_runbook_keeps_scope_permission_and_soak_claims_separate() -> None:
