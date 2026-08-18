@@ -1,0 +1,359 @@
+name: Live Soak Q0 Publication Launch
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/live-soak-q0-launch.yml
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: live-soak-q0-publication-launch
+  cancel-in-progress: false
+
+jobs:
+  launch:
+    name: Dispatch and verify exact-source Q0 publication
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - name: Assert one-shot main release boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_EVENT_NAME" = "push"
+          test -n "$GITHUB_SHA"
+
+      - name: Dispatch qualified Q0 image publication
+        id: dispatch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+
+          repository = os.environ["REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          source_sha = os.environ["SOURCE_SHA"]
+          endpoint = (
+              f"https://api.github.com/repos/{repository}/actions/workflows/"
+              "hosted-azure-q0-image.yml/dispatches"
+          )
+          payload = {
+              "ref": "main",
+              "inputs": {
+                  "container_registry_name": "etsq1a352eb89",
+                  "container_registry_resource_group": "rg-ets-q1-eastus",
+                  "image_repository": "ets/hosted-q1",
+              },
+              "return_run_details": True,
+          }
+          request = Request(
+              endpoint,
+              data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {token}",
+                  "X-GitHub-Api-Version": "2026-03-10",
+                  "Content-Type": "application/json",
+              },
+              method="POST",
+          )
+          try:
+              with urlopen(request, timeout=30.0) as response:
+                  if response.status != 200:
+                      raise RuntimeError(
+                          f"workflow dispatch returned HTTP {response.status}; expected 200"
+                      )
+                  result = json.loads(response.read().decode("utf-8"))
+          except HTTPError as exc:
+              raise RuntimeError(
+                  f"workflow dispatch failed with HTTP {exc.code}"
+              ) from exc
+
+          run_id = result.get("workflow_run_id")
+          run_url = result.get("run_url")
+          html_url = result.get("html_url")
+          if not isinstance(run_id, int) or run_id <= 0:
+              raise RuntimeError("workflow dispatch response omitted workflow_run_id")
+          if not isinstance(run_url, str) or not run_url.startswith(
+              f"https://api.github.com/repos/{repository}/actions/runs/"
+          ):
+              raise RuntimeError("workflow dispatch response omitted canonical run_url")
+          if not isinstance(html_url, str) or not html_url.startswith(
+              f"https://github.com/{repository}/actions/runs/"
+          ):
+              raise RuntimeError("workflow dispatch response omitted canonical html_url")
+
+          output = Path(os.environ["GITHUB_OUTPUT"])
+          with output.open("a", encoding="utf-8") as handle:
+              handle.write(f"run_id={run_id}\n")
+              handle.write(f"run_url={run_url}\n")
+              handle.write(f"html_url={html_url}\n")
+          print(f"Dispatched Q0 run {run_id} for exact source {source_sha}")
+          PY
+
+      - name: Require exact-source Q0 completion
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
+          RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+          RUN_URL: ${{ steps.dispatch.outputs.run_url }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import time
+          from pathlib import Path
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+
+          repository = os.environ["REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          source_sha = os.environ["SOURCE_SHA"]
+          run_id = os.environ["RUN_ID"]
+          run_url = os.environ["RUN_URL"]
+          expected_url = f"https://api.github.com/repos/{repository}/actions/runs/{run_id}"
+          if run_url != expected_url:
+              raise RuntimeError("Q0 run URL does not match dispatched run ID")
+
+          deadline = time.monotonic() + 64 * 60
+          last_status = "unknown"
+          while time.monotonic() < deadline:
+              request = Request(
+                  run_url,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "X-GitHub-Api-Version": "2026-03-10",
+                  },
+              )
+              try:
+                  with urlopen(request, timeout=30.0) as response:
+                      run = json.loads(response.read().decode("utf-8"))
+              except HTTPError as exc:
+                  raise RuntimeError(f"Q0 run lookup failed with HTTP {exc.code}") from exc
+
+              if run.get("id") != int(run_id):
+                  raise RuntimeError("Q0 run lookup returned a different run ID")
+              if run.get("event") != "workflow_dispatch":
+                  raise RuntimeError("Q0 run was not created by workflow_dispatch")
+              if run.get("head_branch") != "main":
+                  raise RuntimeError("Q0 run is not pinned to main")
+              if run.get("head_sha") != source_sha:
+                  raise RuntimeError(
+                      "Q0 run source SHA differs from the live-soak launcher merge SHA"
+                  )
+
+              last_status = str(run.get("status"))
+              if last_status == "completed":
+                  conclusion = run.get("conclusion")
+                  if conclusion != "success":
+                      raise RuntimeError(
+                          f"Q0 publication completed with conclusion {conclusion!r}"
+                      )
+                  break
+              time.sleep(10)
+          else:
+              raise RuntimeError(
+                  f"Q0 publication did not complete within bounded wait; last status={last_status}"
+              )
+
+          path = Path("evidence/live-soak-q0-launch")
+          path.mkdir(parents=True, exist_ok=True)
+          evidence = {
+              "schema_version": "ets.live_soak.q0_launch.v1",
+              "source_sha": source_sha,
+              "q0_workflow_run_id": int(run_id),
+              "q0_conclusion": "success",
+              "container_registry_name": "etsq1a352eb89",
+              "container_registry_resource_group": "rg-ets-q1-eastus",
+              "image_repository": "ets/hosted-q1",
+              "reusable_credential_retained": False,
+          }
+          (path / "launch.json").write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(f"Q0 run {run_id} succeeded for exact source {source_sha}")
+          PY
+
+      - name: Validate retained Q0 manifest and create Q1 handoff
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
+          RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import tempfile
+          import time
+          import zipfile
+          from pathlib import Path
+          from urllib.error import HTTPError
+          from urllib.parse import urlparse
+          from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
+
+          repository = os.environ["REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          source_sha = os.environ["SOURCE_SHA"]
+          run_id = int(os.environ["RUN_ID"])
+          artifact_name = f"host-az-q0-image-{run_id}"
+          artifacts_url = (
+              f"https://api.github.com/repos/{repository}/actions/runs/{run_id}/artifacts"
+              "?per_page=100"
+          )
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {token}",
+              "X-GitHub-Api-Version": "2026-03-10",
+          }
+
+          artifact = None
+          for _ in range(12):
+              try:
+                  with urlopen(Request(artifacts_url, headers=headers), timeout=30.0) as response:
+                      listing = json.loads(response.read().decode("utf-8"))
+              except HTTPError as exc:
+                  raise RuntimeError(
+                      f"Q0 artifact listing failed with HTTP {exc.code}"
+                  ) from exc
+              matches = [
+                  item
+                  for item in listing.get("artifacts", [])
+                  if item.get("name") == artifact_name and item.get("expired") is False
+              ]
+              if len(matches) > 1:
+                  raise RuntimeError("multiple retained Q0 artifacts matched the dispatched run")
+              if len(matches) == 1:
+                  artifact = matches[0]
+                  break
+              time.sleep(5)
+          if artifact is None:
+              raise RuntimeError("retained Q0 artifact was not available after successful run")
+
+          artifact_id = artifact.get("id")
+          archive_url = artifact.get("archive_download_url")
+          if not isinstance(artifact_id, int) or artifact_id <= 0:
+              raise RuntimeError("Q0 artifact metadata omitted a valid artifact ID")
+          if not isinstance(archive_url, str) or not archive_url.startswith(
+              f"https://api.github.com/repos/{repository}/actions/artifacts/"
+          ):
+              raise RuntimeError("Q0 artifact metadata omitted canonical archive URL")
+
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, hdrs, newurl):  # type: ignore[no-untyped-def]
+                  return None
+
+          redirect_opener = build_opener(NoRedirect)
+          try:
+              redirect_opener.open(Request(archive_url, headers=headers), timeout=30.0)
+          except HTTPError as exc:
+              if exc.code not in {302, 307}:
+                  raise RuntimeError(
+                      f"Q0 artifact download redirect failed with HTTP {exc.code}"
+                  ) from exc
+              signed_url = exc.headers.get("Location")
+          else:
+              raise RuntimeError("Q0 artifact endpoint did not return a signed download redirect")
+
+          if not isinstance(signed_url, str):
+              raise RuntimeError("Q0 artifact redirect omitted signed download URL")
+          parsed = urlparse(signed_url)
+          if parsed.scheme != "https" or not parsed.hostname:
+              raise RuntimeError("Q0 artifact redirect was not an HTTPS URL")
+          if parsed.hostname == "api.github.com":
+              raise RuntimeError("Q0 artifact redirect did not leave the authenticated API origin")
+
+          with tempfile.NamedTemporaryFile(suffix=".zip") as handle:
+              with urlopen(signed_url, timeout=60.0) as response:
+                  copied = 0
+                  while True:
+                      chunk = response.read(1024 * 1024)
+                      if not chunk:
+                          break
+                      copied += len(chunk)
+                      if copied > 128 * 1024 * 1024:
+                          raise RuntimeError("Q0 artifact exceeded the bounded 128 MiB download limit")
+                      handle.write(chunk)
+              handle.flush()
+              with zipfile.ZipFile(handle.name) as archive:
+                  if "manifest.json" not in archive.namelist():
+                      raise RuntimeError("Q0 artifact did not contain manifest.json")
+                  manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+
+          if manifest.get("schema_version") != "ets.host_az.q0_image.v1":
+              raise RuntimeError("Q0 artifact used an unexpected manifest schema")
+          if manifest.get("source_sha") != source_sha:
+              raise RuntimeError("Q0 manifest source SHA differs from launcher merge SHA")
+          if str(manifest.get("workflow_run_id")) != str(run_id):
+              raise RuntimeError("Q0 manifest workflow run ID differs from dispatched run")
+          if manifest.get("vulnerability_gate") != "PASS":
+              raise RuntimeError("Q0 manifest vulnerability gate did not pass")
+          if manifest.get("registry_credentials_retained") is not False:
+              raise RuntimeError("Q0 manifest does not prove registry credential non-retention")
+          if manifest.get("customer_identifiers_retained") is not False:
+              raise RuntimeError("Q0 manifest does not prove customer identifier non-retention")
+
+          digest = manifest.get("image_digest")
+          immutable_image = manifest.get("immutable_image")
+          subject_name = manifest.get("subject_name")
+          if not isinstance(digest, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None:
+              raise RuntimeError("Q0 manifest image digest is not canonical sha256")
+          expected_subject = "etsq1a352eb89.azurecr.io/ets/hosted-q1"
+          if subject_name != expected_subject:
+              raise RuntimeError("Q0 manifest subject differs from approved live-soak repository")
+          if immutable_image != f"{expected_subject}@{digest}":
+              raise RuntimeError("Q0 immutable image reference does not match subject and digest")
+
+          handoff = {
+              "schema_version": "ets.live_soak.q0_handoff.v1",
+              "source_sha": source_sha,
+              "q0_workflow_run_id": run_id,
+              "q0_artifact_id": artifact_id,
+              "image_digest": digest,
+              "immutable_image": immutable_image,
+              "vulnerability_gate": "PASS",
+              "registry_credentials_retained": False,
+              "customer_identifiers_retained": False,
+          }
+          path = Path("evidence/live-soak-q0-launch")
+          path.mkdir(parents=True, exist_ok=True)
+          (path / "q1-handoff.json").write_text(
+              json.dumps(handoff, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(
+              f"Q1 handoff retained for source {source_sha}, Q0 run {run_id}, digest {digest}"
+          )
+          PY
+
+      - name: Retain sanitized launch evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-soak-q0-launch-${{ github.run_id }}
+          path: evidence/live-soak-q0-launch/
+          if-no-files-found: warn
+          retention-days: 90
