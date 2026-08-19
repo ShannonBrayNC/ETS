@@ -3,18 +3,21 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW = (ROOT / ".github" / "workflows" / "live-sharepoint-source-to-proof.yml").read_text(
-    encoding="utf-8"
-)
-RUNNER = (ROOT / "scripts" / "azure" / "run-live-sharepoint-source-to-proof.sh").read_text(
-    encoding="utf-8"
-)
-CLIENT = (ROOT / "infra" / "azure" / "ets-live-sharepoint-source-proof-client.bicep").read_text(
-    encoding="utf-8"
-)
+WORKFLOW = (
+    ROOT / ".github" / "workflows" / "live-sharepoint-source-to-proof.yml"
+).read_text(encoding="utf-8")
+RUNNER = (
+    ROOT / "scripts" / "azure" / "run-live-sharepoint-source-to-proof.sh"
+).read_text(encoding="utf-8")
+CLIENT = (
+    ROOT / "infra" / "azure" / "ets-live-sharepoint-source-proof-client.bicep"
+).read_text(encoding="utf-8")
 OPERATOR = (
     ROOT / "scripts" / "m365" / "create-echomedia-sharepoint-qualification-document.ps1"
 ).read_text(encoding="utf-8")
+APPROVED_DIGEST = (
+    "sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c"
+)
 
 
 def test_workflow_is_manual_protected_and_pins_live_release() -> None:
@@ -24,7 +27,7 @@ def test_workflow_is_manual_protected_and_pins_live_release() -> None:
     assert "issues: write" in WORKFLOW
     assert "refs/heads/main" in RUNNER
     assert "GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id" in WORKFLOW
-    assert "sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c" in WORKFLOW
+    assert APPROVED_DIGEST in WORKFLOW
     assert "ETS_LIVE_CORE_SCOPE" in WORKFLOW
     assert "ETS_LIVE_SHAREPOINT_DRIVE_ID" in WORKFLOW
     assert "ETS_Q1_BEARER_TOKEN" not in WORKFLOW
@@ -70,8 +73,14 @@ def test_verifier_requires_real_sharepoint_gateway_evidence_and_proofs() -> None
 def test_revision_evidence_requires_distinct_source_etags() -> None:
     assert "all_etags = {etag for _, etag in observations}" in CLIENT
     assert "len(all_etags) < expected" in CLIENT
-    assert '"revision_evidence_verified": expected >= 2 and len(all_etags) >= expected' in CLIENT
-    assert "expected >= 2 and result.get(\"revision_evidence_verified\") is not True" in RUNNER
+    assert (
+        '"revision_evidence_verified": expected >= 2 and len(all_etags) >= expected'
+        in CLIENT
+    )
+    assert (
+        'expected >= 2 and result.get("revision_evidence_verified") is not True'
+        in RUNNER
+    )
 
 
 def test_runner_resolves_existing_private_runtime_and_cleans_ephemeral_job() -> None:
