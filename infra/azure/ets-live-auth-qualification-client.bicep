@@ -206,9 +206,15 @@ if claims.get("idtyp") != "app":
 claim_client = claims.get("azp") or claims.get("appid")
 if not isinstance(claim_client, str) or claim_client.casefold() != client_id.casefold():
     raise RuntimeError("managed identity token client claim did not match the runtime identity")
-expected_audience = scope[:-len("/.default")] if scope.endswith("/.default") else ""
+scope_prefix = "api://"
+scope_suffix = "/.default"
+if not scope.startswith(scope_prefix) or not scope.endswith(scope_suffix):
+    raise RuntimeError("managed identity Core scope did not use the governed api://<appId>/.default form")
+expected_audience = scope[len(scope_prefix) : -len(scope_suffix)]
+if not expected_audience:
+    raise RuntimeError("managed identity Core scope did not contain an application id")
 audience = claims.get("aud")
-if audience != expected_audience:
+if not isinstance(audience, str) or audience.casefold() != expected_audience.casefold():
     raise RuntimeError("managed identity token audience did not match ETS Core")
 roles = normalize_roles(claims.get("roles"))
 event = synthetic_event(mode, run_id, tenant_id, workspace_id)
@@ -271,7 +277,7 @@ elif mode == "denied":
         raise RuntimeError("negative control returned an unexpected authorization code")
     result["negative_control_forbidden"] = True
 else:
-    raise RuntimeError("unsupported authorization qualification mode")
+    raise RuntimeError("unsupported qualification mode")
 
 emit(result)
 '''
