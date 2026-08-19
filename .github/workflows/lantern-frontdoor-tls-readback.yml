@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   state:
-    name: Read custom domain validation token
+    name: Read public TXT and Azure TLS state
     runs-on: ubuntu-latest
     environment: ets-azure-q1
     timeout-minutes: 8
@@ -20,6 +20,9 @@ jobs:
       RESOURCE_GROUP: rg-ets-live-eastus
       PROFILE_NAME: lantern-continuity-fd
       CUSTOM_DOMAIN_NAME: azure-lanternprotocol-net
+      CUSTOM_HOST: azure.lanternprotocol.net
+      TXT_HOST: _dnsauth.azure.lanternprotocol.net
+      EXPECTED_TXT: _7pmne9fyq33p2h2x2z0ox95hesn34w8
     steps:
       - name: Azure login with ETS workload identity
         uses: azure/login@v2
@@ -34,13 +37,40 @@ jobs:
           set -euo pipefail
           az extension add --name cdn --upgrade --yes --only-show-errors
 
-      - name: Read validation token and state
+      - name: Read public TXT and Azure state
         shell: bash
         run: |
           set -euo pipefail
+          python - <<'PY'
+          import json, os, urllib.parse, urllib.request
+          name=os.environ['TXT_HOST']
+          expected=os.environ['EXPECTED_TXT']
+          url='https://dns.google/resolve?' + urllib.parse.urlencode({'name':name,'type':'TXT'})
+          with urllib.request.urlopen(url,timeout=20) as r:
+              p=json.load(r)
+          answers=[]
+          for a in p.get('Answer',[]):
+              if a.get('type')==16:
+                  value=str(a.get('data','')).strip().strip('"')
+                  answers.append(value)
+          print('PUBLIC_TXT=' + ('|'.join(answers) if answers else ''))
+          print('TXT_MATCH=' + str(expected in answers).lower())
+          PY
           az afd custom-domain show \
             -g "$RESOURCE_GROUP" \
             --profile-name "$PROFILE_NAME" \
             --custom-domain-name "$CUSTOM_DOMAIN_NAME" \
-            --query '{host:hostName,validation:domainValidationState,deployment:deploymentStatus,certificate:tlsSettings.certificateType,minimumTls:tlsSettings.minimumTlsVersion,validationToken:validationProperties.validationToken,validationExpiry:validationProperties.expirationDate}' \
+            --query '{host:hostName,validation:domainValidationState,deployment:deploymentStatus,certificate:tlsSettings.certificateType,minimumTls:tlsSettings.minimumTlsVersion}' \
             -o json
+          python - <<'PY'
+          import urllib.request
+          url='https://azure.lanternprotocol.net/'
+          try:
+              with urllib.request.urlopen(url,timeout=20) as r:
+                  body=r.read(200000).decode('utf-8','replace')
+                  print('HTTPS_STATUS='+str(r.status))
+                  print('LANTERN_HERO='+str('Evidence you can prove.' in body).lower())
+                  print('ETS_BRIEFING='+str('ETS TECHNICAL BRIEFING' in body).lower())
+          except Exception as e:
+              print('HTTPS_ERROR='+type(e).__name__+': '+str(e))
+          PY
