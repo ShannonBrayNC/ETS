@@ -79,7 +79,8 @@ def test_failure_diagnostics_are_sanitized_and_bounded() -> None:
 
 
 def test_diagnostic_wrapper_retries_private_logs_and_never_publishes_them() -> None:
-    assert "containerapp job logs show" in DIAGNOSTIC
+    for position, token in enumerate(("containerapp", "job", "logs", "show"), start=1):
+        assert f'[ "${{{position}:-}}" = "{token}" ]' in DIAGNOSTIC
     assert "for _ in $(seq 1 12)" in DIAGNOSTIC
     assert "ETS_AUTH_DIAGNOSTIC_RAW" in DIAGNOSTIC
     assert "qualification_log_unavailable" in DIAGNOSTIC
