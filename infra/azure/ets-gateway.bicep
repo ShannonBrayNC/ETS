@@ -199,12 +199,12 @@ resource stateStorageSecret 'Microsoft.KeyVault/vaults/secrets@2025-05-01' = {
   }
 }
 
-resource gatewayStateSecretReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(stateKeyVault.id, gatewayIdentity.id, keyVaultSecretsUserRoleId)
+resource environmentStateSecretReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(stateKeyVault.id, managedEnvironment.id, keyVaultSecretsUserRoleId)
   scope: stateKeyVault
   properties: {
     roleDefinitionId: keyVaultSecretsUserRoleId
-    principalId: gatewayIdentity.properties.principalId
+    principalId: managedEnvironment.identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
@@ -216,7 +216,7 @@ resource environmentStorage 'Microsoft.App/managedEnvironments/storages@2026-01-
     azureFile: {
       accessMode: 'ReadWrite'
       accountKeyVaultProperties: {
-        identity: gatewayIdentity.id
+        identity: 'System'
         keyVaultUrl: '${stateKeyVault.properties.vaultUri}secrets/${stateStorageSecret.name}'
       }
       accountName: stateStorage.name
@@ -224,7 +224,7 @@ resource environmentStorage 'Microsoft.App/managedEnvironments/storages@2026-01-
     }
   }
   dependsOn: [
-    gatewayStateSecretReader
+    environmentStateSecretReader
   ]
 }
 

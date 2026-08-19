@@ -221,6 +221,9 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 resource managedEnvironment 'Microsoft.App/managedEnvironments@2026-01-01' = {
   name: managedEnvironmentName
   location: location
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     appLogsConfiguration: {
       destination: 'azure-monitor'
