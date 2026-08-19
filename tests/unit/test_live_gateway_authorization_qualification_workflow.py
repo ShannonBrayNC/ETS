@@ -83,14 +83,30 @@ def test_diagnostic_wrapper_retries_private_logs_and_never_publishes_them() -> N
         assert f'[ "${{{position}:-}}" = "{token}" ]' in DIAGNOSTIC
     assert "for _ in $(seq 1 12)" in DIAGNOSTIC
     assert "ETS_AUTH_DIAGNOSTIC_RAW" in DIAGNOSTIC
+    assert "--replica" in DIAGNOSTIC
+    assert "--format text --only-show-errors" in DIAGNOSTIC
     assert "qualification_log_unavailable" in DIAGNOSTIC
     assert "qualification_json_decode_failed" in DIAGNOSTIC
     assert "inclusion_proof_verifier_exception" in DIAGNOSTIC
     assert 'payload["customer_identifiers_retained"] = False' in DIAGNOSTIC
     assert 'payload["reusable_credential_retained"] = False' in DIAGNOSTIC
     assert 'payload["public_evidence_safe"] = True' in DIAGNOSTIC
-    assert 'rm -f "$PRIVATE_RAW"' in DIAGNOSTIC
+    assert 'rm -f "$PRIVATE_RAW" "$PRIVATE_REPLICA"' in DIAGNOSTIC
     assert "PRIVATE_RAW" not in WORKFLOW
+    assert "PRIVATE_REPLICA" not in WORKFLOW
+
+
+def test_diagnostic_wrapper_uses_private_replica_termination_metadata() -> None:
+    assert "containerapp job replica list" in DIAGNOSTIC
+    assert "ETS_AUTH_DIAGNOSTIC_REPLICA" in DIAGNOSTIC
+    assert "capture_replica_metadata" in DIAGNOSTIC
+    assert "qualification_container_oom" in DIAGNOSTIC
+    assert "qualification_container_evicted" in DIAGNOSTIC
+    assert "qualification_container_start_failed" in DIAGNOSTIC
+    assert "qualification_container_exit_1" in DIAGNOSTIC
+    assert "qualification_container_exit_137" in DIAGNOSTIC
+    assert "qualification_container_exit_nonzero" in DIAGNOSTIC
+    assert "qualification_console_output_unrecognized" in DIAGNOSTIC
 
 
 def test_public_handoff_does_not_claim_sharepoint_or_soak() -> None:
