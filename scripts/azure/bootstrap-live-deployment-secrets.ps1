@@ -67,21 +67,27 @@ function Invoke-IdentityOrchestration {
     }
 }
 
-function Set-ProtectedEnvironmentSecret {
-    param(
-        [Parameter(Mandatory = $true)][string]$Name,
-        [Parameter(Mandatory = $true)][string]$Value
-    )
+function Set-ProtectedEnvironmentSecrets {
+    param([Parameter(Mandatory = $true)][System.Collections.IDictionary]$Values)
 
-    if (-not $Value) {
-        throw "Refusing to write empty protected environment secret '$Name'."
+    $lines = [System.Collections.Generic.List[string]]::new()
+    foreach ($entry in $Values.GetEnumerator()) {
+        $name = [string]$entry.Key
+        $value = [string]$entry.Value
+        if (-not $value) {
+            throw "Refusing to write empty protected environment secret '$name'."
+        }
+        if ($value.Contains("`r") -or $value.Contains("`n")) {
+            throw "Protected environment secret '$name' must be a single-line value."
+        }
+        $lines.Add("$name=$value")
     }
 
-    $Value | gh secret set $Name `
+    $lines | gh secret set -f - `
         --env $EnvironmentName `
         --repo $Repository | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw "Failed to set protected environment secret '$Name'."
+        throw 'Failed to write protected deployment environment secrets.'
     }
 }
 
@@ -210,9 +216,7 @@ $secretValues = [ordered]@{
     ETS_LIVE_SHAREPOINT_DRIVE_ID = $sharePointDrive
 }
 
-foreach ($entry in $secretValues.GetEnumerator()) {
-    Set-ProtectedEnvironmentSecret -Name $entry.Key -Value ([string]$entry.Value)
-}
+Set-ProtectedEnvironmentSecrets -Values $secretValues
 
 $requiredSecretNames = @($secretValues.Keys | Sort-Object)
 $listedNames = @(
