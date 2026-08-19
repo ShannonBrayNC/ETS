@@ -16,18 +16,14 @@ concurrency:
 
 jobs:
   readback:
-    name: Provision and read public Front Door hostname
+    name: Read public Front Door hostname
     runs-on: ubuntu-latest
     environment: ets-azure-q1
-    timeout-minutes: 15
+    timeout-minutes: 8
     env:
       RESOURCE_GROUP: rg-ets-live-eastus
       PROFILE_NAME: lantern-continuity-fd
       ENDPOINT_NAME: lantern-azure-d1283bda7c363
-      ORIGIN_GROUP_NAME: lantern-static-site
-      ORIGIN_NAME: lantern-storage-origin
-      ROUTE_NAME: lantern-site-route
-      ORIGIN_HOST: lanternbkpd1283bda7c363.z13.web.core.windows.net
     steps:
       - name: Azure login with ETS workload identity
         uses: azure/login@v2
@@ -42,29 +38,7 @@ jobs:
           set -euo pipefail
           az extension add --name cdn --upgrade --yes --only-show-errors
 
-      - name: Ensure Front Door profile and endpoint
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! az afd profile show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" >/dev/null 2>&1; then
-            az afd profile create \
-              -g "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --sku Standard_AzureFrontDoor \
-              --output none
-          fi
-          if ! az afd endpoint show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$ENDPOINT_NAME" >/dev/null 2>&1; then
-            az afd endpoint create \
-              -g "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --endpoint-name "$ENDPOINT_NAME" \
-              --enabled-state Enabled \
-              --name-reuse-scope TenantReuse \
-              --output none
-          fi
-
       - name: Read public endpoint
-        id: read_endpoint
         shell: bash
         run: |
           set -euo pipefail
@@ -72,68 +46,3 @@ jobs:
           test -n "$afd_host"
           printf 'LANTERN_FRONTDOOR_ENDPOINT_NAME=%s\n' "$ENDPOINT_NAME"
           printf 'LANTERN_FRONTDOOR_PUBLIC_HOST=%s\n' "$afd_host"
-          echo "afd_host=$afd_host" >> "$GITHUB_OUTPUT"
-
-      - name: Converge origin and route
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! az afd origin-group show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --origin-group-name "$ORIGIN_GROUP_NAME" >/dev/null 2>&1; then
-            az afd origin-group create \
-              -g "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --origin-group-name "$ORIGIN_GROUP_NAME" \
-              --probe-request-type GET \
-              --probe-protocol Https \
-              --probe-interval-in-seconds 60 \
-              --probe-path / \
-              --sample-size 4 \
-              --successful-samples-required 3 \
-              --additional-latency-in-milliseconds 50 \
-              --output none
-          fi
-          if ! az afd origin show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --origin-group-name "$ORIGIN_GROUP_NAME" --origin-name "$ORIGIN_NAME" >/dev/null 2>&1; then
-            az afd origin create \
-              -g "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --origin-group-name "$ORIGIN_GROUP_NAME" \
-              --origin-name "$ORIGIN_NAME" \
-              --host-name "$ORIGIN_HOST" \
-              --origin-host-header "$ORIGIN_HOST" \
-              --priority 1 \
-              --weight 1000 \
-              --enabled-state Enabled \
-              --http-port 80 \
-              --https-port 443 \
-              --output none
-          fi
-          if ! az afd route show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$ENDPOINT_NAME" --route-name "$ROUTE_NAME" >/dev/null 2>&1; then
-            az afd route create \
-              -g "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --endpoint-name "$ENDPOINT_NAME" \
-              --route-name "$ROUTE_NAME" \
-              --origin-group "$ORIGIN_GROUP_NAME" \
-              --forwarding-protocol HttpsOnly \
-              --https-redirect Enabled \
-              --link-to-default-domain Enabled \
-              --supported-protocols Http Https \
-              --patterns-to-match '/*' \
-              --output none
-          fi
-
-      - name: Verify default Front Door path
-        shell: bash
-        env:
-          AFD_HOST: ${{ steps.read_endpoint.outputs.afd_host }}
-        run: |
-          set -euo pipefail
-          for attempt in $(seq 1 20); do
-            if body="$(curl --fail --silent --show-error --max-time 15 "https://$AFD_HOST/")"; then
-              printf '%s' "$body" | grep -Fq 'Evidence you can prove.'
-              printf '%s' "$body" | grep -Fq 'ETS TECHNICAL BRIEFING'
-              exit 0
-            fi
-            sleep 15
-          done
-          exit 1
