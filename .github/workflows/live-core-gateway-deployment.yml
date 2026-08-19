@@ -94,7 +94,6 @@ jobs:
           az extension add --name containerapp --upgrade --yes --only-show-errors
 
       - name: Validate tenant, live resource group, identity, and scope map
-        id: preflight
         shell: bash
         env:
           EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -192,7 +191,6 @@ jobs:
           )"
           test -n "$gateway_client_id"
           echo "::add-mask::$gateway_client_id"
-          echo "gateway_client_id=$gateway_client_id" >> "$GITHUB_OUTPUT"
 
       - name: Deploy persistent ETS Core
         id: core
@@ -253,6 +251,13 @@ jobs:
           CORE_FQDN: ${{ steps.core.outputs.core_fqdn }}
         run: |
           set -euo pipefail
+          qualified_client_id="$(az identity show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$GATEWAY_IDENTITY_NAME" \
+            --query clientId -o tsv)"
+          test -n "$qualified_client_id"
+          echo "::add-mask::$qualified_client_id"
+
           core_base_url="https://${CORE_FQDN}"
           deployment="ets-live-gateway-${GITHUB_RUN_ID}"
           az deployment group create \
@@ -290,7 +295,7 @@ jobs:
           test -n "$gateway_name"
           test -n "$gateway_client_id"
           echo "::add-mask::$gateway_client_id"
-          if [ "${gateway_client_id,,}" != "${{ steps.preflight.outputs.gateway_client_id }}" ]; then
+          if [ "${gateway_client_id,,}" != "${qualified_client_id,,}" ]; then
             echo "Gateway deployment did not reuse the pre-qualified live managed identity." >&2
             exit 1
           fi
