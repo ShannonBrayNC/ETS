@@ -1,1 +1,0 @@
-Read-only Front Door state trigger for lanternprotocol.net and www.lanternprotocol.net.
