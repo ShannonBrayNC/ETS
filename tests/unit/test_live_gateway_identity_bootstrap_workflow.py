@@ -77,7 +77,7 @@ def test_live_gateway_identity_bootstrap_keeps_release_claims_false() -> None:
         '"azure_runtime_deployed": False',
         '"m365_source_to_proof_claimed": False',
         '"soak_clock_started": False',
-        "Core `evidence_producer` role assigned: **false**",
+        "Core \\`evidence_producer\\` role assigned: **false**",
         "72-hour soak clock started: **false**",
     ):
         assert required in text
