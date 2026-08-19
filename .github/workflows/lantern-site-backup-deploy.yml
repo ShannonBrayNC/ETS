@@ -11,6 +11,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  issues: write
 
 concurrency:
   group: lantern-site-backup-deploy
@@ -117,6 +118,7 @@ jobs:
           echo "endpoint=$endpoint" >> "$GITHUB_OUTPUT"
 
       - name: Verify public backup endpoint
+        id: verify
         shell: bash
         env:
           ENDPOINT: ${{ steps.publish.outputs.endpoint }}
@@ -143,3 +145,67 @@ jobs:
             echo '- Primary ETS Core/Gateway resources were not modified.'
             echo '- Contact form routes through the visitor email client to both designated Lantern addresses.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish deployment evidence to GitHub issue
+        if: always()
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          STORAGE_OUTCOME: ${{ steps.storage.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+          STORAGE_ACCOUNT: ${{ steps.storage.outputs.storage }}
+          ENDPOINT: ${{ steps.publish.outputs.endpoint }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+          from datetime import datetime, timezone
+
+          token = os.environ['GITHUB_TOKEN']
+          repo = os.environ['GITHUB_REPOSITORY']
+          title = 'Lantern Azure backup deployment'
+          endpoint = os.environ.get('ENDPOINT', '').strip()
+          status = os.environ.get('JOB_STATUS', 'unknown')
+          verified = os.environ.get('VERIFY_OUTCOME') == 'success'
+          result = 'VERIFIED' if verified else status.upper()
+          body = f'''# Lantern Protocol Azure continuity deployment
+
+          **Status:** {result}
+
+          - Source commit: `{os.environ['GITHUB_SHA']}`
+          - Resource group: `{os.environ['RESOURCE_GROUP']}`
+          - Storage account: `{os.environ.get('STORAGE_ACCOUNT') or '(not created)'}`
+          - Azure endpoint: {endpoint or '(not available)'}
+          - Storage step: `{os.environ.get('STORAGE_OUTCOME', 'unknown')}`
+          - Publish step: `{os.environ.get('PUBLISH_OUTCOME', 'unknown')}`
+          - Endpoint verification: `{os.environ.get('VERIFY_OUTCOME', 'unknown')}`
+          - Recorded: `{datetime.now(timezone.utc).isoformat()}`
+
+          A `VERIFIED` status means the workflow fetched the public Azure endpoint and confirmed the Lantern hero, ETS Technical Briefing, and both designated partner-inquiry addresses. Primary ETS Core and Gateway resources are outside this static-site deployment path.
+          '''
+          headers = {
+              'Authorization': f'Bearer {token}',
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'lantern-site-backup-deploy',
+          }
+
+          def request(url, method='GET', payload=None):
+              data = None if payload is None else json.dumps(payload).encode('utf-8')
+              req = urllib.request.Request(url, data=data, headers=headers, method=method)
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  return json.load(response)
+
+          query = urllib.parse.urlencode({'q': f'repo:{repo} is:issue in:title "{title}"'})
+          found = request(f'https://api.github.com/search/issues?{query}')
+          issue = next((item for item in found.get('items', []) if item.get('title') == title), None)
+          if issue:
+              request(f"https://api.github.com/repos/{repo}/issues/{issue['number']}", 'PATCH', {'body': body, 'state': 'open'})
+          else:
+              request(f'https://api.github.com/repos/{repo}/issues', 'POST', {'title': title, 'body': body})
+          PY
