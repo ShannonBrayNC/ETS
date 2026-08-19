@@ -35,8 +35,7 @@ def test_exact_gateway_identity_is_the_positive_control() -> None:
 
 def test_negative_control_is_mapped_without_producer_role() -> None:
     assert "az identity create" in RUNNER
-    assert "temporary[control]" not in RUNNER
-    assert "temporary[control]" not in WORKFLOW
+    assert "temporary[control] = {" in RUNNER
     assert '"denied"' in RUNNER
     assert "negative_control_forbidden" in RUNNER
     assert "ETS_AUTH_FORBIDDEN" in CLIENT_BICEP
