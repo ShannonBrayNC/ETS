@@ -1,0 +1,470 @@
+name: Live Core Gateway Deployment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+concurrency:
+  group: live-core-gateway-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy persistent live ETS Core and Gateway
+    runs-on: ubuntu-24.04
+    environment: ets-azure-q1
+    timeout-minutes: 45
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      LOCATION: eastus
+      RESOURCE_GROUP: rg-ets-live-eastus
+      ENVIRONMENT_NAME: ets-live
+      CONNECTOR_INSTANCE_ID: m365-sharepoint-primary
+      SOURCE_ID: m365-sharepoint-primary
+      LOG_ID: ets-live-primary
+      GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id
+      ACR_NAME: etsq1a352eb89
+      ACR_RESOURCE_GROUP: rg-ets-q1-eastus
+      CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c
+      Q0_SOURCE_SHA: 332d7db3a69acd826a2a000264e81a179894e278
+      Q0_IMAGE_DIGEST: sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c
+      HANDOFF_ISSUE: '389'
+      CORE_SCOPE: ${{ secrets.ETS_LIVE_CORE_SCOPE }}
+      AUTH_AUDIENCE: ${{ secrets.ETS_LIVE_AUTH_AUDIENCE }}
+      AUTH_ISSUER: ${{ secrets.ETS_LIVE_AUTH_ISSUER }}
+      AUTH_JWKS_URL: ${{ secrets.ETS_LIVE_AUTH_JWKS_URL }}
+      AUTH_TENANT_ID: ${{ secrets.ETS_LIVE_AUTH_TENANT_ID }}
+      AUTH_APP_SCOPE_MAP_JSON: ${{ secrets.ETS_LIVE_AUTH_APP_SCOPE_MAP_JSON }}
+      ETS_TENANT_ID: ${{ secrets.ETS_LIVE_TENANT_ID }}
+      ETS_WORKSPACE_ID: ${{ secrets.ETS_LIVE_WORKSPACE_ID }}
+      MICROSOFT_TENANT_ID: ${{ secrets.ETS_LIVE_MICROSOFT_TENANT_ID }}
+      SHAREPOINT_DRIVE_ID: ${{ secrets.ETS_LIVE_SHAREPOINT_DRIVE_ID }}
+
+    steps:
+      - name: Check out deployment source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Assert protected release boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test -f infra/azure/ets-hosted.bicep
+          test -f infra/azure/ets-gateway.bicep
+          test "$CONTAINER_IMAGE" = "${ACR_NAME}.azurecr.io/ets/hosted-q1@${Q0_IMAGE_DIGEST}"
+          test -n "$CORE_SCOPE"
+          test -n "$AUTH_AUDIENCE"
+          test -n "$AUTH_ISSUER"
+          test -n "$AUTH_JWKS_URL"
+          test -n "$AUTH_TENANT_ID"
+          test -n "$AUTH_APP_SCOPE_MAP_JSON"
+          test -n "$ETS_TENANT_ID"
+          test -n "$ETS_WORKSPACE_ID"
+          test -n "$MICROSOFT_TENANT_ID"
+          test -n "$SHAREPOINT_DRIVE_ID"
+          echo "::add-mask::$CORE_SCOPE"
+          echo "::add-mask::$AUTH_AUDIENCE"
+          echo "::add-mask::$AUTH_ISSUER"
+          echo "::add-mask::$AUTH_JWKS_URL"
+          echo "::add-mask::$AUTH_TENANT_ID"
+          echo "::add-mask::$AUTH_APP_SCOPE_MAP_JSON"
+          echo "::add-mask::$ETS_TENANT_ID"
+          echo "::add-mask::$ETS_WORKSPACE_ID"
+          echo "::add-mask::$MICROSOFT_TENANT_ID"
+          echo "::add-mask::$SHAREPOINT_DRIVE_ID"
+
+      - name: Azure login with workload identity
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Validate tenant, live resource group, identity, and scope map
+        shell: bash
+        env:
+          EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          set -euo pipefail
+          active_tenant="$(az account show --query tenantId -o tsv)"
+          active_subscription="$(az account show --query id -o tsv)"
+          test -n "$active_tenant"
+          test -n "$active_subscription"
+          if [ "${active_tenant,,}" != "${EXPECTED_TENANT_ID,,}" ]; then
+            echo "Active Azure tenant differs from the protected deployment tenant." >&2
+            exit 1
+          fi
+          if [ "${active_subscription,,}" != "${EXPECTED_SUBSCRIPTION_ID,,}" ]; then
+            echo "Active Azure subscription differs from the protected deployment subscription." >&2
+            exit 1
+          fi
+
+          group_json="$RUNNER_TEMP/live-group.json"
+          az group show --name "$RESOURCE_GROUP" -o json > "$group_json"
+          identity_json="$RUNNER_TEMP/live-gateway-identity.json"
+          az identity show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$GATEWAY_IDENTITY_NAME" \
+            -o json > "$identity_json"
+
+          gateway_client_id="$(python - "$group_json" "$identity_json" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          group = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          identity = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+
+          if str(group.get("location") or "").casefold() != os.environ["LOCATION"].casefold():
+              raise SystemExit("live resource group is in an unexpected Azure region")
+          tags = group.get("tags") or {}
+          expected_tags = {
+              "etsEnvironment": "live",
+              "etsOwner": "lantern-protocol",
+              "etsPurpose": "hosted-gateway",
+          }
+          for key, value in expected_tags.items():
+              if str(tags.get(key) or "").casefold() != value.casefold():
+                  raise SystemExit(f"live resource group ownership tag mismatch: {key}")
+
+          if str(identity.get("name") or "") != os.environ["GATEWAY_IDENTITY_NAME"]:
+              raise SystemExit("Gateway managed identity name mismatch")
+          client_id = str(identity.get("clientId") or "").strip()
+          principal_id = str(identity.get("principalId") or "").strip()
+          if not client_id or not principal_id:
+              raise SystemExit("Gateway managed identity is missing client/principal identity")
+
+          expected_tenant = os.environ["EXPECTED_TENANT_ID"].casefold()
+          if os.environ["AUTH_TENANT_ID"].casefold() != expected_tenant:
+              raise SystemExit("Core auth tenant does not match protected Azure tenant")
+          if os.environ["MICROSOFT_TENANT_ID"].casefold() != expected_tenant:
+              raise SystemExit("Microsoft connector tenant does not match protected Azure tenant")
+
+          audience = os.environ["AUTH_AUDIENCE"].rstrip("/")
+          if not audience.startswith("api://"):
+              raise SystemExit("Core auth audience must use api:// application identifier")
+          if os.environ["CORE_SCOPE"] != f"{audience}/.default":
+              raise SystemExit("Core managed-identity scope must equal <audience>/.default")
+
+          tenant = os.environ["AUTH_TENANT_ID"]
+          expected_issuer = f"https://login.microsoftonline.com/{tenant}/v2.0"
+          expected_jwks = f"https://login.microsoftonline.com/{tenant}/discovery/v2.0/keys"
+          if os.environ["AUTH_ISSUER"].casefold() != expected_issuer.casefold():
+              raise SystemExit("Core JWT issuer is not the tenant-specific v2 issuer")
+          if os.environ["AUTH_JWKS_URL"].casefold() != expected_jwks.casefold():
+              raise SystemExit("Core JWKS URL is not the tenant-specific v2 endpoint")
+
+          try:
+              scope_map = json.loads(os.environ["AUTH_APP_SCOPE_MAP_JSON"])
+          except json.JSONDecodeError as exc:
+              raise SystemExit("protected app scope map is invalid JSON") from exc
+          if not isinstance(scope_map, dict) or len(scope_map) != 1:
+              raise SystemExit("live app scope map must contain exactly one Gateway client")
+          key = next(iter(scope_map))
+          if key.casefold() != client_id.casefold():
+              raise SystemExit("app scope map key does not match the live Gateway client ID")
+          binding = scope_map[key]
+          if not isinstance(binding, dict):
+              raise SystemExit("Gateway scope binding must be a JSON object")
+          if binding.get("tenant_id") != os.environ["ETS_TENANT_ID"]:
+              raise SystemExit("Gateway scope binding tenant does not match protected ETS tenant")
+          if binding.get("workspace_id") != os.environ["ETS_WORKSPACE_ID"]:
+              raise SystemExit("Gateway scope binding workspace does not match protected ETS workspace")
+
+          print(client_id)
+          PY
+          )"
+          test -n "$gateway_client_id"
+          echo "::add-mask::$gateway_client_id"
+
+      - name: Deploy persistent ETS Core
+        id: core
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployment="ets-live-core-${GITHUB_RUN_ID}"
+          az deployment group create \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/azure/ets-hosted.bicep \
+            --parameters \
+              location="$LOCATION" \
+              environmentName="$ENVIRONMENT_NAME" \
+              containerImage="$CONTAINER_IMAGE" \
+              containerRegistryName="$ACR_NAME" \
+              containerRegistryResourceGroup="$ACR_RESOURCE_GROUP" \
+              logId="$LOG_ID" \
+              authJwksUrl="$AUTH_JWKS_URL" \
+              authIssuer="$AUTH_ISSUER" \
+              authAudience="$AUTH_AUDIENCE" \
+              authTenantId="$AUTH_TENANT_ID" \
+              authAppScopeMapJson="$AUTH_APP_SCOPE_MAP_JSON" \
+            --output none
+
+          core_name="$(az deployment group show \
+            --name "$deployment" --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.containerAppName.value -o tsv)"
+          core_fqdn="$(az deployment group show \
+            --name "$deployment" --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.internalIngressFqdn.value -o tsv)"
+          test -n "$core_name"
+          test -n "$core_fqdn"
+          echo "core_name=$core_name" >> "$GITHUB_OUTPUT"
+          echo "core_fqdn=$core_fqdn" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve exact shared Container Apps environment
+        id: environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          env_list="$RUNNER_TEMP/live-managed-environments.txt"
+          az containerapp env list \
+            --resource-group "$RESOURCE_GROUP" \
+            --query '[].name' -o tsv > "$env_list"
+          mapfile -t managed_envs < <(grep -v '^$' "$env_list" || true)
+          if [ "${#managed_envs[@]}" -ne 1 ]; then
+            echo "Expected exactly one live Container Apps managed environment after Core deployment." >&2
+            exit 1
+          fi
+          echo "name=${managed_envs[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy persistent Microsoft Gateway
+        id: gateway
+        shell: bash
+        env:
+          MANAGED_ENVIRONMENT_NAME: ${{ steps.environment.outputs.name }}
+          CORE_FQDN: ${{ steps.core.outputs.core_fqdn }}
+        run: |
+          set -euo pipefail
+          qualified_client_id="$(az identity show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$GATEWAY_IDENTITY_NAME" \
+            --query clientId -o tsv)"
+          test -n "$qualified_client_id"
+          echo "::add-mask::$qualified_client_id"
+
+          core_base_url="https://${CORE_FQDN}"
+          deployment="ets-live-gateway-${GITHUB_RUN_ID}"
+          az deployment group create \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/azure/ets-gateway.bicep \
+            --parameters \
+              location="$LOCATION" \
+              environmentName="$ENVIRONMENT_NAME" \
+              managedEnvironmentName="$MANAGED_ENVIRONMENT_NAME" \
+              containerImage="$CONTAINER_IMAGE" \
+              containerRegistryName="$ACR_NAME" \
+              containerRegistryResourceGroup="$ACR_RESOURCE_GROUP" \
+              coreBaseUrl="$core_base_url" \
+              coreScope="$CORE_SCOPE" \
+              etsTenantId="$ETS_TENANT_ID" \
+              etsWorkspaceId="$ETS_WORKSPACE_ID" \
+              connectorInstanceId="$CONNECTOR_INSTANCE_ID" \
+              sourceId="$SOURCE_ID" \
+              microsoftTenantId="$MICROSOFT_TENANT_ID" \
+              sharePointDriveId="$SHAREPOINT_DRIVE_ID" \
+              authJwksUrl="$AUTH_JWKS_URL" \
+              authIssuer="$AUTH_ISSUER" \
+              authAudience="$AUTH_AUDIENCE" \
+              authTenantId="$AUTH_TENANT_ID" \
+              authAppScopeMapJson="$AUTH_APP_SCOPE_MAP_JSON" \
+            --output none
+
+          gateway_name="$(az deployment group show \
+            --name "$deployment" --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.gatewayContainerAppName.value -o tsv)"
+          gateway_client_id="$(az deployment group show \
+            --name "$deployment" --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.gatewayManagedIdentityClientId.value -o tsv)"
+          test -n "$gateway_name"
+          test -n "$gateway_client_id"
+          echo "::add-mask::$gateway_client_id"
+          if [ "${gateway_client_id,,}" != "${qualified_client_id,,}" ]; then
+            echo "Gateway deployment did not reuse the pre-qualified live managed identity." >&2
+            exit 1
+          fi
+          echo "gateway_name=$gateway_name" >> "$GITHUB_OUTPUT"
+
+      - name: Verify deployed runtime configuration without external access
+        shell: bash
+        env:
+          CORE_NAME: ${{ steps.core.outputs.core_name }}
+          GATEWAY_NAME: ${{ steps.gateway.outputs.gateway_name }}
+          CORE_FQDN: ${{ steps.core.outputs.core_fqdn }}
+        run: |
+          set -euo pipefail
+          core_json="$RUNNER_TEMP/live-core.json"
+          gateway_json="$RUNNER_TEMP/live-gateway.json"
+          az containerapp show --resource-group "$RESOURCE_GROUP" --name "$CORE_NAME" -o json > "$core_json"
+          az containerapp show --resource-group "$RESOURCE_GROUP" --name "$GATEWAY_NAME" -o json > "$gateway_json"
+          python - "$core_json" "$gateway_json" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          core = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          gateway = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+
+          def verify_app(payload, *, expected_name, expected_env):
+              if payload.get("name") != expected_name:
+                  raise SystemExit(f"{expected_name} resource name mismatch")
+              props = payload.get("properties") or {}
+              config = props.get("configuration") or {}
+              ingress = config.get("ingress") or {}
+              if ingress.get("external") is not False:
+                  raise SystemExit(f"{expected_name} ingress must remain internal")
+              template = props.get("template") or {}
+              scale = template.get("scale") or {}
+              if scale.get("minReplicas") != 1 or scale.get("maxReplicas") != 1:
+                  raise SystemExit(f"{expected_name} must remain single replica")
+              containers = template.get("containers") or []
+              if len(containers) != 1:
+                  raise SystemExit(f"{expected_name} must contain exactly one runtime container")
+              container = containers[0]
+              if container.get("image") != os.environ["CONTAINER_IMAGE"]:
+                  raise SystemExit(f"{expected_name} image is not the authoritative immutable digest")
+              env = {item.get("name"): item.get("value") for item in container.get("env") or []}
+              for key, value in expected_env.items():
+                  if env.get(key) != value:
+                      raise SystemExit(f"{expected_name} environment mismatch for {key}")
+
+          common_auth = {
+              "ETS_AUTH_MODE": "production_jwks",
+              "ETS_AUTH_JWKS_URL": os.environ["AUTH_JWKS_URL"],
+              "ETS_AUTH_ISSUER": os.environ["AUTH_ISSUER"],
+              "ETS_AUTH_AUDIENCE": os.environ["AUTH_AUDIENCE"],
+              "ETS_AUTH_TENANT_ID": os.environ["AUTH_TENANT_ID"],
+              "ETS_AUTH_APP_SCOPE_MAP_JSON": os.environ["AUTH_APP_SCOPE_MAP_JSON"],
+          }
+          verify_app(
+              core,
+              expected_name=os.environ["CORE_NAME"],
+              expected_env={
+                  **common_auth,
+                  "ETS_STORAGE_PROVIDER": "azure_table",
+                  "ETS_SIGNING_MODE": "azure_key_vault",
+                  "ETS_LOG_ID": os.environ["LOG_ID"],
+              },
+          )
+          verify_app(
+              gateway,
+              expected_name=os.environ["GATEWAY_NAME"],
+              expected_env={
+                  **common_auth,
+                  "ETS_GATEWAY_CORE_BASE_URL": f"https://{os.environ['CORE_FQDN']}",
+                  "ETS_GATEWAY_CORE_SCOPE": os.environ["CORE_SCOPE"],
+                  "ETS_GATEWAY_TENANT_ID": os.environ["ETS_TENANT_ID"],
+                  "ETS_GATEWAY_WORKSPACE_ID": os.environ["ETS_WORKSPACE_ID"],
+                  "ETS_GATEWAY_INSTANCE_ID": os.environ["CONNECTOR_INSTANCE_ID"],
+                  "ETS_GATEWAY_SOURCE_ID": os.environ["SOURCE_ID"],
+                  "ETS_GATEWAY_MICROSOFT_TENANT_ID": os.environ["MICROSOFT_TENANT_ID"],
+                  "ETS_GATEWAY_SHAREPOINT_DRIVE_ID": os.environ["SHAREPOINT_DRIVE_ID"],
+              },
+          )
+          PY
+
+      - name: Retain sanitized deployment handoff
+        shell: bash
+        env:
+          CORE_NAME: ${{ steps.core.outputs.core_name }}
+          GATEWAY_NAME: ${{ steps.gateway.outputs.gateway_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/live-core-gateway-deployment
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schema_version": "ets.live_core_gateway.deployment.v1",
+              "orchestrator_source_sha": os.environ["GITHUB_SHA"],
+              "q0_image_source_sha": os.environ["Q0_SOURCE_SHA"],
+              "q0_image_digest": os.environ["Q0_IMAGE_DIGEST"],
+              "location": os.environ["LOCATION"],
+              "resource_group": os.environ["RESOURCE_GROUP"],
+              "core_container_app_name": os.environ["CORE_NAME"],
+              "gateway_container_app_name": os.environ["GATEWAY_NAME"],
+              "gateway_managed_identity_name": os.environ["GATEWAY_IDENTITY_NAME"],
+              "immutable_image_verified": True,
+              "internal_ingress_verified": True,
+              "single_replica_verified": True,
+              "core_scope_map_configured": True,
+              "azure_runtime_resources_deployed": True,
+              "runtime_health_claimed": False,
+              "producer_token_proof_claimed": False,
+              "negative_control_proof_claimed": False,
+              "m365_source_to_proof_claimed": False,
+              "soak_clock_started": False,
+              "customer_identifiers_retained": False,
+              "reusable_credential_retained": False,
+          }
+          Path("evidence/live-core-gateway-deployment/handoff.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload sanitized deployment evidence
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-core-gateway-deployment-${{ github.run_id }}
+          path: evidence/live-core-gateway-deployment/handoff.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish bounded deployment status to Gateway issue
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CORE_NAME: ${{ steps.core.outputs.core_name }}
+          GATEWAY_NAME: ${{ steps.gateway.outputs.gateway_name }}
+        run: |
+          set -euo pipefail
+          body=$(cat <<EOF
+          ### Live Core + Gateway deployment handoff
+
+          - release image source: \`$Q0_SOURCE_SHA\`
+          - release image digest: \`$Q0_IMAGE_DIGEST\`
+          - Azure resource group: \`$RESOURCE_GROUP\`
+          - Core Container App: \`$CORE_NAME\`
+          - Gateway Container App: \`$GATEWAY_NAME\`
+          - Gateway managed identity: \`$GATEWAY_IDENTITY_NAME\`
+          - immutable image verified: **true**
+          - internal ingress verified: **true**
+          - single-replica runtime verified: **true**
+          - Core app-to-ETS-scope map configured: **true**
+          - Azure Core/Gateway runtime resources deployed: **true**
+          - runtime health claimed: **false**
+          - producer-token proof claimed: **false**
+          - negative-control proof claimed: **false**
+          - M365 source-to-proof claimed: **false**
+          - 72-hour soak clock started: **false**
+          - customer identifiers retained in public evidence: **false**
+          - reusable credentials retained: **false**
+
+          Next gate: run an internal same-environment qualification client that proves Gateway managed-identity producer-token acceptance and a negative-control denial before enabling the live SharePoint #390 source-to-proof gate.
+          EOF
+          )
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/issues/$HANDOFF_ISSUE/comments" \
+            -f body="$body" >/dev/null
