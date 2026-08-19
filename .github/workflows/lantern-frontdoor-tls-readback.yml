@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   state:
-    name: Read custom domain and HTTPS state
+    name: Read custom domain validation token
     runs-on: ubuntu-latest
     environment: ets-azure-q1
     timeout-minutes: 8
@@ -20,7 +20,6 @@ jobs:
       RESOURCE_GROUP: rg-ets-live-eastus
       PROFILE_NAME: lantern-continuity-fd
       CUSTOM_DOMAIN_NAME: azure-lanternprotocol-net
-      CUSTOM_HOST: azure.lanternprotocol.net
     steps:
       - name: Azure login with ETS workload identity
         uses: azure/login@v2
@@ -35,7 +34,7 @@ jobs:
           set -euo pipefail
           az extension add --name cdn --upgrade --yes --only-show-errors
 
-      - name: Read domain state and HTTPS
+      - name: Read validation token and state
         shell: bash
         run: |
           set -euo pipefail
@@ -43,17 +42,5 @@ jobs:
             -g "$RESOURCE_GROUP" \
             --profile-name "$PROFILE_NAME" \
             --custom-domain-name "$CUSTOM_DOMAIN_NAME" \
-            --query '{host:hostName,validation:domainValidationState,deployment:deploymentStatus,certificate:tlsSettings.certificateType,minimumTls:tlsSettings.minimumTlsVersion}' \
+            --query '{host:hostName,validation:domainValidationState,deployment:deploymentStatus,certificate:tlsSettings.certificateType,minimumTls:tlsSettings.minimumTlsVersion,validationToken:validationProperties.validationToken,validationExpiry:validationProperties.expirationDate}' \
             -o json
-          python - <<'PY'
-          import ssl, urllib.request
-          url='https://azure.lanternprotocol.net/'
-          try:
-              with urllib.request.urlopen(url,timeout=20) as r:
-                  body=r.read(200000).decode('utf-8','replace')
-                  print('HTTPS_STATUS='+str(r.status))
-                  print('LANTERN_HERO='+str('Evidence you can prove.' in body).lower())
-                  print('ETS_BRIEFING='+str('ETS TECHNICAL BRIEFING' in body).lower())
-          except Exception as e:
-              print('HTTPS_ERROR='+type(e).__name__+': '+str(e))
-          PY
