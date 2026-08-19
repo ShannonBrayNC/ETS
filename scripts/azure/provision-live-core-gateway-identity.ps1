@@ -45,6 +45,18 @@ function Invoke-JsonProvisioningScript {
     }
 }
 
+function Get-OptionalStringProperty {
+    param(
+        [Parameter(Mandatory = $true)][object]$InputObject,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    if ($InputObject.PSObject.Properties.Name -notcontains $Name) {
+        return ''
+    }
+    return [string]$InputObject.$Name
+}
+
 function Write-BoundedStatus {
     param(
         [Parameter(Mandatory = $true)][string]$Stage,
@@ -92,7 +104,7 @@ if (-not $app.applicationReady -or -not $app.servicePrincipalReady) {
     Write-BoundedStatus `
         -Stage 'core_api_registration' `
         -MutationRequired ([bool]$app.mutationRequired) `
-        -CoreApplicationId ([string]($app.coreApplicationId ?? ''))
+        -CoreApplicationId (Get-OptionalStringProperty -InputObject $app -Name 'coreApplicationId')
     return
 }
 
