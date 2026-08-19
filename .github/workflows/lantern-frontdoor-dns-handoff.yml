@@ -1,0 +1,118 @@
+name: Publish Lantern Front Door DNS Handoff
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lantern-frontdoor-dns-handoff.yml'
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+concurrency:
+  group: lantern-frontdoor-dns-handoff
+  cancel-in-progress: true
+
+jobs:
+  handoff:
+    name: Report azure.lanternprotocol.net CNAME target
+    runs-on: ubuntu-latest
+    environment: ets-azure-q1
+    timeout-minutes: 10
+    env:
+      RESOURCE_GROUP: rg-ets-live-eastus
+      PROFILE_NAME: lantern-continuity-fd
+      EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - name: Azure login with ETS workload identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Azure Front Door CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name cdn --upgrade --yes --only-show-errors
+
+      - name: Resolve Front Door endpoint hostname
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          active_subscription="$(az account show --query id -o tsv)"
+          active_tenant="$(az account show --query tenantId -o tsv)"
+          test "${active_subscription,,}" = "${EXPECTED_SUBSCRIPTION_ID,,}"
+          test "${active_tenant,,}" = "${EXPECTED_TENANT_ID,,}"
+
+          endpoint_name=''
+          afd_host=''
+          for attempt in $(seq 1 24); do
+            mapfile -t endpoints < <(az afd endpoint list -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --query '[].name' -o tsv 2>/dev/null || true)
+            if [ "${#endpoints[@]}" -eq 1 ]; then
+              endpoint_name="${endpoints[0]}"
+              afd_host="$(az afd endpoint show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$endpoint_name" --query hostName -o tsv 2>/dev/null || true)"
+              if [ -n "$afd_host" ]; then break; fi
+            fi
+            sleep 10
+          done
+          test -n "$endpoint_name"
+          test -n "$afd_host"
+          echo "endpoint_name=$endpoint_name" >> "$GITHUB_OUTPUT"
+          echo "afd_host=$afd_host" >> "$GITHUB_OUTPUT"
+
+      - name: Publish CNAME handoff
+        if: always()
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AFD_HOST: ${{ steps.resolve.outputs.afd_host }}
+          ENDPOINT_NAME: ${{ steps.resolve.outputs.endpoint_name }}
+          RESOLVE_OUTCOME: ${{ steps.resolve.outcome }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, urllib.parse, urllib.request
+          from datetime import datetime, timezone
+          token=os.environ['GITHUB_TOKEN']; repo=os.environ['GITHUB_REPOSITORY']
+          title='Lantern Azure Front Door standby'
+          afd=os.environ.get('AFD_HOST','').strip()
+          ok=os.environ.get('RESOLVE_OUTCOME')=='success' and bool(afd)
+          status='DNS_TARGET_READY' if ok else 'DNS_TARGET_NOT_READY'
+          body=f'''# Lantern Protocol Azure Front Door standby
+
+**Status:** {status}
+
+- Requested hostname: `azure.lanternprotocol.net`
+- DNS record type: `CNAME`
+- DNS host/name: `azure`
+- DNS target/value: `{afd or '(not available)'}`
+- Recommended TTL: `300` seconds
+- Front Door endpoint name: `{os.environ.get('ENDPOINT_NAME') or '(not available)'}`
+- Front Door profile: `{os.environ['PROFILE_NAME']}`
+- Resource group: `{os.environ['RESOURCE_GROUP']}`
+- Endpoint lookup: `{os.environ.get('RESOLVE_OUTCOME','unknown')}`
+- Custom-domain TLS activation: `pending DNS`
+- Production apex `lanternprotocol.net`: `unchanged`
+- Source commit: `{os.environ['GITHUB_SHA']}`
+- Recorded: `{datetime.now(timezone.utc).isoformat()}`
+
+When status is `DNS_TARGET_READY`, create the `azure` CNAME with the exact target above. After DNS resolves, the separate activation gate will bind `azure.lanternprotocol.net`, provision managed TLS, and verify the Lantern content before any apex failover.
+'''
+          headers={'Authorization':f'Bearer {token}','Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','User-Agent':'lantern-frontdoor-dns-handoff'}
+          def req(url, method='GET', payload=None):
+              data=None if payload is None else json.dumps(payload).encode()
+              r=urllib.request.Request(url,data=data,headers=headers,method=method)
+              with urllib.request.urlopen(r,timeout=20) as resp:return json.load(resp)
+          q=urllib.parse.urlencode({'q':f'repo:{repo} is:issue in:title "{title}"'})
+          found=req(f'https://api.github.com/search/issues?{q}')
+          issue=next((i for i in found.get('items',[]) if i.get('title')==title),None)
+          if issue:req(f"https://api.github.com/repos/{repo}/issues/{issue['number']}",'PATCH',{'body':body,'state':'open'})
+          else:req(f'https://api.github.com/repos/{repo}/issues','POST',{'title':title,'body':body})
+          PY
