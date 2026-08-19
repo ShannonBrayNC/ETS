@@ -43,7 +43,7 @@ function Get-CoreApplicationCandidates {
     $uri = (
         "https://graph.microsoft.com/v1.0/applications?`$filter=$filter&" +
         "`$select=id,appId,displayName,signInAudience,identifierUris,tags,appRoles,api," +
-        "passwordCredentials,keyCredentials"
+        "optionalClaims,passwordCredentials,keyCredentials"
     )
     $response = Invoke-GraphGet -Uri $uri
     return @($response.value)
@@ -59,6 +59,71 @@ function Get-CoreServicePrincipals {
     )
     $response = Invoke-GraphGet -Uri $uri
     return @($response.value)
+}
+
+function Get-CoreIdtypOptionalClaimState {
+    param([Parameter(Mandatory = $true)][object]$Application)
+
+    if (
+        $Application.PSObject.Properties.Name -notcontains 'optionalClaims' -or
+        $null -eq $Application.optionalClaims
+    ) {
+        return 'missing'
+    }
+
+    $optionalClaims = $Application.optionalClaims
+    $idTokenClaims = @()
+    $accessTokenClaims = @()
+    $saml2TokenClaims = @()
+
+    if ($optionalClaims.PSObject.Properties.Name -contains 'idToken') {
+        $idTokenClaims = @($optionalClaims.idToken)
+    }
+    if ($optionalClaims.PSObject.Properties.Name -contains 'accessToken') {
+        $accessTokenClaims = @($optionalClaims.accessToken)
+    }
+    if ($optionalClaims.PSObject.Properties.Name -contains 'saml2Token') {
+        $saml2TokenClaims = @($optionalClaims.saml2Token)
+    }
+
+    if ($idTokenClaims.Count -ne 0 -or $saml2TokenClaims.Count -ne 0) {
+        return 'unexpected'
+    }
+    if ($accessTokenClaims.Count -eq 0) {
+        return 'missing'
+    }
+    if ($accessTokenClaims.Count -ne 1) {
+        return 'unexpected'
+    }
+
+    $claim = $accessTokenClaims[0]
+    if (
+        $claim.PSObject.Properties.Name -notcontains 'name' -or
+        [string]$claim.name -ne 'idtyp'
+    ) {
+        return 'unexpected'
+    }
+    if (
+        $claim.PSObject.Properties.Name -contains 'source' -and
+        $null -ne $claim.source -and
+        [string]$claim.source
+    ) {
+        return 'unexpected'
+    }
+    if (
+        $claim.PSObject.Properties.Name -contains 'essential' -and
+        $claim.essential -eq $true
+    ) {
+        return 'unexpected'
+    }
+    if (
+        $claim.PSObject.Properties.Name -contains 'additionalProperties' -and
+        @($claim.additionalProperties).Count -ne 0
+    ) {
+        return 'unexpected'
+    }
+
+    return 'ready'
 }
 
 function Assert-GovernedCoreApplication {
@@ -115,6 +180,9 @@ function Assert-CoreApplicationReady {
     }
     if ($null -eq $Application.api -or $Application.api.requestedAccessTokenVersion -ne 2) {
         throw 'Core application did not converge to requested access token version 2.'
+    }
+    if ((Get-CoreIdtypOptionalClaimState -Application $Application) -ne 'ready') {
+        throw 'Core application did not converge to the governed idtyp access-token optional claim.'
     }
 }
 
@@ -235,6 +303,14 @@ try {
         $needsApiUpdate = $true
     }
 
+    $idtypClaimState = Get-CoreIdtypOptionalClaimState -Application $application
+    if ($idtypClaimState -eq 'unexpected') {
+        throw 'Existing Core application has unexpected optional token claims. Refusing implicit migration.'
+    }
+    if ($idtypClaimState -eq 'missing') {
+        $needsApiUpdate = $true
+    }
+
     if ($needsApiUpdate) {
         if (-not $Apply) {
             [pscustomobject]@{
@@ -244,6 +320,7 @@ try {
                 expectedIdentifierUri = $expectedIdentifierUri
                 applicationReady = $false
                 servicePrincipalReady = $false
+                appOnlyTokenTypeClaimReady = $false
                 mutationRequired = $true
                 applyRequested = $false
                 reusableCredentialRetained = $false
@@ -256,7 +333,19 @@ try {
             api = @{
                 requestedAccessTokenVersion = 2
             }
-        } | ConvertTo-Json -Depth 6
+            optionalClaims = @{
+                idToken = @()
+                accessToken = @(
+                    @{
+                        name = 'idtyp'
+                        source = $null
+                        essential = $false
+                        additionalProperties = @()
+                    }
+                )
+                saml2Token = @()
+            }
+        } | ConvertTo-Json -Depth 8
         Invoke-MgGraphRequest `
             -Method PATCH `
             -Uri "https://graph.microsoft.com/v1.0/applications/$($application.id)" `
@@ -295,6 +384,7 @@ try {
                 coreScope = "api://$($application.appId)/.default"
                 applicationReady = $true
                 servicePrincipalReady = $false
+                appOnlyTokenTypeClaimReady = $true
                 mutationRequired = $true
                 applyRequested = $false
                 reusableCredentialRetained = $false
@@ -349,6 +439,8 @@ try {
         authIssuer = "https://login.microsoftonline.com/$($context.TenantId)/v2.0"
         authJwksUrl = "https://login.microsoftonline.com/$($context.TenantId)/discovery/v2.0/keys"
         requestedAccessTokenVersion = 2
+        appOnlyTokenTypeClaim = 'idtyp'
+        appOnlyTokenTypeClaimReady = $true
         applicationReady = $true
         servicePrincipalReady = $true
         applicationCreated = $applicationCreated
