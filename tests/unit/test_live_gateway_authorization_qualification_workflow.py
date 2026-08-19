@@ -6,6 +6,9 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = (
     ROOT / ".github" / "workflows" / "live-gateway-authorization-qualification.yml"
 ).read_text(encoding="utf-8")
+RUNNER = (
+    ROOT / "scripts" / "azure" / "run-live-gateway-authorization-qualification.sh"
+).read_text(encoding="utf-8")
 CLIENT_BICEP = (
     ROOT / "infra" / "azure" / "ets-live-auth-qualification-client.bicep"
 ).read_text(encoding="utf-8")
@@ -18,41 +21,63 @@ def test_workflow_is_manual_and_protected() -> None:
     assert "issues: write" in WORKFLOW
     assert "refs/heads/main" in WORKFLOW
     assert "ETS_Q1_BEARER_TOKEN" not in WORKFLOW
+    assert "run-live-gateway-authorization-qualification.sh" in WORKFLOW
 
 
 def test_exact_gateway_identity_is_the_positive_control() -> None:
     assert "GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id" in WORKFLOW
-    assert "GATEWAY_IDENTITY_ID" in WORKFLOW
-    assert "GATEWAY_CLIENT_ID" in WORKFLOW
-    assert '"mode": {"value": "producer"}' in WORKFLOW
-    assert "producer_role_present" in WORKFLOW
-    assert "inclusion_proof_verified" in WORKFLOW
+    assert '"producer"' in RUNNER
+    assert "GATEWAY_IDENTITY_ID" in RUNNER
+    assert "GATEWAY_CLIENT_ID" in RUNNER
+    assert "producer_role_present" in RUNNER
+    assert "inclusion_proof_verified" in RUNNER
 
 
 def test_negative_control_is_mapped_without_producer_role() -> None:
-    assert "az identity create" in WORKFLOW
-    assert "temporary[control]" in WORKFLOW
-    assert '"mode": {"value": "denied"}' in WORKFLOW
-    assert "negative_control_forbidden" in WORKFLOW
-    assert "ETS_AUTH_FORBIDDEN" in WORKFLOW
-    assert "negative-control token unexpectedly had evidence_producer" in WORKFLOW
+    assert "az identity create" in RUNNER
+    assert "temporary[control] = {" in RUNNER
+    assert '"denied"' in RUNNER
+    assert "negative_control_forbidden" in RUNNER
+    assert "ETS_AUTH_FORBIDDEN" in CLIENT_BICEP
+    assert "negative-control token unexpectedly had evidence_producer" in RUNNER
 
 
 def test_scope_map_and_ephemeral_identity_are_restored_fail_closed() -> None:
-    assert "if: always()" in WORKFLOW
-    assert 'ETS_AUTH_APP_SCOPE_MAP_JSON=$AUTH_APP_SCOPE_MAP_JSON' in WORKFLOW
-    assert "live Core app scope map did not restore exactly" in WORKFLOW
-    assert "restored Core scope map must contain exactly one client" in WORKFLOW
-    assert "az identity delete" in WORKFLOW
-    assert "ephemeral_control_identity_removed" in WORKFLOW
+    assert "trap on_exit EXIT" in RUNNER
+    assert "SCOPE_MAP_MUTATED=0" in RUNNER
+    assert "restore_scope_map" in RUNNER
+    assert 'ETS_AUTH_APP_SCOPE_MAP_JSON=$AUTH_APP_SCOPE_MAP_JSON' in RUNNER
+    assert "live Core app scope map did not restore exactly" in RUNNER
+    assert "restored Core scope map must contain exactly one client" in RUNNER
+    assert "az identity delete" in RUNNER
+    assert "cleanup_stale_jobs" in RUNNER
+    assert "ets-authp-" in RUNNER
+    assert "ets-authn-" in RUNNER
+
+
+def test_failure_diagnostics_are_sanitized_and_bounded() -> None:
+    for failure_class in (
+        "core_unreachable",
+        "core_not_ready",
+        "managed_identity_token_acquisition",
+        "managed_identity_audience_mismatch",
+        "producer_role_mismatch",
+        "inclusion_proof_verification_failed",
+    ):
+        assert failure_class in RUNNER
+    assert '"customer_identifiers_retained": False' in RUNNER
+    assert '"reusable_credential_retained": False' in RUNNER
+    assert '"public_evidence_safe": True' in RUNNER
+    assert "evidence/live-gateway-authorization/*.json" in WORKFLOW
+    assert "live-auth-producer.log" not in WORKFLOW
 
 
 def test_public_handoff_does_not_claim_sharepoint_or_soak() -> None:
-    assert '"runtime_health_claimed": False' in WORKFLOW
-    assert '"m365_source_to_proof_claimed": False' in WORKFLOW
-    assert '"soak_clock_started": False' in WORKFLOW
-    assert '"customer_identifiers_retained": False' in WORKFLOW
-    assert '"reusable_credential_retained": False' in WORKFLOW
+    assert '"runtime_health_claimed": False' in RUNNER
+    assert '"m365_source_to_proof_claimed": False' in RUNNER
+    assert '"soak_clock_started": False' in RUNNER
+    assert '"customer_identifiers_retained": False' in RUNNER
+    assert '"reusable_credential_retained": False' in RUNNER
 
 
 def test_qualification_job_separates_runtime_and_pull_identity() -> None:
