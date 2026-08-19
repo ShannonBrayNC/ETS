@@ -18,6 +18,8 @@ param(
 
     [string]$ExpectedVerifiedDomain = 'echomedia.ai',
 
+    [string]$ExpectedOperatorAccount = 'shannon.bray@echomedia.ai',
+
     [string]$ConnectorDisplayName = 'ETS Gateway Microsoft 365 Connector'
 )
 
@@ -104,6 +106,9 @@ Assert-Command -Name 'Invoke-MgGraphRequest'
 if ($SharePointHostname -notmatch '\.sharepoint\.com$') {
     throw 'SharePointHostname must be a SharePoint Online hostname ending in .sharepoint.com.'
 }
+if ([string]::IsNullOrWhiteSpace($ExpectedOperatorAccount)) {
+    throw 'ExpectedOperatorAccount is required.'
+}
 
 $azureAccount = az account show --output json | ConvertFrom-Json
 if (-not $azureAccount.tenantId) {
@@ -130,6 +135,12 @@ try {
     $context = Get-MgContext
     if (-not $context.TenantId -or $context.TenantId -ne $azureAccount.tenantId) {
         throw 'Microsoft Graph tenant does not match the active Azure subscription tenant.'
+    }
+    if (-not $context.Account -or $context.Account -ine $ExpectedOperatorAccount) {
+        throw (
+            "Microsoft Graph operator '$($context.Account)' does not match the required " +
+            "EchoMedia account '$ExpectedOperatorAccount'."
+        )
     }
 
     $organization = Invoke-GraphGet -Uri (
@@ -245,6 +256,7 @@ try {
         tenantId = $context.TenantId
         tenantDisplayName = $tenant.displayName
         verifiedDomain = $ExpectedVerifiedDomain
+        operatorAccountVerified = $true
         managedIdentityResourceId = $identity.id
         managedIdentityClientId = $identity.clientId
         managedIdentityPrincipalId = $identity.principalId
