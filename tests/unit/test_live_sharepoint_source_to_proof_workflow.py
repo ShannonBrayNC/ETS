@@ -107,11 +107,12 @@ def test_public_evidence_is_sanitized_and_does_not_start_soak() -> None:
 
 def test_operator_uses_delegated_write_only_for_synthetic_file() -> None:
     assert "Sites.ReadWrite.All" in OPERATOR
-    assert "echomediaai.sharepoint.com" in OPERATOR
+    assert "SharePointHostname" in OPERATOR
     assert "'/sites/ETS'" in OPERATOR
     assert '"ets-live-qualification-$Marker.txt"' in OPERATOR
     assert "customer_content=false" in OPERATOR
     assert '"$encodedName`:/content"' in OPERATOR
+    assert "InputFilePath" in OPERATOR
     assert "sharePointMetadataVerified = $true" in OPERATOR
     assert "rawCustomerContentUsed = $false" in OPERATOR
     assert "live-sharepoint-source-to-proof.yml" in OPERATOR
