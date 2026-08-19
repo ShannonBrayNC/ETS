@@ -53,6 +53,22 @@ def test_core_api_bootstrap_creates_a_single_tenant_credential_free_resource_api
         assert required in text
 
 
+def test_core_api_bootstrap_governs_app_only_token_type_claim() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    for required in (
+        "optionalClaims",
+        "Get-CoreIdtypOptionalClaimState",
+        "name = 'idtyp'",
+        "additionalProperties = @()",
+        "Existing Core application has unexpected optional token claims.",
+        "Core application did not converge to the governed idtyp access-token optional claim.",
+        "appOnlyTokenTypeClaim = 'idtyp'",
+        "appOnlyTokenTypeClaimReady = $true",
+    ):
+        assert required in text
+
+
 def test_core_api_bootstrap_creates_exactly_one_service_principal() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
 
