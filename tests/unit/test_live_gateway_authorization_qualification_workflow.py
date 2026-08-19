@@ -9,6 +9,12 @@ WORKFLOW = (
 RUNNER = (
     ROOT / "scripts" / "azure" / "run-live-gateway-authorization-qualification.sh"
 ).read_text(encoding="utf-8")
+DIAGNOSTIC = (
+    ROOT
+    / "scripts"
+    / "azure"
+    / "run-live-gateway-authorization-qualification-diagnostic.sh"
+).read_text(encoding="utf-8")
 CLIENT_BICEP = (
     ROOT / "infra" / "azure" / "ets-live-auth-qualification-client.bicep"
 ).read_text(encoding="utf-8")
@@ -21,7 +27,7 @@ def test_workflow_is_manual_and_protected() -> None:
     assert "issues: write" in WORKFLOW
     assert "refs/heads/main" in WORKFLOW
     assert "ETS_Q1_BEARER_TOKEN" not in WORKFLOW
-    assert "run-live-gateway-authorization-qualification.sh" in WORKFLOW
+    assert "run-live-gateway-authorization-qualification-diagnostic.sh" in WORKFLOW
 
 
 def test_exact_gateway_identity_is_the_positive_control() -> None:
@@ -70,6 +76,21 @@ def test_failure_diagnostics_are_sanitized_and_bounded() -> None:
     assert '"public_evidence_safe": True' in RUNNER
     assert "evidence/live-gateway-authorization/*.json" in WORKFLOW
     assert "live-auth-producer.log" not in WORKFLOW
+
+
+def test_diagnostic_wrapper_retries_private_logs_and_never_publishes_them() -> None:
+    for position, token in enumerate(("containerapp", "job", "logs", "show"), start=1):
+        assert f'[ "${{{position}:-}}" = "{token}" ]' in DIAGNOSTIC
+    assert "for _ in $(seq 1 12)" in DIAGNOSTIC
+    assert "ETS_AUTH_DIAGNOSTIC_RAW" in DIAGNOSTIC
+    assert "qualification_log_unavailable" in DIAGNOSTIC
+    assert "qualification_json_decode_failed" in DIAGNOSTIC
+    assert "inclusion_proof_verifier_exception" in DIAGNOSTIC
+    assert 'payload["customer_identifiers_retained"] = False' in DIAGNOSTIC
+    assert 'payload["reusable_credential_retained"] = False' in DIAGNOSTIC
+    assert 'payload["public_evidence_safe"] = True' in DIAGNOSTIC
+    assert 'rm -f "$PRIVATE_RAW"' in DIAGNOSTIC
+    assert "PRIVATE_RAW" not in WORKFLOW
 
 
 def test_public_handoff_does_not_claim_sharepoint_or_soak() -> None:
