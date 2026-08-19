@@ -1,0 +1,190 @@
+name: Activate Lantern Front Door Custom Domain
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'ops/lantern-site-backup/activate-frontdoor.flag'
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+concurrency:
+  group: lantern-frontdoor-custom-domain
+  cancel-in-progress: true
+
+jobs:
+  activate:
+    name: Activate azure.lanternprotocol.net TLS
+    runs-on: ubuntu-latest
+    environment: ets-azure-q1
+    timeout-minutes: 20
+    env:
+      RESOURCE_GROUP: rg-ets-live-eastus
+      CUSTOM_HOST: azure.lanternprotocol.net
+      PROFILE_NAME: lantern-continuity-fd
+      ROUTE_NAME: lantern-site-route
+      CUSTOM_DOMAIN_NAME: azure-lanternprotocol-net
+      EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Azure login with ETS workload identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Azure Front Door CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name cdn --upgrade --yes --only-show-errors
+
+      - name: Resolve existing Front Door endpoint and validate DNS CNAME
+        id: dns
+        shell: bash
+        run: |
+          set -euo pipefail
+          active_subscription="$(az account show --query id -o tsv)"
+          active_tenant="$(az account show --query tenantId -o tsv)"
+          test "${active_subscription,,}" = "${EXPECTED_SUBSCRIPTION_ID,,}"
+          test "${active_tenant,,}" = "${EXPECTED_TENANT_ID,,}"
+
+          mapfile -t endpoints < <(az afd endpoint list -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --query '[].name' -o tsv)
+          test "${#endpoints[@]}" -eq 1
+          endpoint_name="${endpoints[0]}"
+          afd_host="$(az afd endpoint show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$endpoint_name" --query hostName -o tsv)"
+          test -n "$afd_host"
+
+          cname="$(python - <<'PY'
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+          name = os.environ['CUSTOM_HOST']
+          url = 'https://dns.google/resolve?' + urllib.parse.urlencode({'name': name, 'type': 'CNAME'})
+          req = urllib.request.Request(url, headers={'User-Agent': 'lantern-frontdoor-activate'})
+          with urllib.request.urlopen(req, timeout=20) as response:
+              payload = json.load(response)
+          answers = [a.get('data', '').rstrip('.') for a in payload.get('Answer', []) if a.get('type') == 5]
+          print(answers[0] if len(answers) == 1 else '')
+          PY
+          )"
+          test -n "$cname"
+          test "${cname,,}" = "${afd_host,,}"
+
+          echo "endpoint_name=$endpoint_name" >> "$GITHUB_OUTPUT"
+          echo "afd_host=$afd_host" >> "$GITHUB_OUTPUT"
+          echo "cname=$cname" >> "$GITHUB_OUTPUT"
+
+      - name: Create and associate managed-TLS custom domain
+        id: activate
+        shell: bash
+        env:
+          ENDPOINT_NAME: ${{ steps.dns.outputs.endpoint_name }}
+        run: |
+          set -euo pipefail
+          if az afd custom-domain show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --custom-domain-name "$CUSTOM_DOMAIN_NAME" >/dev/null 2>&1; then
+            az afd custom-domain update -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --custom-domain-name "$CUSTOM_DOMAIN_NAME" --minimum-tls-version TLS12 --certificate-type ManagedCertificate --output none
+          else
+            az afd custom-domain create -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --custom-domain-name "$CUSTOM_DOMAIN_NAME" --host-name "$CUSTOM_HOST" --minimum-tls-version TLS12 --certificate-type ManagedCertificate --output none
+          fi
+
+          custom_domain_id="$(az afd custom-domain show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --custom-domain-name "$CUSTOM_DOMAIN_NAME" --query id -o tsv)"
+          test -n "$custom_domain_id"
+          az afd route update -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$ENDPOINT_NAME" --route-name "$ROUTE_NAME" --formatted-custom-domains "[{\"id\":\"$custom_domain_id\"}]" --output none
+
+          final_state='unknown'
+          final_deployment='unknown'
+          for attempt in $(seq 1 40); do
+            final_state="$(az afd custom-domain show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --custom-domain-name "$CUSTOM_DOMAIN_NAME" --query domainValidationState -o tsv 2>/dev/null || true)"
+            final_deployment="$(az afd custom-domain show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --custom-domain-name "$CUSTOM_DOMAIN_NAME" --query deploymentStatus -o tsv 2>/dev/null || true)"
+            if body="$(curl --fail --silent --show-error --max-time 15 "https://$CUSTOM_HOST/")"; then
+              printf '%s' "$body" | grep -Fq 'Evidence you can prove.'
+              printf '%s' "$body" | grep -Fq 'ETS TECHNICAL BRIEFING'
+              echo "validation_state=$final_state" >> "$GITHUB_OUTPUT"
+              echo "deployment_status=$final_deployment" >> "$GITHUB_OUTPUT"
+              echo "verified=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 15
+          done
+
+          echo "validation_state=$final_state" >> "$GITHUB_OUTPUT"
+          echo "deployment_status=$final_deployment" >> "$GITHUB_OUTPUT"
+          echo "verified=false" >> "$GITHUB_OUTPUT"
+          exit 1
+
+      - name: Publish custom-domain activation evidence
+        if: always()
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AFD_HOST: ${{ steps.dns.outputs.afd_host }}
+          DNS_OUTCOME: ${{ steps.dns.outcome }}
+          ACTIVATE_OUTCOME: ${{ steps.activate.outcome }}
+          VERIFIED: ${{ steps.activate.outputs.verified }}
+          VALIDATION_STATE: ${{ steps.activate.outputs.validation_state }}
+          DEPLOYMENT_STATUS: ${{ steps.activate.outputs.deployment_status }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+          from datetime import datetime, timezone
+
+          token = os.environ['GITHUB_TOKEN']
+          repo = os.environ['GITHUB_REPOSITORY']
+          title = 'Lantern Azure Front Door standby'
+          verified = os.environ.get('VERIFIED') == 'true' and os.environ.get('ACTIVATE_OUTCOME') == 'success'
+          dns_ok = os.environ.get('DNS_OUTCOME') == 'success'
+          status = 'VERIFIED_CUSTOM_HOST' if verified else ('TLS_PENDING_OR_FAILED' if dns_ok else 'DNS_NOT_READY')
+          afd_host = os.environ.get('AFD_HOST', '').strip()
+          body = f'''# Lantern Protocol Azure Front Door standby
+
+**Status:** {status}
+
+- Requested hostname: `azure.lanternprotocol.net`
+- DNS CNAME target: `{afd_host or '(not resolved from Azure)'}`
+- DNS validation gate: `{os.environ.get('DNS_OUTCOME', 'unknown')}`
+- Front Door custom-domain activation: `{os.environ.get('ACTIVATE_OUTCOME', 'unknown')}`
+- Domain validation state: `{os.environ.get('VALIDATION_STATE') or 'unknown'}`
+- Front Door deployment status: `{os.environ.get('DEPLOYMENT_STATUS') or 'unknown'}`
+- HTTPS content verification: `{'success' if verified else 'not yet verified'}`
+- Resource group: `{os.environ['RESOURCE_GROUP']}`
+- Front Door profile: `{os.environ['PROFILE_NAME']}`
+- Source commit: `{os.environ['GITHUB_SHA']}`
+- Recorded: `{datetime.now(timezone.utc).isoformat()}`
+
+`VERIFIED_CUSTOM_HOST` means `https://azure.lanternprotocol.net/` returned the Lantern continuity hero and ETS Technical Briefing through Azure Front Door with the custom-domain HTTPS path active. The production apex remains a separate failover gate.
+'''
+          headers = {
+              'Authorization': f'Bearer {token}',
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'lantern-frontdoor-activate',
+          }
+          def request(url, method='GET', payload=None):
+              data = None if payload is None else json.dumps(payload).encode('utf-8')
+              req = urllib.request.Request(url, data=data, headers=headers, method=method)
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  return json.load(response)
+          query = urllib.parse.urlencode({'q': f'repo:{repo} is:issue in:title "{title}"'})
+          found = request(f'https://api.github.com/search/issues?{query}')
+          issue = next((item for item in found.get('items', []) if item.get('title') == title), None)
+          if issue:
+              request(f"https://api.github.com/repos/{repo}/issues/{issue['number']}", 'PATCH', {'body': body, 'state': 'open'})
+          else:
+              request(f'https://api.github.com/repos/{repo}/issues', 'POST', {'title': title, 'body': body})
+          PY

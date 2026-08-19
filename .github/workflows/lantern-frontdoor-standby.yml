@@ -14,14 +14,14 @@ permissions:
 
 concurrency:
   group: lantern-frontdoor-standby
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   provision:
-    name: Provision azure.lanternprotocol.net standby
+    name: Provision Front Door and publish DNS target
     runs-on: ubuntu-latest
     environment: ets-azure-q1
-    timeout-minutes: 25
+    timeout-minutes: 20
     env:
       RESOURCE_GROUP: rg-ets-live-eastus
       CUSTOM_HOST: azure.lanternprotocol.net
@@ -29,7 +29,6 @@ jobs:
       ORIGIN_GROUP_NAME: lantern-static-site
       ORIGIN_NAME: lantern-storage-origin
       ROUTE_NAME: lantern-site-route
-      CUSTOM_DOMAIN_NAME: azure-lanternprotocol-net
       EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
@@ -51,7 +50,7 @@ jobs:
           set -euo pipefail
           az extension add --name cdn --upgrade --yes --only-show-errors
 
-      - name: Validate EchoMedia Azure boundary and resolve backup origin
+      - name: Validate EchoMedia boundary and resolve continuity origin
         id: boundary
         shell: bash
         run: |
@@ -77,105 +76,36 @@ jobs:
           echo "origin_host=$origin_host" >> "$GITHUB_OUTPUT"
           echo "endpoint_name=$endpoint_name" >> "$GITHUB_OUTPUT"
 
-      - name: Create or converge Front Door Standard profile
+      - name: Create or converge Front Door Standard resources
+        id: converge
         shell: bash
         env:
           ENDPOINT_NAME: ${{ steps.boundary.outputs.endpoint_name }}
           ORIGIN_HOST: ${{ steps.boundary.outputs.origin_host }}
         run: |
           set -euo pipefail
-          if ! az afd profile show --resource-group "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" >/dev/null 2>&1; then
-            az afd profile create \
-              --resource-group "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --sku Standard_AzureFrontDoor \
-              --tags workload=lantern-site purpose=business-continuity owner=echomedia \
-              --output none
+          if ! az afd profile show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" >/dev/null 2>&1; then
+            az afd profile create -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --sku Standard_AzureFrontDoor --tags workload=lantern-site purpose=business-continuity owner=echomedia --output none
           fi
 
-          if ! az afd endpoint show --resource-group "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$ENDPOINT_NAME" >/dev/null 2>&1; then
-            az afd endpoint create \
-              --resource-group "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --endpoint-name "$ENDPOINT_NAME" \
-              --enabled-state Enabled \
-              --tags workload=lantern-site purpose=business-continuity \
-              --output none
+          if ! az afd endpoint show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$ENDPOINT_NAME" >/dev/null 2>&1; then
+            az afd endpoint create -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$ENDPOINT_NAME" --enabled-state Enabled --tags workload=lantern-site purpose=business-continuity --output none
           fi
 
-          if ! az afd origin-group show --resource-group "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --origin-group-name "$ORIGIN_GROUP_NAME" >/dev/null 2>&1; then
-            az afd origin-group create \
-              --resource-group "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --origin-group-name "$ORIGIN_GROUP_NAME" \
-              --probe-request-type GET \
-              --probe-protocol Https \
-              --probe-interval-in-seconds 60 \
-              --probe-path / \
-              --sample-size 4 \
-              --successful-samples-required 3 \
-              --additional-latency-in-milliseconds 50 \
-              --output none
+          if ! az afd origin-group show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --origin-group-name "$ORIGIN_GROUP_NAME" >/dev/null 2>&1; then
+            az afd origin-group create -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --origin-group-name "$ORIGIN_GROUP_NAME" --probe-request-type GET --probe-protocol Https --probe-interval-in-seconds 60 --probe-path / --sample-size 4 --successful-samples-required 3 --additional-latency-in-milliseconds 50 --output none
           fi
 
-          if az afd origin show --resource-group "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --origin-group-name "$ORIGIN_GROUP_NAME" --origin-name "$ORIGIN_NAME" >/dev/null 2>&1; then
-            az afd origin update \
-              --resource-group "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --origin-group-name "$ORIGIN_GROUP_NAME" \
-              --origin-name "$ORIGIN_NAME" \
-              --host-name "$ORIGIN_HOST" \
-              --origin-host-header "$ORIGIN_HOST" \
-              --priority 1 \
-              --weight 1000 \
-              --enabled-state Enabled \
-              --http-port 80 \
-              --https-port 443 \
-              --output none
+          if az afd origin show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --origin-group-name "$ORIGIN_GROUP_NAME" --origin-name "$ORIGIN_NAME" >/dev/null 2>&1; then
+            az afd origin update -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --origin-group-name "$ORIGIN_GROUP_NAME" --origin-name "$ORIGIN_NAME" --host-name "$ORIGIN_HOST" --origin-host-header "$ORIGIN_HOST" --priority 1 --weight 1000 --enabled-state Enabled --http-port 80 --https-port 443 --output none
           else
-            az afd origin create \
-              --resource-group "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --origin-group-name "$ORIGIN_GROUP_NAME" \
-              --origin-name "$ORIGIN_NAME" \
-              --host-name "$ORIGIN_HOST" \
-              --origin-host-header "$ORIGIN_HOST" \
-              --priority 1 \
-              --weight 1000 \
-              --enabled-state Enabled \
-              --http-port 80 \
-              --https-port 443 \
-              --output none
+            az afd origin create -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --origin-group-name "$ORIGIN_GROUP_NAME" --origin-name "$ORIGIN_NAME" --host-name "$ORIGIN_HOST" --origin-host-header "$ORIGIN_HOST" --priority 1 --weight 1000 --enabled-state Enabled --http-port 80 --https-port 443 --output none
           fi
 
-          if az afd route show --resource-group "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$ENDPOINT_NAME" --route-name "$ROUTE_NAME" >/dev/null 2>&1; then
-            az afd route update \
-              --resource-group "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --endpoint-name "$ENDPOINT_NAME" \
-              --route-name "$ROUTE_NAME" \
-              --origin-group "$ORIGIN_GROUP_NAME" \
-              --enabled-state Enabled \
-              --forwarding-protocol HttpsOnly \
-              --https-redirect Enabled \
-              --link-to-default-domain Enabled \
-              --patterns-to-match '/*' \
-              --supported-protocols Http Https \
-              --output none
+          if az afd route show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$ENDPOINT_NAME" --route-name "$ROUTE_NAME" >/dev/null 2>&1; then
+            az afd route update -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$ENDPOINT_NAME" --route-name "$ROUTE_NAME" --origin-group "$ORIGIN_GROUP_NAME" --enabled-state Enabled --forwarding-protocol HttpsOnly --https-redirect Enabled --link-to-default-domain Enabled --patterns-to-match '/*' --supported-protocols Http Https --output none
           else
-            az afd route create \
-              --resource-group "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --endpoint-name "$ENDPOINT_NAME" \
-              --route-name "$ROUTE_NAME" \
-              --origin-group "$ORIGIN_GROUP_NAME" \
-              --enabled-state Enabled \
-              --forwarding-protocol HttpsOnly \
-              --https-redirect Enabled \
-              --link-to-default-domain Enabled \
-              --patterns-to-match '/*' \
-              --supported-protocols Http Https \
-              --output none
+            az afd route create -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$ENDPOINT_NAME" --route-name "$ROUTE_NAME" --origin-group "$ORIGIN_GROUP_NAME" --enabled-state Enabled --forwarding-protocol HttpsOnly --https-redirect Enabled --link-to-default-domain Enabled --patterns-to-match '/*' --supported-protocols Http Https --output none
           fi
 
       - name: Verify Front Door default endpoint
@@ -185,83 +115,28 @@ jobs:
           ENDPOINT_NAME: ${{ steps.boundary.outputs.endpoint_name }}
         run: |
           set -euo pipefail
-          afd_host="$(az afd endpoint show --resource-group "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$ENDPOINT_NAME" --query hostName -o tsv)"
+          afd_host="$(az afd endpoint show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$ENDPOINT_NAME" --query hostName -o tsv)"
           test -n "$afd_host"
           echo "afd_host=$afd_host" >> "$GITHUB_OUTPUT"
           for attempt in $(seq 1 24); do
             if body="$(curl --fail --silent --show-error --max-time 15 "https://$afd_host/")"; then
               printf '%s' "$body" | grep -Fq 'Evidence you can prove.'
               printf '%s' "$body" | grep -Fq 'ETS TECHNICAL BRIEFING'
-              break
-            fi
-            if [ "$attempt" -eq 24 ]; then exit 1; fi
-            sleep 15
-          done
-
-      - name: Create custom domain contract
-        id: custom_domain
-        shell: bash
-        env:
-          ENDPOINT_NAME: ${{ steps.boundary.outputs.endpoint_name }}
-        run: |
-          set -euo pipefail
-          if ! az afd custom-domain show --resource-group "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --custom-domain-name "$CUSTOM_DOMAIN_NAME" >/dev/null 2>&1; then
-            az afd custom-domain create \
-              --resource-group "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --custom-domain-name "$CUSTOM_DOMAIN_NAME" \
-              --host-name "$CUSTOM_HOST" \
-              --minimum-tls-version TLS12 \
-              --certificate-type ManagedCertificate \
-              --output none
-          fi
-
-          custom_domain_id="$(az afd custom-domain show --resource-group "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --custom-domain-name "$CUSTOM_DOMAIN_NAME" --query id -o tsv)"
-          validation_state="$(az afd custom-domain show --resource-group "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --custom-domain-name "$CUSTOM_DOMAIN_NAME" --query domainValidationState -o tsv)"
-          validation_token="$(az afd custom-domain show --resource-group "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --custom-domain-name "$CUSTOM_DOMAIN_NAME" --query validationProperties.validationToken -o tsv)"
-          test -n "$custom_domain_id"
-
-          az afd route update \
-            --resource-group "$RESOURCE_GROUP" \
-            --profile-name "$PROFILE_NAME" \
-            --endpoint-name "$ENDPOINT_NAME" \
-            --route-name "$ROUTE_NAME" \
-            --formatted-custom-domains "[{\"id\":\"$custom_domain_id\"}]" \
-            --output none
-
-          echo "validation_state=$validation_state" >> "$GITHUB_OUTPUT"
-          echo "validation_token=$validation_token" >> "$GITHUB_OUTPUT"
-
-      - name: Check custom hostname if DNS is already present
-        id: custom_verify
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          for attempt in $(seq 1 6); do
-            if body="$(curl --fail --silent --show-error --max-time 15 "https://$CUSTOM_HOST/")"; then
-              printf '%s' "$body" | grep -Fq 'Evidence you can prove.'
-              printf '%s' "$body" | grep -Fq 'ETS TECHNICAL BRIEFING'
-              echo "verified=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            sleep 10
+            sleep 15
           done
-          echo "verified=false" >> "$GITHUB_OUTPUT"
           exit 1
 
-      - name: Publish Front Door standby evidence
+      - name: Publish DNS handoff evidence
         if: always()
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
           AFD_HOST: ${{ steps.default_endpoint.outputs.afd_host }}
           STORAGE_ACCOUNT: ${{ steps.boundary.outputs.storage }}
-          VALIDATION_STATE: ${{ steps.custom_domain.outputs.validation_state }}
-          VALIDATION_TOKEN: ${{ steps.custom_domain.outputs.validation_token }}
-          CUSTOM_VERIFIED: ${{ steps.custom_verify.outputs.verified }}
+          CONVERGE_OUTCOME: ${{ steps.converge.outcome }}
           DEFAULT_ENDPOINT_OUTCOME: ${{ steps.default_endpoint.outcome }}
-          CUSTOM_DOMAIN_OUTCOME: ${{ steps.custom_domain.outcome }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -275,35 +150,27 @@ jobs:
           repo = os.environ['GITHUB_REPOSITORY']
           title = 'Lantern Azure Front Door standby'
           afd_host = os.environ.get('AFD_HOST', '').strip()
-          custom_verified = os.environ.get('CUSTOM_VERIFIED') == 'true'
-          default_ok = os.environ.get('DEFAULT_ENDPOINT_OUTCOME') == 'success'
-          custom_domain_ok = os.environ.get('CUSTOM_DOMAIN_OUTCOME') == 'success'
-          if custom_verified:
-              status = 'VERIFIED_CUSTOM_HOST'
-          elif default_ok and custom_domain_ok:
-              status = 'READY_FOR_DNS'
-          else:
-              status = 'FAILED'
-          validation_token = os.environ.get('VALIDATION_TOKEN', '').strip()
-          txt_line = f'- Optional validation TXT: `_dnsauth.azure` = `{validation_token}`\n' if validation_token else ''
+          ready = os.environ.get('DEFAULT_ENDPOINT_OUTCOME') == 'success' and bool(afd_host)
+          status = 'READY_FOR_DNS' if ready else 'FAILED'
           body = f'''# Lantern Protocol Azure Front Door standby
 
 **Status:** {status}
 
 - Requested hostname: `azure.lanternprotocol.net`
-- Required DNS CNAME host: `azure`
-- Required DNS CNAME target: `{afd_host or '(not available)'}`
-{txt_line}- Front Door profile: `{os.environ['PROFILE_NAME']}`
+- DNS record type: `CNAME`
+- DNS host/name: `azure`
+- DNS target/value: `{afd_host or '(not available)'}`
+- Recommended TTL during verification: `300` seconds
+- Front Door profile: `{os.environ['PROFILE_NAME']}`
 - Resource group: `{os.environ['RESOURCE_GROUP']}`
 - Storage origin: `{os.environ.get('STORAGE_ACCOUNT') or '(not available)'}`
+- Front Door convergence: `{os.environ.get('CONVERGE_OUTCOME', 'unknown')}`
 - Default Front Door endpoint verification: `{os.environ.get('DEFAULT_ENDPOINT_OUTCOME', 'unknown')}`
-- Custom-domain resource: `{os.environ.get('CUSTOM_DOMAIN_OUTCOME', 'unknown')}`
-- Domain validation state: `{os.environ.get('VALIDATION_STATE') or 'unknown'}`
-- Custom HTTPS verification: `{'success' if custom_verified else 'pending DNS/certificate'}`
+- Custom domain/certificate activation: `not started until DNS CNAME is present`
 - Source commit: `{os.environ['GITHUB_SHA']}`
 - Recorded: `{datetime.now(timezone.utc).isoformat()}`
 
-`READY_FOR_DNS` means the Front Door endpoint is serving the verified Lantern continuity site and the Azure custom-domain contract exists, but `azure.lanternprotocol.net` still needs its DNS CNAME before managed TLS can complete. `VERIFIED_CUSTOM_HOST` means HTTPS on the requested hostname returned the Lantern hero and ETS Technical Briefing successfully.
+`READY_FOR_DNS` means the Azure Front Door default endpoint is serving the verified Lantern continuity site. The next gate is to add the `azure` CNAME, then run the separate custom-domain activation workflow. The production apex `lanternprotocol.net` remains unchanged.
 '''
           headers = {
               'Authorization': f'Bearer {token}',
