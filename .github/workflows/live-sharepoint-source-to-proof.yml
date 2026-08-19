@@ -58,6 +58,7 @@ jobs:
           test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
           test -f infra/azure/ets-live-sharepoint-source-proof-client.bicep
           test -f scripts/azure/run-live-sharepoint-source-to-proof.sh
+          test -f scripts/azure/run-live-sharepoint-source-to-proof-diagnostic.sh
           test -f scripts/m365/create-echomedia-sharepoint-qualification-document.ps1
           test "$CONTAINER_IMAGE" = "${ACR_NAME}.azurecr.io/ets/hosted-q1@${Q0_IMAGE_DIGEST}"
           test -n "$CORE_SCOPE"
@@ -86,7 +87,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          bash scripts/azure/run-live-sharepoint-source-to-proof.sh
+          bash scripts/azure/run-live-sharepoint-source-to-proof-diagnostic.sh
 
       - name: Upload sanitized SharePoint source-to-proof evidence
         if: always()

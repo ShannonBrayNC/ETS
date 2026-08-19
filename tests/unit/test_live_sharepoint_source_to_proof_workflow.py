@@ -9,6 +9,9 @@ WORKFLOW = (
 RUNNER = (
     ROOT / "scripts" / "azure" / "run-live-sharepoint-source-to-proof.sh"
 ).read_text(encoding="utf-8")
+DIAGNOSTIC = (
+    ROOT / "scripts" / "azure" / "run-live-sharepoint-source-to-proof-diagnostic.sh"
+).read_text(encoding="utf-8")
 CLIENT = (
     ROOT / "infra" / "azure" / "ets-live-sharepoint-source-proof-client.bicep"
 ).read_text(encoding="utf-8")
@@ -33,6 +36,7 @@ def test_workflow_is_manual_protected_and_pins_live_release() -> None:
     assert APPROVED_DIGEST in WORKFLOW
     assert "ETS_LIVE_CORE_SCOPE" in WORKFLOW
     assert "ETS_LIVE_SHAREPOINT_DRIVE_ID" in WORKFLOW
+    assert "run-live-sharepoint-source-to-proof-diagnostic.sh" in WORKFLOW
     assert "ETS_Q1_BEARER_TOKEN" not in WORKFLOW
 
 
@@ -99,6 +103,21 @@ def test_runner_resolves_existing_private_runtime_and_cleans_ephemeral_job() -> 
     assert "ets-spq-" in RUNNER
 
 
+def test_diagnostic_wrapper_is_replica_aware_and_public_safe() -> None:
+    assert "containerapp job replica list" in DIAGNOSTIC
+    assert "ETS_SP_DIAGNOSTIC_REPLICA" in DIAGNOSTIC
+    assert "ETS_SP_DIAGNOSTIC_RAW" in DIAGNOSTIC
+    assert "--replica" in DIAGNOSTIC
+    assert "--format text --only-show-errors" in DIAGNOSTIC
+    assert "graph_item_forbidden" in DIAGNOSTIC
+    assert "core_event_list_http_error" in DIAGNOSTIC
+    assert "inclusion_proof_http_error" in DIAGNOSTIC
+    assert "sharepoint_qualification_container_exit_1" in DIAGNOSTIC
+    assert 'payload["diagnostic_refined"] = True' in DIAGNOSTIC
+    assert "live-sp-private-container-log.txt" not in WORKFLOW
+    assert "live-sp-private-replica.json" not in WORKFLOW
+
+
 def test_public_evidence_is_sanitized_and_does_not_start_soak() -> None:
     assert '"m365_source_to_proof_claimed": True' in RUNNER
     assert '"full_microsoft_runtime_health_claimed": False' in RUNNER
@@ -106,6 +125,8 @@ def test_public_evidence_is_sanitized_and_does_not_start_soak() -> None:
     assert '"reusable_credential_retained": False' in RUNNER
     assert '"public_evidence_safe": True' in RUNNER
     assert '"soak_clock_started": False' in RUNNER
+    assert 'payload["m365_source_to_proof_claimed"] = False' in DIAGNOSTIC
+    assert 'payload["soak_clock_started"] = False' in DIAGNOSTIC
     assert "evidence/live-sharepoint-source-to-proof/*.json" in WORKFLOW
     assert "live-sharepoint-source-to-proof.log" not in WORKFLOW
 
