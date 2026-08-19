@@ -1,0 +1,98 @@
+name: Live SharePoint Source to Proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      marker:
+        description: Public-safe synthetic qualification marker
+        required: true
+        type: string
+      expected_observations:
+        description: Expected distinct revisions for the synthetic file
+        required: true
+        default: '1'
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+concurrency:
+  group: live-sharepoint-source-to-proof
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: Prove EchoMedia SharePoint document to ETS evidence
+    runs-on: ubuntu-24.04
+    environment: ets-azure-q1
+    timeout-minutes: 30
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      LOCATION: eastus
+      RESOURCE_GROUP: rg-ets-live-eastus
+      GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id
+      ACR_NAME: etsq1a352eb89
+      CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c
+      Q0_SOURCE_SHA: 332d7db3a69acd826a2a000264e81a179894e278
+      Q0_IMAGE_DIGEST: sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c
+      HANDOFF_ISSUE: '389'
+      SOURCE_TO_PROOF_ISSUE: '390'
+      CORE_SCOPE: ${{ secrets.ETS_LIVE_CORE_SCOPE }}
+      SHAREPOINT_DRIVE_ID: ${{ secrets.ETS_LIVE_SHAREPOINT_DRIVE_ID }}
+      QUALIFICATION_MARKER: ${{ inputs.marker }}
+      EXPECTED_OBSERVATIONS: ${{ inputs.expected_observations }}
+
+    steps:
+      - name: Check out qualification source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Assert protected SharePoint qualification boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test -f infra/azure/ets-live-sharepoint-source-proof-client.bicep
+          test -f scripts/azure/run-live-sharepoint-source-to-proof.sh
+          test -f scripts/m365/create-echomedia-sharepoint-qualification-document.ps1
+          test "$CONTAINER_IMAGE" = "${ACR_NAME}.azurecr.io/ets/hosted-q1@${Q0_IMAGE_DIGEST}"
+          test -n "$CORE_SCOPE"
+          test -n "$SHAREPOINT_DRIVE_ID"
+          test -n "$QUALIFICATION_MARKER"
+          test -n "$EXPECTED_OBSERVATIONS"
+          echo "::add-mask::$CORE_SCOPE"
+          echo "::add-mask::$SHAREPOINT_DRIVE_ID"
+
+      - name: Azure login with workload identity
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Run live SharePoint source-to-proof qualification
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash scripts/azure/run-live-sharepoint-source-to-proof.sh
+
+      - name: Upload sanitized SharePoint source-to-proof evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-sharepoint-source-to-proof-${{ github.run_id }}
+          path: evidence/live-sharepoint-source-to-proof/*.json
+          if-no-files-found: warn
+          retention-days: 90
