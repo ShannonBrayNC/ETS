@@ -127,3 +127,5 @@ def test_qualification_job_separates_runtime_and_pull_identity() -> None:
     assert "roles != [\"evidence_producer\"]" in CLIENT_BICEP
     assert 'expected=(403,)' in CLIENT_BICEP
     assert "verify_inclusion_proof" in CLIENT_BICEP
+    assert "InclusionProof.model_validate_json" in CLIENT_BICEP
+    assert "InclusionProof.model_validate(proof_payload)" not in CLIENT_BICEP
