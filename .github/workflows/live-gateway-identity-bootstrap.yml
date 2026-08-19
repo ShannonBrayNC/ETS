@@ -259,7 +259,7 @@ jobs:
           - M365 source-to-proof claimed: **false**
           - 72-hour soak clock started: **false**
 
-          Next gate: use the governed #414 operator scripts in the EchoMedia tenant to validate/create the Core \`evidence_producer\` app role and assign it to this exact managed identity, then deploy Core/Gateway from the authoritative immutable image.
+          Next gate: use the governed #414 operator scripts in the target Microsoft tenant to validate/create the Core \`evidence_producer\` app role and assign it to this exact managed identity, then deploy Core/Gateway from the authoritative immutable image.
           EOF
           )
           gh api \
