@@ -39,13 +39,19 @@ def test_live_core_gateway_deployment_preserves_authoritative_release_identity()
     for required in (
         "Q0_SOURCE_SHA: 332d7db3a69acd826a2a000264e81a179894e278",
         "Q0_IMAGE_DIGEST: sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c",
-        "CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c",
+        (
+            "CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:"
+            "c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c"
+        ),
         'test "$CONTAINER_IMAGE" = "${ACR_NAME}.azurecr.io/ets/hosted-q1@${Q0_IMAGE_DIGEST}"',
         'if container.get("image") != os.environ["CONTAINER_IMAGE"]:',
     ):
         assert required in text
 
-    assert "sha256:3a8e4547d8c6ca1de9b8c5d757642adc21d4fb0f0487d889e837c708f428e582" not in text
+    superseded_digest = (
+        "sha256:3a8e4547d8c6ca1de9b8c5d757642adc21d4fb0f0487d889e837c708f428e582"
+    )
+    assert superseded_digest not in text
 
 
 def test_live_core_gateway_deployment_requires_exact_protected_identity_scope_contract() -> None:
