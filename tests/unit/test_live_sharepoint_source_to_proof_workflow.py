@@ -15,6 +15,9 @@ CLIENT = (
 OPERATOR = (
     ROOT / "scripts" / "m365" / "create-echomedia-sharepoint-qualification-document.ps1"
 ).read_text(encoding="utf-8")
+PROVISIONER = (
+    ROOT / "scripts" / "m365" / "provision-echomedia-sharepoint-connector.ps1"
+).read_text(encoding="utf-8")
 APPROVED_DIGEST = (
     "sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c"
 )
@@ -117,3 +120,20 @@ def test_operator_uses_delegated_write_only_for_synthetic_file() -> None:
     assert "rawCustomerContentUsed = $false" in OPERATOR
     assert "live-sharepoint-source-to-proof.yml" in OPERATOR
     assert '"expected_observations=$Revision"' in OPERATOR
+
+
+def test_echo_media_delegated_operator_is_pinned_in_both_m365_scripts() -> None:
+    expected = "shannon.bray@echomedia.ai"
+    for script in (OPERATOR, PROVISIONER):
+        assert expected in script
+        assert "$context.Account -ine $ExpectedOperatorAccount" in script
+        assert "operatorAccountVerified = $true" in script
+
+
+def test_operator_discovers_exact_documents_drive_when_drive_id_is_omitted() -> None:
+    assert "[string]$DriveId = ''" in OPERATOR
+    assert "[string]::IsNullOrWhiteSpace($DriveId)" in OPERATOR
+    assert "$_.name -eq 'Documents'" in OPERATOR
+    assert "The ETS Documents library could not be resolved uniquely." in OPERATOR
+    assert "$resolvedDriveId = [string]$approvedDrive[0].id" in OPERATOR
+    assert "documentsDriveResolved = $true" in OPERATOR
