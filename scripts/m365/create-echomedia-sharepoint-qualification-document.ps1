@@ -4,9 +4,7 @@ param(
     [ValidatePattern('^[a-z0-9][a-z0-9-]{5,31}$')]
     [string]$Marker,
 
-    [Parameter(Mandatory = $true)]
-    [ValidateNotNullOrEmpty()]
-    [string]$DriveId,
+    [string]$DriveId = '',
 
     [Parameter(Mandatory = $true)]
     [ValidateRange(1, 10)]
@@ -18,6 +16,8 @@ param(
     [string]$SitePath = '/sites/ETS',
 
     [string]$ExpectedVerifiedDomain = 'echomedia.ai',
+
+    [string]$ExpectedOperatorAccount = 'shannon.bray@echomedia.ai',
 
     [switch]$DispatchQualification
 )
@@ -50,6 +50,9 @@ if ($DispatchQualification) {
 
 if ($SharePointHostname -notmatch '\.sharepoint\.com$') {
     throw 'SharePointHostname must end in .sharepoint.com.'
+}
+if ([string]::IsNullOrWhiteSpace($ExpectedOperatorAccount)) {
+    throw 'ExpectedOperatorAccount is required.'
 }
 
 $azureAccount = az account show --output json | ConvertFrom-Json
@@ -85,6 +88,12 @@ try {
     if (-not $context.TenantId -or $context.TenantId -ne $azureAccount.tenantId) {
         throw 'Microsoft Graph tenant does not match the active Azure subscription tenant.'
     }
+    if (-not $context.Account -or $context.Account -ine $ExpectedOperatorAccount) {
+        throw (
+            "Microsoft Graph operator '$($context.Account)' does not match the required " +
+            "EchoMedia account '$ExpectedOperatorAccount'."
+        )
+    }
 
     $organization = Invoke-GraphGet -Uri (
         "https://graph.microsoft.com/v1.0/organization?`$select=id,verifiedDomains"
@@ -116,15 +125,27 @@ try {
     $drives = Invoke-GraphGet -Uri (
         "https://graph.microsoft.com/v1.0/sites/$encodedSiteId/drives?`$select=id,name,webUrl"
     )
-    $approvedDrive = @($drives.value | Where-Object { $_.id -eq $DriveId })
-    if ($approvedDrive.Count -ne 1) {
-        throw 'DriveId does not resolve uniquely inside the approved ETS SharePoint site.'
+    if ([string]::IsNullOrWhiteSpace($DriveId)) {
+        $approvedDrive = @($drives.value | Where-Object { $_.name -eq 'Documents' })
+        if ($approvedDrive.Count -ne 1) {
+            throw 'The ETS Documents library could not be resolved uniquely.'
+        }
     }
-    if ($approvedDrive[0].name -ne 'Documents') {
-        throw 'The approved drive is not the ETS Documents library.'
+    else {
+        $approvedDrive = @($drives.value | Where-Object { $_.id -eq $DriveId })
+        if ($approvedDrive.Count -ne 1) {
+            throw 'DriveId does not resolve uniquely inside the approved ETS SharePoint site.'
+        }
+        if ($approvedDrive[0].name -ne 'Documents') {
+            throw 'The approved drive is not the ETS Documents library.'
+        }
+    }
+    $resolvedDriveId = [string]$approvedDrive[0].id
+    if ([string]::IsNullOrWhiteSpace($resolvedDriveId)) {
+        throw 'The approved ETS Documents library did not expose a drive identifier.'
     }
 
-    $encodedDrive = [uri]::EscapeDataString($DriveId)
+    $encodedDrive = [uri]::EscapeDataString($resolvedDriveId)
     $encodedName = [uri]::EscapeDataString($fileName)
     $uploadUri = (
         "https://graph.microsoft.com/v1.0/drives/$encodedDrive/root:/" +
@@ -158,6 +179,8 @@ try {
         fileName = $fileName
         revision = $Revision
         contentSha256 = $contentHash
+        operatorAccountVerified = $true
+        documentsDriveResolved = $true
         sharePointMetadataVerified = $true
         sourceMutationReady = $true
         rawCustomerContentUsed = $false

@@ -25,12 +25,15 @@ The following live gates must already be true:
   negative-control 403, scope-map restoration, and cleanup;
 - protected environment `ets-azure-q1` contains `ETS_LIVE_CORE_SCOPE` and
   `ETS_LIVE_SHAREPOINT_DRIVE_ID`;
-- the local operator is signed into the EchoMedia Azure tenant and can consent to the delegated
-  Microsoft Graph scopes used by the provisioning and qualification-document scripts.
+- Azure CLI is signed into the EchoMedia tenant;
+- delegated Microsoft Graph sign-in is exactly `shannon.bray@echomedia.ai`.
+
+Both local M365 scripts fail closed if the Graph tenant or delegated account differs from the
+EchoMedia contract.
 
 ## 1. Ensure least-privilege SharePoint application access
 
-Run this once, or rerun it idempotently, from an EchoMedia administrator context:
+Run this once, or rerun it idempotently, from the EchoMedia administrator context:
 
 ```powershell
 ./scripts/m365/provision-echomedia-sharepoint-connector.ps1 `
@@ -55,10 +58,13 @@ $Marker = 'etsdemo-0819'
 
 ./scripts/m365/create-echomedia-sharepoint-qualification-document.ps1 `
     -Marker $Marker `
-    -DriveId $SharePointDriveId `
     -Revision 1 `
     -DispatchQualification
 ```
+
+When `-DriveId` is omitted, the script resolves exactly one `Documents` library under
+`echomediaai.sharepoint.com/sites/ETS`. If zero or multiple matching libraries exist, it fails
+closed. `-DriveId` remains available as an explicit pin when needed.
 
 The script creates or replaces:
 
@@ -99,7 +105,6 @@ Overwrite the same synthetic file with revision 2 and dispatch again:
 ```powershell
 ./scripts/m365/create-echomedia-sharepoint-qualification-document.ps1 `
     -Marker $Marker `
-    -DriveId $SharePointDriveId `
     -Revision 2 `
     -DispatchQualification
 ```
