@@ -1,3 +1,4 @@
+# one-shot readback trigger
 name: Read Lantern Apex WWW Front Door State
 
 on:
