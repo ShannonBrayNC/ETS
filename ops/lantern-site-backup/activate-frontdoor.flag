@@ -1,0 +1,3 @@
+azure.lanternprotocol.net
+CNAME=lantern-azure-d1283bda7c363-hjb5gze4a4esbjb7.z03.azurefd.net
+Activation gate: merge only after public DNS resolves the azure CNAME to the exact Front Door target above.
