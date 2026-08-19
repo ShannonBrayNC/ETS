@@ -178,7 +178,7 @@ try {
         )
     }
 
-    $applications = Get-CoreApplicationCandidates -Name $DisplayName
+    $applications = @(Get-CoreApplicationCandidates -Name $DisplayName)
     if ($applications.Count -gt 1) {
         throw 'Multiple applications use the governed ETS Core display name. Refusing ambiguity.'
     }
@@ -210,7 +210,7 @@ try {
             -ContentType 'application/json' `
             -OutputType PSObject | Out-Null
         $applicationCreated = $true
-        $applications = Get-CoreApplicationCandidates -Name $DisplayName
+        $applications = @(Get-CoreApplicationCandidates -Name $DisplayName)
         if ($applications.Count -ne 1) {
             throw 'Core application creation did not converge to exactly one governed application.'
         }
@@ -264,7 +264,7 @@ try {
             -ContentType 'application/json' `
             -OutputType PSObject | Out-Null
 
-        $applications = Get-CoreApplicationCandidates -Name $DisplayName
+        $applications = @(Get-CoreApplicationCandidates -Name $DisplayName)
         if ($applications.Count -ne 1) {
             throw 'Core application update could not be re-read uniquely.'
         }
@@ -279,7 +279,7 @@ try {
         Assert-CoreApplicationReady -Application $application
     }
 
-    $servicePrincipals = Get-CoreServicePrincipals -ApplicationId $application.appId
+    $servicePrincipals = @(Get-CoreServicePrincipals -ApplicationId $application.appId)
     if ($servicePrincipals.Count -gt 1) {
         throw 'Multiple service principals resolve to the ETS Core application ID.'
     }
@@ -314,7 +314,7 @@ try {
         $servicePrincipalCreated = $true
 
         for ($attempt = 1; $attempt -le 10; $attempt++) {
-            $servicePrincipals = Get-CoreServicePrincipals -ApplicationId $application.appId
+            $servicePrincipals = @(Get-CoreServicePrincipals -ApplicationId $application.appId)
             if ($servicePrincipals.Count -eq 1) {
                 break
             }
