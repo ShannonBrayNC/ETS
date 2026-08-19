@@ -138,7 +138,7 @@ if ($LASTEXITCODE -ne 0 -or $resolvedRepository -cne $Repository) {
     throw "GitHub CLI repository resolution did not match '$Repository'."
 }
 
-$coreApplicationId | gh secret set ETS_LIVE_AUTH_AUDIENCE `
+gh secret set ETS_LIVE_AUTH_AUDIENCE `
     --env $EnvironmentName `
     --repo $Repository `
     --body $coreApplicationId
