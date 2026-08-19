@@ -92,6 +92,8 @@ def test_runner_resolves_existing_private_runtime_and_cleans_ephemeral_job() -> 
     assert "deployed Gateway SharePoint drive differs from the protected contract" in RUNNER
     assert "Gateway runtime client ID differs from the exact Gateway UAMI" in RUNNER
     assert "Gateway registry identity must remain pull-only and distinct" in RUNNER
+    assert 'export MANAGED_ENVIRONMENT_NAME="$MANAGED_ENVIRONMENT_NAME"' in RUNNER
+    assert 'os.environ["MANAGED_ENVIRONMENT_NAME"]' in RUNNER
     assert "trap cleanup EXIT" in RUNNER
     assert "az containerapp job delete" in RUNNER
     assert "ets-spq-" in RUNNER
