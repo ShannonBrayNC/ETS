@@ -254,7 +254,9 @@ if mode == "producer":
         core_base + "/api/v1/proofs/inclusion/" + event["event_id"],
         token=token,
     )
-    proof = InclusionProof.model_validate(proof_payload)
+    proof = InclusionProof.model_validate_json(
+        json.dumps(proof_payload, separators=(",", ":"))
+    )
     verification = verify_inclusion_proof(proof)
     if not verification.valid:
         raise RuntimeError("independent inclusion proof verification failed")
