@@ -1,0 +1,88 @@
+name: Live Gateway Authorization Qualification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+concurrency:
+  group: live-gateway-authorization-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: Prove live Gateway producer token and negative control
+    runs-on: ubuntu-24.04
+    environment: ets-azure-q1
+    timeout-minutes: 45
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      LOCATION: eastus
+      RESOURCE_GROUP: rg-ets-live-eastus
+      GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id
+      ACR_NAME: etsq1a352eb89
+      CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c
+      Q0_SOURCE_SHA: 332d7db3a69acd826a2a000264e81a179894e278
+      Q0_IMAGE_DIGEST: sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c
+      HANDOFF_ISSUE: '389'
+      CORE_SCOPE: ${{ secrets.ETS_LIVE_CORE_SCOPE }}
+      AUTH_APP_SCOPE_MAP_JSON: ${{ secrets.ETS_LIVE_AUTH_APP_SCOPE_MAP_JSON }}
+      ETS_TENANT_ID: ${{ secrets.ETS_LIVE_TENANT_ID }}
+      ETS_WORKSPACE_ID: ${{ secrets.ETS_LIVE_WORKSPACE_ID }}
+
+    steps:
+      - name: Check out qualification source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Assert protected qualification boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test -f infra/azure/ets-live-auth-qualification-client.bicep
+          test -f scripts/azure/run-live-gateway-authorization-qualification.sh
+          test "$CONTAINER_IMAGE" = "${ACR_NAME}.azurecr.io/ets/hosted-q1@${Q0_IMAGE_DIGEST}"
+          test -n "$CORE_SCOPE"
+          test -n "$AUTH_APP_SCOPE_MAP_JSON"
+          test -n "$ETS_TENANT_ID"
+          test -n "$ETS_WORKSPACE_ID"
+          echo "::add-mask::$CORE_SCOPE"
+          echo "::add-mask::$AUTH_APP_SCOPE_MAP_JSON"
+          echo "::add-mask::$ETS_TENANT_ID"
+          echo "::add-mask::$ETS_WORKSPACE_ID"
+
+      - name: Azure login with workload identity
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Run live Gateway authorization qualification
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash scripts/azure/run-live-gateway-authorization-qualification.sh
+
+      - name: Upload sanitized live authorization evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-gateway-authorization-${{ github.run_id }}
+          path: evidence/live-gateway-authorization/*.json
+          if-no-files-found: warn
+          retention-days: 90
