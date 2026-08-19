@@ -68,8 +68,15 @@ jobs:
             --resource-group "$RESOURCE_GROUP" \
             --query properties.latestRevisionName -o tsv)"
           test -n "$latest_revision"
-          printf 'resource_group=%s\ncontainer_app=%s\nrevision=%s\nsource_sha=%s\nworkflow_run_id=%s\n' \
-            "$RESOURCE_GROUP" "$APP_NAME" "$latest_revision" "$GITHUB_SHA" "$GITHUB_RUN_ID" \
+
+          container_name="$(az containerapp show \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query 'properties.template.containers[0].name' -o tsv)"
+          test -n "$container_name"
+
+          printf 'resource_group=%s\ncontainer_app=%s\nrevision=%s\ncontainer=%s\nsource_sha=%s\nworkflow_run_id=%s\n' \
+            "$RESOURCE_GROUP" "$APP_NAME" "$latest_revision" "$container_name" "$GITHUB_SHA" "$GITHUB_RUN_ID" \
             > evidence/host-az-diagnostics/manifest.txt
 
           az containerapp logs show \
@@ -82,7 +89,7 @@ jobs:
             --name "$APP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
             --revision "$latest_revision" \
-            --container ets-api \
+            --container "$container_name" \
             --type console \
             --tail 200 > raw/console.log 2>&1 || true
 
