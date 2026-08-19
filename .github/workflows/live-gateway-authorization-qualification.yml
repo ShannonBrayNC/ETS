@@ -47,6 +47,7 @@ jobs:
           test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
           test -f infra/azure/ets-live-auth-qualification-client.bicep
           test -f scripts/azure/run-live-gateway-authorization-qualification.sh
+          test -f scripts/azure/run-live-gateway-authorization-qualification-diagnostic.sh
           test "$CONTAINER_IMAGE" = "${ACR_NAME}.azurecr.io/ets/hosted-q1@${Q0_IMAGE_DIGEST}"
           test -n "$CORE_SCOPE"
           test -n "$AUTH_APP_SCOPE_MAP_JSON"
@@ -76,7 +77,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          bash scripts/azure/run-live-gateway-authorization-qualification.sh
+          bash scripts/azure/run-live-gateway-authorization-qualification-diagnostic.sh
 
       - name: Upload sanitized live authorization evidence
         if: always()
