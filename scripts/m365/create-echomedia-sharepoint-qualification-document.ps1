@@ -69,6 +69,8 @@ $contentBytes = [System.Text.Encoding]::UTF8.GetBytes($content)
 $contentHash = [Convert]::ToHexString(
     [System.Security.Cryptography.SHA256]::HashData($contentBytes)
 ).ToLowerInvariant()
+$tempPath = [System.IO.Path]::GetTempFileName()
+[System.IO.File]::WriteAllBytes($tempPath, $contentBytes)
 
 $connected = $false
 try {
@@ -105,7 +107,8 @@ try {
     if (-not $site.id -or -not $site.webUrl) {
         throw 'The approved EchoMedia SharePoint site could not be resolved.'
     }
-    if ([uri]$site.webUrl -and ([uri]$site.webUrl).Host -ine $SharePointHostname) {
+    $siteUri = [uri]$site.webUrl
+    if ($siteUri.Host -ine $SharePointHostname) {
         throw 'Resolved SharePoint site hostname differs from the approved hostname.'
     }
 
@@ -130,7 +133,7 @@ try {
     $uploaded = Invoke-MgGraphRequest `
         -Method PUT `
         -Uri $uploadUri `
-        -Body $contentBytes `
+        -InputFilePath $tempPath `
         -ContentType 'text/plain' `
         -OutputType PSObject
 
@@ -167,6 +170,7 @@ finally {
     if ($connected) {
         Disconnect-MgGraph | Out-Null
     }
+    Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
 }
 
 if ($DispatchQualification) {
