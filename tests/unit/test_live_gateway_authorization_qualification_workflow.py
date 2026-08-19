@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
-WORKFLOW = Path(
-    ".github/workflows/live-gateway-authorization-qualification.yml"
+ROOT = Path(__file__).resolve().parents[2]
+WORKFLOW = (
+    ROOT / ".github" / "workflows" / "live-gateway-authorization-qualification.yml"
 ).read_text(encoding="utf-8")
-CLIENT_BICEP = Path(
-    "infra/azure/ets-live-auth-qualification-client.bicep"
+CLIENT_BICEP = (
+    ROOT / "infra" / "azure" / "ets-live-auth-qualification-client.bicep"
 ).read_text(encoding="utf-8")
 
 
