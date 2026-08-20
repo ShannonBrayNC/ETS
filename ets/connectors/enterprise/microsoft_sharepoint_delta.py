@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Final, Literal
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from pydantic import JsonValue
 
@@ -128,6 +129,10 @@ def validate_sharepoint_delta_url(
 def _continuation_path_matches_resource(resource_path: str, candidate_path: str) -> bool:
     """Allow Graph's documented opaque continuations on the approved delta resource."""
 
+    candidate_normalized = _normalize_path_for_comparison(candidate_path)
+    if candidate_normalized is None:
+        return False
+
     approved_resources = [resource_path]
     drive_root_suffix = "/root/delta"
     if resource_path.startswith("/v1.0/drives/") and resource_path.endswith(
@@ -138,14 +143,31 @@ def _continuation_path_matches_resource(resource_path: str, candidate_path: str)
         )
 
     for approved_resource in approved_resources:
-        if candidate_path == approved_resource:
+        approved_normalized = _normalize_path_for_comparison(approved_resource)
+        if approved_normalized is None:
+            return False
+        if candidate_normalized == approved_normalized:
             return True
-        if not candidate_path.startswith(approved_resource):
+        if not candidate_normalized.startswith(approved_normalized):
             continue
-        suffix = candidate_path[len(approved_resource) :]
+        suffix = candidate_normalized[len(approved_normalized) :]
         if suffix.startswith("(") and suffix.endswith(")") and "/" not in suffix:
             return True
     return False
+
+
+def _normalize_path_for_comparison(path: str) -> str | None:
+    """Normalize percent encoding without permitting encoded path separators."""
+
+    normalized_segments: list[str] = []
+    for segment in path.split("/"):
+        if re.search(r"%(?![0-9A-Fa-f]{2})", segment):
+            return None
+        decoded = unquote(segment)
+        if "/" in decoded or "\\" in decoded:
+            return None
+        normalized_segments.append(decoded)
+    return "/".join(normalized_segments)
 
 
 def parse_sharepoint_delta_page(
