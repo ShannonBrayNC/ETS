@@ -170,11 +170,11 @@ def _required_env(name: str) -> str:
 
 
 def _entra_access_token_audience(resource_identifier: str) -> str:
-    """Map the governed Entra resource URI to the v2 access-token aud claim."""
+    """Map a governed Entra resource URI to the v2 access-token aud claim."""
 
     prefix = "api://"
     if not resource_identifier.startswith(prefix):
-        raise RuntimeError("ETS_AUTH_AUDIENCE must use the governed api://<appId> form")
+        return resource_identifier
     application_id = resource_identifier[len(prefix) :]
     if not application_id or "/" in application_id:
         raise RuntimeError("ETS_AUTH_AUDIENCE must contain exactly one Entra application ID")
