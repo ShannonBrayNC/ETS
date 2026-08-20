@@ -1,0 +1,220 @@
+name: Live SharePoint Production Client Probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  probe:
+    name: Probe exact SharePoint production client outcome
+    runs-on: ubuntu-24.04
+    environment: ets-azure-q1
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: "true"
+      LOCATION: eastus
+      RESOURCE_GROUP: rg-ets-live-eastus
+      GATEWAY_APP: ets-o23bf2d6oq44s-gw
+      GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id
+      ACR_NAME: etsq1a352eb89
+    steps:
+      - name: Check out diagnostic source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Assert protected diagnostic boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test -f infra/azure/ets-live-sharepoint-production-client-probe.bicep
+          test -n "${{ secrets.ETS_LIVE_SHAREPOINT_DRIVE_ID }}"
+
+      - name: Azure login with workload identity
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Run exact production client probe
+        shell: bash
+        env:
+          SHAREPOINT_DRIVE_ID: ${{ secrets.ETS_LIVE_SHAREPOINT_DRIVE_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/live-sharepoint-production-client
+
+          job_name="ets-sp-client-${GITHUB_RUN_ID}"
+          job_name="${job_name:0:32}"
+          cleanup() {
+            az containerapp job delete \
+              --name "$job_name" \
+              --resource-group "$RESOURCE_GROUP" \
+              --yes \
+              --only-show-errors >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          gateway_identity_id="$(az identity show \
+            --name "$GATEWAY_IDENTITY_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query id -o tsv)"
+          gateway_client_id="$(az identity show \
+            --name "$GATEWAY_IDENTITY_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query clientId -o tsv)"
+          environment_id="$(az containerapp show \
+            --name "$GATEWAY_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.environmentId -o tsv)"
+          pull_identity="$(az containerapp show \
+            --name "$GATEWAY_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query 'properties.configuration.registries[0].identity' -o tsv)"
+          image="$(az containerapp show \
+            --name "$GATEWAY_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query 'properties.template.containers[0].image' -o tsv)"
+
+          test -n "$gateway_identity_id"
+          test -n "$gateway_client_id"
+          test -n "$environment_id"
+          test -n "$pull_identity"
+          test -n "$image"
+
+          az deployment group create \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/azure/ets-live-sharepoint-production-client-probe.bicep \
+            --parameters \
+              location="$LOCATION" \
+              jobName="$job_name" \
+              managedEnvironmentResourceId="$environment_id" \
+              runtimeIdentityResourceId="$gateway_identity_id" \
+              runtimeIdentityClientId="$gateway_client_id" \
+              registryPullIdentityResourceId="$pull_identity" \
+              registryServer="${ACR_NAME}.azurecr.io" \
+              containerImage="$image" \
+              sharePointDriveId="$SHAREPOINT_DRIVE_ID" \
+            --only-show-errors \
+            --output none
+
+          execution="$(az containerapp job start \
+            --name "$job_name" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query name -o tsv)"
+          test -n "$execution"
+
+          status=""
+          for _ in $(seq 1 60); do
+            status="$(az containerapp job execution show \
+              --name "$job_name" \
+              --resource-group "$RESOURCE_GROUP" \
+              --job-execution-name "$execution" \
+              --query properties.status -o tsv)"
+            case "$status" in
+              Succeeded|Failed|Canceled) break ;;
+            esac
+            sleep 3
+          done
+
+          replica="$(az containerapp job replica list \
+            --name "$job_name" \
+            --resource-group "$RESOURCE_GROUP" \
+            --execution "$execution" \
+            --query '[0].name' -o tsv)"
+          test -n "$replica"
+
+          raw="$RUNNER_TEMP/sharepoint-production-client.log"
+          az containerapp job logs show \
+            --name "$job_name" \
+            --resource-group "$RESOURCE_GROUP" \
+            --execution "$execution" \
+            --replica "$replica" \
+            --container sharepoint-production-client-probe \
+            --format text \
+            --only-show-errors > "$raw" 2>&1 || true
+
+          python - "$raw" <<'PY'
+          import base64
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          match = re.search(
+              r"ETS_SP_PRODUCTION_CLIENT_PROBE_B64=([A-Za-z0-9_=-]+)", source
+          )
+          if match is None:
+              raise SystemExit("production client probe result marker was not found")
+          payload = json.loads(base64.urlsafe_b64decode(match.group(1)).decode("utf-8"))
+          allowed = {
+              "schema_version",
+              "production_client_outcome",
+              "parser_failure_class",
+              "record_count",
+              "cycle_complete",
+              "checkpoint_shape",
+              "customer_identifiers_retained",
+              "graph_payload_retained",
+              "continuation_url_retained",
+              "reusable_credential_retained",
+              "public_evidence_safe",
+              "m365_source_to_proof_claimed",
+              "soak_clock_started",
+          }
+          if set(payload) != allowed:
+              raise SystemExit("production client probe returned an unexpected public shape")
+          if not isinstance(payload["production_client_outcome"], str):
+              raise SystemExit("production client outcome was not a string")
+          if not isinstance(payload["parser_failure_class"], str):
+              raise SystemExit("parser failure class was not a string")
+          if not isinstance(payload["record_count"], int):
+              raise SystemExit("production client record count was not numeric")
+          if not isinstance(payload["cycle_complete"], bool):
+              raise SystemExit("production client cycle flag was not boolean")
+          if not isinstance(payload["checkpoint_shape"], str):
+              raise SystemExit("production client checkpoint shape was not a string")
+          for key in (
+              "customer_identifiers_retained",
+              "graph_payload_retained",
+              "continuation_url_retained",
+              "reusable_credential_retained",
+              "m365_source_to_proof_claimed",
+              "soak_clock_started",
+          ):
+              if payload[key] is not False:
+                  raise SystemExit(f"production client probe violated bounded evidence: {key}")
+          if payload["public_evidence_safe"] is not True:
+              raise SystemExit("production client probe did not assert public-safe evidence")
+          out = Path("evidence/live-sharepoint-production-client/result.json")
+          out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          print("production_client_outcome=" + payload["production_client_outcome"])
+          print("parser_failure_class=" + payload["parser_failure_class"])
+          print("record_count=" + str(payload["record_count"]))
+          print("cycle_complete=" + str(payload["cycle_complete"]).lower())
+          print("checkpoint_shape=" + payload["checkpoint_shape"])
+          PY
+
+          test "$status" = "Succeeded"
+          rm -f "$raw"
+
+      - name: Upload bounded production client evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-sharepoint-production-client-${{ github.run_id }}
+          path: evidence/live-sharepoint-production-client/*.json
+          if-no-files-found: warn
+          retention-days: 30
