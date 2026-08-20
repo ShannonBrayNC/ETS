@@ -13,7 +13,7 @@
         <p>A straightforward introduction to what Evidence Transparency Systems are, how ETS works, and why verifiable evidence matters—without the technical deep dive.</p>
       </div>
       <div class="audio-shell">
-        <div id="elevenlabs-audionative-widget" data-height="90" data-width="100%" data-frameborder="no" data-scrolling="no" data-publicuserid="9e8765876d220a246c6623290d83285470427384185db18970c9cfae44d68fe3" data-playerurl="https://elevenlabs.io/player/index.html" >Loading the <a href="https://elevenlabs.io/text-to-speech" target="_blank" rel="noopener">Elevenlabs Text to Speech</a> AudioNative Player...</div>
+        <div id="elevenlabs-audionative-widget" data-height="90" data-width="100%" data-frameborder="no" data-scrolling="no" data-publicuserid="9e8765876d220a246c6623290d83285470427384185db18970c9cfae44d68fe3" data-playerurl="https://elevenlabs.io/player/index.html" data-projectid="cb5tvaKJ7SgYQ6967yyK" >Loading the <a href="https://elevenlabs.io/text-to-speech" target="_blank" rel="noopener">Elevenlabs Text to Speech</a> AudioNative Player...</div>
       </div>`;
     briefing.insertAdjacentElement('afterend', section);
 
