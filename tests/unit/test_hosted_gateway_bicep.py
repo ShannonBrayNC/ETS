@@ -39,6 +39,7 @@ def test_gateway_bicep_mounts_bounded_q1_state_without_container_secret() -> Non
         "storageType: 'AzureFile'",
         "mountOptions: 'nobrl'",
         "ets-gateway-state-q1-v2",
+        "var environmentStorageName = take('ets-${resourceToken}-state-q1-v2', 32)",
         "mountPath: '/var/lib/ets'",
         "minReplicas: 1",
         "maxReplicas: 1",
