@@ -74,7 +74,10 @@ def create_app_from_env() -> FastAPI:
     audience = _required_env("ETS_AUTH_AUDIENCE")
     store = _create_azure_table_store(log_id)
     signer, signer_readiness = _create_azure_key_vault_signer()
-    auth_policy = _create_jwks_auth_policy(issuer=issuer, audience=audience)
+    auth_policy = _create_jwks_auth_policy(
+        issuer=issuer,
+        audience=_entra_access_token_audience(audience),
+    )
 
     store.list_entries()
     signer_readiness()
@@ -164,6 +167,18 @@ def _required_env(name: str) -> str:
     if value is None or not value.strip():
         raise RuntimeError(f"{name} is required for Azure hosted configuration")
     return value.strip()
+
+
+def _entra_access_token_audience(resource_identifier: str) -> str:
+    """Map the governed Entra resource URI to the v2 access-token aud claim."""
+
+    prefix = "api://"
+    if not resource_identifier.startswith(prefix):
+        raise RuntimeError("ETS_AUTH_AUDIENCE must use the governed api://<appId> form")
+    application_id = resource_identifier[len(prefix) :]
+    if not application_id or "/" in application_id:
+        raise RuntimeError("ETS_AUTH_AUDIENCE must contain exactly one Entra application ID")
+    return application_id
 
 
 def _create_azure_table_store(log_id: str) -> EventStore:
