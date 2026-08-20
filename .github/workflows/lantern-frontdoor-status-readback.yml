@@ -1,0 +1,97 @@
+name: Read Lantern Front Door Activation Status
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/lantern-frontdoor-status-readback.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: lantern-frontdoor-status-readback
+  cancel-in-progress: true
+
+jobs:
+  status:
+    name: Read DNS TLS and HTTPS state
+    runs-on: ubuntu-latest
+    environment: ets-azure-q1
+    timeout-minutes: 10
+    env:
+      RESOURCE_GROUP: rg-ets-live-eastus
+      PROFILE_NAME: lantern-continuity-fd
+      CUSTOM_DOMAIN_NAME: azure-lanternprotocol-net
+      CUSTOM_HOST: azure.lanternprotocol.net
+    steps:
+      - name: Azure login with ETS workload identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Azure Front Door CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name cdn --upgrade --yes --only-show-errors
+
+      - name: Read public CNAME and Front Door state
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t endpoints < <(az afd endpoint list \
+            -g "$RESOURCE_GROUP" \
+            --profile-name "$PROFILE_NAME" \
+            --query '[].name' -o tsv)
+          test "${#endpoints[@]}" -eq 1
+          endpoint_name="${endpoints[0]}"
+          afd_host="$(az afd endpoint show \
+            -g "$RESOURCE_GROUP" \
+            --profile-name "$PROFILE_NAME" \
+            --endpoint-name "$endpoint_name" \
+            --query hostName -o tsv)"
+          test -n "$afd_host"
+
+          cname="$(python - <<'PY'
+          import json, urllib.parse, urllib.request
+          name='azure.lanternprotocol.net'
+          url='https://dns.google/resolve?' + urllib.parse.urlencode({'name':name,'type':'CNAME'})
+          with urllib.request.urlopen(url,timeout=20) as r:
+              p=json.load(r)
+          ans=[a.get('data','').rstrip('.') for a in p.get('Answer',[]) if a.get('type')==5]
+          print(ans[0] if len(ans)==1 else '')
+          PY
+          )"
+
+          printf 'PUBLIC_CNAME=%s\n' "$cname"
+          printf 'AZURE_FRONTDOOR_HOST=%s\n' "$afd_host"
+          printf 'CNAME_MATCH=%s\n' "$(test "${cname,,}" = "${afd_host,,}" && echo true || echo false)"
+
+          az afd custom-domain show \
+            -g "$RESOURCE_GROUP" \
+            --profile-name "$PROFILE_NAME" \
+            --custom-domain-name "$CUSTOM_DOMAIN_NAME" \
+            --query '{host:hostName,validation:domainValidationState,deployment:deploymentStatus,certificate:tlsSettings.certificateType,minimumTls:tlsSettings.minimumTlsVersion}' \
+            -o json
+
+      - name: Read HTTPS content state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import urllib.request
+          url='https://azure.lanternprotocol.net/'
+          try:
+              with urllib.request.urlopen(url,timeout=20) as r:
+                  body=r.read(200000).decode('utf-8','replace')
+                  print('HTTPS_STATUS='+str(r.status))
+                  print('LANTERN_HERO='+str('Evidence you can prove.' in body).lower())
+                  print('ETS_BRIEFING='+str('ETS TECHNICAL BRIEFING' in body).lower())
+          except Exception as exc:
+              print('HTTPS_ERROR='+type(exc).__name__+': '+str(exc))
+          PY
