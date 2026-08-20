@@ -37,11 +37,11 @@ def test_live_core_gateway_deployment_preserves_authoritative_release_identity()
     text = WORKFLOW.read_text(encoding="utf-8")
 
     for required in (
-        "Q0_SOURCE_SHA: 332d7db3a69acd826a2a000264e81a179894e278",
-        "Q0_IMAGE_DIGEST: sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c",
+        "Q0_SOURCE_SHA: 309418e364e5bb629d181332019ad92d0d210cd0",
+        "Q0_IMAGE_DIGEST: sha256:1331cfa59fa78b3d63f8f6458ea3f2a130560b4ff9962eceb4666a79e30c4ce6",
         (
             "CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:"
-            "c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c"
+            "1331cfa59fa78b3d63f8f6458ea3f2a130560b4ff9962eceb4666a79e30c4ce6"
         ),
         'test "$CONTAINER_IMAGE" = "${ACR_NAME}.azurecr.io/ets/hosted-q1@${Q0_IMAGE_DIGEST}"',
         'if container.get("image") != os.environ["CONTAINER_IMAGE"]:',
@@ -49,7 +49,7 @@ def test_live_core_gateway_deployment_preserves_authoritative_release_identity()
         assert required in text
 
     superseded_digest = (
-        "sha256:3a8e4547d8c6ca1de9b8c5d757642adc21d4fb0f0487d889e837c708f428e582"
+        "sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c"
     )
     assert superseded_digest not in text
 
