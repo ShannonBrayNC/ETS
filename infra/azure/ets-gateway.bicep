@@ -102,7 +102,9 @@ var gatewayName = take('ets-${resourceToken}-gw', 32)
 var gatewayIdentityName = take('ets-${resourceToken}-gw-id', 128)
 var registryPullIdentityName = take('ets-${resourceToken}-gw-pull', 128)
 var stateStorageAccountName = take('etsgw${resourceToken}', 24)
-var stateFileShareName = 'ets-gateway-state'
+// Rotate the Q1 state share instead of deleting the prior forensic share. The live Gateway
+// remains single-replica while SQLite is used; #445 replaces network-file SQLite before production.
+var stateFileShareName = 'ets-gateway-state-q1-v2'
 var stateKeyVaultName = take('ets-${resourceToken}-gkv', 24)
 var stateStorageSecretName = 'azure-files-account-key'
 var environmentStorageName = take('ets-${resourceToken}-state', 32)
@@ -271,6 +273,10 @@ resource gateway 'Microsoft.App/containerApps@2026-01-01' = {
           name: 'gateway-state'
           storageName: environmentStorage.name
           storageType: 'AzureFile'
+          // Azure Files SMB uses mandatory byte-range locks that caused the Q1 Python SQLite
+          // runtime to fail at startup. This is a single-replica qualification compatibility
+          // setting only; #445 replaces SQLite-on-network-files before production/multi-replica use.
+          mountOptions: 'nobrl'
         }
       ]
       containers: [
