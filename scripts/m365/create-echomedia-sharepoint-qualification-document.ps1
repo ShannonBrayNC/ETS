@@ -110,7 +110,7 @@ try {
     }
 
     $site = Invoke-GraphGet -Uri (
-        "https://graph.microsoft.com/v1.0/sites/${SharePointHostname}:$SitePath?" +
+        "https://graph.microsoft.com/v1.0/sites/${SharePointHostname}:${SitePath}?" +
         "`$select=id,displayName,webUrl"
     )
     if (-not $site.id -or -not $site.webUrl) {
@@ -163,7 +163,7 @@ try {
     }
 
     $metadata = Invoke-GraphGet -Uri (
-        "https://graph.microsoft.com/v1.0/drives/$encodedDrive/root:/$encodedName?" +
+        "https://graph.microsoft.com/v1.0/drives/$encodedDrive/root:/${encodedName}?" +
         "`$select=id,name,eTag,cTag,size,lastModifiedDateTime,file"
     )
     if ($metadata.name -ne $fileName -or $metadata.eTag -ne $uploaded.eTag) {
