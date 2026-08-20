@@ -29,7 +29,7 @@ def test_gateway_bicep_uses_single_internal_container_app() -> None:
         assert term in text
 
 
-def test_gateway_bicep_mounts_restart_safe_state_without_container_secret() -> None:
+def test_gateway_bicep_mounts_bounded_q1_state_without_container_secret() -> None:
     text = _template()
 
     required = [
@@ -37,9 +37,14 @@ def test_gateway_bicep_mounts_restart_safe_state_without_container_secret() -> N
         "accountKeyVaultProperties:",
         "identity: gatewayIdentity.id",
         "storageType: 'AzureFile'",
+        "mountOptions: 'nobrl'",
+        "ets-gateway-state-q1-v2",
         "mountPath: '/var/lib/ets'",
+        "minReplicas: 1",
+        "maxReplicas: 1",
         "4633458b-17de-408a-b874-0445c86b69e6",
         "Microsoft.KeyVault/vaults/secrets@2025-05-01",
+        "#445 replaces SQLite-on-network-files before production",
     ]
     for term in required:
         assert term in text
