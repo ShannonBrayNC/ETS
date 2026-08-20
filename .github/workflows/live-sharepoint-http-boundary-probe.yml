@@ -1,0 +1,218 @@
+name: Live SharePoint HTTP Boundary Probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      marker:
+        description: Synthetic qualification marker already present in /sites/ETS Documents
+        required: true
+        default: post458-release-sync-20260820
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  probe:
+    name: Probe bounded SharePoint HTTP boundaries
+    runs-on: ubuntu-24.04
+    environment: ets-azure-q1
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: "true"
+      LOCATION: eastus
+      RESOURCE_GROUP: rg-ets-live-eastus
+      GATEWAY_APP: ets-o23bf2d6oq44s-gw
+      CORE_APP: ets-o23bf2d6oq44s-core
+      GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id
+      ACR_NAME: etsq1a352eb89
+    steps:
+      - name: Check out diagnostic source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Assert protected diagnostic boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test -f infra/azure/ets-live-sharepoint-http-probe.bicep
+          test -n "${{ secrets.ETS_LIVE_CORE_SCOPE }}"
+          test -n "${{ secrets.ETS_LIVE_SHAREPOINT_DRIVE_ID }}"
+          test -n "${{ inputs.marker }}"
+
+      - name: Azure login with workload identity
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Run bounded HTTP probe
+        shell: bash
+        env:
+          CORE_SCOPE: ${{ secrets.ETS_LIVE_CORE_SCOPE }}
+          SHAREPOINT_DRIVE_ID: ${{ secrets.ETS_LIVE_SHAREPOINT_DRIVE_ID }}
+          MARKER: ${{ inputs.marker }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/live-sharepoint-http-boundary
+
+          job_name="ets-sp-http-${GITHUB_RUN_ID}"
+          job_name="${job_name:0:32}"
+          cleanup() {
+            az containerapp job delete \
+              --name "$job_name" \
+              --resource-group "$RESOURCE_GROUP" \
+              --yes \
+              --only-show-errors >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          gateway_identity_id="$(az identity show \
+            --name "$GATEWAY_IDENTITY_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query id -o tsv)"
+          gateway_client_id="$(az identity show \
+            --name "$GATEWAY_IDENTITY_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query clientId -o tsv)"
+          environment_id="$(az containerapp show \
+            --name "$GATEWAY_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.environmentId -o tsv)"
+          pull_identity="$(az containerapp show \
+            --name "$GATEWAY_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query 'properties.configuration.registries[0].identity' -o tsv)"
+          image="$(az containerapp show \
+            --name "$GATEWAY_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query 'properties.template.containers[0].image' -o tsv)"
+          core_fqdn="$(az containerapp show \
+            --name "$CORE_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.configuration.ingress.fqdn -o tsv)"
+
+          test -n "$gateway_identity_id"
+          test -n "$gateway_client_id"
+          test -n "$environment_id"
+          test -n "$pull_identity"
+          test -n "$image"
+          test -n "$core_fqdn"
+
+          az deployment group create \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/azure/ets-live-sharepoint-http-probe.bicep \
+            --parameters \
+              location="$LOCATION" \
+              jobName="$job_name" \
+              managedEnvironmentResourceId="$environment_id" \
+              runtimeIdentityResourceId="$gateway_identity_id" \
+              runtimeIdentityClientId="$gateway_client_id" \
+              registryPullIdentityResourceId="$pull_identity" \
+              registryServer="${ACR_NAME}.azurecr.io" \
+              containerImage="$image" \
+              coreBaseUrl="https://${core_fqdn}" \
+              coreScope="$CORE_SCOPE" \
+              sharePointDriveId="$SHAREPOINT_DRIVE_ID" \
+              marker="$MARKER" \
+            --only-show-errors \
+            --output none
+
+          execution="$(az containerapp job start \
+            --name "$job_name" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query name -o tsv)"
+          test -n "$execution"
+
+          status=""
+          for _ in $(seq 1 60); do
+            status="$(az containerapp job execution show \
+              --name "$job_name" \
+              --resource-group "$RESOURCE_GROUP" \
+              --job-execution-name "$execution" \
+              --query properties.status -o tsv)"
+            case "$status" in
+              Succeeded|Failed|Canceled) break ;;
+            esac
+            sleep 3
+          done
+
+          replica="$(az containerapp job replica list \
+            --name "$job_name" \
+            --resource-group "$RESOURCE_GROUP" \
+            --execution "$execution" \
+            --query '[0].name' -o tsv)"
+          test -n "$replica"
+
+          raw="$RUNNER_TEMP/sharepoint-http-boundary.log"
+          az containerapp job logs show \
+            --name "$job_name" \
+            --resource-group "$RESOURCE_GROUP" \
+            --execution "$execution" \
+            --replica "$replica" \
+            --container sharepoint-http-probe \
+            --format text \
+            --only-show-errors > "$raw" 2>&1 || true
+
+          python - "$raw" <<'PY'
+          import base64
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          match = re.search(r"ETS_SP_HTTP_PROBE_B64=([A-Za-z0-9_=-]+)", source)
+          if match is None:
+              raise SystemExit("bounded SharePoint HTTP probe result marker was not found")
+          payload = json.loads(base64.urlsafe_b64decode(match.group(1)).decode("utf-8"))
+          allowed = {
+              "schema_version",
+              "graph_item_status",
+              "graph_root_scope_status",
+              "core_events_status",
+              "customer_identifiers_retained",
+              "reusable_credential_retained",
+              "public_evidence_safe",
+              "m365_source_to_proof_claimed",
+              "soak_clock_started",
+          }
+          if set(payload) != allowed:
+              raise SystemExit("bounded SharePoint HTTP probe returned an unexpected public shape")
+          for key in ("graph_item_status", "graph_root_scope_status", "core_events_status"):
+              if not isinstance(payload[key], int):
+                  raise SystemExit("bounded SharePoint HTTP probe status was not numeric")
+          if payload["customer_identifiers_retained"] is not False:
+              raise SystemExit("bounded probe unexpectedly retained customer identifiers")
+          if payload["reusable_credential_retained"] is not False:
+              raise SystemExit("bounded probe unexpectedly retained reusable credentials")
+          if payload["public_evidence_safe"] is not True:
+              raise SystemExit("bounded probe did not assert public-safe evidence")
+          out = Path("evidence/live-sharepoint-http-boundary/result.json")
+          out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          print("graph_item_status=" + str(payload["graph_item_status"]))
+          print("graph_root_scope_status=" + str(payload["graph_root_scope_status"]))
+          print("core_events_status=" + str(payload["core_events_status"]))
+          PY
+
+          test "$status" = "Succeeded"
+          rm -f "$raw"
+
+      - name: Upload bounded HTTP probe evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-sharepoint-http-boundary-${{ github.run_id }}
+          path: evidence/live-sharepoint-http-boundary/*.json
+          if-no-files-found: warn
+          retention-days: 30
