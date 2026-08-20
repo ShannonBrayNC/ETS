@@ -197,6 +197,8 @@ jobs:
               "gateway_health_status",
               "gateway_ready_status",
               "graph_item_status",
+              "graph_delta_status",
+              "graph_delta_json_content_type",
               "graph_root_scope_status",
               "core_events_status",
               "customer_identifiers_retained",
@@ -211,11 +213,14 @@ jobs:
               "gateway_health_status",
               "gateway_ready_status",
               "graph_item_status",
+              "graph_delta_status",
               "graph_root_scope_status",
               "core_events_status",
           ):
               if not isinstance(payload[key], int):
                   raise SystemExit("bounded SharePoint HTTP probe status was not numeric")
+          if not isinstance(payload["graph_delta_json_content_type"], bool):
+              raise SystemExit("bounded SharePoint delta Content-Type classification was not boolean")
           if payload["customer_identifiers_retained"] is not False:
               raise SystemExit("bounded probe unexpectedly retained customer identifiers")
           if payload["reusable_credential_retained"] is not False:
@@ -227,6 +232,11 @@ jobs:
           print("gateway_health_status=" + str(payload["gateway_health_status"]))
           print("gateway_ready_status=" + str(payload["gateway_ready_status"]))
           print("graph_item_status=" + str(payload["graph_item_status"]))
+          print("graph_delta_status=" + str(payload["graph_delta_status"]))
+          print(
+              "graph_delta_json_content_type="
+              + str(payload["graph_delta_json_content_type"]).lower()
+          )
           print("graph_root_scope_status=" + str(payload["graph_root_scope_status"]))
           print("core_events_status=" + str(payload["core_events_status"]))
           PY
