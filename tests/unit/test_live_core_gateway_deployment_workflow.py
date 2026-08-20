@@ -41,7 +41,7 @@ def test_live_core_gateway_deployment_preserves_authoritative_release_identity()
         "Q0_IMAGE_DIGEST: sha256:7f92c14ca4e99af323c3b0e39c89903180296a0264078d281ff925a89c8c226f",
         (
             "CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:"
-            "3925355f477a6f76bcb467ad4dbd9b302641bd4de322ce62d999ab7d28f6cfde"
+            "7f92c14ca4e99af323c3b0e39c89903180296a0264078d281ff925a89c8c226f"
         ),
         'test "$CONTAINER_IMAGE" = "${ACR_NAME}.azurecr.io/ets/hosted-q1@${Q0_IMAGE_DIGEST}"',
         'if container.get("image") != os.environ["CONTAINER_IMAGE"]:',
