@@ -202,7 +202,7 @@ try {
     }
 
     $siteUri = (
-        "https://graph.microsoft.com/v1.0/sites/$SharePointHostname`:$SitePath?" +
+        "https://graph.microsoft.com/v1.0/sites/${SharePointHostname}:${SitePath}?" +
         "`$select=id,displayName,webUrl"
     )
     $site = Invoke-GraphGet -Uri $siteUri
