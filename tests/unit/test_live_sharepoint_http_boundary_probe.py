@@ -41,6 +41,8 @@ def test_probe_is_metadata_only_and_public_safe() -> None:
     assert '"gateway_health_status"' in BICEP
     assert '"gateway_ready_status"' in BICEP
     assert '"graph_item_status"' in BICEP
+    assert '"graph_delta_status"' in BICEP
+    assert '"graph_delta_json_content_type"' in BICEP
     assert '"graph_root_scope_status"' in BICEP
     assert '"core_events_status"' in BICEP
     assert '"customer_identifiers_retained": False' in BICEP
@@ -50,11 +52,22 @@ def test_probe_is_metadata_only_and_public_safe() -> None:
     assert '"soak_clock_started": False' in BICEP
 
 
+def test_probe_hits_exact_production_delta_boundary_without_retaining_payload() -> None:
+    assert '"/root/delta"' in BICEP
+    assert '"User-Agent": "ets-gateway-microsoft-sharepoint-delta/1.0"' in BICEP
+    assert "status_and_json_content_type" in BICEP
+    assert "response.read()" in BICEP
+    assert '"graph_delta_status": graph_delta_status' in BICEP
+    assert '"graph_delta_json_content_type": graph_delta_json_content_type' in BICEP
+
+
 def test_workflow_publishes_only_bounded_status_shape() -> None:
     assert "ETS_SP_HTTP_PROBE_B64=" in BICEP
     assert '"gateway_health_status",' in WORKFLOW
     assert '"gateway_ready_status",' in WORKFLOW
     assert '"graph_item_status",' in WORKFLOW
+    assert '"graph_delta_status",' in WORKFLOW
+    assert '"graph_delta_json_content_type",' in WORKFLOW
     assert '"graph_root_scope_status",' in WORKFLOW
     assert '"core_events_status",' in WORKFLOW
     assert "sharepoint-http-boundary.log" in WORKFLOW

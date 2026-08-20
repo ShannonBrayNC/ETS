@@ -70,6 +70,13 @@ MARKER = "ETS_SP_HTTP_PROBE_B64="
 GRAPH_SCOPE = "https://graph.microsoft.com/.default"
 
 
+def is_json_content_type(value):
+    if value is None:
+        return False
+    media_type = value.partition(";")[0].strip().lower()
+    return media_type == "application/json" or media_type.endswith("+json")
+
+
 def status(url, token=None):
     headers = {"Accept": "application/json"}
     if token is not None:
@@ -84,6 +91,27 @@ def status(url, token=None):
         return exc.code
     except (TimeoutError, URLError):
         return -1
+
+
+def status_and_json_content_type(url, token):
+    req = Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "Authorization": "Bearer " + token,
+            "User-Agent": "ets-gateway-microsoft-sharepoint-delta/1.0",
+        },
+        method="GET",
+    )
+    try:
+        with urlopen(req, timeout=30.0) as response:
+            response.read()
+            return response.status, is_json_content_type(response.headers.get("Content-Type"))
+    except HTTPError as exc:
+        exc.read()
+        return exc.code, is_json_content_type(exc.headers.get("Content-Type"))
+    except (TimeoutError, URLError):
+        return -1, False
 
 
 client_id = os.environ["ETS_SP_RUNTIME_CLIENT_ID"]
@@ -108,12 +136,22 @@ item_url = (
     + quote(file_name, safe="")
     + "?$select=id,name,eTag,file"
 )
+delta_url = (
+    "https://graph.microsoft.com/v1.0/drives/"
+    + quote(drive_id, safe="")
+    + "/root/delta"
+)
+graph_delta_status, graph_delta_json_content_type = status_and_json_content_type(
+    delta_url, graph_token
+)
 
 result = {
-    "schema_version": "ets.live_sharepoint.http_probe.v2",
+    "schema_version": "ets.live_sharepoint.http_probe.v3",
     "gateway_health_status": status(gateway_base + "/health"),
     "gateway_ready_status": status(gateway_base + "/ready"),
     "graph_item_status": status(item_url, graph_token),
+    "graph_delta_status": graph_delta_status,
+    "graph_delta_json_content_type": graph_delta_json_content_type,
     "graph_root_scope_status": status(
         "https://graph.microsoft.com/v1.0/sites/root?$select=id", graph_token
     ),
