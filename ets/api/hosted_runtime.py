@@ -170,7 +170,7 @@ def _required_env(name: str) -> str:
 
 
 def _entra_access_token_audience(resource_identifier: str) -> str:
-    """Map a governed Entra resource URI to the v2 access-token aud claim."""
+    """Normalize Entra resource URIs while preserving other hosted audiences."""
 
     prefix = "api://"
     if not resource_identifier.startswith(prefix):
