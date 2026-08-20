@@ -107,7 +107,7 @@ var stateStorageAccountName = take('etsgw${resourceToken}', 24)
 var stateFileShareName = 'ets-gateway-state-q1-v2'
 var stateKeyVaultName = take('ets-${resourceToken}-gkv', 24)
 var stateStorageSecretName = 'azure-files-account-key'
-var environmentStorageName = take('ets-${resourceToken}-state', 32)
+var environmentStorageName = take('ets-${resourceToken}-state-q1-v2', 32)
 var keyVaultSecretsUserRoleId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '4633458b-17de-408a-b874-0445c86b69e6'
