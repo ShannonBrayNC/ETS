@@ -23,6 +23,15 @@ def test_probe_is_manual_protected_and_uses_live_gateway_identity() -> None:
     assert "ManagedIdentityCredential" in BICEP
 
 
+def test_probe_uses_deployed_gateway_core_binding_instead_of_guessed_app_name() -> None:
+    assert "CORE_APP:" not in WORKFLOW
+    assert "ets-o23bf2d6oq44s-core" not in WORKFLOW
+    assert "ETS_GATEWAY_CORE_BASE_URL" in WORKFLOW
+    assert 'coreBaseUrl="$core_base_url"' in WORKFLOW
+    assert 'case "$core_base_url" in' in WORKFLOW
+    assert "https://*" in WORKFLOW
+
+
 def test_probe_is_metadata_only_and_public_safe() -> None:
     assert '"/content"' not in BICEP
     assert "@microsoft.graph.downloadUrl" not in BICEP
