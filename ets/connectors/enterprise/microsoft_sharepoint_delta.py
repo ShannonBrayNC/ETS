@@ -126,16 +126,26 @@ def validate_sharepoint_delta_url(
 
 
 def _continuation_path_matches_resource(resource_path: str, candidate_path: str) -> bool:
-    """Allow Graph's documented opaque token function on the approved delta resource only."""
+    """Allow Graph's documented opaque continuations on the approved delta resource."""
 
-    if candidate_path == resource_path:
-        return True
-    suffix = (
-        candidate_path[len(resource_path) :]
-        if candidate_path.startswith(resource_path)
-        else ""
-    )
-    return bool(suffix.startswith("(") and suffix.endswith(")") and "/" not in suffix)
+    approved_resources = [resource_path]
+    drive_root_suffix = "/root/delta"
+    if resource_path.startswith("/v1.0/drives/") and resource_path.endswith(
+        drive_root_suffix
+    ):
+        approved_resources.append(
+            resource_path[: -len(drive_root_suffix)] + "/delta"
+        )
+
+    for approved_resource in approved_resources:
+        if candidate_path == approved_resource:
+            return True
+        if not candidate_path.startswith(approved_resource):
+            continue
+        suffix = candidate_path[len(approved_resource) :]
+        if suffix.startswith("(") and suffix.endswith(")") and "/" not in suffix:
+            return True
+    return False
 
 
 def parse_sharepoint_delta_page(
