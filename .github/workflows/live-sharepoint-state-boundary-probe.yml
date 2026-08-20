@@ -1,0 +1,326 @@
+name: Live SharePoint State Boundary Probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      marker:
+        description: Synthetic qualification marker already present in /sites/ETS Documents
+        required: true
+        default: post458-release-sync-20260820
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  probe:
+    name: Probe bounded Gateway SharePoint state
+    runs-on: ubuntu-24.04
+    environment: ets-azure-q1
+    timeout-minutes: 15
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: "true"
+      LOCATION: eastus
+      RESOURCE_GROUP: rg-ets-live-eastus
+      GATEWAY_APP: ets-o23bf2d6oq44s-gw
+      CONNECTOR_INSTANCE_ID: m365-sharepoint-primary
+      ACR_NAME: etsq1a352eb89
+    steps:
+      - name: Check out diagnostic source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Assert protected diagnostic boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test -f infra/azure/ets-live-sharepoint-state-probe.bicep
+          test -n "${{ inputs.marker }}"
+
+      - name: Azure login with workload identity
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Run bounded Gateway state probe
+        shell: bash
+        env:
+          MARKER: ${{ inputs.marker }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/live-sharepoint-state-boundary
+
+          if ! [[ "$MARKER" =~ ^[a-z0-9][a-z0-9-]{5,31}$ ]]; then
+            echo "::error::marker is outside the public-safe profile"
+            exit 1
+          fi
+
+          job_name="ets-sp-state-${GITHUB_RUN_ID}"
+          job_name="${job_name:0:32}"
+          cleanup() {
+            az containerapp job delete \
+              --name "$job_name" \
+              --resource-group "$RESOURCE_GROUP" \
+              --yes \
+              --only-show-errors >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          gateway_json="$RUNNER_TEMP/sharepoint-state-gateway.json"
+          az containerapp show \
+            --name "$GATEWAY_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            -o json > "$gateway_json"
+
+          resolved="$RUNNER_TEMP/sharepoint-state-resolved.txt"
+          python - "$gateway_json" > "$resolved" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          gateway = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          props = gateway.get("properties") or {}
+          template = props.get("template") or {}
+          containers = template.get("containers") or []
+          if len(containers) != 1:
+              raise SystemExit("live Gateway must expose exactly one container")
+          container = containers[0]
+          if container.get("name") != "ets-gateway":
+              raise SystemExit("live Gateway container identity changed")
+
+          environment_id = str(props.get("environmentId") or "")
+          image = str(container.get("image") or "")
+          registries = (props.get("configuration") or {}).get("registries") or []
+          if len(registries) != 1:
+              raise SystemExit("live Gateway must expose exactly one registry binding")
+          pull_identity = str(registries[0].get("identity") or "")
+          volumes = template.get("volumes") or []
+          state = [item for item in volumes if item.get("name") == "gateway-state"]
+          if len(state) != 1:
+              raise SystemExit("live Gateway state volume is unavailable")
+          storage_name = str(state[0].get("storageName") or "")
+
+          if not environment_id or not image or not pull_identity or not storage_name:
+              raise SystemExit("live Gateway state probe prerequisites are incomplete")
+          print("ENVIRONMENT_ID=" + environment_id)
+          print("IMAGE=" + image)
+          print("PULL_IDENTITY=" + pull_identity)
+          print("STATE_STORAGE_NAME=" + storage_name)
+          PY
+
+          while IFS='=' read -r key value; do
+            test -n "$key"
+            test -n "$value"
+            printf -v "$key" '%s' "$value"
+          done < "$resolved"
+          rm -f "$gateway_json" "$resolved"
+
+          case "$IMAGE" in
+            "${ACR_NAME}.azurecr.io/ets/hosted-q1@sha256:"*) ;;
+            *) echo "::error::live Gateway image is outside the approved immutable ACR boundary"; exit 1 ;;
+          esac
+
+          az deployment group create \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/azure/ets-live-sharepoint-state-probe.bicep \
+            --parameters \
+              location="$LOCATION" \
+              jobName="$job_name" \
+              managedEnvironmentResourceId="$ENVIRONMENT_ID" \
+              gatewayStateStorageName="$STATE_STORAGE_NAME" \
+              registryPullIdentityResourceId="$PULL_IDENTITY" \
+              registryServer="${ACR_NAME}.azurecr.io" \
+              containerImage="$IMAGE" \
+              connectorInstanceId="$CONNECTOR_INSTANCE_ID" \
+              marker="$MARKER" \
+            --only-show-errors \
+            --output none
+
+          execution="$(az containerapp job start \
+            --name "$job_name" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query name -o tsv)"
+          test -n "$execution"
+
+          status=""
+          for _ in $(seq 1 60); do
+            status="$(az containerapp job execution show \
+              --name "$job_name" \
+              --resource-group "$RESOURCE_GROUP" \
+              --job-execution-name "$execution" \
+              --query properties.status -o tsv)"
+            case "$status" in
+              Succeeded|Failed|Canceled) break ;;
+            esac
+            sleep 3
+          done
+
+          replica="$(az containerapp job replica list \
+            --name "$job_name" \
+            --resource-group "$RESOURCE_GROUP" \
+            --execution "$execution" \
+            --query '[0].name' -o tsv)"
+          test -n "$replica"
+
+          raw="$RUNNER_TEMP/sharepoint-state-boundary.log"
+          az containerapp job logs show \
+            --name "$job_name" \
+            --resource-group "$RESOURCE_GROUP" \
+            --execution "$execution" \
+            --replica "$replica" \
+            --container sharepoint-state-probe \
+            --format text \
+            --only-show-errors > "$raw" 2>&1 || true
+
+          python - "$raw" <<'PY'
+          import base64
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          match = re.search(r"ETS_SP_STATE_PROBE_B64=([A-Za-z0-9_=-]+)", source)
+          if match is None:
+              raise SystemExit("bounded Gateway state probe result marker was not found")
+          payload = json.loads(base64.urlsafe_b64decode(match.group(1)).decode("utf-8"))
+
+          allowed = {
+              "schema_version",
+              "checkpoint_present",
+              "checkpoint_revision",
+              "checkpoint_kind",
+              "retry_count",
+              "next_attempt_present",
+              "last_success_present",
+              "observation_state",
+              "gap_open",
+              "lease_active",
+              "local_event_count",
+              "sharepoint_local_event_count",
+              "marker_local_event_count",
+              "queue_pending",
+              "queue_in_flight",
+              "queue_retryable_failure",
+              "queue_terminal_failure",
+              "queue_synchronized",
+              "marker_queue_pending",
+              "marker_queue_in_flight",
+              "marker_queue_retryable_failure",
+              "marker_queue_terminal_failure",
+              "marker_queue_synchronized",
+              "customer_identifiers_retained",
+              "reusable_credential_retained",
+              "public_evidence_safe",
+              "m365_source_to_proof_claimed",
+              "soak_clock_started",
+          }
+          if set(payload) != allowed:
+              raise SystemExit("bounded Gateway state probe returned an unexpected public shape")
+          if payload["checkpoint_kind"] not in {"none", "invalid", "missing_cursor", "delta", "page", "other"}:
+              raise SystemExit("bounded Gateway state probe checkpoint kind is invalid")
+          if payload["observation_state"] not in {
+              "healthy_observation",
+              "degraded_observation",
+              "collection_gap",
+              "unknown_observation",
+          }:
+              raise SystemExit("bounded Gateway state probe observation state is invalid")
+
+          integer_keys = [
+              "checkpoint_revision",
+              "retry_count",
+              "local_event_count",
+              "sharepoint_local_event_count",
+              "marker_local_event_count",
+              "queue_pending",
+              "queue_in_flight",
+              "queue_retryable_failure",
+              "queue_terminal_failure",
+              "queue_synchronized",
+              "marker_queue_pending",
+              "marker_queue_in_flight",
+              "marker_queue_retryable_failure",
+              "marker_queue_terminal_failure",
+              "marker_queue_synchronized",
+          ]
+          for key in integer_keys:
+              if not isinstance(payload[key], int) or payload[key] < 0:
+                  raise SystemExit("bounded Gateway state probe count was invalid")
+          for key in (
+              "checkpoint_present",
+              "next_attempt_present",
+              "last_success_present",
+              "gap_open",
+              "lease_active",
+          ):
+              if not isinstance(payload[key], bool):
+                  raise SystemExit("bounded Gateway state probe flag was invalid")
+          if payload["customer_identifiers_retained"] is not False:
+              raise SystemExit("bounded state probe unexpectedly retained customer identifiers")
+          if payload["reusable_credential_retained"] is not False:
+              raise SystemExit("bounded state probe unexpectedly retained reusable credentials")
+          if payload["public_evidence_safe"] is not True:
+              raise SystemExit("bounded state probe did not assert public-safe evidence")
+          if payload["m365_source_to_proof_claimed"] is not False:
+              raise SystemExit("bounded state probe made a source-to-proof claim")
+          if payload["soak_clock_started"] is not False:
+              raise SystemExit("bounded state probe started the soak clock")
+
+          out = Path("evidence/live-sharepoint-state-boundary/result.json")
+          out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+          keys = [
+              "checkpoint_present",
+              "checkpoint_revision",
+              "checkpoint_kind",
+              "retry_count",
+              "next_attempt_present",
+              "last_success_present",
+              "observation_state",
+              "gap_open",
+              "lease_active",
+              "local_event_count",
+              "sharepoint_local_event_count",
+              "marker_local_event_count",
+              "queue_pending",
+              "queue_in_flight",
+              "queue_retryable_failure",
+              "queue_terminal_failure",
+              "queue_synchronized",
+              "marker_queue_pending",
+              "marker_queue_in_flight",
+              "marker_queue_retryable_failure",
+              "marker_queue_terminal_failure",
+              "marker_queue_synchronized",
+          ]
+          for key in keys:
+              value = payload[key]
+              if isinstance(value, bool):
+                  value = str(value).lower()
+              print(key + "=" + str(value))
+          PY
+
+          test "$status" = "Succeeded"
+          rm -f "$raw"
+
+      - name: Upload bounded Gateway state evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-sharepoint-state-boundary-${{ github.run_id }}
+          path: evidence/live-sharepoint-state-boundary/*.json
+          if-no-files-found: warn
+          retention-days: 30
