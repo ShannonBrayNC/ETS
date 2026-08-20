@@ -1,0 +1,238 @@
+name: Continue Lantern Apex and WWW Qualification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: lantern-apex-www-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: Continue apex and www qualification safely
+    runs-on: ubuntu-latest
+    environment: ets-azure-q1
+    timeout-minutes: 35
+    env:
+      RESOURCE_GROUP: rg-ets-live-eastus
+      PROFILE_NAME: lantern-continuity-fd
+      ENDPOINT_NAME: lantern-azure-d1283bda7c363
+      ROUTE_NAME: lantern-site-route
+      AFD_HOST: lantern-azure-d1283bda7c363-hjb5gze4a4esbjb7.z03.azurefd.net
+      AZURE_DOMAIN_NAME: azure-lanternprotocol-net
+      APEX_DOMAIN_NAME: lanternprotocol-net
+      APEX_HOST: lanternprotocol.net
+      WWW_DOMAIN_NAME: www-lanternprotocol-net
+      WWW_HOST: www.lanternprotocol.net
+    steps:
+      - name: Azure login with ETS workload identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Azure Front Door CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name cdn --upgrade --yes --only-show-errors
+
+      - name: Confirm production DNS remains unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, urllib.parse, urllib.request
+          def resolve(name, typ):
+              url='https://dns.google/resolve?' + urllib.parse.urlencode({'name':name,'type':typ})
+              with urllib.request.urlopen(url,timeout=20) as r:
+                  payload=json.load(r)
+              return [a.get('data','').rstrip('.') for a in payload.get('Answer',[])]
+          apex_a=resolve('lanternprotocol.net','A')
+          www_cname=resolve('www.lanternprotocol.net','CNAME')
+          print('PUBLIC_APEX_A='+'|'.join(apex_a))
+          print('PUBLIC_WWW_CNAME='+'|'.join(www_cname))
+          if not apex_a:
+              raise SystemExit('No public apex A records found')
+          if www_cname != ['custom-domains.chatgpt.site']:
+              raise SystemExit(f'www production CNAME changed unexpectedly: {www_cname}')
+          if any('azurefd.net' in value.lower() for value in apex_a):
+              raise SystemExit('Apex traffic moved to Azure before cutover gate')
+          PY
+
+      - name: Require apex still Approved
+        shell: bash
+        run: |
+          set -euo pipefail
+          apex_state="$(az afd custom-domain show \
+            -g "$RESOURCE_GROUP" \
+            --profile-name "$PROFILE_NAME" \
+            --custom-domain-name "$APEX_DOMAIN_NAME" \
+            --query domainValidationState -o tsv)"
+          printf 'APEX_VALIDATION=%s\n' "$apex_state"
+          test "$apex_state" = Approved
+
+      - name: Decide whether www needs token regeneration
+        id: decision
+        shell: bash
+        run: |
+          set -euo pipefail
+          www_state="$(az afd custom-domain show \
+            -g "$RESOURCE_GROUP" \
+            --profile-name "$PROFILE_NAME" \
+            --custom-domain-name "$WWW_DOMAIN_NAME" \
+            --query domainValidationState -o tsv)"
+          token="$(az afd custom-domain show \
+            -g "$RESOURCE_GROUP" \
+            --profile-name "$PROFILE_NAME" \
+            --custom-domain-name "$WWW_DOMAIN_NAME" \
+            --query validationProperties.validationToken -o tsv 2>/dev/null || true)"
+          printf 'WWW_VALIDATION_BEFORE=%s\n' "$www_state"
+          printf 'WWW_TOKEN_PRESENT_BEFORE=%s\n' "$(test -n "$token" && echo true || echo false)"
+          echo "previous_token=$token" >> "$GITHUB_OUTPUT"
+          case "$www_state" in
+            Approved)
+              echo 'mode=qualify' >> "$GITHUB_OUTPUT"
+              ;;
+            Pending)
+              echo 'mode=regenerate' >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unexpected www validation state: $www_state" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Regenerate only pending www validation token
+        if: steps.decision.outputs.mode == 'regenerate'
+        shell: bash
+        run: |
+          set -euo pipefail
+          az afd custom-domain regenerate-validation-token \
+            -g "$RESOURCE_GROUP" \
+            --profile-name "$PROFILE_NAME" \
+            --custom-domain-name "$WWW_DOMAIN_NAME" \
+            --no-wait \
+            --output none
+
+      - name: Read replacement www TXT token
+        if: steps.decision.outputs.mode == 'regenerate'
+        shell: bash
+        env:
+          PREVIOUS_TOKEN: ${{ steps.decision.outputs.previous_token }}
+        run: |
+          set -euo pipefail
+          token=''; state=''; expires=''
+          for attempt in $(seq 1 60); do
+            token="$(az afd custom-domain show \
+              -g "$RESOURCE_GROUP" \
+              --profile-name "$PROFILE_NAME" \
+              --custom-domain-name "$WWW_DOMAIN_NAME" \
+              --query validationProperties.validationToken -o tsv 2>/dev/null || true)"
+            state="$(az afd custom-domain show \
+              -g "$RESOURCE_GROUP" \
+              --profile-name "$PROFILE_NAME" \
+              --custom-domain-name "$WWW_DOMAIN_NAME" \
+              --query domainValidationState -o tsv 2>/dev/null || true)"
+            expires="$(az afd custom-domain show \
+              -g "$RESOURCE_GROUP" \
+              --profile-name "$PROFILE_NAME" \
+              --custom-domain-name "$WWW_DOMAIN_NAME" \
+              --query validationProperties.expirationDate -o tsv 2>/dev/null || true)"
+            if [ -n "$token" ] && [ "$token" != "$PREVIOUS_TOKEN" ]; then break; fi
+            sleep 5
+          done
+          test -n "$token"
+          test "$token" != "$PREVIOUS_TOKEN"
+          printf 'WWW_TXT_HOST=_dnsauth.www\n'
+          printf 'WWW_TXT_VALUE=%s\n' "$token"
+          printf 'WWW_VALIDATION=%s\n' "$state"
+          printf 'WWW_TOKEN_EXPIRES=%s\n' "$expires"
+
+      - name: Associate apex and www with existing Lantern route
+        if: steps.decision.outputs.mode == 'qualify'
+        shell: bash
+        run: |
+          set -euo pipefail
+          azure_id="$(az afd custom-domain show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --custom-domain-name "$AZURE_DOMAIN_NAME" --query id -o tsv)"
+          apex_id="$(az afd custom-domain show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --custom-domain-name "$APEX_DOMAIN_NAME" --query id -o tsv)"
+          www_id="$(az afd custom-domain show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --custom-domain-name "$WWW_DOMAIN_NAME" --query id -o tsv)"
+          formatted="$(python - "$azure_id" "$apex_id" "$www_id" <<'PY'
+          import json,sys
+          print(json.dumps([{'id':value} for value in sys.argv[1:]]))
+          PY
+          )"
+          az afd route update \
+            -g "$RESOURCE_GROUP" \
+            --profile-name "$PROFILE_NAME" \
+            --endpoint-name "$ENDPOINT_NAME" \
+            --route-name "$ROUTE_NAME" \
+            --formatted-custom-domains "$formatted" \
+            --output none
+
+      - name: Require managed TLS for apex and www
+        if: steps.decision.outputs.mode == 'qualify'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for domain in "$APEX_DOMAIN_NAME" "$WWW_DOMAIN_NAME"; do
+            validation=''; deployment=''
+            for attempt in $(seq 1 80); do
+              validation="$(az afd custom-domain show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --custom-domain-name "$domain" --query domainValidationState -o tsv 2>/dev/null || true)"
+              deployment="$(az afd custom-domain show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --custom-domain-name "$domain" --query deploymentStatus -o tsv 2>/dev/null || true)"
+              if [ "$validation" = Approved ] && [ "$deployment" = Succeeded ]; then break; fi
+              sleep 15
+            done
+            printf '%s validation=%s deployment=%s\n' "$domain" "$validation" "$deployment"
+            test "$validation" = Approved
+            test "$deployment" = Succeeded
+          done
+
+      - name: Verify apex and www against Front Door before public cutover
+        if: steps.decision.outputs.mode == 'qualify'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for host in "$APEX_HOST" "$WWW_HOST"; do
+            verified=false
+            for attempt in $(seq 1 40); do
+              if body="$(curl --fail --silent --show-error --max-time 20 \
+                --connect-to "$host:443:$AFD_HOST:443" \
+                "https://$host/")"; then
+                printf '%s' "$body" | grep -Fq 'Evidence you can prove.'
+                printf '%s' "$body" | grep -Fq 'ETS TECHNICAL BRIEFING'
+                verified=true
+                break
+              fi
+              sleep 15
+            done
+            printf '%s FRONTDOOR_TLS_CONTENT_VERIFIED=%s\n' "$host" "$verified"
+            test "$verified" = true
+          done
+
+      - name: Reconfirm production DNS still unchanged
+        if: steps.decision.outputs.mode == 'qualify'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, urllib.parse, urllib.request
+          def resolve(name, typ):
+              url='https://dns.google/resolve?' + urllib.parse.urlencode({'name':name,'type':typ})
+              with urllib.request.urlopen(url,timeout=20) as r:
+                  payload=json.load(r)
+              return [a.get('data','').rstrip('.') for a in payload.get('Answer',[])]
+          apex_a=resolve('lanternprotocol.net','A')
+          www_cname=resolve('www.lanternprotocol.net','CNAME')
+          print('FINAL_PUBLIC_APEX_A='+'|'.join(apex_a))
+          print('FINAL_PUBLIC_WWW_CNAME='+'|'.join(www_cname))
+          if www_cname != ['custom-domains.chatgpt.site']:
+              raise SystemExit('www production CNAME changed during qualification')
+          if any('azurefd.net' in value.lower() for value in apex_a):
+              raise SystemExit('Apex moved to Azure during qualification')
+          PY
