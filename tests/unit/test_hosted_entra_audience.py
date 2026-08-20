@@ -13,6 +13,10 @@ def test_hosted_entra_resource_identifier_maps_to_access_token_audience() -> Non
     assert _entra_access_token_audience(f"api://{app_id}") == app_id
 
 
+def test_hosted_non_entra_audience_is_preserved_exactly() -> None:
+    assert _entra_access_token_audience("ets-api") == "ets-api"
+
+
 def test_hosted_core_composition_normalizes_audience_before_jwks_validation() -> None:
     source = inspect.getsource(create_app_from_env)
 
@@ -22,7 +26,6 @@ def test_hosted_core_composition_normalizes_audience_before_jwks_validation() ->
 @pytest.mark.parametrize(
     "value",
     (
-        "11111111-2222-3333-4444-555555555555",
         "api://",
         "api://11111111-2222-3333-4444-555555555555/extra",
     ),
