@@ -101,6 +101,12 @@ jobs:
             --resource-group "$RESOURCE_GROUP" \
             --query "properties.template.containers[0].env[?name=='ETS_GATEWAY_CORE_BASE_URL'].value | [0]" \
             -o tsv)"
+          gateway_fqdn="$(az containerapp show \
+            --name "$GATEWAY_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)"
+          gateway_base_url="https://${gateway_fqdn}"
 
           test -n "$gateway_identity_id"
           test -n "$gateway_client_id"
@@ -108,9 +114,14 @@ jobs:
           test -n "$pull_identity"
           test -n "$image"
           test -n "$core_base_url"
+          test -n "$gateway_fqdn"
           case "$core_base_url" in
             https://*) ;;
             *) echo "::error::deployed Gateway Core binding is not HTTPS"; exit 1 ;;
+          esac
+          case "$gateway_base_url" in
+            https://*) ;;
+            *) echo "::error::deployed Gateway ingress binding is not HTTPS"; exit 1 ;;
           esac
 
           az deployment group create \
@@ -126,6 +137,7 @@ jobs:
               registryServer="${ACR_NAME}.azurecr.io" \
               containerImage="$image" \
               coreBaseUrl="$core_base_url" \
+              gatewayBaseUrl="$gateway_base_url" \
               coreScope="$CORE_SCOPE" \
               sharePointDriveId="$SHAREPOINT_DRIVE_ID" \
               marker="$MARKER" \
@@ -182,6 +194,8 @@ jobs:
           payload = json.loads(base64.urlsafe_b64decode(match.group(1)).decode("utf-8"))
           allowed = {
               "schema_version",
+              "gateway_health_status",
+              "gateway_ready_status",
               "graph_item_status",
               "graph_root_scope_status",
               "core_events_status",
@@ -193,7 +207,13 @@ jobs:
           }
           if set(payload) != allowed:
               raise SystemExit("bounded SharePoint HTTP probe returned an unexpected public shape")
-          for key in ("graph_item_status", "graph_root_scope_status", "core_events_status"):
+          for key in (
+              "gateway_health_status",
+              "gateway_ready_status",
+              "graph_item_status",
+              "graph_root_scope_status",
+              "core_events_status",
+          ):
               if not isinstance(payload[key], int):
                   raise SystemExit("bounded SharePoint HTTP probe status was not numeric")
           if payload["customer_identifiers_retained"] is not False:
@@ -204,6 +224,8 @@ jobs:
               raise SystemExit("bounded probe did not assert public-safe evidence")
           out = Path("evidence/live-sharepoint-http-boundary/result.json")
           out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          print("gateway_health_status=" + str(payload["gateway_health_status"]))
+          print("gateway_ready_status=" + str(payload["gateway_ready_status"]))
           print("graph_item_status=" + str(payload["graph_item_status"]))
           print("graph_root_scope_status=" + str(payload["graph_root_scope_status"]))
           print("core_events_status=" + str(payload["core_events_status"]))
