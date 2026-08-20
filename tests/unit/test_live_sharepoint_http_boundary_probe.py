@@ -23,18 +23,23 @@ def test_probe_is_manual_protected_and_uses_live_gateway_identity() -> None:
     assert "ManagedIdentityCredential" in BICEP
 
 
-def test_probe_uses_deployed_gateway_core_binding_instead_of_guessed_app_name() -> None:
+def test_probe_uses_deployed_gateway_bindings_instead_of_guessed_app_names() -> None:
     assert "CORE_APP:" not in WORKFLOW
     assert "ets-o23bf2d6oq44s-core" not in WORKFLOW
     assert "ETS_GATEWAY_CORE_BASE_URL" in WORKFLOW
     assert 'coreBaseUrl="$core_base_url"' in WORKFLOW
+    assert 'gatewayBaseUrl="$gateway_base_url"' in WORKFLOW
+    assert "properties.configuration.ingress.fqdn" in WORKFLOW
     assert 'case "$core_base_url" in' in WORKFLOW
+    assert 'case "$gateway_base_url" in' in WORKFLOW
     assert "https://*" in WORKFLOW
 
 
 def test_probe_is_metadata_only_and_public_safe() -> None:
     assert '"/content"' not in BICEP
     assert "@microsoft.graph.downloadUrl" not in BICEP
+    assert '"gateway_health_status"' in BICEP
+    assert '"gateway_ready_status"' in BICEP
     assert '"graph_item_status"' in BICEP
     assert '"graph_root_scope_status"' in BICEP
     assert '"core_events_status"' in BICEP
@@ -47,6 +52,8 @@ def test_probe_is_metadata_only_and_public_safe() -> None:
 
 def test_workflow_publishes_only_bounded_status_shape() -> None:
     assert "ETS_SP_HTTP_PROBE_B64=" in BICEP
+    assert '"gateway_health_status",' in WORKFLOW
+    assert '"gateway_ready_status",' in WORKFLOW
     assert '"graph_item_status",' in WORKFLOW
     assert '"graph_root_scope_status",' in WORKFLOW
     assert '"core_events_status",' in WORKFLOW
