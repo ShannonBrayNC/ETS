@@ -23,7 +23,6 @@ jobs:
       LOCATION: eastus
       RESOURCE_GROUP: rg-ets-live-eastus
       GATEWAY_APP: ets-o23bf2d6oq44s-gw
-      CORE_APP: ets-o23bf2d6oq44s-core
       GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id
       ACR_NAME: etsq1a352eb89
     steps:
@@ -97,17 +96,22 @@ jobs:
             --name "$GATEWAY_APP" \
             --resource-group "$RESOURCE_GROUP" \
             --query 'properties.template.containers[0].image' -o tsv)"
-          core_fqdn="$(az containerapp show \
-            --name "$CORE_APP" \
+          core_base_url="$(az containerapp show \
+            --name "$GATEWAY_APP" \
             --resource-group "$RESOURCE_GROUP" \
-            --query properties.configuration.ingress.fqdn -o tsv)"
+            --query "properties.template.containers[0].env[?name=='ETS_GATEWAY_CORE_BASE_URL'].value | [0]" \
+            -o tsv)"
 
           test -n "$gateway_identity_id"
           test -n "$gateway_client_id"
           test -n "$environment_id"
           test -n "$pull_identity"
           test -n "$image"
-          test -n "$core_fqdn"
+          test -n "$core_base_url"
+          case "$core_base_url" in
+            https://*) ;;
+            *) echo "::error::deployed Gateway Core binding is not HTTPS"; exit 1 ;;
+          esac
 
           az deployment group create \
             --resource-group "$RESOURCE_GROUP" \
@@ -121,7 +125,7 @@ jobs:
               registryPullIdentityResourceId="$pull_identity" \
               registryServer="${ACR_NAME}.azurecr.io" \
               containerImage="$image" \
-              coreBaseUrl="https://${core_fqdn}" \
+              coreBaseUrl="$core_base_url" \
               coreScope="$CORE_SCOPE" \
               sharePointDriveId="$SHAREPOINT_DRIVE_ID" \
               marker="$MARKER" \
