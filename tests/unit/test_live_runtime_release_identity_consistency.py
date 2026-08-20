@@ -8,12 +8,12 @@ WORKFLOWS = (
     ROOT / ".github" / "workflows" / "live-gateway-authorization-qualification.yml",
     ROOT / ".github" / "workflows" / "live-sharepoint-source-to-proof.yml",
 )
-EXPECTED_SOURCE = "309418e364e5bb629d181332019ad92d0d210cd0"
+EXPECTED_SOURCE = "d6f2eb20c1b2b7ba3d3d1f31fbe1204f4d1d963b"
 EXPECTED_DIGEST = (
-    "sha256:1331cfa59fa78b3d63f8f6458ea3f2a130560b4ff9962eceb4666a79e30c4ce6"
+    "sha256:3925355f477a6f76bcb467ad4dbd9b302641bd4de322ce62d999ab7d28f6cfde"
 )
 SUPERSEDED_DIGEST = (
-    "sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c"
+    "sha256:1331cfa59fa78b3d63f8f6458ea3f2a130560b4ff9962eceb4666a79e30c4ce6"
 )
 
 

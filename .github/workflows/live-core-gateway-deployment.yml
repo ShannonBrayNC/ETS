@@ -29,9 +29,9 @@ jobs:
       GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id
       ACR_NAME: etsq1a352eb89
       ACR_RESOURCE_GROUP: rg-ets-q1-eastus
-      CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:1331cfa59fa78b3d63f8f6458ea3f2a130560b4ff9962eceb4666a79e30c4ce6
-      Q0_SOURCE_SHA: 309418e364e5bb629d181332019ad92d0d210cd0
-      Q0_IMAGE_DIGEST: sha256:1331cfa59fa78b3d63f8f6458ea3f2a130560b4ff9962eceb4666a79e30c4ce6
+      CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:3925355f477a6f76bcb467ad4dbd9b302641bd4de322ce62d999ab7d28f6cfde
+      Q0_SOURCE_SHA: d6f2eb20c1b2b7ba3d3d1f31fbe1204f4d1d963b
+      Q0_IMAGE_DIGEST: sha256:3925355f477a6f76bcb467ad4dbd9b302641bd4de322ce62d999ab7d28f6cfde
       HANDOFF_ISSUE: '389'
       CORE_SCOPE: ${{ secrets.ETS_LIVE_CORE_SCOPE }}
       AUTH_AUDIENCE: ${{ secrets.ETS_LIVE_AUTH_AUDIENCE }}
@@ -257,7 +257,6 @@ jobs:
             --query clientId -o tsv)"
           test -n "$qualified_client_id"
           echo "::add-mask::$qualified_client_id"
-
           core_base_url="https://${CORE_FQDN}"
           deployment="ets-live-gateway-${GITHUB_RUN_ID}"
           az deployment group create \
