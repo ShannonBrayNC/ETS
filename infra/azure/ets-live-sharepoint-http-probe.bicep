@@ -37,6 +37,11 @@ param containerImage string
 param coreBaseUrl string
 
 @secure()
+@description('Internal ETS Gateway HTTPS base URL.')
+@minLength(1)
+param gatewayBaseUrl string
+
+@secure()
 @description('Entra Core resource scope ending in /.default.')
 @minLength(1)
 param coreScope string
@@ -65,12 +70,11 @@ MARKER = "ETS_SP_HTTP_PROBE_B64="
 GRAPH_SCOPE = "https://graph.microsoft.com/.default"
 
 
-def status(url, token):
-    req = Request(
-        url,
-        headers={"Accept": "application/json", "Authorization": "Bearer " + token},
-        method="GET",
-    )
+def status(url, token=None):
+    headers = {"Accept": "application/json"}
+    if token is not None:
+        headers["Authorization"] = "Bearer " + token
+    req = Request(url, headers=headers, method="GET")
     try:
         with urlopen(req, timeout=20.0) as response:
             response.read()
@@ -85,6 +89,7 @@ def status(url, token):
 client_id = os.environ["ETS_SP_RUNTIME_CLIENT_ID"]
 drive_id = os.environ["ETS_SP_DRIVE_ID"]
 core_base = os.environ["ETS_SP_CORE_BASE_URL"].rstrip("/")
+gateway_base = os.environ["ETS_SP_GATEWAY_BASE_URL"].rstrip("/")
 core_scope = os.environ["ETS_SP_CORE_SCOPE"]
 marker = os.environ["ETS_SP_MARKER"]
 file_name = "ets-live-qualification-" + marker + ".txt"
@@ -105,7 +110,9 @@ item_url = (
 )
 
 result = {
-    "schema_version": "ets.live_sharepoint.http_probe.v1",
+    "schema_version": "ets.live_sharepoint.http_probe.v2",
+    "gateway_health_status": status(gateway_base + "/health"),
+    "gateway_ready_status": status(gateway_base + "/ready"),
     "graph_item_status": status(item_url, graph_token),
     "graph_root_scope_status": status(
         "https://graph.microsoft.com/v1.0/sites/root?$select=id", graph_token
@@ -182,6 +189,10 @@ resource probeJob 'Microsoft.App/jobs@2025-01-01' = {
             {
               name: 'ETS_SP_CORE_BASE_URL'
               value: coreBaseUrl
+            }
+            {
+              name: 'ETS_SP_GATEWAY_BASE_URL'
+              value: gatewayBaseUrl
             }
             {
               name: 'ETS_SP_CORE_SCOPE'
