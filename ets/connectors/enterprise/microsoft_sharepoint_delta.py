@@ -118,11 +118,24 @@ def validate_sharepoint_delta_url(
         raise MicrosoftSharePointDeltaError(
             "Microsoft Graph delta continuation contains unsupported URL components"
         )
-    if parsed.path != profile.resource_path:
+    if not _continuation_path_matches_resource(profile.resource_path, parsed.path):
         raise MicrosoftSharePointDeltaError(
             "Microsoft Graph delta continuation escaped the approved resource path"
         )
     return value
+
+
+def _continuation_path_matches_resource(resource_path: str, candidate_path: str) -> bool:
+    """Allow Graph's documented opaque token function on the approved delta resource only."""
+
+    if candidate_path == resource_path:
+        return True
+    suffix = (
+        candidate_path[len(resource_path) :]
+        if candidate_path.startswith(resource_path)
+        else ""
+    )
+    return bool(suffix.startswith("(") and suffix.endswith(")") and "/" not in suffix)
 
 
 def parse_sharepoint_delta_page(
