@@ -15,7 +15,7 @@ The reference `AIWitnessLedger` signs each observation with Ed25519 and maintain
 - Each record binds the previous record digest and is signed with Ed25519.
 - The base implementation makes no completeness, semantic-correctness, fairness, or regulatory-compliance claim.
 
-## Example
+## Software reference example
 
 ```python
 from datetime import UTC, datetime
@@ -47,4 +47,45 @@ record = ledger.record(event)
 assert ledger.verify_record(record, ledger.public_key_hex)
 ```
 
-See `docs/spec/ETS_AI_WITNESS_PROFILE.md`, `docs/architecture/ETS_AI_WITNESS_ARCHITECTURE.md`, `docs/security/ETS_AI_WITNESS_THREAT_MODEL.md`, and `docs/test/ETS_AI_WITNESS_TEST_PLAN.md`.
+## Physical appliance pilot API
+
+The physical pilot profile adds machine-assurance and durable-operation contracts without changing the base Witness event format.
+
+The public package now exposes:
+
+- `HardwareKeyEvidence` and `HardwareKeyPurpose` for purpose-separated TPM-backed signing and queue-sealing keys;
+- `TPMAttestationEvidence` and `PCRMeasurement` for nonce-bound quote/event-log appraisal inputs;
+- `BootEvidence` for Secure Boot and measured-boot state;
+- `ClockEvidence` for time source, protocol, offset, uncertainty, and synchronization state;
+- `RuntimeAdapterIdentity` for authenticated AI/runtime source identity and enrolled tenant/workspace scope;
+- `FleetEnrollment`, `FleetEnrollmentExpectation`, and `verify_fleet_enrollment` for signed Gateway/fleet bindings that must match verifier-owned tenant, workspace, fleet, Gateway, Witness, device-key, nonce, and signing-key expectations;
+- `UpdateManifest`, `UpdateTrustPolicy`, and `verify_update_manifest` for signed, expiring updates whose signer identity, release sequence, and metadata version are checked against verifier-owned state;
+- `verify_update_target` for downloaded target byte-size and SHA-256 verification before activation;
+- `EncryptedWitnessQueue` for AES-256-GCM encrypted, SQLite/WAL durable buffering;
+- `assess_pilot_readiness` for bounded policy evaluation of the supplied appliance evidence.
+
+### TPM/provider boundary
+
+The current `AIWitnessLedger` still accepts raw Ed25519 private key bytes because it is the software reference implementation. The **physical pilot MUST NOT supply a production TPM private key as hex**. The appliance runtime must use a signer-provider boundary that performs signing inside TPM-backed/non-exportable key custody while preserving the same signed-record payload and `signing_key_id` contract.
+
+Likewise, the software queue accepts 32-byte key material for deterministic CI testing. The physical pilot must derive/unseal that queue material from a purpose-separated TPM-sealed key and must not persist a plaintext queue key file.
+
+### Qualification state
+
+`assess_pilot_readiness` consumes evidence declarations; it is not itself a TPM quote verifier or RIM appraisal engine. A physical device becomes qualified only after the hardware test plan verifies the quote, nonce, PCR/event-log reconstruction, reference baseline, Secure Boot state, key attributes, power-loss behavior, update/recovery behavior, clock quality, enrollment, and soak results.
+
+## Documentation
+
+Software Witness v1:
+
+- `docs/spec/ETS_AI_WITNESS_PROFILE.md`
+- `docs/architecture/ETS_AI_WITNESS_ARCHITECTURE.md`
+- `docs/security/ETS_AI_WITNESS_THREAT_MODEL.md`
+- `docs/test/ETS_AI_WITNESS_TEST_PLAN.md`
+
+Physical appliance pilot:
+
+- `docs/spec/ETS_AI_WITNESS_APPLIANCE_PROFILE.md`
+- `docs/architecture/ETS_AI_WITNESS_APPLIANCE_ARCHITECTURE.md`
+- `docs/security/ETS_AI_WITNESS_APPLIANCE_THREAT_MODEL.md`
+- `docs/test/ETS_AI_WITNESS_APPLIANCE_TEST_PLAN.md`
