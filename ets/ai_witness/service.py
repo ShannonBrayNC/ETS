@@ -12,6 +12,8 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from ets.ai_witness.models import AIWitnessEvent, SignedWitnessRecord
 from ets.core.api import EvidenceEvent, canonical_sha256, canonicalize
 
+_MAX_EVENT_BYTES = 48 * 1024
+
 
 class WitnessValidationError(ValueError):
     """Raised when a witness record violates session or signature invariants."""
@@ -45,6 +47,8 @@ class AIWitnessLedger:
 
     def record(self, event: AIWitnessEvent) -> SignedWitnessRecord:
         event = AIWitnessEvent.model_validate(event.model_dump())
+        if len(canonicalize(event.model_dump(mode="json"))) > _MAX_EVENT_BYTES:
+            raise WitnessValidationError("AI Witness event exceeds 48 KiB canonical size")
         if event.witness_id != self.witness_id:
             raise WitnessValidationError("event witness_id does not match this witness")
         identity = (event.session_id, event.event_id)
