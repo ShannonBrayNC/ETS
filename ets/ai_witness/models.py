@@ -6,7 +6,13 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Literal
 
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+_P256_ORDER = int(
+    "FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551",
+    16,
+)
 
 
 class StrictModel(BaseModel):
@@ -43,6 +49,11 @@ class HumanDecisionValue(StrEnum):
     APPROVED = "approved"
     DENIED = "denied"
     MODIFIED = "modified"
+
+
+class SigningAlgorithm(StrEnum):
+    ED25519 = "ed25519"
+    ECDSA_P256_SHA256 = "ecdsa-p256-sha256"
 
 
 class DigestRef(StrictModel):
@@ -175,13 +186,16 @@ class AIWitnessEvent(StrictModel):
 
 
 class SignedWitnessRecord(StrictModel):
-    schema_version: Literal["ets.ai-witness.record.v1"] = "ets.ai-witness.record.v1"
+    schema_version: Literal[
+        "ets.ai-witness.record.v1",
+        "ets.ai-witness.record.v2",
+    ] = "ets.ai-witness.record.v1"
     event: AIWitnessEvent
     previous_record_digest: str | None = Field(default=None, min_length=64, max_length=64)
     record_digest: str = Field(min_length=64, max_length=64)
-    signing_algorithm: Literal["ed25519"] = "ed25519"
+    signing_algorithm: SigningAlgorithm = SigningAlgorithm.ED25519
     signing_key_id: str = Field(min_length=1, max_length=256)
-    signature_hex: str = Field(min_length=128, max_length=128)
+    signature_hex: str = Field(min_length=16, max_length=160)
 
     @field_validator("previous_record_digest", "record_digest")
     @classmethod
@@ -198,11 +212,34 @@ class SignedWitnessRecord(StrictModel):
 
     @field_validator("signature_hex")
     @classmethod
-    def validate_signature(cls, value: str) -> str:
+    def validate_signature_hex(cls, value: str) -> str:
         try:
-            raw = bytes.fromhex(value)
+            bytes.fromhex(value)
         except ValueError as exc:
             raise ValueError("signature must be hexadecimal") from exc
-        if len(raw) != 64:
-            raise ValueError("Ed25519 signature must be 64 bytes")
         return value.lower()
+
+    @model_validator(mode="after")
+    def validate_signature_contract(self) -> SignedWitnessRecord:
+        raw = bytes.fromhex(self.signature_hex)
+        if self.schema_version == "ets.ai-witness.record.v1":
+            if self.signing_algorithm is not SigningAlgorithm.ED25519:
+                raise ValueError("v1 Witness records require Ed25519")
+            if len(raw) != 64:
+                raise ValueError("Ed25519 signature must be 64 bytes")
+            return self
+
+        if self.signing_algorithm is SigningAlgorithm.ED25519:
+            if len(raw) != 64:
+                raise ValueError("Ed25519 signature must be 64 bytes")
+            return self
+
+        try:
+            r, s = decode_dss_signature(raw)
+        except ValueError as exc:
+            raise ValueError("ECDSA P-256 signature must use DER encoding") from exc
+        if not 1 <= r < _P256_ORDER or not 1 <= s < _P256_ORDER:
+            raise ValueError("ECDSA P-256 signature scalar is out of range")
+        if s > _P256_ORDER // 2:
+            raise ValueError("ECDSA P-256 signature must use canonical low-S form")
+        return self
