@@ -1,0 +1,176 @@
+name: Live M365 Soak Source to Proof Observation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: live-m365-soak-source-to-proof-observation
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: Re-prove frozen M365 source-to-proof boundary
+    runs-on: ubuntu-24.04
+    environment: ets-azure-q1
+    timeout-minutes: 30
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      LOCATION: eastus
+      RESOURCE_GROUP: rg-ets-live-eastus
+      GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id
+      ACR_NAME: etsq1a352eb89
+      CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63
+      Q0_SOURCE_SHA: 9a4c3a8aefc50a960bdd3ce34b28f86fd69f1535
+      Q0_IMAGE_DIGEST: sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63
+      HANDOFF_ISSUE: '479'
+      SOURCE_TO_PROOF_ISSUE: '479'
+      CORE_SCOPE: ${{ secrets.ETS_LIVE_CORE_SCOPE }}
+      SHAREPOINT_DRIVE_ID: ${{ secrets.ETS_LIVE_SHAREPOINT_DRIVE_ID }}
+      QUALIFICATION_MARKER: post458-release-sync-20260820
+      EXPECTED_OBSERVATIONS: '2'
+
+    steps:
+      - name: Check out exact observation source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Assert frozen soak boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test -f scripts/azure/run-live-sharepoint-source-to-proof.sh
+          test -f scripts/azure/run-live-sharepoint-source-to-proof-diagnostic.sh
+          test "$CONTAINER_IMAGE" = "${ACR_NAME}.azurecr.io/ets/hosted-q1@${Q0_IMAGE_DIGEST}"
+          test "$Q0_SOURCE_SHA" = "9a4c3a8aefc50a960bdd3ce34b28f86fd69f1535"
+          test "$Q0_IMAGE_DIGEST" = "sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63"
+          test "$QUALIFICATION_MARKER" = "post458-release-sync-20260820"
+          test "$EXPECTED_OBSERVATIONS" = "2"
+          test -n "$CORE_SCOPE"
+          test -n "$SHAREPOINT_DRIVE_ID"
+          echo "::add-mask::$CORE_SCOPE"
+          echo "::add-mask::$SHAREPOINT_DRIVE_ID"
+
+      - name: Azure login with workload identity
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Run silent source-to-proof observation
+        shell: bash
+        run: |
+          set -euo pipefail
+          real_gh="$(command -v gh)"
+          test -n "$real_gh"
+          shim_dir="$RUNNER_TEMP/m365-soak-gh-shim"
+          mkdir -p "$shim_dir"
+          cat > "$shim_dir/gh" <<'SHIM'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [ "${1:-}" = "issue" ] && [ "${2:-}" = "comment" ]; then
+            exit 0
+          fi
+          exec "${ETS_REAL_GH:?}" "$@"
+          SHIM
+          chmod 700 "$shim_dir/gh"
+          export ETS_REAL_GH="$real_gh"
+          export PATH="$shim_dir:$PATH"
+
+          bash scripts/azure/run-live-sharepoint-source-to-proof-diagnostic.sh
+          test -f evidence/live-sharepoint-source-to-proof/handoff.json
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          handoff_path = Path("evidence/live-sharepoint-source-to-proof/handoff.json")
+          handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+          expected_source = "9a4c3a8aefc50a960bdd3ce34b28f86fd69f1535"
+          expected_digest = "sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63"
+          if handoff.get("release_source_sha") != expected_source:
+              raise SystemExit("soak observation release source drifted")
+          if handoff.get("release_image_digest") != expected_digest:
+              raise SystemExit("soak observation release image drifted")
+          if handoff.get("marker") != "post458-release-sync-20260820":
+              raise SystemExit("soak observation marker drifted")
+          if handoff.get("expected_observations") != 2:
+              raise SystemExit("soak observation revision expectation drifted")
+          if not isinstance(handoff.get("core_observation_count"), int) or handoff["core_observation_count"] < 2:
+              raise SystemExit("soak observation lost revision history")
+          for key in (
+              "gateway_health_verified",
+              "gateway_readiness_verified",
+              "graph_item_metadata_verified",
+              "graph_scope_denial_403_verified",
+              "delta_recovery_without_notification_verified",
+              "exact_version_event_verified",
+              "inclusion_proof_verified",
+              "duplicate_suppression_verified",
+              "durable_retention_verified",
+              "revision_evidence_verified",
+              "public_evidence_safe",
+              "m365_source_to_proof_claimed",
+          ):
+              if handoff.get(key) is not True:
+                  raise SystemExit(f"soak observation predicate failed: {key}")
+          for key in (
+              "raw_document_content_retrieved",
+              "raw_source_payload_retained",
+              "customer_identifiers_retained",
+              "reusable_credential_retained",
+              "soak_clock_started",
+          ):
+              if handoff.get(key) is not False:
+                  raise SystemExit(f"soak observation fail-closed boundary failed: {key}")
+
+          observation = {
+              "schema_version": "ets.live_m365_soak.source_to_proof_observation.v1",
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "release_source_sha": expected_source,
+              "release_image_digest": expected_digest,
+              "marker": "post458-release-sync-20260820",
+              "expected_observations": 2,
+              "core_observation_count": handoff["core_observation_count"],
+              "source_to_proof_verified": True,
+              "revision_evidence_verified": True,
+              "inclusion_proof_verified": True,
+              "duplicate_suppression_verified": True,
+              "delta_recovery_without_notification_verified": True,
+              "graph_scope_denial_403_verified": True,
+              "durable_retention_verified": True,
+              "customer_identifiers_retained": False,
+              "reusable_credential_retained": False,
+              "public_evidence_safe": True,
+              "soak_clock_started": False,
+          }
+          out = Path("evidence/live-m365-soak-source-to-proof")
+          out.mkdir(parents=True, exist_ok=True)
+          (out / "observation.json").write_text(
+              json.dumps(observation, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload sanitized soak observation
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-m365-soak-source-to-proof-${{ github.run_id }}
+          path: evidence/live-m365-soak-source-to-proof/*.json
+          if-no-files-found: warn
+          retention-days: 90
