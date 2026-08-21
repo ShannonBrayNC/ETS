@@ -44,6 +44,7 @@ class AIWitnessLedger:
         return hashlib.sha256(bytes.fromhex(self.public_key_hex)).hexdigest()
 
     def record(self, event: AIWitnessEvent) -> SignedWitnessRecord:
+        event = AIWitnessEvent.model_validate(event.model_dump())
         if event.witness_id != self.witness_id:
             raise WitnessValidationError("event witness_id does not match this witness")
         identity = (event.session_id, event.event_id)
@@ -60,7 +61,7 @@ class AIWitnessLedger:
             )
             raise WitnessValidationError(message)
 
-        payload = self._record_payload(event, previous_digest)
+        payload = self._record_payload(event, previous_digest, self.signing_key_id)
         record_digest = canonical_sha256(payload)
         signature = self._private_key.sign(canonicalize(payload)).hex()
         record = SignedWitnessRecord(
@@ -81,7 +82,11 @@ class AIWitnessLedger:
             public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
         except ValueError:
             return False
-        payload = AIWitnessLedger._record_payload(record.event, record.previous_record_digest)
+        payload = AIWitnessLedger._record_payload(
+            record.event,
+            record.previous_record_digest,
+            record.signing_key_id,
+        )
         if canonical_sha256(payload) != record.record_digest:
             return False
         try:
@@ -136,10 +141,7 @@ class AIWitnessLedger:
                 "previous_record_digest": record.previous_record_digest,
                 "signing_key_id": record.signing_key_id,
                 "signature_hex": record.signature_hex,
-                "model": None if event.model is None else event.model.model_dump(mode="json"),
-                "policy_refs": list(event.policy_refs),
-                "trace_id": event.trace_id,
-                "span_id": event.span_id,
+                "event": event.model_dump(mode="json"),
             }
         }
         return EvidenceEvent(
@@ -161,9 +163,14 @@ class AIWitnessLedger:
         )
 
     @staticmethod
-    def _record_payload(event: AIWitnessEvent, previous_digest: str | None) -> dict[str, object]:
+    def _record_payload(
+        event: AIWitnessEvent,
+        previous_digest: str | None,
+        signing_key_id: str,
+    ) -> dict[str, object]:
         return {
             "schema_version": "ets.ai-witness.record-payload.v1",
             "event": event.model_dump(mode="json"),
             "previous_record_digest": previous_digest,
+            "signing_key_id": signing_key_id,
         }
