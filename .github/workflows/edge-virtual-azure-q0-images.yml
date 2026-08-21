@@ -1,0 +1,489 @@
+name: Edge Virtual Azure Q0 Immutable Image Set
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: edge-virtual-azure-q0-images
+  cancel-in-progress: false
+
+env:
+  ACR_NAME: ${{ vars.ETS_EDGE_DEMO_ACR_NAME }}
+  ACR_RESOURCE_GROUP: ${{ vars.ETS_EDGE_DEMO_ACR_RESOURCE_GROUP }}
+  API_REPOSITORY: ets/edge-demo/api
+  BFF_REPOSITORY: ets/edge-demo/bff
+  UPSTREAM_REPOSITORY: ets/edge-demo/upstream
+  UI_REPOSITORY: ets/edge-demo/ui
+
+jobs:
+  publish:
+    name: Build, scan, attest, and publish Edge Virtual Azure image set
+    runs-on: ubuntu-24.04
+    environment: edge-demo-azure
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out exact merged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Require main source and complete hosted Edge Dockerfile set
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "main"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test -n "${ACR_NAME}"
+          test -n "${ACR_RESOURCE_GROUP}"
+          for file in \
+            edge-demo/Dockerfile.api \
+            edge-demo/Dockerfile.webhook \
+            edge-demo/Dockerfile.upstream \
+            edge-demo/Dockerfile.ui.azure; do
+            test -f "${file}"
+          done
+          test -f scripts/acr_oauth_docker_login.py
+          mkdir -p evidence/edge-virtual-azure-q0
+          printf 'schema_version=ets.edge_virtual_azure.image_set.v1\nsource_sha=%s\nworkflow_run_id=%s\n' \
+            "${GITHUB_SHA}" "${GITHUB_RUN_ID}" \
+            > evidence/edge-virtual-azure-q0/source.txt
+
+      - name: Azure login with GitHub OIDC
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate governed private ACR posture
+        id: registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          active_subscription="$(az account show --query id -o tsv)"
+          registry_json="$(az acr show \
+            --name "${ACR_NAME}" \
+            --resource-group "${ACR_RESOURCE_GROUP}" \
+            --query '{id:id,loginServer:loginServer,adminUserEnabled:adminUserEnabled}' \
+            -o json)"
+          printf '%s\n' "${registry_json}" > "${RUNNER_TEMP}/registry.json"
+
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          payload = json.loads(Path(os.environ['RUNNER_TEMP'], 'registry.json').read_text())
+          assert payload['adminUserEnabled'] is False
+          registry_subscription = payload['id'].split('/')[2]
+          assert registry_subscription.lower() == os.environ['ACTIVE_SUBSCRIPTION'].lower()
+          PY
+
+          arm_status="$(az acr config authentication-as-arm show \
+            --registry "${ACR_NAME}" \
+            --resource-group "${ACR_RESOURCE_GROUP}" \
+            --query status -o tsv | tr '[:upper:]' '[:lower:]')"
+          test "${arm_status}" = "enabled"
+
+          registry_server="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          print(json.loads(Path(os.environ['RUNNER_TEMP'], 'registry.json').read_text())['loginServer'])
+          PY
+          )"
+          tag="edge-demo-${GITHUB_SHA:0:12}-${GITHUB_RUN_ID}"
+
+          for key in api bff upstream ui; do
+            case "${key}" in
+              api) repo="${API_REPOSITORY}" ;;
+              bff) repo="${BFF_REPOSITORY}" ;;
+              upstream) repo="${UPSTREAM_REPOSITORY}" ;;
+              ui) repo="${UI_REPOSITORY}" ;;
+            esac
+            subject="${registry_server}/${repo}"
+            printf '%s_subject=%s\n' "${key}" "${subject}" >> "${GITHUB_OUTPUT}"
+            printf '%s_tag=%s:%s\n' "${key}" "${subject}" "${tag}" >> "${GITHUB_OUTPUT}"
+          done
+          printf 'registry_server=%s\n' "${registry_server}" >> "${GITHUB_OUTPUT}"
+
+          cat > evidence/edge-virtual-azure-q0/registry.txt <<EOF
+          registry_name=${ACR_NAME}
+          registry_resource_group=${ACR_RESOURCE_GROUP}
+          registry_server=${registry_server}
+          acr_admin_user_enabled=false
+          arm_audience_authentication=true
+          registry_credentials_retained=false
+          docker_authentication=direct_acr_oauth_exchange
+          repositories_fixed=true
+          EOF
+        env:
+          ACTIVE_SUBSCRIPTION: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Authenticate Docker through ACR OAuth exchange
+        shell: bash
+        env:
+          REGISTRY_SERVER: ${{ steps.registry.outputs.registry_server }}
+        run: |
+          set -euo pipefail
+          export ACR_TENANT_ID="$(az account show --query tenantId -o tsv)"
+          export ACR_AAD_ACCESS_TOKEN="$(az account get-access-token \
+            --scope https://containerregistry.azure.net/.default \
+            --query accessToken -o tsv)"
+          python scripts/acr_oauth_docker_login.py
+          unset ACR_AAD_ACCESS_TOKEN ACR_TENANT_ID
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.2.0
+
+      - name: Build and push Edge API
+        id: build_api
+        uses: docker/build-push-action@v7.2.0
+        with:
+          context: .
+          file: ./edge-demo/Dockerfile.api
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.registry.outputs.api_tag }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=ETS Edge Virtual Azure API
+          provenance: mode=max
+          sbom: true
+
+      - name: Build and push Edge BFF
+        id: build_bff
+        uses: docker/build-push-action@v7.2.0
+        with:
+          context: .
+          file: ./edge-demo/Dockerfile.webhook
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.registry.outputs.bff_tag }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=ETS Edge Virtual Azure BFF
+          provenance: mode=max
+          sbom: true
+
+      - name: Build and push Edge synthetic upstream
+        id: build_upstream
+        uses: docker/build-push-action@v7.2.0
+        with:
+          context: .
+          file: ./edge-demo/Dockerfile.upstream
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.registry.outputs.upstream_tag }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=ETS Edge Virtual Azure Synthetic Upstream
+          provenance: mode=max
+          sbom: true
+
+      - name: Build and push unprivileged Dark Pro UI
+        id: build_ui
+        uses: docker/build-push-action@v7.2.0
+        with:
+          context: .
+          file: ./edge-demo/Dockerfile.ui.azure
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.registry.outputs.ui_tag }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=ETS Edge Virtual Azure Dark Pro UI
+          provenance: mode=max
+          sbom: true
+
+      - name: Require canonical immutable image set
+        id: images
+        shell: bash
+        env:
+          API_SUBJECT: ${{ steps.registry.outputs.api_subject }}
+          BFF_SUBJECT: ${{ steps.registry.outputs.bff_subject }}
+          UPSTREAM_SUBJECT: ${{ steps.registry.outputs.upstream_subject }}
+          UI_SUBJECT: ${{ steps.registry.outputs.ui_subject }}
+          API_DIGEST: ${{ steps.build_api.outputs.digest }}
+          BFF_DIGEST: ${{ steps.build_bff.outputs.digest }}
+          UPSTREAM_DIGEST: ${{ steps.build_upstream.outputs.digest }}
+          UI_DIGEST: ${{ steps.build_ui.outputs.digest }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, re
+          for name in ('API_DIGEST', 'BFF_DIGEST', 'UPSTREAM_DIGEST', 'UI_DIGEST'):
+              value = os.environ[name]
+              if re.fullmatch(r'sha256:[0-9a-f]{64}', value) is None:
+                  raise SystemExit(f'{name} is not a canonical sha256 digest')
+          PY
+
+          for key in api bff upstream ui; do
+            upper="${key^^}"
+            subject_var="${upper}_SUBJECT"
+            digest_var="${upper}_DIGEST"
+            subject="${!subject_var}"
+            digest="${!digest_var}"
+            immutable_ref="${subject}@${digest}"
+            docker buildx imagetools inspect "${immutable_ref}" >/dev/null
+            printf '%s_ref=%s\n' "${key}" "${immutable_ref}" >> "${GITHUB_OUTPUT}"
+            printf '%s_digest=%s\n' "${key}" "${digest}" >> "${GITHUB_OUTPUT}"
+            printf '%s\n' "${immutable_ref}" > "evidence/edge-virtual-azure-q0/${key}-immutable-image.txt"
+          done
+
+      - name: Generate API SPDX SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: ${{ steps.images.outputs.api_ref }}
+          format: spdx-json
+          output-file: evidence/edge-virtual-azure-q0/api-sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Generate BFF SPDX SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: ${{ steps.images.outputs.bff_ref }}
+          format: spdx-json
+          output-file: evidence/edge-virtual-azure-q0/bff-sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Generate upstream SPDX SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: ${{ steps.images.outputs.upstream_ref }}
+          format: spdx-json
+          output-file: evidence/edge-virtual-azure-q0/upstream-sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Generate UI SPDX SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: ${{ steps.images.outputs.ui_ref }}
+          format: spdx-json
+          output-file: evidence/edge-virtual-azure-q0/ui-sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Scan API HIGH/CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.images.outputs.api_ref }}
+          scan-type: image
+          format: json
+          output: evidence/edge-virtual-azure-q0/api-trivy-high-critical.json
+          exit-code: '0'
+          ignore-unfixed: false
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          scanners: vuln
+
+      - name: Scan BFF HIGH/CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.images.outputs.bff_ref }}
+          scan-type: image
+          format: json
+          output: evidence/edge-virtual-azure-q0/bff-trivy-high-critical.json
+          exit-code: '0'
+          ignore-unfixed: false
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          scanners: vuln
+
+      - name: Scan upstream HIGH/CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.images.outputs.upstream_ref }}
+          scan-type: image
+          format: json
+          output: evidence/edge-virtual-azure-q0/upstream-trivy-high-critical.json
+          exit-code: '0'
+          ignore-unfixed: false
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          scanners: vuln
+
+      - name: Scan UI HIGH/CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.images.outputs.ui_ref }}
+          scan-type: image
+          format: json
+          output: evidence/edge-virtual-azure-q0/ui-trivy-high-critical.json
+          exit-code: '0'
+          ignore-unfixed: false
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          scanners: vuln
+
+      - name: Enforce aggregate vulnerability policy and write image-set manifest
+        id: gate
+        shell: bash
+        env:
+          API_REF: ${{ steps.images.outputs.api_ref }}
+          BFF_REF: ${{ steps.images.outputs.bff_ref }}
+          UPSTREAM_REF: ${{ steps.images.outputs.upstream_ref }}
+          UI_REF: ${{ steps.images.outputs.ui_ref }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          root = Path('evidence/edge-virtual-azure-q0')
+          components = ('api', 'bff', 'upstream', 'ui')
+          totals = {'fixable_high': 0, 'fixable_critical': 0, 'unfixed_high': 0, 'unfixed_critical': 0}
+          per_image = {}
+
+          for component in components:
+              report = json.loads((root / f'{component}-trivy-high-critical.json').read_text(encoding='utf-8'))
+              counts = {'fixable_high': 0, 'fixable_critical': 0, 'unfixed_high': 0, 'unfixed_critical': 0}
+              for result in report.get('Results') or []:
+                  for finding in result.get('Vulnerabilities') or []:
+                      severity = str(finding.get('Severity') or '').upper()
+                      if severity not in {'HIGH', 'CRITICAL'}:
+                          continue
+                      fixed = bool(str(finding.get('FixedVersion') or '').strip())
+                      key = ('fixable_' if fixed else 'unfixed_') + severity.lower()
+                      counts[key] += 1
+                      totals[key] += 1
+              per_image[component] = counts
+
+          gate = 'PASS' if totals['fixable_high'] == 0 and totals['fixable_critical'] == 0 else 'FAIL'
+          manifest = {
+              'schema_version': 'ets.edge_virtual_azure.image_set.v1',
+              'source_sha': os.environ['GITHUB_SHA'],
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'platform': 'linux/amd64',
+              'images': {
+                  'edge_api': os.environ['API_REF'],
+                  'edge_bff': os.environ['BFF_REF'],
+                  'edge_upstream': os.environ['UPSTREAM_REF'],
+                  'edge_ui': os.environ['UI_REF'],
+              },
+              'vulnerability_gate': gate,
+              'vulnerability_gate_policy': 'fail_on_fixable_high_critical_v1',
+              'vulnerability_counts': per_image,
+              'aggregate_vulnerability_counts': totals,
+              'registry_credentials_retained': False,
+              'customer_identifiers_retained': False,
+          }
+          (root / 'image-set-manifest.json').write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          print(json.dumps({'gate': gate, 'aggregate_vulnerability_counts': totals}, indent=2))
+          if gate != 'PASS':
+              raise SystemExit('fixable HIGH/CRITICAL vulnerability gate failed')
+          PY
+
+      - name: Qualify published hosted UI runtime boundary
+        shell: bash
+        env:
+          UI_REF: ${{ steps.images.outputs.ui_ref }}
+        run: |
+          set -euo pipefail
+          docker pull "${UI_REF}" >/dev/null
+          test "$(docker image inspect "${UI_REF}" --format '{{.Config.User}}')" = "nginx"
+          test "$(docker image inspect "${UI_REF}" --format '{{json .Config.ExposedPorts}}')" = '{"8080/tcp":{}}'
+
+          container_id="$(docker run -d -p 127.0.0.1:18401:8080 "${UI_REF}")"
+          cleanup() {
+            docker logs "${container_id}" || true
+            docker rm -f "${container_id}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          for _ in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:18401/afd-healthz >/tmp/edge-ui-health; then
+              break
+            fi
+            sleep 1
+          done
+          test "$(cat /tmp/edge-ui-health)" = "ok"
+          for path in /api /docs /openapi.json /edge/v1/device/identity /internal /ready /version; do
+            code="$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:18401${path}")"
+            test "${code}" = "404"
+          done
+          docker exec "${container_id}" sh -eu -c '
+            ! grep -R -F "Local API key" /usr/share/nginx/html &&
+            ! grep -R -F "Bearer token" /usr/share/nginx/html &&
+            ! grep -R -F "X-ETS-API-Key" /usr/share/nginx/html
+          '
+
+      - name: Attest API build provenance
+        uses: actions/attest@v4.2.1
+        with:
+          subject-name: ${{ steps.registry.outputs.api_subject }}
+          subject-digest: ${{ steps.images.outputs.api_digest }}
+          push-to-registry: true
+
+      - name: Attest API SBOM
+        uses: actions/attest@v4.2.1
+        with:
+          subject-name: ${{ steps.registry.outputs.api_subject }}
+          subject-digest: ${{ steps.images.outputs.api_digest }}
+          sbom-path: evidence/edge-virtual-azure-q0/api-sbom.spdx.json
+          push-to-registry: true
+
+      - name: Attest BFF build provenance
+        uses: actions/attest@v4.2.1
+        with:
+          subject-name: ${{ steps.registry.outputs.bff_subject }}
+          subject-digest: ${{ steps.images.outputs.bff_digest }}
+          push-to-registry: true
+
+      - name: Attest BFF SBOM
+        uses: actions/attest@v4.2.1
+        with:
+          subject-name: ${{ steps.registry.outputs.bff_subject }}
+          subject-digest: ${{ steps.images.outputs.bff_digest }}
+          sbom-path: evidence/edge-virtual-azure-q0/bff-sbom.spdx.json
+          push-to-registry: true
+
+      - name: Attest upstream build provenance
+        uses: actions/attest@v4.2.1
+        with:
+          subject-name: ${{ steps.registry.outputs.upstream_subject }}
+          subject-digest: ${{ steps.images.outputs.upstream_digest }}
+          push-to-registry: true
+
+      - name: Attest upstream SBOM
+        uses: actions/attest@v4.2.1
+        with:
+          subject-name: ${{ steps.registry.outputs.upstream_subject }}
+          subject-digest: ${{ steps.images.outputs.upstream_digest }}
+          sbom-path: evidence/edge-virtual-azure-q0/upstream-sbom.spdx.json
+          push-to-registry: true
+
+      - name: Attest UI build provenance
+        uses: actions/attest@v4.2.1
+        with:
+          subject-name: ${{ steps.registry.outputs.ui_subject }}
+          subject-digest: ${{ steps.images.outputs.ui_digest }}
+          push-to-registry: true
+
+      - name: Attest UI SBOM
+        uses: actions/attest@v4.2.1
+        with:
+          subject-name: ${{ steps.registry.outputs.ui_subject }}
+          subject-digest: ${{ steps.images.outputs.ui_digest }}
+          sbom-path: evidence/edge-virtual-azure-q0/ui-sbom.spdx.json
+          push-to-registry: true
+
+      - name: Upload public-safe image-set evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: edge-virtual-azure-q0-${{ github.run_id }}
+          path: evidence/edge-virtual-azure-q0/
+          if-no-files-found: error
