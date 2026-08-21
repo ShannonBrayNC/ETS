@@ -118,3 +118,25 @@ def test_wrong_key_does_not_verify() -> None:
         private_key_hex=key_hex(),
     )
     assert not ledger.verify_record(record, other.public_key_hex)
+
+
+def test_signing_key_id_is_cryptographically_bound() -> None:
+    ledger = AIWitnessLedger(
+        witness_id="ets-aiw:test",
+        signing_key_id="k1",
+        private_key_hex=key_hex(),
+    )
+    record = ledger.record(request())
+    tampered = record.model_copy(update={"signing_key_id": "attacker-key"})
+    assert not ledger.verify_record(tampered, ledger.public_key_hex)
+
+
+def test_ledger_revalidates_copied_models() -> None:
+    ledger = AIWitnessLedger(
+        witness_id="ets-aiw:test",
+        signing_key_id="k1",
+        private_key_hex=key_hex(),
+    )
+    invalid = request().model_copy(update={"input_digests": ()})
+    with pytest.raises(ValidationError):
+        ledger.record(invalid)
