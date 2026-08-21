@@ -7,14 +7,10 @@ RUN npm ci
 
 COPY ets/explorer-ui/ ./
 
-# Keep Edge Virtual additive: tailor only the built demo image while leaving the
-# shared Explorer source unchanged.
-RUN sed -i "s/ready?.ready/ready?.status === 'ready'/g" src/App.jsx \
-    && sed -i "s/ETS Explorer RC Demo/ETS Edge Virtual Demo/g" src/App.jsx \
-    && sed -i "/<ElectionRcDemo showTamperDemo={showTamperDemo} setShowTamperDemo={setShowTamperDemo} \/>/d" src/App.jsx
-
 ARG VITE_ETS_API_BASE_URL=
-ENV VITE_ETS_API_BASE_URL=${VITE_ETS_API_BASE_URL}
+ARG VITE_ETS_SURFACE_PROFILE=edge
+ENV VITE_ETS_API_BASE_URL=${VITE_ETS_API_BASE_URL} \
+    VITE_ETS_SURFACE_PROFILE=${VITE_ETS_SURFACE_PROFILE}
 RUN npm run build
 
 FROM nginx:1.27-alpine
