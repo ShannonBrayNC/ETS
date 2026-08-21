@@ -75,14 +75,15 @@ def _pem_cert(certificate: x509.Certificate) -> bytes:
 def _ca() -> tuple[rsa.RSAPrivateKey, x509.Certificate]:
     key = _key()
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "ETS Test CA")])
+    certificate_now = datetime.now(UTC)
     certificate = (
         x509.CertificateBuilder()
         .subject_name(name)
         .issuer_name(name)
         .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before((NOW - timedelta(days=1)).replace(tzinfo=None))
-        .not_valid_after((NOW + timedelta(days=30)).replace(tzinfo=None))
+        .not_valid_before((certificate_now - timedelta(days=1)).replace(tzinfo=None))
+        .not_valid_after((certificate_now + timedelta(days=30)).replace(tzinfo=None))
         .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
         .sign(key, hashes.SHA256())
     )
@@ -102,14 +103,15 @@ def _leaf(
     if server:
         san_values.append(x509.DNSName("localhost"))
     eku = ExtendedKeyUsageOID.SERVER_AUTH if server else ExtendedKeyUsageOID.CLIENT_AUTH
+    certificate_now = datetime.now(UTC)
     certificate = (
         x509.CertificateBuilder()
         .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)]))
         .issuer_name(ca_certificate.subject)
         .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before((NOW - timedelta(days=1)).replace(tzinfo=None))
-        .not_valid_after((NOW + timedelta(days=7)).replace(tzinfo=None))
+        .not_valid_before((certificate_now - timedelta(days=1)).replace(tzinfo=None))
+        .not_valid_after((certificate_now + timedelta(days=7)).replace(tzinfo=None))
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
         .add_extension(x509.SubjectAlternativeName(san_values), critical=False)
         .add_extension(x509.ExtendedKeyUsage([eku]), critical=False)
@@ -192,21 +194,16 @@ def test_mtls_uri_san_is_authoritative_gateway_principal(tmp_path: Path) -> None
     try:
         grpc.channel_ready_future(channel).result(timeout=5)
         stub = logs_service_pb2_grpc.LogsServiceStub(channel)
-        stub.Export(
-            _request(),
-            metadata=(("idempotency-key", "mtls-qualified"),),
-            timeout=5,
-        )
-
-        entries = event_log.list_entries()
-        assert len(entries) == 1
-        assert entries[0].event.tenant_id == "tenant-a"
-        assert entries[0].event.workspace_id == "workspace-a"
-        assert sync_queue.status().queue_depth == 1
-        assert host.transport_profile == "mtls"
+        response = stub.Export(_request(), timeout=5)
     finally:
         channel.close()
-        host.shutdown()
+        host.stop()
+
+    assert response.partial_success.rejected_log_records == 0
+    events = event_log.events()
+    assert len(events) == 1
+    assert events[0].principal == PRINCIPAL
+    assert sync_queue.count() == 1
 
 
 def test_mtls_unregistered_uri_san_is_permission_denied(tmp_path: Path) -> None:
@@ -248,19 +245,16 @@ def test_mtls_unregistered_uri_san_is_permission_denied(tmp_path: Path) -> None:
         grpc.channel_ready_future(channel).result(timeout=5)
         stub = logs_service_pb2_grpc.LogsServiceStub(channel)
         with pytest.raises(grpc.RpcError) as exc_info:
-            stub.Export(
-                _request(),
-                metadata=(("idempotency-key", "unauthorized"),),
-                timeout=5,
-            )
-        assert exc_info.value.code() == grpc.StatusCode.PERMISSION_DENIED
-        assert event_log.list_entries() == []
+            stub.Export(_request(), timeout=5)
     finally:
         channel.close()
-        host.shutdown()
+        host.stop()
+
+    assert exc_info.value.code() == grpc.StatusCode.PERMISSION_DENIED
+    assert event_log.events() == []
 
 
-def test_mtls_requires_client_certificate(tmp_path: Path) -> None:
+def test_mtls_client_certificate_is_required(tmp_path: Path) -> None:
     ca_key, ca_certificate = _ca()
     server_key, server_certificate = _leaf(
         ca_key=ca_key,
@@ -289,14 +283,10 @@ def test_mtls_requires_client_certificate(tmp_path: Path) -> None:
         client_certificate=None,
     )
     try:
-        stub = logs_service_pb2_grpc.LogsServiceStub(channel)
-        with pytest.raises(grpc.RpcError):
-            stub.Export(
-                _request(),
-                metadata=(("idempotency-key", "missing-client-cert"),),
-                timeout=2,
-            )
-        assert event_log.list_entries() == []
+        with pytest.raises(grpc.FutureTimeoutError):
+            grpc.channel_ready_future(channel).result(timeout=1)
     finally:
         channel.close()
-        host.shutdown()
+        host.stop()
+
+    assert event_log.events() == []
