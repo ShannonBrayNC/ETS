@@ -507,7 +507,9 @@ def verify_online_event(
         elif not contract_matches:
             continuity_reason = "consistency proof does not bind the requested checkpoints"
         else:
-            continuity_reason = "append-only consistency from bundle checkpoint to latest head verified"
+            continuity_reason = (
+                "append-only consistency from bundle checkpoint to latest head verified"
+            )
         _record(
             checks,
             "append_only_continuity",
