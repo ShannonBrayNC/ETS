@@ -275,7 +275,7 @@ resource probeJob 'Microsoft.App/jobs@2025-01-01' = {
       identitySettings: [
         {
           identity: runtimeIdentityResourceId
-          lifecycle: 'None'
+          lifecycle: 'Main'
         }
         {
           identity: registryPullIdentityResourceId
