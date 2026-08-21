@@ -4,15 +4,26 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Iterable
+from typing import Literal
 
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-
-from ets.ai_witness.models import AIWitnessEvent, SignedWitnessRecord
+from ets.ai_witness.models import (
+    AIWitnessEvent,
+    SignedWitnessRecord,
+    SigningAlgorithm,
+)
+from ets.ai_witness.signing import (
+    SignerError,
+    SoftwareEd25519Signer,
+    WitnessSigner,
+    verify_signature,
+)
 from ets.core.api import EvidenceEvent, canonical_sha256, canonicalize
 
 _MAX_EVENT_BYTES = 48 * 1024
+RecordSchemaVersion = Literal[
+    "ets.ai-witness.record.v1",
+    "ets.ai-witness.record.v2",
+]
 
 
 class WitnessValidationError(ValueError):
@@ -20,30 +31,70 @@ class WitnessValidationError(ValueError):
 
 
 class AIWitnessLedger:
-    """In-memory reference witness with per-session hash chaining and Ed25519 attestations."""
+    """Reference Witness with per-session chaining and pluggable signing custody."""
 
-    def __init__(self, *, witness_id: str, signing_key_id: str, private_key_hex: str):
+    def __init__(
+        self,
+        *,
+        witness_id: str,
+        signing_key_id: str | None = None,
+        private_key_hex: str | None = None,
+        signer: WitnessSigner | None = None,
+    ):
         if not witness_id or len(witness_id) > 128:
             raise WitnessValidationError("witness_id must contain 1-128 characters")
-        if not signing_key_id or len(signing_key_id) > 256:
+
+        if signer is None:
+            if signing_key_id is None or private_key_hex is None:
+                raise WitnessValidationError(
+                    "software signing requires signing_key_id and private_key_hex"
+                )
+            try:
+                signer = SoftwareEd25519Signer(
+                    key_id=signing_key_id,
+                    private_key_hex=private_key_hex,
+                )
+            except SignerError as exc:
+                raise WitnessValidationError(str(exc)) from exc
+            record_schema: RecordSchemaVersion = "ets.ai-witness.record.v1"
+        else:
+            if private_key_hex is not None:
+                raise WitnessValidationError(
+                    "private_key_hex must not be supplied with a signer provider"
+                )
+            if signing_key_id is not None and signing_key_id != signer.key_id:
+                raise WitnessValidationError(
+                    "signing_key_id does not match signer provider key_id"
+                )
+            record_schema = "ets.ai-witness.record.v2"
+
+        if not signer.key_id or len(signer.key_id) > 256:
             raise WitnessValidationError("signing_key_id must contain 1-256 characters")
-        try:
-            private_key_bytes = bytes.fromhex(private_key_hex)
-            self._private_key = Ed25519PrivateKey.from_private_bytes(private_key_bytes)
-        except ValueError as exc:
-            raise WitnessValidationError("private key must be a 32-byte Ed25519 key") from exc
+        if not isinstance(signer.algorithm, SigningAlgorithm):
+            raise WitnessValidationError("signer provider returned an unsupported algorithm")
+
         self.witness_id = witness_id
-        self.signing_key_id = signing_key_id
+        self.signing_key_id = signer.key_id
+        self._signer = signer
+        self._record_schema_version = record_schema
         self._session_heads: dict[str, tuple[int, str]] = {}
         self._event_ids: set[tuple[str, str]] = set()
 
     @property
+    def signing_algorithm(self) -> SigningAlgorithm:
+        return self._signer.algorithm
+
+    @property
     def public_key_hex(self) -> str:
-        return self._private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
+        return self._signer.public_key_hex
 
     @property
     def public_key_fingerprint_sha256(self) -> str:
-        return hashlib.sha256(bytes.fromhex(self.public_key_hex)).hexdigest()
+        try:
+            public_key_bytes = bytes.fromhex(self.public_key_hex)
+        except ValueError as exc:
+            raise WitnessValidationError("signer public key must be hexadecimal") from exc
+        return hashlib.sha256(public_key_bytes).hexdigest()
 
     def record(self, event: AIWitnessEvent) -> SignedWitnessRecord:
         event = AIWitnessEvent.model_validate(event.model_dump())
@@ -65,13 +116,22 @@ class AIWitnessLedger:
             )
             raise WitnessValidationError(message)
 
-        payload = self._record_payload(event, previous_digest, self.signing_key_id)
+        payload = self._record_payload(
+            event,
+            previous_digest,
+            self.signing_key_id,
+            self._record_schema_version,
+            self.signing_algorithm,
+        )
+        canonical_payload = canonicalize(payload)
         record_digest = canonical_sha256(payload)
-        signature = self._private_key.sign(canonicalize(payload)).hex()
+        signature = self._signer.sign(canonical_payload).hex()
         record = SignedWitnessRecord(
+            schema_version=self._record_schema_version,
             event=event,
             previous_record_digest=previous_digest,
             record_digest=record_digest,
+            signing_algorithm=self.signing_algorithm,
             signing_key_id=self.signing_key_id,
             signature_hex=signature,
         )
@@ -81,23 +141,25 @@ class AIWitnessLedger:
 
     @staticmethod
     def verify_record(record: SignedWitnessRecord, public_key_hex: str) -> bool:
-        try:
-            public_key_bytes = bytes.fromhex(public_key_hex)
-            public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
-        except ValueError:
-            return False
         payload = AIWitnessLedger._record_payload(
             record.event,
             record.previous_record_digest,
             record.signing_key_id,
+            record.schema_version,
+            record.signing_algorithm,
         )
         if canonical_sha256(payload) != record.record_digest:
             return False
         try:
-            public_key.verify(bytes.fromhex(record.signature_hex), canonicalize(payload))
-        except (InvalidSignature, ValueError):
+            signature = bytes.fromhex(record.signature_hex)
+        except ValueError:
             return False
-        return True
+        return verify_signature(
+            record.signing_algorithm,
+            public_key_hex,
+            canonicalize(payload),
+            signature,
+        )
 
     @staticmethod
     def verify_chain(records: Iterable[SignedWitnessRecord], public_key_hex: str) -> bool:
@@ -143,6 +205,7 @@ class AIWitnessLedger:
                 "clock_quality": event.clock_quality.value,
                 "content_capture": event.content_capture,
                 "previous_record_digest": record.previous_record_digest,
+                "signing_algorithm": record.signing_algorithm.value,
                 "signing_key_id": record.signing_key_id,
                 "signature_hex": record.signature_hex,
                 "event": event.model_dump(mode="json"),
@@ -171,10 +234,20 @@ class AIWitnessLedger:
         event: AIWitnessEvent,
         previous_digest: str | None,
         signing_key_id: str,
+        record_schema_version: RecordSchemaVersion,
+        signing_algorithm: SigningAlgorithm,
     ) -> dict[str, object]:
+        if record_schema_version == "ets.ai-witness.record.v1":
+            return {
+                "schema_version": "ets.ai-witness.record-payload.v1",
+                "event": event.model_dump(mode="json"),
+                "previous_record_digest": previous_digest,
+                "signing_key_id": signing_key_id,
+            }
         return {
-            "schema_version": "ets.ai-witness.record-payload.v1",
+            "schema_version": "ets.ai-witness.record-payload.v2",
             "event": event.model_dump(mode="json"),
             "previous_record_digest": previous_digest,
+            "signing_algorithm": signing_algorithm.value,
             "signing_key_id": signing_key_id,
         }
