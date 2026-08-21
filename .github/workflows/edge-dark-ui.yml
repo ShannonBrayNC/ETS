@@ -1,0 +1,201 @@
+name: Edge Dark Pro UI
+
+on:
+  pull_request:
+    paths:
+      - "edge-demo/**"
+      - "ets/edge/**"
+      - "ets/explorer-ui/**"
+      - "tests/unit/test_edge_ui_bff.py"
+      - ".github/workflows/edge-dark-ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dark-pro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate browser-safe BFF code
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m ruff check \
+            ets/edge/protected_ingress.py \
+            tests/unit/test_edge_ui_bff.py
+          python -m mypy ets/edge
+          python -m pytest -q \
+            tests/unit/test_edge_protected_ingress.py \
+            tests/unit/test_edge_ui_bff.py
+
+      - name: Build and start Dark Pro Edge Virtual
+        run: docker compose -f edge-demo/docker-compose.yml up -d --build
+
+      - name: Wait for Dark Pro BFF readiness
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent \
+              -H 'X-ETS-UI-Request: 1' \
+              http://localhost:8400/edge/ui/v1/status \
+              > /tmp/edge-ui-status.json; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f edge-demo/docker-compose.yml ps
+          docker compose -f edge-demo/docker-compose.yml logs
+          exit 1
+
+      - name: Prove BFF rejects unmarked and cross-site requests
+        run: |
+          MISSING_MARKER="$(curl --silent --output /tmp/ui-missing-marker.json \
+            --write-out '%{http_code}' \
+            http://localhost:8400/edge/ui/v1/status)"
+          test "${MISSING_MARKER}" = "403"
+
+          CROSS_SITE="$(curl --silent --output /tmp/ui-cross-site.json \
+            --write-out '%{http_code}' \
+            -H 'X-ETS-UI-Request: 1' \
+            -H 'Sec-Fetch-Site: cross-site' \
+            -H 'Origin: https://attacker.example' \
+            http://localhost:8400/edge/ui/v1/status)"
+          test "${CROSS_SITE}" = "403"
+
+      - name: Prove public status contains no reusable secret
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          status = json.loads(Path('/tmp/edge-ui-status.json').read_text())
+          identity = status['device_identity']
+          assert status['schema_version'] == 'ets.edge.ui.status.v1', status
+          assert identity['device_id'].startswith('ets-edge:'), identity
+          assert identity['hardware_attested'] is False, identity
+          assert identity['key_custody'] == 'software_volume', identity
+
+          forbidden_fields = {
+              'api_key',
+              'local_api_key',
+              'private_key',
+              'client_secret',
+              'bearer_token',
+              'access_token',
+              'refresh_token',
+              'sas_token',
+              'symmetric_key',
+              'shared_key',
+              'connection_string',
+              'password',
+          }
+
+          def walk(value):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      assert str(key).lower() not in forbidden_fields, key
+                      yield from walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      yield from walk(child)
+              elif isinstance(value, str):
+                  yield value
+
+          strings = list(walk(status))
+          for value in strings:
+              lowered = value.lower()
+              assert '-----begin private key-----' not in lowered
+              assert '-----begin rsa private key-----' not in lowered
+              assert not lowered.startswith('sharedaccesssignature ')
+          PY
+
+      - name: Prove Dark Pro source-to-proof path without browser credential
+        run: |
+          cat > /tmp/dark-pro-capture.json <<'JSON'
+          {
+            "payload": {
+              "synthetic": true,
+              "scenario": "edge-dark-pro-ci",
+              "message": "credential-free browser boundary"
+            }
+          }
+          JSON
+
+          curl --fail --silent --show-error \
+            -H 'X-ETS-UI-Request: 1' \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/dark-pro-capture.json \
+            http://localhost:8400/edge/ui/v1/capture \
+            > /tmp/dark-pro-receipt.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(Path('/tmp/dark-pro-receipt.json').read_text())
+          assert receipt['sync_state'] == 'pending', receipt
+          Path('/tmp/dark-pro-event-id').write_text(receipt['event_id'])
+          PY
+
+          EVENT_ID="$(cat /tmp/dark-pro-event-id)"
+
+          curl --fail --silent --show-error \
+            -H 'X-ETS-UI-Request: 1' \
+            "http://localhost:8400/edge/ui/v1/proofs/inclusion/${EVENT_ID}" \
+            > /tmp/dark-pro-proof.json
+
+          curl --fail --silent --show-error \
+            -H 'X-ETS-UI-Request: 1' \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/dark-pro-proof.json \
+            http://localhost:8400/edge/ui/v1/verify/inclusion \
+            > /tmp/dark-pro-verification.json
+
+          curl --fail --silent --show-error \
+            -H 'X-ETS-UI-Request: 1' \
+            "http://localhost:8400/edge/ui/v1/bundles/${EVENT_ID}" \
+            > /tmp/dark-pro-bundle.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          verification = json.loads(Path('/tmp/dark-pro-verification.json').read_text())
+          bundle = json.loads(Path('/tmp/dark-pro-bundle.json').read_text())
+          assert verification['valid'] is True, verification
+          assert bundle['event']['metadata']['raw_payload_retained'] is False, bundle
+          PY
+
+      - name: Prove Dark Pro bundle omits legacy credential-entry labels
+        run: |
+          docker compose -f edge-demo/docker-compose.yml exec -T edge-ui sh -eu -c '
+            ! grep -R -F "Local API key" /usr/share/nginx/html &&
+            ! grep -R -F "Bearer token" /usr/share/nginx/html
+          '
+
+      - name: Prove browser security headers
+        run: |
+          curl --silent --dump-header /tmp/edge-ui-headers.txt \
+            --output /dev/null \
+            http://localhost:8400/
+          grep -qi '^Content-Security-Policy:' /tmp/edge-ui-headers.txt
+          grep -qi '^X-Frame-Options: DENY' /tmp/edge-ui-headers.txt
+          grep -qi '^X-Content-Type-Options: nosniff' /tmp/edge-ui-headers.txt
+          grep -qi '^Referrer-Policy: no-referrer' /tmp/edge-ui-headers.txt
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f edge-demo/docker-compose.yml logs
+
+      - name: Stop demo stack
+        if: always()
+        run: docker compose -f edge-demo/docker-compose.yml down -v
