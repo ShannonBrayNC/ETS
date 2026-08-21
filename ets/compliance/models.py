@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal, TypeAlias
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-Scalar: TypeAlias = str | int | float | bool | None
+type Scalar = str | int | float | bool | None
 
 
 class StrictModel(BaseModel):
