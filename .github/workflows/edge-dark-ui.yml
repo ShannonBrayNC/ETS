@@ -78,21 +78,44 @@ jobs:
           from pathlib import Path
 
           status = json.loads(Path('/tmp/edge-ui-status.json').read_text())
-          serialized = json.dumps(status, sort_keys=True).lower()
           identity = status['device_identity']
           assert status['schema_version'] == 'ets.edge.ui.status.v1', status
           assert identity['device_id'].startswith('ets-edge:'), identity
           assert identity['hardware_attested'] is False, identity
           assert identity['key_custody'] == 'software_volume', identity
-          for forbidden in (
+
+          forbidden_fields = {
               'api_key',
+              'local_api_key',
               'private_key',
+              'client_secret',
               'bearer_token',
               'access_token',
               'refresh_token',
+              'sas_token',
+              'symmetric_key',
+              'shared_key',
               'connection_string',
-          ):
-              assert forbidden not in serialized, forbidden
+              'password',
+          }
+
+          def walk(value):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      assert str(key).lower() not in forbidden_fields, key
+                      yield from walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      yield from walk(child)
+              elif isinstance(value, str):
+                  yield value
+
+          strings = list(walk(status))
+          for value in strings:
+              lowered = value.lower()
+              assert '-----begin private key-----' not in lowered
+              assert '-----begin rsa private key-----' not in lowered
+              assert not lowered.startswith('sharedaccesssignature ')
           PY
 
       - name: Prove Dark Pro source-to-proof path without browser credential
