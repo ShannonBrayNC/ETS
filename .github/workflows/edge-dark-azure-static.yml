@@ -1,0 +1,183 @@
+name: Edge Dark Pro Azure Static
+
+on:
+  pull_request:
+    paths:
+      - "infra/azure/ets-edge-virtual-demo-origin.bicep"
+      - "infra/azure/ets-edge-virtual-demo-frontdoor.bicep"
+      - "edge-demo/Dockerfile.ui.azure"
+      - "edge-demo/nginx.azure*.conf"
+      - "ets/edge/protected_ingress.py"
+      - "ets/explorer-ui/**"
+      - "tests/unit/test_edge_ui_hosted_origin.py"
+      - "tests/architecture/test_edge_virtual_azure_boundary.py"
+      - "tests/architecture/test_edge_virtual_frontdoor_boundary.py"
+      - ".github/workflows/edge-dark-azure-static.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  private-origin-static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate hosted Edge security code
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m ruff check \
+            ets/edge/protected_ingress.py \
+            tests/unit/test_edge_ui_hosted_origin.py \
+            tests/architecture/test_edge_virtual_azure_boundary.py \
+            tests/architecture/test_edge_virtual_frontdoor_boundary.py
+          python -m mypy ets/edge
+          python -m pytest -q \
+            tests/unit/test_edge_ui_bff.py \
+            tests/unit/test_edge_ui_hosted_origin.py \
+            tests/architecture/test_edge_virtual_azure_boundary.py \
+            tests/architecture/test_edge_virtual_frontdoor_boundary.py
+
+      - name: Compile private-origin and public-edge Bicep without Azure credentials
+        run: |
+          az bicep build \
+            --file infra/azure/ets-edge-virtual-demo-origin.bicep \
+            --stdout \
+            > /tmp/ets-edge-virtual-demo-origin.json
+          az bicep build \
+            --file infra/azure/ets-edge-virtual-demo-frontdoor.bicep \
+            --stdout \
+            > /tmp/ets-edge-virtual-demo-frontdoor.json
+          test -s /tmp/ets-edge-virtual-demo-origin.json
+          test -s /tmp/ets-edge-virtual-demo-frontdoor.json
+
+      - name: Prove immutable image parameters are deployment inputs
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          template = json.loads(Path('/tmp/ets-edge-virtual-demo-origin.json').read_text())
+          expected = {
+              'edgeApiImage',
+              'edgeWebhookImage',
+              'edgeUpstreamImage',
+              'edgeUiImage',
+          }
+          assert expected <= set(template['parameters'])
+          for name in expected:
+              description = template['parameters'][name]['metadata']['description']
+              assert 'sha256' in description.lower(), (name, description)
+          PY
+
+      - name: Prove public edge compiles to Premium, Private Link, WAF prevention, and Entra authorization
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          template = json.loads(Path('/tmp/ets-edge-virtual-demo-frontdoor.json').read_text())
+          resources = template['resources']
+          by_type = {}
+          for resource in resources:
+              by_type.setdefault(resource['type'], []).append(resource)
+
+          profile = by_type['Microsoft.Cdn/profiles'][0]
+          assert profile['sku']['name'] == 'Premium_AzureFrontDoor'
+
+          origin = by_type['Microsoft.Cdn/profiles/originGroups/origins'][0]
+          private_link = origin['properties']['sharedPrivateLinkResource']
+          assert private_link['groupId'] == 'managedEnvironments'
+          assert private_link['status'] == 'Pending'
+          assert origin['properties']['enforceCertificateNameCheck'] is True
+
+          auth = by_type['Microsoft.App/containerApps/authConfigs'][0]
+          assert auth['properties']['platform']['enabled'] is True
+          assert auth['properties']['globalValidation']['excludedPaths'] == ['/afd-healthz']
+          assert auth['properties']['globalValidation']['unauthenticatedClientAction'] == 'RedirectToLoginPage'
+          assert auth['properties']['httpSettings']['requireHttps'] is True
+
+          waf = by_type['Microsoft.Cdn/cdnWebApplicationFirewallPolicies'][0]
+          assert waf['sku']['name'] == 'Premium_AzureFrontDoor'
+          assert waf['properties']['policySettings']['mode'] == 'Prevention'
+          rule_sets = {
+              (item['ruleSetType'], item['ruleSetVersion'])
+              for item in waf['properties']['managedRules']['managedRuleSets']
+          }
+          assert ('Microsoft_DefaultRuleSet', '2.2') in rule_sets
+          assert ('Microsoft_BotManagerRuleSet', '1.1') in rule_sets
+          assert waf['properties']['rateLimitRules']['rules'][0]['action'] == 'Block'
+          PY
+
+      - name: Build hosted Dark Pro UI image
+        run: |
+          docker build \
+            -f edge-demo/Dockerfile.ui.azure \
+            -t ets-edge-dark-azure-static:ci \
+            .
+          test "$(docker image inspect ets-edge-dark-azure-static:ci --format '{{.Config.User}}')" = "nginx"
+
+      - name: Prove hosted Nginx exposes only static UI and health without BFF sidecar
+        run: |
+          container_id="$(docker run -d -p 127.0.0.1:18400:8080 ets-edge-dark-azure-static:ci)"
+          cleanup() {
+            docker logs "${container_id}" || true
+            docker rm -f "${container_id}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:18400/afd-healthz >/tmp/afd-healthz; then
+              break
+            fi
+            sleep 1
+          done
+          test "$(cat /tmp/afd-healthz)" = "ok"
+
+          curl --fail --silent http://127.0.0.1:18400/ >/tmp/index.html
+          grep -q '<div id="root"></div>' /tmp/index.html
+
+          for path in /api/v1/events /docs /openapi.json /edge/v1/device/identity /ready /version; do
+            code="$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:18400${path}")"
+            test "${code}" = "404"
+          done
+
+      - name: Prove hosted UI bundle omits reusable credential-entry labels
+        run: |
+          docker run --rm ets-edge-dark-azure-static:ci sh -eu -c '
+            ! grep -R -F "Local API key" /usr/share/nginx/html &&
+            ! grep -R -F "Bearer token" /usr/share/nginx/html
+          '
+
+      - name: Prove infrastructure templates carry no secret values
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          origin = json.loads(Path('/tmp/ets-edge-virtual-demo-origin.json').read_text())
+          edge = json.loads(Path('/tmp/ets-edge-virtual-demo-frontdoor.json').read_text())
+
+          forbidden = {
+              'password', 'token', 'connectionstring',
+              'apikey', 'privatekey', 'sas', 'storagekey'
+          }
+          for template in (origin, edge):
+              for name, definition in template.get('parameters', {}).items():
+                  normalized = ''.join(ch for ch in name.lower() if ch.isalnum())
+                  assert not any(token in normalized for token in forbidden), name
+                  assert definition.get('type') != 'secureString', name
+                  assert definition.get('type') != 'secureObject', name
+
+          assert 'entraClientSecretSettingName' in edge['parameters']
+          assert 'entraClientSecret' not in edge['parameters']
+          PY
