@@ -50,7 +50,7 @@ class DigestRef(StrictModel):
     digest: str = Field(min_length=64, max_length=64)
     byte_length: int | None = Field(default=None, ge=0)
     media_type: str | None = Field(default=None, max_length=128)
-    source_ref: str | None = Field(default=None, max_length=512)
+    source_ref: str | None = Field(default=None, max_length=256)
 
     @field_validator("digest")
     @classmethod
@@ -121,9 +121,9 @@ class AIWitnessEvent(StrictModel):
     model: ModelIdentity | None = None
     parameters: GenerationParameters | None = None
     system_instruction_digest: DigestRef | None = None
-    input_digests: tuple[DigestRef, ...] = Field(default=(), max_length=128)
-    retrieval_digests: tuple[DigestRef, ...] = Field(default=(), max_length=256)
-    output_digests: tuple[DigestRef, ...] = Field(default=(), max_length=128)
+    input_digests: tuple[DigestRef, ...] = Field(default=(), max_length=16)
+    retrieval_digests: tuple[DigestRef, ...] = Field(default=(), max_length=32)
+    output_digests: tuple[DigestRef, ...] = Field(default=(), max_length=16)
     tool: ToolObservation | None = None
     human_oversight: HumanOversight | None = None
     policy_refs: tuple[str, ...] = Field(default=(), max_length=64)
@@ -157,7 +157,7 @@ class AIWitnessEvent(StrictModel):
         return value
 
     @model_validator(mode="after")
-    def validate_kind_specific_context(self) -> "AIWitnessEvent":
+    def validate_kind_specific_context(self) -> AIWitnessEvent:
         if self.kind in {WitnessEventKind.MODEL_REQUEST, WitnessEventKind.MODEL_RESPONSE}:
             if self.model is None:
                 raise ValueError("model_request/model_response require model identity")
