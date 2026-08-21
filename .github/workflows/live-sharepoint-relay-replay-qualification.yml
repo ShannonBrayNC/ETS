@@ -1,0 +1,320 @@
+name: Live SharePoint Relay Replay Qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      marker:
+        description: Synthetic qualification marker already present in /sites/ETS Documents
+        required: true
+        default: post458-release-sync-20260820
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  qualify:
+    name: Qualify bounded SharePoint relay replay
+    runs-on: ubuntu-24.04
+    environment: ets-azure-q1
+    timeout-minutes: 15
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: "true"
+      LOCATION: eastus
+      RESOURCE_GROUP: rg-ets-live-eastus
+      GATEWAY_APP: ets-o23bf2d6oq44s-gw
+      GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id
+      ACR_NAME: etsq1a352eb89
+    steps:
+      - name: Check out qualification source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Assert protected qualification boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test -f infra/azure/ets-live-sharepoint-relay-replay-qualification.bicep
+          test -n "${{ inputs.marker }}"
+
+      - name: Azure login with workload identity
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Run bounded relay replay qualification
+        shell: bash
+        env:
+          MARKER: ${{ inputs.marker }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/live-sharepoint-relay-replay
+
+          if ! [[ "$MARKER" =~ ^[a-z0-9][a-z0-9-]{5,31}$ ]]; then
+            echo "::error::marker is outside the public-safe profile"
+            exit 1
+          fi
+
+          job_name="ets-sp-replay-${GITHUB_RUN_ID}"
+          job_name="${job_name:0:32}"
+          cleanup() {
+            az containerapp job delete \
+              --name "$job_name" \
+              --resource-group "$RESOURCE_GROUP" \
+              --yes \
+              --only-show-errors >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          gateway_json="$RUNNER_TEMP/sharepoint-replay-gateway.json"
+          az containerapp show \
+            --name "$GATEWAY_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            -o json > "$gateway_json"
+
+          runtime_identity_id="$(az identity show \
+            --name "$GATEWAY_IDENTITY_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query id -o tsv)"
+          runtime_client_id="$(az identity show \
+            --name "$GATEWAY_IDENTITY_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query clientId -o tsv)"
+          test -n "$runtime_identity_id"
+          test -n "$runtime_client_id"
+
+          resolved="$RUNNER_TEMP/sharepoint-replay-resolved.txt"
+          python - "$gateway_json" > "$resolved" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          gateway = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          props = gateway.get("properties") or {}
+          template = props.get("template") or {}
+          containers = template.get("containers") or []
+          if len(containers) != 1 or containers[0].get("name") != "ets-gateway":
+              raise SystemExit("live Gateway container identity changed")
+          container = containers[0]
+          environment_id = str(props.get("environmentId") or "")
+          image = str(container.get("image") or "")
+          registries = (props.get("configuration") or {}).get("registries") or []
+          if len(registries) != 1:
+              raise SystemExit("live Gateway must expose exactly one registry binding")
+          pull_identity = str(registries[0].get("identity") or "")
+          volumes = template.get("volumes") or []
+          state = [item for item in volumes if item.get("name") == "gateway-state"]
+          if len(state) != 1:
+              raise SystemExit("live Gateway state volume is unavailable")
+          storage_name = str(state[0].get("storageName") or "")
+
+          env = {}
+          for item in container.get("env") or []:
+              name = item.get("name")
+              if name in {
+                  "ETS_GATEWAY_CORE_BASE_URL",
+                  "ETS_GATEWAY_CORE_SCOPE",
+                  "ETS_GATEWAY_TENANT_ID",
+                  "ETS_GATEWAY_WORKSPACE_ID",
+              }:
+                  value = item.get("value")
+                  if not isinstance(value, str) or not value:
+                      raise SystemExit("required relay setting is not a plain bounded value: " + str(name))
+                  env[name] = value
+          required = {
+              "ETS_GATEWAY_CORE_BASE_URL",
+              "ETS_GATEWAY_CORE_SCOPE",
+              "ETS_GATEWAY_TENANT_ID",
+              "ETS_GATEWAY_WORKSPACE_ID",
+          }
+          if set(env) != required:
+              raise SystemExit("live Gateway relay settings are incomplete")
+          if not environment_id or not image or not pull_identity or not storage_name:
+              raise SystemExit("live Gateway replay prerequisites are incomplete")
+
+          print("ENVIRONMENT_ID=" + environment_id)
+          print("IMAGE=" + image)
+          print("PULL_IDENTITY=" + pull_identity)
+          print("STATE_STORAGE_NAME=" + storage_name)
+          print("CORE_BASE_URL=" + env["ETS_GATEWAY_CORE_BASE_URL"])
+          print("CORE_SCOPE=" + env["ETS_GATEWAY_CORE_SCOPE"])
+          print("TENANT_ID=" + env["ETS_GATEWAY_TENANT_ID"])
+          print("WORKSPACE_ID=" + env["ETS_GATEWAY_WORKSPACE_ID"])
+          PY
+
+          while IFS='=' read -r key value; do
+            test -n "$key"
+            test -n "$value"
+            printf -v "$key" '%s' "$value"
+          done < "$resolved"
+          rm -f "$gateway_json" "$resolved"
+
+          case "$IMAGE" in
+            "${ACR_NAME}.azurecr.io/ets/hosted-q1@sha256:"*) ;;
+            *) echo "::error::live Gateway image is outside the approved immutable ACR boundary"; exit 1 ;;
+          esac
+
+          az deployment group create \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/azure/ets-live-sharepoint-relay-replay-qualification.bicep \
+            --parameters \
+              location="$LOCATION" \
+              jobName="$job_name" \
+              managedEnvironmentResourceId="$ENVIRONMENT_ID" \
+              gatewayStateStorageName="$STATE_STORAGE_NAME" \
+              runtimeIdentityResourceId="$runtime_identity_id" \
+              runtimeIdentityClientId="$runtime_client_id" \
+              registryPullIdentityResourceId="$PULL_IDENTITY" \
+              registryServer="${ACR_NAME}.azurecr.io" \
+              containerImage="$IMAGE" \
+              coreBaseUrl="$CORE_BASE_URL" \
+              coreScope="$CORE_SCOPE" \
+              tenantId="$TENANT_ID" \
+              workspaceId="$WORKSPACE_ID" \
+              marker="$MARKER" \
+            --only-show-errors \
+            --output none
+
+          execution="$(az containerapp job start \
+            --name "$job_name" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query name -o tsv)"
+          test -n "$execution"
+
+          status=""
+          for _ in $(seq 1 80); do
+            status="$(az containerapp job execution show \
+              --name "$job_name" \
+              --resource-group "$RESOURCE_GROUP" \
+              --job-execution-name "$execution" \
+              --query properties.status -o tsv)"
+            case "$status" in
+              Succeeded|Failed|Canceled) break ;;
+            esac
+            sleep 3
+          done
+
+          replica="$(az containerapp job replica list \
+            --name "$job_name" \
+            --resource-group "$RESOURCE_GROUP" \
+            --execution "$execution" \
+            --query '[0].name' -o tsv)"
+          test -n "$replica"
+
+          raw="$RUNNER_TEMP/sharepoint-relay-replay.log"
+          az containerapp job logs show \
+            --name "$job_name" \
+            --resource-group "$RESOURCE_GROUP" \
+            --execution "$execution" \
+            --replica "$replica" \
+            --container sharepoint-relay-replay-qualification \
+            --format text \
+            --only-show-errors > "$raw" 2>&1 || true
+
+          python - "$raw" <<'PY'
+          import base64
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          match = re.search(r"ETS_SP_RELAY_REPLAY_B64=([A-Za-z0-9_=-]+)", source)
+          if match is None:
+              raise SystemExit("bounded relay replay qualification result marker was not found")
+          payload = json.loads(base64.urlsafe_b64decode(match.group(1)).decode("utf-8"))
+          count_keys = {
+              "terminal_total",
+              "terminal_sharepoint_count",
+              "terminal_marker_count",
+              "terminal_local_invariants_ok",
+              "terminal_local_invariant_failure",
+              "replay_accepted",
+              "replay_already_present",
+              "replay_auth_failure",
+              "replay_validation_failure",
+              "replay_retryable_http",
+              "replay_other_http",
+              "replay_transport_error",
+              "replay_ack_mismatch",
+              "core_readback_match",
+              "core_readback_mismatch",
+              "duplicate_reconciled",
+              "duplicate_unexpected",
+              "proof_endpoint_ok",
+              "proof_endpoint_failure",
+              "marker_replayed",
+          }
+          flag_keys = {
+              "qualification_pass",
+              "customer_identifiers_retained",
+              "event_identifiers_retained",
+              "event_hashes_retained",
+              "core_payload_retained",
+              "reusable_credential_retained",
+              "public_evidence_safe",
+              "queue_state_mutated",
+              "core_state_mutated",
+              "m365_source_to_proof_claimed",
+              "soak_clock_started",
+          }
+          if set(payload) != {"schema_version", *count_keys, *flag_keys}:
+              raise SystemExit("bounded relay replay returned an unexpected public shape")
+          if payload["schema_version"] != "ets.live_sharepoint.relay_replay_qualification.v1":
+              raise SystemExit("bounded relay replay schema changed")
+          for key in count_keys:
+              if not isinstance(payload[key], int) or payload[key] < 0:
+                  raise SystemExit("bounded relay replay count was invalid")
+          for key in flag_keys:
+              if not isinstance(payload[key], bool):
+                  raise SystemExit("bounded relay replay flag was invalid")
+          if payload["public_evidence_safe"] is not True:
+              raise SystemExit("relay replay evidence is not public safe")
+          if payload["queue_state_mutated"] is not False:
+              raise SystemExit("relay replay unexpectedly mutated queue state")
+          if payload["core_state_mutated"] is not True:
+              raise SystemExit("relay replay did not declare intentional Core mutation")
+          for key in (
+              "customer_identifiers_retained",
+              "event_identifiers_retained",
+              "event_hashes_retained",
+              "core_payload_retained",
+              "reusable_credential_retained",
+              "m365_source_to_proof_claimed",
+              "soak_clock_started",
+          ):
+              if payload[key] is not False:
+                  raise SystemExit("relay replay violated non-retention or claim boundary")
+
+          out = Path("evidence/live-sharepoint-relay-replay/result.json")
+          out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          for key in sorted(count_keys):
+              print(key + "=" + str(payload[key]))
+          print("qualification_pass=" + str(payload["qualification_pass"]).lower())
+          if payload["qualification_pass"] is not True:
+              raise SystemExit("live relay replay qualification failed")
+          PY
+
+          test "$status" = "Succeeded"
+          rm -f "$raw"
+
+      - name: Upload bounded relay replay evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-sharepoint-relay-replay-${{ github.run_id }}
+          path: evidence/live-sharepoint-relay-replay/*.json
+          if-no-files-found: warn
+          retention-days: 30
