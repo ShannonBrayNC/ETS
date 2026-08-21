@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/device/v1/device-enrollment.schema.json",
+  "title": "ETS Device Enrollment v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "enrollment_id",
+    "device_id",
+    "product_type",
+    "profile",
+    "auth_method",
+    "public_key_fingerprint_sha256",
+    "key_custody",
+    "hardware_attested",
+    "registration_state",
+    "scope_binding",
+    "created_at_utc"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "ets.device.enrollment.v1"
+    },
+    "enrollment_id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128,
+      "pattern": "^enr_[A-Za-z0-9._-]+$"
+    },
+    "device_id": {
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 160,
+      "pattern": "^ets-(edge|gateway|verify|vault|black-box|ai-witness|exchange):[a-z0-9][a-z0-9._:-]+$"
+    },
+    "product_type": {
+      "enum": [
+        "edge",
+        "gateway",
+        "verify",
+        "vault",
+        "black_box",
+        "ai_witness",
+        "exchange_gateway"
+      ]
+    },
+    "profile": {
+      "enum": [
+        "virtual_demo",
+        "physical_pilot",
+        "production"
+      ]
+    },
+    "auth_method": {
+      "enum": [
+        "x509",
+        "tpm_attestation"
+      ]
+    },
+    "public_key_fingerprint_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "certificate_thumbprint_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "attestation_class": {
+      "enum": [
+        "tpm2",
+        "secure_element",
+        "hsm",
+        "software_demo",
+        "none"
+      ],
+      "default": "none"
+    },
+    "key_custody": {
+      "enum": [
+        "tpm2",
+        "secure_element",
+        "hsm",
+        "software_demo"
+      ]
+    },
+    "hardware_attested": {
+      "type": "boolean"
+    },
+    "registration_state": {
+      "enum": [
+        "pending",
+        "enrolled",
+        "quarantined",
+        "revoked",
+        "decommissioned"
+      ]
+    },
+    "scope_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_id",
+        "workspace_id"
+      ],
+      "properties": {
+        "tenant_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "workspace_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "provisioning_backend": {
+      "enum": [
+        "azure_iot_dps_v1",
+        "offline_manual_v1"
+      ]
+    },
+    "certificate_not_after_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "supersedes_enrollment_id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128,
+      "pattern": "^enr_[A-Za-z0-9._-]+$"
+    },
+    "created_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["string", "number", "integer", "boolean", "null"]
+      },
+      "maxProperties": 32
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "auth_method": {
+            "const": "x509"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "certificate_thumbprint_sha256"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "auth_method": {
+            "const": "tpm_attestation"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "attestation_class": {
+            "const": "tpm2"
+          },
+          "key_custody": {
+            "const": "tpm2"
+          },
+          "hardware_attested": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "virtual_demo"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "key_custody": {
+            "const": "software_demo"
+          },
+          "hardware_attested": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "enum": [
+              "physical_pilot",
+              "production"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "key_custody": {
+            "enum": [
+              "tpm2",
+              "secure_element",
+              "hsm"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "hardware_attested": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "key_custody": {
+            "enum": [
+              "tpm2",
+              "secure_element",
+              "hsm"
+            ]
+          },
+          "attestation_class": {
+            "enum": [
+              "tpm2",
+              "secure_element",
+              "hsm"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
