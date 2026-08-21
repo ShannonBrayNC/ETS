@@ -10,6 +10,10 @@ on:
         options:
           - origin
           - public-edge
+      expected_source_sha:
+        description: "Exact merged main SHA required for the origin phase."
+        required: false
+        type: string
       edge_api_image:
         description: "Immutable ACR image repository@sha256:digest for Edge API (origin phase)."
         required: false
@@ -74,17 +78,27 @@ jobs:
 
       - name: Validate deployment inputs
         shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+          EDGE_API_IMAGE: ${{ inputs.edge_api_image }}
+          EDGE_BFF_IMAGE: ${{ inputs.edge_bff_image }}
+          EDGE_UPSTREAM_IMAGE: ${{ inputs.edge_upstream_image }}
+          EDGE_UI_IMAGE: ${{ inputs.edge_ui_image }}
+          OPERATOR_GROUP_IDS_JSON: ${{ inputs.operator_group_ids_json }}
         run: |
           set -euo pipefail
           test -n "${RESOURCE_GROUP}"
           test -n "${LOCATION}"
           case "${{ inputs.phase }}" in
             origin)
+              test -n "${EXPECTED_SOURCE_SHA}"
+              printf '%s' "${EXPECTED_SOURCE_SHA}" | grep -Eq '^[0-9a-f]{40}$'
+              test "${GITHUB_SHA}" = "${EXPECTED_SOURCE_SHA}"
               for image in \
-                '${{ inputs.edge_api_image }}' \
-                '${{ inputs.edge_bff_image }}' \
-                '${{ inputs.edge_upstream_image }}' \
-                '${{ inputs.edge_ui_image }}'; do
+                "${EDGE_API_IMAGE}" \
+                "${EDGE_BFF_IMAGE}" \
+                "${EDGE_UPSTREAM_IMAGE}" \
+                "${EDGE_UI_IMAGE}"; do
                 test -n "${image}"
                 printf '%s' "${image}" | grep -Eq '@sha256:[0-9a-f]{64}$'
               done
@@ -107,8 +121,6 @@ jobs:
               ;;
             *) exit 2 ;;
           esac
-        env:
-          OPERATOR_GROUP_IDS_JSON: ${{ inputs.operator_group_ids_json }}
 
       - name: Azure login using GitHub OIDC
         uses: azure/login@v2
@@ -127,6 +139,11 @@ jobs:
       - name: Deploy private synthetic origin
         if: inputs.phase == 'origin'
         shell: bash
+        env:
+          EDGE_API_IMAGE: ${{ inputs.edge_api_image }}
+          EDGE_BFF_IMAGE: ${{ inputs.edge_bff_image }}
+          EDGE_UPSTREAM_IMAGE: ${{ inputs.edge_upstream_image }}
+          EDGE_UI_IMAGE: ${{ inputs.edge_ui_image }}
         run: |
           set -euo pipefail
           az deployment group create \
@@ -138,29 +155,64 @@ jobs:
               environmentName="${ENVIRONMENT_NAME}" \
               containerRegistryName="${ACR_NAME}" \
               containerRegistryResourceGroup="${ACR_RESOURCE_GROUP}" \
-              edgeApiImage='${{ inputs.edge_api_image }}' \
-              edgeWebhookImage='${{ inputs.edge_bff_image }}' \
-              edgeUpstreamImage='${{ inputs.edge_upstream_image }}' \
-              edgeUiImage='${{ inputs.edge_ui_image }}' \
+              edgeApiImage="${EDGE_API_IMAGE}" \
+              edgeWebhookImage="${EDGE_BFF_IMAGE}" \
+              edgeUpstreamImage="${EDGE_UPSTREAM_IMAGE}" \
+              edgeUiImage="${EDGE_UI_IMAGE}" \
               publicDemoOrigin="${PUBLIC_DEMO_ORIGIN}" \
             --only-show-errors \
             -o json > "${RUNNER_TEMP}/origin-deployment.json"
 
+          mkdir -p evidence/edge-virtual-azure-origin
           python - <<'PY'
-          import json, os
+          import json
+          import os
           from pathlib import Path
-          payload = json.loads(Path(os.environ['RUNNER_TEMP'], 'origin-deployment.json').read_text())
+
+          payload = json.loads(
+              Path(os.environ['RUNNER_TEMP'], 'origin-deployment.json').read_text()
+          )
           outputs = payload['properties']['outputs']
           public = {
+              'schema_version': 'ets.edge_virtual_azure.origin.v1',
+              'source_sha': os.environ['GITHUB_SHA'],
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'phase': 'origin',
               'container_app_name': outputs['containerAppName']['value'],
               'managed_environment_name': outputs['managedEnvironmentName']['value'],
               'public_network_access': outputs['publicNetworkAccess']['value'],
               'runtime_identity_count': outputs['runtimeIdentityCount']['value'],
+              'images': {
+                  'edge_api': os.environ['EDGE_API_IMAGE'],
+                  'edge_bff': os.environ['EDGE_BFF_IMAGE'],
+                  'edge_upstream': os.environ['EDGE_UPSTREAM_IMAGE'],
+                  'edge_ui': os.environ['EDGE_UI_IMAGE'],
+              },
+              'synthetic_only': True,
+              'hardware_attested': False,
+              'public_activation': False,
+              'credentials_retained': False,
+              'customer_identifiers_retained': False,
           }
           assert public['public_network_access'] == 'Disabled'
           assert public['runtime_identity_count'] == 0
+          path = Path(
+              'evidence/edge-virtual-azure-origin/origin-manifest.json'
+          )
+          path.write_text(
+              json.dumps(public, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
           print(json.dumps(public, indent=2))
           PY
+
+      - name: Upload public-safe private-origin evidence
+        if: inputs.phase == 'origin' && success()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: edge-virtual-azure-origin-${{ github.run_id }}
+          path: evidence/edge-virtual-azure-origin/
+          if-no-files-found: error
 
       - name: Verify exact private origin resources
         if: inputs.phase == 'public-edge'
