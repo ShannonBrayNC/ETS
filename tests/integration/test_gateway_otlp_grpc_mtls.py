@@ -72,17 +72,25 @@ def _pem_cert(certificate: x509.Certificate) -> bytes:
     return certificate.public_bytes(serialization.Encoding.PEM)
 
 
+def _certificate_now() -> datetime:
+    # OpenSSL validates the test handshake against the runner's wall clock. Keep
+    # certificate validity independent from NOW, which intentionally freezes the
+    # application/event clock for deterministic Gateway assertions.
+    return datetime.now(UTC)
+
+
 def _ca() -> tuple[rsa.RSAPrivateKey, x509.Certificate]:
     key = _key()
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "ETS Test CA")])
+    certificate_now = _certificate_now()
     certificate = (
         x509.CertificateBuilder()
         .subject_name(name)
         .issuer_name(name)
         .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before((NOW - timedelta(days=1)).replace(tzinfo=None))
-        .not_valid_after((NOW + timedelta(days=30)).replace(tzinfo=None))
+        .not_valid_before((certificate_now - timedelta(minutes=5)).replace(tzinfo=None))
+        .not_valid_after((certificate_now + timedelta(days=30)).replace(tzinfo=None))
         .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
         .sign(key, hashes.SHA256())
     )
@@ -102,14 +110,15 @@ def _leaf(
     if server:
         san_values.append(x509.DNSName("localhost"))
     eku = ExtendedKeyUsageOID.SERVER_AUTH if server else ExtendedKeyUsageOID.CLIENT_AUTH
+    certificate_now = _certificate_now()
     certificate = (
         x509.CertificateBuilder()
         .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)]))
         .issuer_name(ca_certificate.subject)
         .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before((NOW - timedelta(days=1)).replace(tzinfo=None))
-        .not_valid_after((NOW + timedelta(days=7)).replace(tzinfo=None))
+        .not_valid_before((certificate_now - timedelta(minutes=5)).replace(tzinfo=None))
+        .not_valid_after((certificate_now + timedelta(days=7)).replace(tzinfo=None))
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
         .add_extension(x509.SubjectAlternativeName(san_values), critical=False)
         .add_extension(x509.ExtendedKeyUsage([eku]), critical=False)
