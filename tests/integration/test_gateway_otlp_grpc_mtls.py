@@ -26,6 +26,7 @@ PRINCIPAL = "spiffe://example.test/workload/otlp-grpc-mtls"
 UNAUTHORIZED_PRINCIPAL = "spiffe://example.test/workload/unauthorized"
 NOW = datetime(2026, 8, 14, 4, 30, tzinfo=UTC)
 SOURCE_TIME_NS = 1_786_660_800_123_456_000
+EXPORT_METADATA = (("idempotency-key", "mtls-test-delivery"),)
 
 
 def _registration() -> SourceRegistration:
@@ -194,10 +195,10 @@ def test_mtls_uri_san_is_authoritative_gateway_principal(tmp_path: Path) -> None
     try:
         grpc.channel_ready_future(channel).result(timeout=5)
         stub = logs_service_pb2_grpc.LogsServiceStub(channel)
-        response = stub.Export(_request(), timeout=5)
+        response = stub.Export(_request(), timeout=5, metadata=EXPORT_METADATA)
     finally:
         channel.close()
-        host.stop()
+        host.shutdown()
 
     assert response.partial_success.rejected_log_records == 0
     events = event_log.events()
@@ -245,10 +246,10 @@ def test_mtls_unregistered_uri_san_is_permission_denied(tmp_path: Path) -> None:
         grpc.channel_ready_future(channel).result(timeout=5)
         stub = logs_service_pb2_grpc.LogsServiceStub(channel)
         with pytest.raises(grpc.RpcError) as exc_info:
-            stub.Export(_request(), timeout=5)
+            stub.Export(_request(), timeout=5, metadata=EXPORT_METADATA)
     finally:
         channel.close()
-        host.stop()
+        host.shutdown()
 
     assert exc_info.value.code() == grpc.StatusCode.PERMISSION_DENIED
     assert event_log.events() == []
@@ -287,6 +288,6 @@ def test_mtls_client_certificate_is_required(tmp_path: Path) -> None:
             grpc.channel_ready_future(channel).result(timeout=1)
     finally:
         channel.close()
-        host.stop()
+        host.shutdown()
 
     assert event_log.events() == []
