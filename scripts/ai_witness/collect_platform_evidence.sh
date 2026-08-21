@@ -60,6 +60,12 @@ event_log=/sys/kernel/security/tpm0/binary_bios_measurements
 if [[ -r "$event_log" ]]; then
   cp "$event_log" "$output_dir/tcg-event-log.bin"
   sha256sum "$output_dir/tcg-event-log.bin" >"$output_dir/tcg-event-log.sha256"
+  if command -v tpm2_eventlog >/dev/null 2>&1; then
+    capture tcg-event-log.yaml tpm2_eventlog "$output_dir/tcg-event-log.bin"
+  else
+    printf '%s\n' "tpm2_eventlog unavailable; raw TCG event log retained" \
+      >"$output_dir/tcg-event-log-parser.unavailable.txt"
+  fi
 else
   printf '%s\n' "TPM event log unavailable at $event_log" \
     >"$output_dir/tcg-event-log.unavailable.txt"
