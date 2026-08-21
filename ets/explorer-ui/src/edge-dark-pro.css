@@ -1,0 +1,305 @@
+:root {
+  color-scheme: dark;
+  --edge-bg: #070b10;
+  --edge-surface: #0d131b;
+  --edge-surface-2: #111923;
+  --edge-border: #253140;
+  --edge-text: #edf3f8;
+  --edge-muted: #98a7b7;
+  --edge-accent: #72d6c9;
+  --edge-accent-strong: #2bb7a6;
+  --edge-good: #62d29f;
+  --edge-warn: #f1c66a;
+  --edge-bad: #ff7f87;
+}
+
+body {
+  background: var(--edge-bg);
+  color: var(--edge-text);
+}
+
+.edge-dark-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top right, rgba(43, 183, 166, 0.11), transparent 34rem),
+    var(--edge-bg);
+  color: var(--edge-text);
+  padding: 1.5rem;
+}
+
+.edge-command-header,
+.edge-card,
+.edge-boundary-banner,
+.edge-workbench > .app-shell .hero,
+.edge-workbench > .app-shell .panel,
+.edge-workbench > .app-shell .step {
+  border: 1px solid var(--edge-border);
+  background: rgba(13, 19, 27, 0.96);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.22);
+}
+
+.edge-command-header {
+  width: min(1440px, 100%);
+  margin: 0 auto;
+  padding: 1.5rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-radius: 14px;
+}
+
+.edge-command-header h1 {
+  margin: 0.15rem 0 0;
+  font-size: clamp(2rem, 5vw, 4.5rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+
+.edge-kicker {
+  margin: 0;
+  color: var(--edge-accent);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.edge-subtitle,
+.edge-card-copy,
+.edge-boundary-note,
+.edge-section-heading p {
+  color: var(--edge-muted);
+}
+
+.edge-subtitle {
+  max-width: 55rem;
+  margin: 0.8rem 0 0;
+}
+
+.edge-state-grid,
+.edge-dashboard-grid,
+.edge-boundary-banner,
+.edge-workbench {
+  width: min(1440px, 100%);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.edge-state-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin-top: 0.8rem;
+}
+
+.edge-state {
+  min-width: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--edge-border);
+  border-radius: 12px;
+  background: var(--edge-surface-2);
+}
+
+.edge-state span,
+.edge-detail-list dt {
+  color: var(--edge-muted);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.edge-state strong {
+  display: block;
+  margin-top: 0.35rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edge-state-good { border-color: rgba(98, 210, 159, 0.55); }
+.edge-state-good strong { color: var(--edge-good); }
+.edge-state-warn { border-color: rgba(241, 198, 106, 0.55); }
+.edge-state-warn strong { color: var(--edge-warn); }
+.edge-state-bad { border-color: rgba(255, 127, 135, 0.55); }
+.edge-state-bad strong { color: var(--edge-bad); }
+
+.edge-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.edge-card {
+  padding: 1.1rem;
+  border-radius: 14px;
+}
+
+.edge-card h2,
+.edge-section-heading h2 {
+  margin: 0 0 1rem;
+}
+
+.edge-detail-list {
+  margin: 0;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.edge-detail-list > div {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.8fr) minmax(0, 1.2fr);
+  gap: 0.8rem;
+  align-items: baseline;
+  border-bottom: 1px solid rgba(37, 49, 64, 0.75);
+  padding-bottom: 0.7rem;
+}
+
+.edge-detail-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--edge-text);
+}
+
+.edge-secret-label {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--edge-muted);
+  font-size: 0.86rem;
+}
+
+.edge-dark-shell input {
+  border-color: var(--edge-border);
+  background: #080d13;
+  color: var(--edge-text);
+}
+
+.edge-dark-shell button {
+  border: 1px solid var(--edge-accent-strong);
+  background: var(--edge-accent-strong);
+  color: #04100f;
+  font-weight: 750;
+}
+
+.edge-dark-shell button:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+
+.edge-dark-shell button:focus-visible,
+.edge-dark-shell input:focus-visible,
+.edge-dark-shell a:focus-visible {
+  outline: 3px solid rgba(114, 214, 201, 0.7);
+  outline-offset: 2px;
+}
+
+.edge-dark-shell .edge-secondary {
+  background: transparent;
+  color: var(--edge-text);
+  border-color: var(--edge-border);
+}
+
+.edge-action-row,
+.edge-header-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.edge-action-row {
+  margin: 0.75rem 0 1rem;
+}
+
+.edge-boundary-banner {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  color: var(--edge-muted);
+}
+
+.edge-boundary-banner strong {
+  color: var(--edge-text);
+}
+
+.edge-alert {
+  width: min(1440px, 100%);
+  margin: 1rem auto 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(255, 127, 135, 0.6);
+  border-radius: 12px;
+  color: #ffd9dc;
+  background: rgba(94, 24, 31, 0.3);
+}
+
+.edge-workbench {
+  margin-top: 1.2rem;
+}
+
+.edge-section-heading {
+  padding: 1.3rem 1rem 0.2rem;
+}
+
+.edge-section-heading h2 {
+  margin: 0.25rem 0 0.4rem;
+}
+
+.edge-workbench > .app-shell {
+  width: 100%;
+  padding-top: 0;
+}
+
+.edge-workbench > .app-shell .hero,
+.edge-workbench > .app-shell .panel,
+.edge-workbench > .app-shell .step {
+  color: var(--edge-text);
+}
+
+.edge-workbench > .app-shell .hero p,
+.edge-workbench > .app-shell label,
+.edge-workbench > .app-shell .panel p,
+.edge-workbench > .app-shell .step p,
+.edge-workbench > .app-shell .check-line span {
+  color: var(--edge-muted);
+}
+
+.edge-workbench > .app-shell .eyebrow,
+.edge-workbench > .app-shell th,
+.edge-workbench > .app-shell code {
+  color: var(--edge-accent) !important;
+}
+
+.edge-workbench > .app-shell .badge,
+.edge-workbench > .app-shell .status-block {
+  background: #0a1118;
+  border-color: var(--edge-border);
+  color: var(--edge-text);
+}
+
+.edge-workbench > .app-shell td,
+.edge-workbench > .app-shell th {
+  border-color: var(--edge-border);
+}
+
+.edge-workbench > .app-shell .election-demo {
+  display: none;
+}
+
+@media (max-width: 1100px) {
+  .edge-state-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .edge-dashboard-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 680px) {
+  .edge-dark-shell { padding: 0.75rem; }
+  .edge-command-header { flex-direction: column; }
+  .edge-state-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .edge-detail-list > div { grid-template-columns: 1fr; gap: 0.25rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}
