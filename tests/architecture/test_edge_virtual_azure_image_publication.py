@@ -96,7 +96,15 @@ def test_published_ui_is_requalified_as_unprivileged_narrow_surface() -> None:
     assert '= "nginx"' in text
     assert "8080/tcp" in text
     assert "/afd-healthz" in text
-    for path in ("/api", "/docs", "/openapi.json", "/edge/v1/device/identity", "/internal", "/ready", "/version"):
+    for path in (
+        "/api",
+        "/docs",
+        "/openapi.json",
+        "/edge/v1/device/identity",
+        "/internal",
+        "/ready",
+        "/version",
+    ):
         assert path in text
     assert 'grep -R -F "Local API key"' in text
     assert 'grep -R -F "Bearer token"' in text
