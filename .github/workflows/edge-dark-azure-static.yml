@@ -12,6 +12,7 @@ on:
       - "tests/unit/test_edge_ui_hosted_origin.py"
       - "tests/architecture/test_edge_virtual_azure_boundary.py"
       - "tests/architecture/test_edge_virtual_frontdoor_boundary.py"
+      - ".github/workflows/deploy-edge-dark-azure.yml"
       - ".github/workflows/edge-dark-azure-static.yml"
   workflow_dispatch:
 
