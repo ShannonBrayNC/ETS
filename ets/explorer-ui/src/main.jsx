@@ -2,14 +2,14 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 
 import App from './App.jsx'
-import EdgeApp from './EdgeApp.jsx'
+import EdgeDarkApp from './EdgeDarkApp.jsx'
 import './style.css'
+import './edge-dark.css'
 
-const edgeDarkProEnabled = import.meta.env.VITE_ETS_EDGE_DARK_PRO === 'true'
-const RootApp = edgeDarkProEnabled ? EdgeApp : App
+const Surface = import.meta.env.VITE_ETS_SURFACE_PROFILE === 'edge' ? EdgeDarkApp : App
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <RootApp />
+    <Surface />
   </React.StrictMode>,
 )
