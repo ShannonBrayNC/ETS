@@ -7,13 +7,10 @@ RUN npm ci
 
 COPY ets/explorer-ui/ ./
 
-# Keep Edge Virtual additive: the shared Explorer remains the default for non-Edge
-# builds. The Edge image selects the hardened Dark Pro operator shell at build time.
 ARG VITE_ETS_API_BASE_URL=
-ARG VITE_ETS_EDGE_DARK_PRO=true
-ENV VITE_ETS_API_BASE_URL=${VITE_ETS_API_BASE_URL}
-ENV VITE_ETS_EDGE_DARK_PRO=${VITE_ETS_EDGE_DARK_PRO}
-
+ARG VITE_ETS_SURFACE_PROFILE=edge
+ENV VITE_ETS_API_BASE_URL=${VITE_ETS_API_BASE_URL} \
+    VITE_ETS_SURFACE_PROFILE=${VITE_ETS_SURFACE_PROFILE}
 RUN npm run build
 
 FROM nginx:1.27-alpine

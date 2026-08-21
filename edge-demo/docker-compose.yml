@@ -45,6 +45,12 @@ services:
       ETS_EDGE_SYSLOG_TENANT: tenant_demo
       ETS_EDGE_SYSLOG_WORKSPACE: workspace_alpha
       ETS_EDGE_SYSLOG_SOURCE_ID: syslog-demo
+      ETS_EDGE_UI_BFF_ENABLED: "1"
+      ETS_EDGE_UI_TENANT: tenant_demo
+      ETS_EDGE_UI_WORKSPACE: workspace_alpha
+      ETS_EDGE_UI_SOURCE_ID: edge-dark-pro-demo
+      ETS_EDGE_FLEET_ENROLLMENT_STATE: not_configured
+      ETS_EDGE_FLEET_HEARTBEAT_STATE: not_configured
     volumes:
       - ets-edge-data:/var/lib/ets
     depends_on:
@@ -90,6 +96,7 @@ services:
       dockerfile: edge-demo/Dockerfile.ui
       args:
         VITE_ETS_API_BASE_URL: ""
+        VITE_ETS_SURFACE_PROFILE: edge
     depends_on:
       edge-api:
         condition: service_healthy
