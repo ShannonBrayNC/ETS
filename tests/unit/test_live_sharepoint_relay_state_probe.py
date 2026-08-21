@@ -24,6 +24,14 @@ def test_relay_probe_is_manual_protected_and_reuses_live_gateway_boundaries() ->
     assert "mountPath: '/mnt/gateway-state'" in BICEP
 
 
+def test_relay_probe_exposes_runtime_identity_to_main_container_only() -> None:
+    runtime_identity = "identity: runtimeIdentityResourceId\n          lifecycle: 'Main'"
+    pull_identity = "identity: registryPullIdentityResourceId\n          lifecycle: 'None'"
+    assert runtime_identity in BICEP
+    assert pull_identity in BICEP
+    assert "ManagedIdentityCredential(client_id=client_id)" in BICEP
+
+
 def test_relay_probe_reads_gateway_state_without_mutating_queue_or_core() -> None:
     assert "mode=ro" in BICEP
     assert "PRAGMA query_only = ON" in BICEP
