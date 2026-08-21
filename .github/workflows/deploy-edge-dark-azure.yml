@@ -1,0 +1,251 @@
+name: Deploy Edge Dark Pro Azure
+
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: "Deploy private origin first; deploy public edge only after Azure-side EasyAuth secret provisioning."
+        required: true
+        type: choice
+        options:
+          - origin
+          - public-edge
+      edge_api_image:
+        description: "Immutable ACR image repository@sha256:digest for Edge API (origin phase)."
+        required: false
+        type: string
+      edge_bff_image:
+        description: "Immutable ACR image repository@sha256:digest for Edge BFF (origin phase)."
+        required: false
+        type: string
+      edge_upstream_image:
+        description: "Immutable ACR image repository@sha256:digest for synthetic upstream (origin phase)."
+        required: false
+        type: string
+      edge_ui_image:
+        description: "Immutable ACR image repository@sha256:digest for hosted Dark Pro UI (origin phase)."
+        required: false
+        type: string
+      container_app_name:
+        description: "Exact private-origin Container App name emitted by the successful origin phase (public-edge phase)."
+        required: false
+        type: string
+      managed_environment_name:
+        description: "Exact private-origin Container Apps environment name emitted by the successful origin phase (public-edge phase)."
+        required: false
+        type: string
+      entra_client_id:
+        description: "Single-tenant Entra app client ID (public-edge phase)."
+        required: false
+        type: string
+      operator_group_ids_json:
+        description: "JSON array of allowed Entra group object IDs, for example [\"guid\"] (public-edge phase)."
+        required: false
+        type: string
+      auth_secret_setting_name:
+        description: "Existing Azure-side app setting containing EasyAuth client secret. Value is never passed to GitHub."
+        required: false
+        default: "MICROSOFT_PROVIDER_AUTHENTICATION_SECRET"
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  RESOURCE_GROUP: ${{ vars.ETS_EDGE_DEMO_RESOURCE_GROUP }}
+  LOCATION: ${{ vars.ETS_EDGE_DEMO_LOCATION }}
+  ACR_NAME: ${{ vars.ETS_EDGE_DEMO_ACR_NAME }}
+  ACR_RESOURCE_GROUP: ${{ vars.ETS_EDGE_DEMO_ACR_RESOURCE_GROUP }}
+  ENVIRONMENT_NAME: edge-virtual-demo
+  PUBLIC_DEMO_ORIGIN: https://edge-demo.lanternprotocol.net
+  PUBLIC_DEMO_HOST: edge-demo.lanternprotocol.net
+
+jobs:
+  deploy:
+    name: ${{ inputs.phase }}
+    runs-on: ubuntu-latest
+    environment: edge-demo-azure
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+
+      - name: Validate deployment inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RESOURCE_GROUP}"
+          test -n "${LOCATION}"
+          case "${{ inputs.phase }}" in
+            origin)
+              for image in \
+                '${{ inputs.edge_api_image }}' \
+                '${{ inputs.edge_bff_image }}' \
+                '${{ inputs.edge_upstream_image }}' \
+                '${{ inputs.edge_ui_image }}'; do
+                test -n "${image}"
+                printf '%s' "${image}" | grep -Eq '@sha256:[0-9a-f]{64}$'
+              done
+              test -n "${ACR_NAME}"
+              test -n "${ACR_RESOURCE_GROUP}"
+              ;;
+            public-edge)
+              test -n '${{ inputs.container_app_name }}'
+              test -n '${{ inputs.managed_environment_name }}'
+              test -n '${{ inputs.entra_client_id }}'
+              test -n '${{ inputs.operator_group_ids_json }}'
+              test -n '${{ inputs.auth_secret_setting_name }}'
+              python - <<'PY'
+          import json
+          import os
+          value = json.loads(os.environ['OPERATOR_GROUP_IDS_JSON'])
+          assert isinstance(value, list) and value
+          assert all(isinstance(item, str) and len(item) == 36 for item in value)
+          PY
+              ;;
+            *) exit 2 ;;
+          esac
+        env:
+          OPERATOR_GROUP_IDS_JSON: ${{ inputs.operator_group_ids_json }}
+
+      - name: Azure login using GitHub OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify Azure target
+        shell: bash
+        run: |
+          set -euo pipefail
+          az account show --query '{subscription:id,tenant:tenantId}' -o json
+          az group show --name "${RESOURCE_GROUP}" --query '{name:name,location:location}' -o json
+
+      - name: Deploy private synthetic origin
+        if: inputs.phase == 'origin'
+        shell: bash
+        run: |
+          set -euo pipefail
+          az deployment group create \
+            --resource-group "${RESOURCE_GROUP}" \
+            --name "edge-demo-origin-${GITHUB_RUN_ID}" \
+            --template-file infra/azure/ets-edge-virtual-demo-origin.bicep \
+            --parameters \
+              location="${LOCATION}" \
+              environmentName="${ENVIRONMENT_NAME}" \
+              containerRegistryName="${ACR_NAME}" \
+              containerRegistryResourceGroup="${ACR_RESOURCE_GROUP}" \
+              edgeApiImage='${{ inputs.edge_api_image }}' \
+              edgeWebhookImage='${{ inputs.edge_bff_image }}' \
+              edgeUpstreamImage='${{ inputs.edge_upstream_image }}' \
+              edgeUiImage='${{ inputs.edge_ui_image }}' \
+              publicDemoOrigin="${PUBLIC_DEMO_ORIGIN}" \
+            --only-show-errors \
+            -o json > "${RUNNER_TEMP}/origin-deployment.json"
+
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          payload = json.loads(Path(os.environ['RUNNER_TEMP'], 'origin-deployment.json').read_text())
+          outputs = payload['properties']['outputs']
+          public = {
+              'container_app_name': outputs['containerAppName']['value'],
+              'managed_environment_name': outputs['managedEnvironmentName']['value'],
+              'public_network_access': outputs['publicNetworkAccess']['value'],
+              'runtime_identity_count': outputs['runtimeIdentityCount']['value'],
+          }
+          assert public['public_network_access'] == 'Disabled'
+          assert public['runtime_identity_count'] == 0
+          print(json.dumps(public, indent=2))
+          PY
+
+      - name: Verify exact private origin resources
+        if: inputs.phase == 'public-edge'
+        shell: bash
+        run: |
+          set -euo pipefail
+          az containerapp show \
+            --resource-group "${RESOURCE_GROUP}" \
+            --name '${{ inputs.container_app_name }}' \
+            --query '{name:name,environmentId:properties.environmentId}' \
+            -o json > "${RUNNER_TEMP}/container-app.json"
+          az containerapp env show \
+            --resource-group "${RESOURCE_GROUP}" \
+            --name '${{ inputs.managed_environment_name }}' \
+            --query '{name:name,id:id,publicNetworkAccess:properties.publicNetworkAccess}' \
+            -o json > "${RUNNER_TEMP}/environment.json"
+
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])
+          app = json.loads((root / 'container-app.json').read_text())
+          env = json.loads((root / 'environment.json').read_text())
+          assert app['name'] == os.environ['EXPECTED_APP']
+          assert env['name'] == os.environ['EXPECTED_ENV']
+          assert app['environmentId'].lower() == env['id'].lower()
+          assert env['publicNetworkAccess'] == 'Disabled'
+          PY
+        env:
+          EXPECTED_APP: ${{ inputs.container_app_name }}
+          EXPECTED_ENV: ${{ inputs.managed_environment_name }}
+
+      - name: Require EasyAuth secret to exist only in Azure
+        if: inputs.phase == 'public-edge'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SECRET_NAME='${{ inputs.auth_secret_setting_name }}'
+          MATCH="$(az containerapp secret list \
+            --resource-group "${RESOURCE_GROUP}" \
+            --name '${{ inputs.container_app_name }}' \
+            --query "[?name=='${SECRET_NAME}'].name | [0]" \
+            -o tsv)"
+          test "${MATCH}" = "${SECRET_NAME}"
+          echo "Required EasyAuth secret setting exists in Azure. Secret value was not read."
+
+      - name: Deploy authenticated Front Door Premium boundary
+        if: inputs.phase == 'public-edge'
+        shell: bash
+        run: |
+          set -euo pipefail
+          az deployment group create \
+            --resource-group "${RESOURCE_GROUP}" \
+            --name "edge-demo-frontdoor-${GITHUB_RUN_ID}" \
+            --template-file infra/azure/ets-edge-virtual-demo-frontdoor.bicep \
+            --parameters \
+              containerAppName='${{ inputs.container_app_name }}' \
+              managedEnvironmentName='${{ inputs.managed_environment_name }}' \
+              entraTenantId='${{ vars.AZURE_TENANT_ID }}' \
+              entraClientId='${{ inputs.entra_client_id }}' \
+              operatorGroupObjectIds='${{ inputs.operator_group_ids_json }}' \
+              entraClientSecretSettingName='${{ inputs.auth_secret_setting_name }}' \
+              customDomainHostName="${PUBLIC_DEMO_HOST}" \
+            --only-show-errors \
+            -o json > "${RUNNER_TEMP}/frontdoor-deployment.json"
+
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          payload = json.loads(Path(os.environ['RUNNER_TEMP'], 'frontdoor-deployment.json').read_text())
+          outputs = payload['properties']['outputs']
+          assert outputs['privateLinkApprovalRequired']['value'] is True
+          assert outputs['wafMode']['value'] == 'Prevention'
+          print(json.dumps({
+              'front_door_endpoint': outputs['frontDoorEndpointHostName']['value'],
+              'public_demo_host': outputs['publicDemoHostName']['value'],
+              'private_link_approval_required': True,
+              'waf_mode': 'Prevention',
+          }, indent=2))
+          PY
+
+      - name: Hold activation at Private Link approval boundary
+        if: inputs.phase == 'public-edge'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Front Door infrastructure is deployed, but origin connectivity remains gated on review and approval of the pending Front Door Private Link request."
+          echo "Do not approve any unrelated private endpoint connection."

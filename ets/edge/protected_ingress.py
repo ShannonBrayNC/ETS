@@ -410,10 +410,20 @@ async def _bounded_json_body(request: Request) -> dict[str, Any]:
 def _valid_ui_request(request: Request) -> bool:
     if request.headers.get(UI_REQUEST_HEADER) != "1":
         return False
+
     fetch_site = request.headers.get("sec-fetch-site")
     if fetch_site is not None and fetch_site not in {"same-origin", "none"}:
         return False
+
     origin = request.headers.get("origin")
+    allowed_origin = os.getenv("ETS_EDGE_UI_ALLOWED_ORIGIN", "").strip().rstrip("/")
+    if allowed_origin:
+        if request.method.upper() not in {"GET", "HEAD", "OPTIONS"} and origin is None:
+            return False
+        if origin is not None and not hmac.compare_digest(origin.rstrip("/"), allowed_origin):
+            return False
+        return True
+
     if origin is not None:
         parsed = urlparse(origin)
         host = request.headers.get("host", "")
