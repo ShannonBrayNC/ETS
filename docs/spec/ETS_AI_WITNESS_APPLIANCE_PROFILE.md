@@ -54,6 +54,11 @@ A VM MAY implement the development profile with a vTPM but is not a physical-pil
 - **AIW-A-004 MUST NOT** expose production evidence-signing private-key bytes to the Python application process.
 - **AIW-A-005 MUST** support key rotation and revocation without rewriting historical evidence.
 - **AIW-A-006 MUST** expose the public key identifier/fingerprint used for each signed Witness record.
+- **AIW-A-007 MUST** use a signing algorithm executed natively by the qualified TPM or another explicitly qualified non-exportable hardware signer. TPM-sealing a software private key that is later exposed to application memory does not satisfy AIW-A-002 or AIW-A-004.
+- **AIW-A-008 MUST** cryptographically bind the signing algorithm identifier to the signed Witness record so that algorithm substitution cannot preserve verification.
+- **AIW-A-009 MUST** verify the selected signing algorithm against the named TPM capability set during device qualification. The PC Client profile guarantees interoperable ECDSA capability on mandatory NIST curves; it does not establish Ed25519 as a universally available TPM signing primitive.
+
+The software Witness v1 record implementation is currently Ed25519-only. That implementation remains valid for software/reference Witnesses but **does not by itself satisfy the physical-pilot signing-key requirements above**. Physical qualification is therefore gated on the algorithm-agile signer-provider/record-envelope slice that follows this profile. The preferred PC Client hardware baseline is ECDSA P-256 with SHA-256 unless the named qualification device demonstrates another approved TPM-native algorithm. Historical Ed25519 Witness records must remain independently verifiable after algorithm agility is introduced.
 
 ### Secure and measured boot
 
@@ -135,15 +140,17 @@ The current reference implementation provides:
 - NTS/NTP/PTP/local clock-evidence contracts;
 - authenticated runtime-adapter identity contracts;
 - signed, time-bounded fleet enrollment verification;
-- signed update manifests with release-sequence rollback protection and expiry;
+- signed update manifests with release-sequence and metadata-version rollback protection, expiry, signer binding, and downloaded-target hash/size verification;
 - encrypted durable SQLite queue with authenticated encryption and restart recovery;
 - deterministic pilot-readiness assessment.
+
+The software reference does not yet provide a TPM-native Witness record signer. Its current Ed25519 private-key constructor is intentionally a software/reference boundary and is not a substitute for AIW-A-002 through AIW-A-009.
 
 ## 6. Hardware-only qualification gates
 
 The following cannot be claimed from CI alone and require named physical hardware:
 
-1. TPM key non-exportability demonstrated on the reference board.
+1. TPM signing/attestation/queue key non-exportability demonstrated on the reference board, including selected signing-algorithm capability.
 2. TPM quote verification with nonce binding and reference PCR/event-log appraisal.
 3. Secure Boot enabled with approved key database state.
 4. Measured-boot event-log reconstruction across normal and tampered boot variants.
