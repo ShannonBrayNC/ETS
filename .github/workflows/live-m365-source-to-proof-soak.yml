@@ -1,0 +1,679 @@
+name: Live M365 Source to Proof 72 Hour Soak
+
+on:
+  workflow_dispatch:
+    inputs:
+      restart_active:
+        description: Explicitly invalidate an active attempt and begin a new one
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: '23 * * * *'
+
+permissions:
+  contents: read
+  actions: write
+  issues: write
+
+concurrency:
+  group: live-m365-source-to-proof-soak
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    name: Govern frozen M365 source-to-proof soak
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      SOAK_ISSUE: '479'
+      SOURCE_WORKFLOW: live-m365-soak-source-to-proof-observation.yml
+      STATE_WORKFLOW: live-sharepoint-state-boundary-probe.yml
+      RELEASE_SOURCE_SHA: 9a4c3a8aefc50a960bdd3ce34b28f86fd69f1535
+      RELEASE_IMAGE_DIGEST: sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63
+      QUALIFICATION_MARKER: post458-release-sync-20260820
+      EXPECTED_OBSERVATIONS: '2'
+      MIN_SOAK_HOURS: '72'
+      MIN_SUCCESSFUL_OBSERVATIONS: '72'
+      MAX_GAP_MINUTES: '110'
+      RESTART_ACTIVE: ${{ inputs.restart_active }}
+
+    steps:
+      - name: Run governed soak observation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/live-m365-source-to-proof-soak
+          python - <<'PY'
+          import base64
+          import io
+          import json
+          import os
+          import re
+          import time
+          import zipfile
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from urllib.error import HTTPError
+          from urllib.parse import urlencode, urlparse
+          from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          event_name = os.environ["GITHUB_EVENT_NAME"]
+          current_run_id = int(os.environ["GITHUB_RUN_ID"])
+          current_sha = os.environ["GITHUB_SHA"]
+          issue_number = int(os.environ["SOAK_ISSUE"])
+          source_workflow = os.environ["SOURCE_WORKFLOW"]
+          state_workflow = os.environ["STATE_WORKFLOW"]
+          expected_source = os.environ["RELEASE_SOURCE_SHA"]
+          expected_digest = os.environ["RELEASE_IMAGE_DIGEST"]
+          marker = os.environ["QUALIFICATION_MARKER"]
+          expected_observations = int(os.environ["EXPECTED_OBSERVATIONS"])
+          min_hours = int(os.environ["MIN_SOAK_HOURS"])
+          min_observations = int(os.environ["MIN_SUCCESSFUL_OBSERVATIONS"])
+          max_gap_minutes = int(os.environ["MAX_GAP_MINUTES"])
+          restart_active = os.environ.get("RESTART_ACTIVE", "").casefold() == "true"
+          evidence_dir = Path("evidence/live-m365-source-to-proof-soak")
+          state_marker = "ETS_M365_SOAK_STATE_B64="
+
+          if event_name not in {"workflow_dispatch", "schedule"}:
+              raise RuntimeError("soak workflow used an unsupported trigger")
+          if not re.fullmatch(r"[0-9a-f]{40}", expected_source):
+              raise RuntimeError("frozen release source is not canonical")
+          if not re.fullmatch(r"sha256:[0-9a-f]{64}", expected_digest):
+              raise RuntimeError("frozen release digest is not canonical")
+          if expected_observations != 2:
+              raise RuntimeError("soak must preserve the qualified two-revision boundary")
+          if min_hours != 72 or min_observations != 72:
+              raise RuntimeError("soak exit gate drifted from 72-hour/72-observation minimums")
+          if max_gap_minutes != 110:
+              raise RuntimeError("soak monitoring gap tolerance drifted")
+
+          api_base = f"https://api.github.com/repos/{repository}"
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {token}",
+              "X-GitHub-Api-Version": "2026-03-10",
+          }
+
+          def api_json(method: str, url: str, payload: dict | None = None):
+              data = None
+              request_headers = dict(headers)
+              if payload is not None:
+                  data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+                  request_headers["Content-Type"] = "application/json"
+              try:
+                  with urlopen(
+                      Request(url, data=data, headers=request_headers, method=method),
+                      timeout=30.0,
+                  ) as response:
+                      raw = response.read()
+                      return json.loads(raw.decode("utf-8")) if raw else {}
+              except HTTPError as exc:
+                  detail = exc.read().decode("utf-8", errors="replace")[:500]
+                  raise RuntimeError(
+                      f"GitHub API {method} failed with HTTP {exc.code}: {detail}"
+                  ) from exc
+
+          def utc_now() -> datetime:
+              return datetime.now(timezone.utc)
+
+          def parse_time(value: str) -> datetime:
+              parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+              if parsed.tzinfo is None:
+                  raise RuntimeError("soak timestamp omitted timezone")
+              return parsed.astimezone(timezone.utc)
+
+          def iso(value: datetime) -> str:
+              return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+          def encode_state(payload: dict) -> str:
+              raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+              return base64.urlsafe_b64encode(raw).decode("ascii")
+
+          def decode_state(body: str):
+              match = re.search(
+                  r"<!--\s*" + re.escape(state_marker) + r"([A-Za-z0-9_=-]+)\s*-->",
+                  body,
+              )
+              if match is None:
+                  return None
+              try:
+                  payload = json.loads(
+                      base64.urlsafe_b64decode(match.group(1)).decode("utf-8")
+                  )
+              except (ValueError, json.JSONDecodeError):
+                  return None
+              if payload.get("schema_version") != "ets.live_m365_soak.state.v1":
+                  return None
+              return payload
+
+          def post_state(state: dict, title: str, details: list[str]) -> None:
+              body = [
+                  f"<!-- {state_marker}{encode_state(state)} -->",
+                  f"### {title}",
+                  "",
+                  *details,
+              ]
+              api_json(
+                  "POST",
+                  f"{api_base}/issues/{issue_number}/comments",
+                  {"body": "\n".join(body) + "\n"},
+              )
+
+          def latest_state():
+              comments = api_json(
+                  "GET",
+                  f"{api_base}/issues/{issue_number}/comments?per_page=100",
+              )
+              if not isinstance(comments, list):
+                  raise RuntimeError("soak issue comments did not return an array")
+              found = None
+              for comment in comments:
+                  body = comment.get("body")
+                  if isinstance(body, str):
+                      parsed = decode_state(body)
+                      if parsed is not None:
+                          found = parsed
+              return found
+
+          def prior_failed_coordinator_run(started_at: str):
+              query = urlencode({"branch": "main", "per_page": "100"})
+              listing = api_json(
+                  "GET",
+                  f"{api_base}/actions/workflows/live-m365-source-to-proof-soak.yml/runs?{query}",
+              )
+              runs = listing.get("workflow_runs", [])
+              started = parse_time(started_at)
+              for run in runs:
+                  run_id = run.get("id")
+                  if run_id == current_run_id:
+                      continue
+                  created = run.get("created_at")
+                  if not isinstance(created, str) or parse_time(created) < started:
+                      continue
+                  if run.get("status") == "completed" and run.get("conclusion") != "success":
+                      return int(run_id)
+              return None
+
+          def dispatch(workflow: str, inputs: dict | None = None) -> dict:
+              result = api_json(
+                  "POST",
+                  f"{api_base}/actions/workflows/{workflow}/dispatches",
+                  {
+                      "ref": "main",
+                      "inputs": inputs or {},
+                      "return_run_details": True,
+                  },
+              )
+              run_id = result.get("workflow_run_id")
+              run_url = result.get("run_url")
+              if not isinstance(run_id, int) or run_id <= 0:
+                  raise RuntimeError(f"{workflow} dispatch omitted workflow_run_id")
+              expected_url = f"{api_base}/actions/runs/{run_id}"
+              if run_url != expected_url:
+                  raise RuntimeError(f"{workflow} dispatch returned non-canonical run URL")
+              return {"id": run_id, "url": run_url}
+
+          def wait_for_success(run: dict, label: str, timeout_minutes: int) -> dict:
+              deadline = time.monotonic() + timeout_minutes * 60
+              while time.monotonic() < deadline:
+                  payload = api_json("GET", run["url"])
+                  if payload.get("id") != run["id"]:
+                      raise RuntimeError(f"{label} lookup returned a different run ID")
+                  if payload.get("event") != "workflow_dispatch":
+                      raise RuntimeError(f"{label} was not workflow_dispatch")
+                  if payload.get("head_branch") != "main":
+                      raise RuntimeError(f"{label} was not pinned to main")
+                  if payload.get("head_sha") != current_sha:
+                      raise RuntimeError(f"{label} orchestration source drifted from coordinator")
+                  if payload.get("status") == "completed":
+                      if payload.get("conclusion") != "success":
+                          raise RuntimeError(
+                              f"{label} completed with {payload.get('conclusion')!r}"
+                          )
+                      return payload
+                  time.sleep(10)
+              raise RuntimeError(f"{label} exceeded its bounded wait")
+
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, hdrs, newurl):
+                  return None
+
+          def download_artifact(run_id: int, name: str, json_basename: str) -> dict:
+              listing = api_json(
+                  "GET",
+                  f"{api_base}/actions/runs/{run_id}/artifacts?per_page=100",
+              )
+              matches = [
+                  item
+                  for item in listing.get("artifacts", [])
+                  if item.get("name") == name and item.get("expired") is False
+              ]
+              if len(matches) != 1:
+                  raise RuntimeError(f"expected exactly one retained artifact: {name}")
+              archive_url = matches[0].get("archive_download_url")
+              if not isinstance(archive_url, str) or not archive_url.startswith(
+                  f"{api_base}/actions/artifacts/"
+              ):
+                  raise RuntimeError("artifact archive URL was not canonical")
+
+              opener = build_opener(NoRedirect)
+              try:
+                  opener.open(Request(archive_url, headers=headers), timeout=30.0)
+              except HTTPError as exc:
+                  if exc.code not in {302, 307}:
+                      raise RuntimeError(
+                          f"artifact redirect failed with HTTP {exc.code}"
+                      ) from exc
+                  signed_url = exc.headers.get("Location")
+              else:
+                  raise RuntimeError("artifact endpoint did not return a signed redirect")
+
+              if not isinstance(signed_url, str):
+                  raise RuntimeError("artifact redirect omitted signed URL")
+              parsed = urlparse(signed_url)
+              if parsed.scheme != "https" or not parsed.hostname:
+                  raise RuntimeError("artifact redirect was not HTTPS")
+              if parsed.hostname == "api.github.com":
+                  raise RuntimeError("artifact redirect did not leave GitHub API origin")
+
+              chunks = []
+              copied = 0
+              with urlopen(signed_url, timeout=60.0) as response:
+                  while True:
+                      chunk = response.read(1024 * 1024)
+                      if not chunk:
+                          break
+                      copied += len(chunk)
+                      if copied > 16 * 1024 * 1024:
+                          raise RuntimeError("soak artifact exceeded 16 MiB bound")
+                      chunks.append(chunk)
+
+              with zipfile.ZipFile(io.BytesIO(b"".join(chunks))) as archive:
+                  candidates = [
+                      candidate
+                      for candidate in archive.namelist()
+                      if Path(candidate).name == json_basename
+                  ]
+                  if len(candidates) != 1:
+                      raise RuntimeError(
+                          f"artifact did not contain exactly one {json_basename}"
+                      )
+                  return json.loads(archive.read(candidates[0]).decode("utf-8"))
+
+          def validate_source_observation(payload: dict) -> None:
+              if payload.get("schema_version") != (
+                  "ets.live_m365_soak.source_to_proof_observation.v1"
+              ):
+                  raise RuntimeError("source-to-proof soak artifact schema drifted")
+              if payload.get("release_source_sha") != expected_source:
+                  raise RuntimeError("source-to-proof soak source drifted")
+              if payload.get("release_image_digest") != expected_digest:
+                  raise RuntimeError("source-to-proof soak image drifted")
+              if payload.get("marker") != marker:
+                  raise RuntimeError("source-to-proof soak marker drifted")
+              if payload.get("expected_observations") != expected_observations:
+                  raise RuntimeError("source-to-proof soak revision expectation drifted")
+              if not isinstance(payload.get("core_observation_count"), int) or payload[
+                  "core_observation_count"
+              ] < expected_observations:
+                  raise RuntimeError("source-to-proof soak lost revision observations")
+              for key in (
+                  "source_to_proof_verified",
+                  "revision_evidence_verified",
+                  "inclusion_proof_verified",
+                  "duplicate_suppression_verified",
+                  "delta_recovery_without_notification_verified",
+                  "graph_scope_denial_403_verified",
+                  "durable_retention_verified",
+                  "public_evidence_safe",
+              ):
+                  if payload.get(key) is not True:
+                      raise RuntimeError(f"source-to-proof soak predicate failed: {key}")
+              for key in (
+                  "customer_identifiers_retained",
+                  "reusable_credential_retained",
+                  "soak_clock_started",
+              ):
+                  if payload.get(key) is not False:
+                      raise RuntimeError(
+                          f"source-to-proof soak fail-closed predicate failed: {key}"
+                      )
+
+          def validate_state(payload: dict) -> None:
+              if payload.get("schema_version") != "ets.live_sharepoint.state_probe.v1":
+                  raise RuntimeError("Gateway state probe schema drifted")
+              if payload.get("checkpoint_present") is not True:
+                  raise RuntimeError("Gateway checkpoint disappeared during soak")
+              if payload.get("last_success_present") is not True:
+                  raise RuntimeError("Gateway last-success state disappeared during soak")
+              if payload.get("observation_state") != "healthy_observation":
+                  raise RuntimeError("Gateway observation state is not healthy")
+              if payload.get("gap_open") is not False:
+                  raise RuntimeError("Gateway collection gap reopened during soak")
+              if payload.get("lease_active") is not False:
+                  raise RuntimeError("Gateway state probe observed an active collection lease")
+              for key in (
+                  "queue_pending",
+                  "queue_in_flight",
+                  "queue_retryable_failure",
+                  "queue_terminal_failure",
+              ):
+                  if payload.get(key) != 0:
+                      raise RuntimeError(f"Gateway relay queue is not clean: {key}")
+              if not isinstance(payload.get("queue_synchronized"), int) or payload[
+                  "queue_synchronized"
+              ] < 4:
+                  raise RuntimeError("Gateway synchronized relay count regressed")
+              if not isinstance(payload.get("sharepoint_local_event_count"), int) or payload[
+                  "sharepoint_local_event_count"
+              ] < 4:
+                  raise RuntimeError("Gateway durable SharePoint event count regressed")
+              if payload.get("customer_identifiers_retained") is not False:
+                  raise RuntimeError("Gateway state artifact retained customer identifiers")
+              if payload.get("reusable_credential_retained") is not False:
+                  raise RuntimeError("Gateway state artifact retained reusable credentials")
+              if payload.get("public_evidence_safe") is not True:
+                  raise RuntimeError("Gateway state artifact is not public-safe")
+              if payload.get("m365_source_to_proof_claimed") is not False:
+                  raise RuntimeError("state probe improperly made source-to-proof claim")
+              if payload.get("soak_clock_started") is not False:
+                  raise RuntimeError("child state probe improperly started soak clock")
+
+          latest = latest_state()
+          new_attempt = event_name == "workflow_dispatch"
+
+          if event_name == "schedule" and (
+              latest is None or latest.get("status") != "active"
+          ):
+              skipped = {
+                  "schema_version": "ets.live_m365_soak.observation.v1",
+                  "workflow_run_id": current_run_id,
+                  "status": "skipped_no_active_attempt",
+                  "customer_identifiers_retained": False,
+                  "reusable_credential_retained": False,
+                  "public_evidence_safe": True,
+              }
+              (evidence_dir / "observation.json").write_text(
+                  json.dumps(skipped, indent=2, sort_keys=True) + "\n",
+                  encoding="utf-8",
+              )
+              print("No active M365 soak attempt; scheduled observation skipped.")
+              raise SystemExit(0)
+
+          if new_attempt and latest is not None and latest.get("status") == "active":
+              if not restart_active:
+                  skipped = {
+                      "schema_version": "ets.live_m365_soak.observation.v1",
+                      "workflow_run_id": current_run_id,
+                      "status": "skipped_active_attempt_exists",
+                      "attempt_id": latest.get("attempt_id"),
+                      "customer_identifiers_retained": False,
+                      "reusable_credential_retained": False,
+                      "public_evidence_safe": True,
+                  }
+                  (evidence_dir / "observation.json").write_text(
+                      json.dumps(skipped, indent=2, sort_keys=True) + "\n",
+                      encoding="utf-8",
+                  )
+                  print("An active M365 soak attempt already exists; no restart requested.")
+                  raise SystemExit(0)
+              invalidated = dict(latest)
+              invalidated.update(
+                  {
+                      "status": "invalidated",
+                      "invalidated_at": iso(utc_now()),
+                      "failure_class": "manual_restart",
+                  }
+              )
+              post_state(
+                  invalidated,
+                  "M365 72-hour soak invalidated",
+                  [
+                      f"- attempt: `{invalidated['attempt_id']}`",
+                      "- reason: `manual_restart`",
+                      "- a new attempt was explicitly requested",
+                  ],
+              )
+
+          if new_attempt:
+              prior = None
+              attempt_id = f"m365-soak-{current_run_id}"
+          else:
+              prior = latest
+              attempt_id = str(prior["attempt_id"])
+              failed_run = prior_failed_coordinator_run(str(prior["started_at"]))
+              if failed_run is not None:
+                  invalidated = dict(prior)
+                  invalidated.update(
+                      {
+                          "status": "invalidated",
+                          "invalidated_at": iso(utc_now()),
+                          "failure_class": "prior_observation_run_failed",
+                          "failed_workflow_run_id": failed_run,
+                      }
+                  )
+                  post_state(
+                      invalidated,
+                      "M365 72-hour soak invalidated",
+                      [
+                          f"- attempt: `{attempt_id}`",
+                          f"- failed coordinator run: `{failed_run}`",
+                          "- reason: `prior_observation_run_failed`",
+                      ],
+                  )
+                  raise RuntimeError("prior governed soak observation failed")
+
+              last_success = parse_time(str(prior["last_success_at"]))
+              gap_minutes = (utc_now() - last_success).total_seconds() / 60.0
+              if gap_minutes > max_gap_minutes:
+                  invalidated = dict(prior)
+                  invalidated.update(
+                      {
+                          "status": "invalidated",
+                          "invalidated_at": iso(utc_now()),
+                          "failure_class": "monitoring_gap_exceeded",
+                          "observed_gap_minutes": round(gap_minutes, 3),
+                      }
+                  )
+                  post_state(
+                      invalidated,
+                      "M365 72-hour soak invalidated",
+                      [
+                          f"- attempt: `{attempt_id}`",
+                          f"- observed monitoring gap: **{gap_minutes:.1f} minutes**",
+                          f"- governed maximum: **{max_gap_minutes} minutes**",
+                      ],
+                  )
+                  raise RuntimeError("governed soak monitoring gap was exceeded")
+
+          try:
+              source_run = dispatch(source_workflow)
+              wait_for_success(source_run, "M365 source-to-proof observation", 35)
+              source_payload = download_artifact(
+                  source_run["id"],
+                  f"live-m365-soak-source-to-proof-{source_run['id']}",
+                  "observation.json",
+              )
+              validate_source_observation(source_payload)
+
+              state_run = dispatch(state_workflow, {"marker": marker})
+              wait_for_success(state_run, "Gateway durable-state observation", 20)
+              state_payload = download_artifact(
+                  state_run["id"],
+                  f"live-sharepoint-state-boundary-{state_run['id']}",
+                  "result.json",
+              )
+              validate_state(state_payload)
+
+              completed_at = utc_now()
+              if prior is None:
+                  started_at = completed_at
+                  success_count = 1
+              else:
+                  started_at = parse_time(str(prior["started_at"]))
+                  success_count = int(prior["success_count"]) + 1
+              elapsed_hours = (completed_at - started_at).total_seconds() / 3600.0
+              passed = elapsed_hours >= min_hours and success_count >= min_observations
+              status = "passed" if passed else "active"
+
+              state = {
+                  "schema_version": "ets.live_m365_soak.state.v1",
+                  "attempt_id": attempt_id,
+                  "status": status,
+                  "started_at": iso(started_at),
+                  "last_success_at": iso(completed_at),
+                  "success_count": success_count,
+                  "elapsed_hours": round(elapsed_hours, 6),
+                  "min_soak_hours": min_hours,
+                  "min_successful_observations": min_observations,
+                  "max_gap_minutes": max_gap_minutes,
+                  "release_source_sha": expected_source,
+                  "release_image_digest": expected_digest,
+                  "marker": marker,
+                  "expected_observations": expected_observations,
+                  "last_source_workflow_run_id": source_run["id"],
+                  "last_state_workflow_run_id": state_run["id"],
+                  "source_to_proof_verified": True,
+                  "gateway_state_healthy": True,
+                  "customer_identifiers_retained": False,
+                  "reusable_credential_retained": False,
+                  "public_evidence_safe": True,
+                  "soak_clock_started": True,
+              }
+              title = (
+                  "M365 72-hour soak passed"
+                  if passed
+                  else "M365 72-hour soak observation passed"
+              )
+              post_state(
+                  state,
+                  title,
+                  [
+                      f"- attempt: `{attempt_id}`",
+                      f"- successful observations: **{success_count} / {min_observations} minimum**",
+                      f"- elapsed: **{elapsed_hours:.2f} / {min_hours} hours minimum**",
+                      f"- source-to-proof run: `{source_run['id']}`",
+                      f"- Gateway state run: `{state_run['id']}`",
+                      f"- frozen source: `{expected_source}`",
+                      f"- frozen digest: `{expected_digest}`",
+                      "- source-to-proof + revision + proof + duplicate + delta + scope-denial predicates: **verified**",
+                      "- Gateway checkpoint/health/gap/queue predicates: **verified**",
+                  ],
+              )
+
+              observation = {
+                  "schema_version": "ets.live_m365_soak.observation.v1",
+                  "workflow_run_id": current_run_id,
+                  "attempt_id": attempt_id,
+                  "status": status,
+                  "started_at": state["started_at"],
+                  "observed_at": state["last_success_at"],
+                  "success_count": success_count,
+                  "elapsed_hours": state["elapsed_hours"],
+                  "release_source_sha": expected_source,
+                  "release_image_digest": expected_digest,
+                  "source_workflow_run_id": source_run["id"],
+                  "state_workflow_run_id": state_run["id"],
+                  "source_to_proof_verified": True,
+                  "gateway_state_healthy": True,
+                  "customer_identifiers_retained": False,
+                  "reusable_credential_retained": False,
+                  "public_evidence_safe": True,
+                  "soak_clock_started": True,
+              }
+              (evidence_dir / "observation.json").write_text(
+                  json.dumps(observation, indent=2, sort_keys=True) + "\n",
+                  encoding="utf-8",
+              )
+
+              if passed:
+                  api_json(
+                      "PATCH",
+                      f"{api_base}/issues/{issue_number}",
+                      {"state": "closed", "state_reason": "completed"},
+                  )
+                  print(
+                      f"M365 soak {attempt_id} passed after {elapsed_hours:.2f} hours "
+                      f"and {success_count} successful observations."
+                  )
+              else:
+                  print(
+                      f"M365 soak {attempt_id}: observation {success_count} passed; "
+                      f"{elapsed_hours:.2f} hours elapsed."
+                  )
+          except Exception as exc:
+              failed_at = utc_now()
+              if prior is None:
+                  started_for_failure = failed_at
+                  success_count = 0
+              else:
+                  started_for_failure = parse_time(str(prior["started_at"]))
+                  success_count = int(prior["success_count"])
+              failure = {
+                  "schema_version": "ets.live_m365_soak.state.v1",
+                  "attempt_id": attempt_id,
+                  "status": "invalidated",
+                  "started_at": iso(started_for_failure),
+                  "last_success_at": (
+                      None if prior is None else str(prior.get("last_success_at"))
+                  ),
+                  "success_count": success_count,
+                  "invalidated_at": iso(failed_at),
+                  "failure_class": "governed_observation_failed",
+                  "failure_summary": str(exc)[:240],
+                  "release_source_sha": expected_source,
+                  "release_image_digest": expected_digest,
+                  "marker": marker,
+                  "expected_observations": expected_observations,
+                  "customer_identifiers_retained": False,
+                  "reusable_credential_retained": False,
+                  "public_evidence_safe": True,
+                  "soak_clock_started": prior is not None,
+              }
+              try:
+                  post_state(
+                      failure,
+                      "M365 72-hour soak invalidated",
+                      [
+                          f"- attempt: `{attempt_id}`",
+                          "- reason: `governed_observation_failed`",
+                          f"- bounded summary: `{failure['failure_summary']}`",
+                          "- a new attempt requires explicit manual workflow dispatch",
+                      ],
+                  )
+              finally:
+                  (evidence_dir / "observation.json").write_text(
+                      json.dumps(
+                          {
+                              "schema_version": "ets.live_m365_soak.observation.v1",
+                              "workflow_run_id": current_run_id,
+                              "attempt_id": attempt_id,
+                              "status": "invalidated",
+                              "failure_class": "governed_observation_failed",
+                              "failure_summary": str(exc)[:240],
+                              "customer_identifiers_retained": False,
+                              "reusable_credential_retained": False,
+                              "public_evidence_safe": True,
+                          },
+                          indent=2,
+                          sort_keys=True,
+                      )
+                      + "\n",
+                      encoding="utf-8",
+                  )
+              raise
+          PY
+
+      - name: Upload sanitized soak coordinator evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-m365-source-to-proof-soak-${{ github.run_id }}
+          path: evidence/live-m365-source-to-proof-soak/*.json
+          if-no-files-found: warn
+          retention-days: 90
