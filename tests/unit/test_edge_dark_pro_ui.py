@@ -30,6 +30,9 @@ def test_edge_dark_pro_browser_uses_bff_without_reusable_credentials() -> None:
     assert "credentials: 'same-origin'" in source
     for forbidden in (
         "X-ETS-API-Key",
+        "X-ETS-Tenant",
+        "X-ETS-Workspace",
+        "Authorization",
         "Bearer token",
         "Local API key",
         'type="password"',
