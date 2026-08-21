@@ -13,8 +13,8 @@ from ets.black_box import (
     BlackBoxRecorder,
     BlackBoxValidationError,
     InMemoryBlackBoxStore,
-    SQLiteBlackBoxStore,
     SealReason,
+    SQLiteBlackBoxStore,
     TriggerKind,
 )
 
