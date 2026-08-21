@@ -256,15 +256,15 @@ def verify_signature(
     try:
         public_bytes = bytes.fromhex(public_key_hex)
         if algorithm is SigningAlgorithm.ED25519:
-            public_key = Ed25519PublicKey.from_public_bytes(public_bytes)
-            public_key.verify(signature, payload)
+            ed25519_key = Ed25519PublicKey.from_public_bytes(public_bytes)
+            ed25519_key.verify(signature, payload)
             return True
 
-        public_key = ec.EllipticCurvePublicKey.from_encoded_point(
+        ecdsa_key = ec.EllipticCurvePublicKey.from_encoded_point(
             ec.SECP256R1(),
             public_bytes,
         )
-        public_key.verify(signature, payload, ec.ECDSA(hashes.SHA256()))
+        ecdsa_key.verify(signature, payload, ec.ECDSA(hashes.SHA256()))
     except (InvalidSignature, ValueError):
         return False
     return True
