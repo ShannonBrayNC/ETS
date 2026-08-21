@@ -140,3 +140,26 @@ def test_ledger_revalidates_copied_models() -> None:
     invalid = request().model_copy(update={"input_digests": ()})
     with pytest.raises(ValidationError):
         ledger.record(invalid)
+
+
+def test_oversized_event_fails_before_signing() -> None:
+    ledger = AIWitnessLedger(
+        witness_id="ets-aiw:test",
+        signing_key_id="k1",
+        private_key_hex=key_hex(),
+    )
+    rich_digest = DigestRef(
+        digest=hashlib.sha256(b"x").hexdigest(),
+        byte_length=1,
+        media_type="m" * 128,
+        source_ref="s" * 256,
+    )
+    oversized = request().model_copy(
+        update={
+            "policy_refs": tuple(f"{i:02d}" + "p" * 510 for i in range(64)),
+            "input_digests": tuple(rich_digest for _ in range(16)),
+            "retrieval_digests": tuple(rich_digest for _ in range(32)),
+        }
+    )
+    with pytest.raises(WitnessValidationError, match="48 KiB"):
+        ledger.record(oversized)
