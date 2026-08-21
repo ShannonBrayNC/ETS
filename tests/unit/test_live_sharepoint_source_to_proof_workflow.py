@@ -22,7 +22,7 @@ PROVISIONER = (
     ROOT / "scripts" / "m365" / "provision-echomedia-sharepoint-connector.ps1"
 ).read_text(encoding="utf-8")
 APPROVED_DIGEST = (
-    "sha256:01bd370775daaed568ed58dbe96d4f5f4500dcb6b1ef955c7ea06758bf0dc3c9"
+    "sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63"
 )
 
 
