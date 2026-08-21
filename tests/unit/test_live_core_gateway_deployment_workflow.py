@@ -37,11 +37,11 @@ def test_live_core_gateway_deployment_preserves_authoritative_release_identity()
     text = WORKFLOW.read_text(encoding="utf-8")
 
     for required in (
-        "Q0_SOURCE_SHA: 6ae11cfd04da6bf8f4e86cb95aecabb917f9482c",
-        "Q0_IMAGE_DIGEST: sha256:01bd370775daaed568ed58dbe96d4f5f4500dcb6b1ef955c7ea06758bf0dc3c9",
+        "Q0_SOURCE_SHA: 9a4c3a8aefc50a960bdd3ce34b28f86fd69f1535",
+        "Q0_IMAGE_DIGEST: sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63",
         (
             "CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:"
-            "01bd370775daaed568ed58dbe96d4f5f4500dcb6b1ef955c7ea06758bf0dc3c9"
+            "e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63"
         ),
         'test "$CONTAINER_IMAGE" = "${ACR_NAME}.azurecr.io/ets/hosted-q1@${Q0_IMAGE_DIGEST}"',
         'if container.get("image") != os.environ["CONTAINER_IMAGE"]:',

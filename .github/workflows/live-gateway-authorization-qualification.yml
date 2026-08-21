@@ -24,9 +24,9 @@ jobs:
       RESOURCE_GROUP: rg-ets-live-eastus
       GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id
       ACR_NAME: etsq1a352eb89
-      CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:01bd370775daaed568ed58dbe96d4f5f4500dcb6b1ef955c7ea06758bf0dc3c9
-      Q0_SOURCE_SHA: 6ae11cfd04da6bf8f4e86cb95aecabb917f9482c
-      Q0_IMAGE_DIGEST: sha256:01bd370775daaed568ed58dbe96d4f5f4500dcb6b1ef955c7ea06758bf0dc3c9
+      CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63
+      Q0_SOURCE_SHA: 9a4c3a8aefc50a960bdd3ce34b28f86fd69f1535
+      Q0_IMAGE_DIGEST: sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63
       HANDOFF_ISSUE: '389'
       CORE_SCOPE: ${{ secrets.ETS_LIVE_CORE_SCOPE }}
       AUTH_APP_SCOPE_MAP_JSON: ${{ secrets.ETS_LIVE_AUTH_APP_SCOPE_MAP_JSON }}
