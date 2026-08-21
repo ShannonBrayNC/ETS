@@ -16,6 +16,7 @@ The initial reference suite verifies:
 10. Verification under the wrong public key fails.
 11. The signer key identifier is cryptographically bound to the signed record.
 12. The ledger revalidates already-instantiated models so unchecked copies cannot bypass event-kind invariants.
+13. Oversized canonical witness events fail before signing, preserving bounded ETS projection behavior.
 
 ## CI commands
 
@@ -26,7 +27,7 @@ ruff check ets/ai_witness tests/unit/test_ai_witness.py
 mypy ets/ai_witness
 ```
 
-The repository's normal full CI/security/formal checks remain authoritative for merge. The local construction harness used during development executed the hardened witness unit suite successfully at 8/8 tests and compiled the package; GitHub CI must additionally run the repository-pinned Ruff/Mypy/security checks.
+The repository's normal full CI/security/formal checks remain authoritative for merge. The local construction harness used during development executed the hardened witness unit suite successfully at 9/9 tests and compiled the package; GitHub CI must additionally run the repository-pinned Ruff/Mypy/security checks.
 
 ## Follow-on appliance qualification
 
