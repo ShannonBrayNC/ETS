@@ -8,7 +8,11 @@ from ets.core.models import EvidenceEvent
 from ets.core.redaction import apply_redaction_profile
 
 
-def _event(*, redaction_profile: str) -> EvidenceEvent:
+def _event(
+    *,
+    redaction_profile: str,
+    source_system: str = "microsoft.sharepoint.onedrive_delta",
+) -> EvidenceEvent:
     return EvidenceEvent(
         event_id="gateway:" + "a" * 64,
         tenant_id="tenant_demo",
@@ -29,7 +33,7 @@ def _event(*, redaction_profile: str) -> EvidenceEvent:
             }
         },
         created_at_utc=datetime(2026, 8, 21, tzinfo=UTC),
-        source_system="microsoft.sharepoint.onedrive_delta",
+        source_system=source_system,
         actor_id=None,
         correlation_id=None,
         external_refs=None,
@@ -52,6 +56,16 @@ def test_legacy_sharepoint_profile_preserves_immutable_event_exactly() -> None:
         ]
         == "already-minimized@example.invalid"
     )
+
+
+def test_legacy_profile_is_bound_to_sharepoint_source() -> None:
+    event = _event(
+        redaction_profile="microsoft_sharepoint_metadata_v1",
+        source_system="untrusted.connector",
+    )
+
+    with pytest.raises(ValueError, match="unsupported redaction profile"):
+        apply_redaction_profile(event)
 
 
 def test_unknown_connector_profile_still_fails_closed() -> None:
