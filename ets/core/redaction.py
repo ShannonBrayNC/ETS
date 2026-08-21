@@ -8,6 +8,7 @@ from ets.core.models import EvidenceEvent
 
 REDACTION_MARKER = "[REDACTED]"
 SUPPORTED_REDACTION_PROFILES = {"none", "basic_pii", "strict"}
+LEGACY_PASSTHROUGH_REDACTION_PROFILES = {"microsoft_sharepoint_metadata_v1"}
 BASIC_PII_KEYS = {
     "access_token",
     "api_key",
@@ -23,6 +24,12 @@ BASIC_PII_KEYS = {
 
 def apply_redaction_profile(event: EvidenceEvent, default_profile: str = "none") -> EvidenceEvent:
     profile = event.redaction_profile or default_profile
+    if profile in LEGACY_PASSTHROUGH_REDACTION_PROFILES:
+        # Connector captures historically stamped their already-applied metadata
+        # minimization profile into EvidenceEvent.redaction_profile. Preserve those
+        # immutable event bytes exactly so Core can ingest/replay previously committed
+        # evidence without reinterpreting or rehashing it.
+        return event
     if profile not in SUPPORTED_REDACTION_PROFILES:
         raise ValueError(f"unsupported redaction profile: {profile}")
     if profile == "none":
