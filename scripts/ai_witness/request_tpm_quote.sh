@@ -21,7 +21,7 @@ if (( ${#nonce_hex} < 32 || ${#nonce_hex} > 128 )); then
   echo "NONCE_HEX must encode between 16 and 64 bytes" >&2
   exit 3
 fi
-if [[ -z "$ak_context" || "$ak_context" == *$'\0'* ]]; then
+if [[ -z "$ak_context" ]]; then
   echo "AK_CONTEXT must be a non-empty TPM context path or persistent handle" >&2
   exit 3
 fi
