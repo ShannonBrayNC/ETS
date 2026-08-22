@@ -1,8 +1,9 @@
 # ETS Fleet Azure DPS Adapter v1
 
-Status: Implementation profile
+Status: Implementation profile with physical-TPM provider-alias correction
 Date: 2026-08-21
 Parent: #505
+Physical TPM correction: #507
 Depends on: #504 / FLEET-A1 runtime
 
 ## 1. Purpose
@@ -24,34 +25,49 @@ Azure DPS is a provisioning and connectivity provider. Provider registration sta
 additional evidence that the configured provisioning boundary matches the ETS
 registration. It is not an independent source of tenant/workspace authority.
 
-## 2. Registration identity
+## 2. Registration identity and provider aliases
 
-For v1, the Azure DPS registration ID is exactly the ETS `device_id` when the selected
-attestation mechanism permits it.
+The canonical ETS `device_id` and the Azure DPS registration ID are separate identity
+layers. `DeviceEnrollmentRecord.device_id` remains the ETS identity in every profile.
+The DPS registration ID is a provider alias retained in
+`AzureDpsRegistrationBinding`, outside the frozen enrollment record.
 
-This avoids a second caller-selectable identifier that could drift from the ETS
-identity binding.
+For X.509 individual enrollment, the v1 provider alias remains the exact ETS `device_id`
+when it is legal for DPS. X.509 enrollment requires the certificate subject common name
+to match the registration ID and therefore constrains this alias to 64 characters. The
+normal ETS Edge form `ets-edge:<24 hex>` fits that boundary.
 
-Azure DPS currently permits registration IDs containing case-insensitive alphanumeric
-characters plus `-`, `.`, `_`, and `:`. X.509 enrollment additionally requires the
-certificate subject common name to match the registration ID, and the X.509 common-name
-limit constrains that registration ID to 64 characters.
+For TPM individual enrollment, the provider alias is not the ETS device ID. The
+registration ID is the canonical lowercase SHA-256 digest of the binary endorsement-key
+public blob returned by `tpm2_readpublic -o`. This matches the current Microsoft Linux
+TPM provisioning procedure. The same digest is retained as the provider identity
+fingerprint.
 
-The normal ETS Edge identity form `ets-edge:<24 hex>` fits this boundary.
+This split prevents Azure provider identifiers from overriding ETS identity while still
+using the registration identity required by a physical TPM provisioning flow.
+
+Provider bindings fail closed when:
+
+- a DPS alias is already owned by another ETS device;
+- an ETS device is silently rebound to a different provider alias;
+- the DPS instance or attestation type changes;
+- an X.509 alias stops matching the canonical ETS device ID;
+- a TPM alias stops matching the retained EK SHA-256 fingerprint.
 
 ## 3. Staged enrollment sequence
 
 A new provider enrollment MUST be created in DPS with provisioning status `disabled`.
 The intended sequence is:
 
-1. derive or validate the ETS device identity;
-2. create the DPS individual enrollment disabled;
-3. validate the public X.509 or TPM attestation identity;
-4. submit the pending record to `DeviceEnrollmentService` using server-owned scope;
-5. enable the matching DPS enrollment only after the registration is approved;
-6. activate the ETS enrollment;
-7. authorize connections using the ETS registry plus provider evidence;
-8. disable DPS immediately when ETS quarantine/revocation policy requires it.
+1. derive or validate the canonical ETS device identity;
+2. derive the provider registration binding for the selected attestation mechanism;
+3. create the DPS individual enrollment disabled using that provider alias;
+4. validate the public X.509 or TPM attestation identity;
+5. submit the pending record to `DeviceEnrollmentService` using server-owned scope;
+6. enable the matching DPS enrollment only after the registration is approved;
+7. activate the ETS enrollment;
+8. authorize connections using the ETS registry plus provider evidence;
+9. disable DPS immediately when ETS quarantine/revocation policy requires it.
 
 The provider adapter exposes stage, enable, disable, and delete operations but does not
 own the ETS lifecycle state machine.
@@ -61,7 +77,7 @@ own the ETS lifecycle state machine.
 The adapter validates only public/non-secret identity evidence:
 
 - DPS service identity;
-- registration ID and device ID;
+- provider registration ID and canonical ETS device ID;
 - public-key SHA-256 fingerprint;
 - certificate SHA-256 thumbprint;
 - trusted-chain result;
@@ -79,35 +95,71 @@ job finishes and is never uploaded. The resulting evidence explicitly records:
 - `key_custody=software_demo`;
 - `hardware_attested=false`.
 
-This live qualification proves the Azure control-plane and identity-mapping boundary.
-It is not a physical Edge R1 attestation claim.
+This live qualification proves the Azure X.509 control-plane and provider-mapping
+boundary. It is not a physical Edge R1 attestation claim.
 
 ## 5. TPM profile
 
-The static adapter supports a production-directed TPM evidence shape containing only:
+The physical TPM provider identity is rooted in the endorsement key (EK). ETS derives
+the DPS registration alias by hashing the exact binary public blob obtained from the
+existing EK:
 
-- accepted attestation state;
-- ETS/DPS registration identity;
-- attestation-identity SHA-256 fingerprint;
-- endorsement-key SHA-256 fingerprint;
-- DPS service and provisioning state.
+```bash
+tpm2_readpublic -Q -c 0x81010001 -o endorsement-key.public.tpm2b
+sha256sum -b endorsement-key.public.tpm2b
+```
 
-Raw endorsement-key material and raw attestation exchanges are not retained by the ETS
-record.
+ETS qualification does not create a missing EK, SRK, or persistent handle. If the
+expected EK cannot be read, the physical qualification fails closed rather than changing
+TPM ownership or key state.
 
-A successful control-plane TPM enrollment is not sufficient evidence of physical TPM
-possession. Physical pilot qualification must separately prove a fresh challenge/quote
-or equivalent hardware attestation from the R1 device and bind that result to the same
-ETS enrollment identity.
+The provider binding retains only:
 
-## 6. Azure authentication and RBAC
+- canonical ETS device ID;
+- DPS service identity;
+- EK-derived registration alias;
+- EK SHA-256 fingerprint;
+- attestation type and binding basis;
+- binding creation time.
+
+Raw endorsement-key material is not stored in `DeviceEnrollmentRecord` and is not
+retained in public qualification evidence. The device-side collector may create an
+operator-private transient copy solely to stage the DPS TPM enrollment; that copy must
+be removed after use unless a separately approved retention policy applies.
+
+DPS TPM evidence is additionally required to return the canonical ETS device ID. The
+provider alias therefore cannot replace or override ETS identity or scope.
+
+A successful TPM control-plane enrollment is not sufficient evidence of physical TPM
+possession. Physical pilot qualification must separately prove a fresh nonce-bound
+challenge/quote using the expected AK and PCR selection. The existing AI Witness TPM
+quote harness supplies that independent proof boundary.
+
+## 6. Physical TPM identity collector
+
+`scripts/fleet/collect_dps_tpm_identity.sh` is a read-only preparation tool. It:
+
+- uses `tpm2_readpublic` against an existing EK handle;
+- derives the provider registration alias from SHA-256 of the output bytes;
+- creates an operator-private Base64 EK public blob for transient DPS staging;
+- emits a public-safe manifest containing hashes and qualification posture only;
+- explicitly records `hardware_attested=false` and `fresh_quote_required=true`.
+
+The collector does not call `tpm2_createek`, `tpm2_createprimary`, `tpm2_evictcontrol`,
+`tpm2_clear`, hierarchy-changing commands, NV-definition commands, or PCR-allocation
+commands.
+
+Detailed physical preparation and quote binding are documented in
+`docs/fleet/ETS_FLEET_PHYSICAL_TPM_DPS_IDENTITY_V1.md`.
+
+## 7. Azure authentication and RBAC
 
 GitHub Actions authenticates to Azure using OIDC workload identity. No Azure client
 secret is accepted by the workflow.
 
-DPS data-plane operations use `az iot dps enrollment ... --auth-type login` so the
-workflow uses its Microsoft Entra identity instead of retrieving a DPS shared-access
-policy key.
+DPS administrative data-plane operations use
+`az iot dps enrollment ... --auth-type login` so the workflow uses its Microsoft Entra
+identity instead of retrieving a DPS shared-access policy key.
 
 The workload identity should receive only:
 
@@ -119,7 +171,11 @@ Do not grant Owner or broad Contributor merely to make the qualification pass. A
 custom role may further reduce permissions if the pilot requires a narrower subset of
 DPS enrollment data actions.
 
-## 7. Live workflow
+TPM attestation protocols may internally use challenge-response credentials generated
+as part of the DPS protocol. ETS does not provision, persist, or distribute a reusable
+shared/SAS device credential as the Fleet identity mechanism.
+
+## 8. Live Virtual Demo workflow
 
 `.github/workflows/fleet-azure-dps-live-qualification.yml` is manual
 `workflow_dispatch` only and runs in the protected `fleet-azure` environment.
@@ -132,7 +188,7 @@ Required protected variables:
 - `ETS_FLEET_DPS_NAME`
 - `ETS_FLEET_DPS_RESOURCE_GROUP`
 
-The workflow:
+The current workflow is deliberately X.509 Virtual Demo only. It:
 
 1. requires exact merged `main` source;
 2. uses Azure OIDC;
@@ -146,48 +202,65 @@ The workflow:
 10. removes ephemeral key/certificate files;
 11. uploads only a sanitized machine-readable manifest.
 
-## 8. Evidence boundary
+It does not exercise or claim physical TPM provisioning.
 
-The retained manifest contains only:
+## 9. Evidence boundary
+
+Retained public qualification evidence may contain only bounded identity/provenance
+fields such as:
 
 - exact source SHA and workflow run ID;
 - bounded DPS resource names;
-- synthetic ETS device/registration ID;
-- public key and certificate SHA-256 fingerprints;
+- approved ETS device ID;
+- provider registration alias;
+- public-key, certificate, EK, or AK SHA-256 fingerprints as applicable;
 - profile/custody/attestation classification;
 - provider state transition sequence;
+- nonce hash, PCR selection, and quote verification result for physical qualification;
 - authentication-mode labels;
 - explicit non-retention declarations.
 
-It never retains:
+It must not retain:
 
 - device private keys;
-- raw certificate bytes;
+- raw EK public material in public artifacts;
+- raw certificate bytes unless a separate evidence policy explicitly requires them;
 - bearer tokens;
 - DPS policy keys or connection strings;
-- SAS tokens;
+- reusable shared/SAS device credentials;
 - Azure management tokens;
-- customer identifiers or evidence payloads.
+- customer evidence payloads.
 
-## 9. Failure boundaries
+## 10. Failure boundaries
 
-The workflow fails closed when:
+Qualification fails closed when:
 
-- it is not running from merged `main`;
+- it is not running from the approved source boundary;
 - OIDC identity or required protected variables are absent;
 - the DPS resource does not match the declared target subscription/resource group;
 - Entra data-plane authorization is insufficient;
-- created enrollment fields do not match the derived ETS identity;
+- the provider alias or canonical ETS device ID does not match the retained binding;
+- a provider alias is reused or rebound;
+- TPM EK material does not match the retained EK fingerprint;
 - provisioning cannot be proven disabled at staging;
 - enable/disable transitions do not round-trip correctly;
-- cleanup fails;
-- the sanitized evidence artifact cannot be produced.
+- required cleanup fails;
+- sanitized evidence cannot be produced.
 
 A failed live run establishes no provider qualification.
 
-## 10. Next physical gate
+## 11. Next physical gate
 
-After this adapter and Virtual Demo control-plane qualification are merged, FLEET-A
-should bind a real Edge R1 TPM/X.509 identity to the same runtime and execute a fresh
-hardware-attestation challenge. That gate must retain only sanitized attestation
-fingerprints/results and must not export the physical device private key.
+The next live physical Fleet gate must bind one R1 device using the EK-derived provider
+alias, verify a fresh nonce-bound TPM quote, stage the matching DPS enrollment disabled,
+then prove controlled enable, provision/reconnect, quarantine/revocation, and failed
+reconnect after revocation. That gate must retain only sanitized fingerprints/results
+and must not export any device private key.
+
+## 12. External references
+
+- Microsoft Learn, *Create and provision IoT Edge devices at scale on Linux using a
+  TPM*: current TPM2-tools procedure for reading `ek.pub`, deriving the SHA-256
+  registration ID, and Base64-encoding the endorsement key.
+- Microsoft Learn, *TPM Attestation with Azure DPS*: EK trust and nonce-challenge model.
+- tpm2-tools, `tpm2_readpublic(1)`: public-area read semantics.

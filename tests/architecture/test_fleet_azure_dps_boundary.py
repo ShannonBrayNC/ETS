@@ -5,6 +5,8 @@ from pathlib import Path
 MODULE = Path("ets/fleet/azure_dps.py")
 WORKFLOW = Path(".github/workflows/fleet-azure-dps-live-qualification.yml")
 DOC = Path("docs/fleet/ETS_FLEET_AZURE_DPS_V1.md")
+TPM_COLLECTOR = Path("scripts/fleet/collect_dps_tpm_identity.sh")
+TPM_DOC = Path("docs/fleet/ETS_FLEET_PHYSICAL_TPM_DPS_IDENTITY_V1.md")
 
 
 def _module_text() -> str:
@@ -37,11 +39,21 @@ def test_new_provider_enrollments_are_staged_disabled() -> None:
     assert "new DPS enrollment must be staged disabled" in text
 
 
-def test_ets_device_identity_is_the_dps_registration_identity() -> None:
+def test_tpm_dps_registration_is_provider_alias_not_ets_identity() -> None:
     text = _module_text()
-    assert "registration_id = record.device_id" in text
-    assert "max_length = 64 if record.auth_method is AuthMethod.X509 else 128" in text
-    assert "DPS registration ID does not match ETS device identity" in text
+    assert "AzureDpsRegistrationBinding" in text
+    assert "TPM_ENDORSEMENT_KEY_SHA256" in text
+    assert "derive_tpm_registration_id" in text
+    assert "sha256(endorsement_key_public).hexdigest()" in text
+    assert "TPM DPS validation requires a retained provider registration binding" in text
+    assert "DPS device ID does not match ETS device identity" in text
+
+
+def test_x509_dps_registration_keeps_ets_device_identity_compatibility() -> None:
+    text = _module_text()
+    assert "X509_ETS_DEVICE_ID" in text
+    assert "_validate_registration_id(record.device_id, max_length=64)" in text
+    assert "return record.device_id" in text
 
 
 def test_live_workflow_uses_oidc_and_entra_data_plane_auth_only() -> None:
@@ -86,6 +98,46 @@ def test_retained_live_evidence_is_public_safe() -> None:
     assert '"customer_identifiers_retained": False' in text
     assert "live-qualification.json" in text
     assert "device-key.pem" not in text.split("Upload sanitized live qualification evidence")[-1]
+
+
+def test_physical_tpm_collector_is_strict_read_only() -> None:
+    text = TPM_COLLECTOR.read_text(encoding="utf-8")
+    assert text.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
+    assert "umask 077" in text
+    assert 'tpm2_readpublic -Q -c "$ek_handle" -o "$ek_public"' in text
+    assert 'registration_id="$(sha256sum "$ek_public"' in text
+    for forbidden in (
+        "tpm2_createek",
+        "tpm2_createprimary",
+        "tpm2_evictcontrol",
+        "tpm2_clear",
+        "tpm2_changeauth",
+        "tpm2_changeeps",
+        "tpm2_changepps",
+        "tpm2_hierarchycontrol",
+        "tpm2_nvdefine",
+        "tpm2_nvundefine",
+        "tpm2_pcrallocate",
+    ):
+        assert forbidden not in text
+
+
+def test_physical_tpm_public_manifest_does_not_claim_attestation() -> None:
+    text = TPM_COLLECTOR.read_text(encoding="utf-8")
+    assert '"hardware_identity_collected": true' in text
+    assert '"hardware_attested": false' in text
+    assert '"fresh_quote_required": true' in text
+    assert '"raw_endorsement_key_retained_in_public_manifest": false' in text
+    assert '"private_key_material_exported": false' in text
+
+
+def test_physical_tpm_profile_requires_existing_quote_harness() -> None:
+    text = TPM_DOC.read_text(encoding="utf-8")
+    assert "scripts/ai_witness/request_tpm_quote.sh" in text
+    assert "scripts/ai_witness/verify_tpm_quote.sh" in text
+    assert "sha256:0,2,4,7" in text
+    assert "provider alias is not ETS canonical identity" in text
+    assert "must be deleted after DPS staging" in text
 
 
 def test_operator_doc_requires_narrow_dps_role_scope() -> None:
