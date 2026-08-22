@@ -4,6 +4,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from ets.connectors.conformance import ConnectorConformanceHarness
 from ets.connectors.credentials.models import (
     CredentialMetadataV1,
@@ -39,6 +41,7 @@ from ets.connectors.models import (
     ConnectorSource,
 )
 from ets.connectors.registry import ConnectorRegistry
+from ets.connectors.sdk import ConnectorConfigurationError
 
 NOW = datetime(2026, 8, 14, 21, 0, tzinfo=UTC)
 EVENT_TIME = NOW - timedelta(minutes=3)
@@ -280,6 +283,21 @@ def test_purview_adapter_passes_shared_connector_conformance() -> None:
     assert report.connector_id == "microsoft.purview.activity"
     assert report.instance_valid is True
     assert report.candidate_valid is True
+
+
+def test_purview_adapter_rejects_credential_reference_profile_fallback() -> None:
+    adapter, _ = _adapter(FixturePurviewClient())
+    instance = _instance().model_copy(
+        update={
+            "authentication": ConnectorAuthentication(
+                method="bearer",
+                credential_ref="fixture://microsoft/directory",
+            )
+        }
+    )
+
+    with pytest.raises(ConnectorConfigurationError, match="server-owned profile"):
+        adapter.validate_config(instance)
 
 
 def test_purview_initial_window_and_exact_next_page_cursor_replay() -> None:

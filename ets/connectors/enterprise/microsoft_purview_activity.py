@@ -196,7 +196,9 @@ def validate_purview_content_uri(
         raise MicrosoftPurviewActivityError(
             "Purview contentUri contains unsupported query parameters"
         )
-    return value
+    return parsed._replace(
+        query=urlencode({"PublisherIdentifier": profile.publisher_identifier})
+    ).geturl()
 
 
 def parse_purview_discovery_page(

@@ -325,6 +325,33 @@ def test_disabled_instances_are_not_claimed_by_scheduler(tmp_path: Path) -> None
     assert store.claim_due(owner="worker-a", now=NOW, lease_seconds=30, limit=5) == ()
 
 
+def test_scheduler_claims_only_explicitly_composed_instances(tmp_path: Path) -> None:
+    service, store = make_service(tmp_path / "composed-schedule.db")
+    service.create_instance(principal(), connector_instance(instance_id="source-a"))
+    service.create_instance(principal(), connector_instance(instance_id="source-b"))
+
+    claimed = store.claim_due(
+        owner="hosted-worker",
+        now=NOW,
+        lease_seconds=30,
+        limit=5,
+        instance_ids=("source-b",),
+    )
+
+    assert claimed == ("source-b",)
+    assert store.get_runtime("source-a").lease_owner is None
+    assert store.get_runtime("source-b").lease_owner == "hosted-worker"
+
+    with pytest.raises(ValueError, match="must not be empty"):
+        store.claim_due(
+            owner="hosted-worker",
+            now=NOW,
+            lease_seconds=30,
+            limit=5,
+            instance_ids=(),
+        )
+
+
 def test_operation_receipt_keeps_commit_and_sync_states_distinct() -> None:
     receipt = ConnectorOperationReceiptV1(
         schema_version="ets.connector.operation_receipt.v1",

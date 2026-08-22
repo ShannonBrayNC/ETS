@@ -92,7 +92,7 @@ param graphSubscriptionJson string = ''
 @description('Governed Microsoft health policy JSON. Empty until live #390 posture is enabled.')
 param microsoftHealthPolicyJson string = ''
 
-@description('SharePoint poll cadence in seconds.')
+@description('Bounded poll cadence shared by the composed Microsoft connector instances.')
 @minValue(30)
 @maxValue(3600)
 param pollIntervalSeconds int = 60

@@ -182,6 +182,7 @@ def test_runbook_preserves_preview_evidence_and_live_qualification_boundaries() 
         "Raw operator output can contain managed-identity identifiers",
         "does not prove token acquisition",
         "does not start the 72-hour soak",
-        "next #543 slice",
+        "MICROSOFT_P0_HOSTED_RUNTIME_COMPOSITION_V1.md",
+        "still requires independent live qualification",
     ):
         assert required in text

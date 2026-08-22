@@ -143,7 +143,7 @@ class MicrosoftPurviewActivityAdapter:
 
     def validate_config(self, instance: ConnectorInstanceV1) -> None:
         settings = _settings(instance)
-        self._profile_resolver.resolve(settings.management_profile_id)
+        profile = self._profile_resolver.resolve(settings.management_profile_id)
         if instance.collection.mode != "poll":
             raise ConnectorConfigurationError(
                 "Purview Management Activity requires poll collection"
@@ -154,9 +154,18 @@ class MicrosoftPurviewActivityAdapter:
             )
         if instance.authentication.method != "bearer":
             raise ConnectorConfigurationError("Purview Management Activity requires bearer auth")
-        if instance.authentication.credential_ref is None:
+        credential_ref = instance.authentication.credential_ref
+        if credential_ref is None:
             raise ConnectorConfigurationError(
                 "Purview Management Activity requires an opaque credential reference"
+            )
+        if credential_ref != profile.tenant_profile.credential_ref.ref:
+            raise ConnectorConfigurationError(
+                "Purview credential reference does not match the server-owned profile"
+            )
+        if profile.tenant_profile.consent_state != "granted":
+            raise ConnectorConfigurationError(
+                "Purview tenant profile requires granted administrator consent"
             )
 
     def test_connection(self, instance: ConnectorInstanceV1) -> ConnectorHealthV1:

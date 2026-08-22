@@ -1,15 +1,37 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
-from ets.gateway.hosted_runtime import HostedMicrosoftGatewaySettings, _connector_instance
+from ets.connectors.credentials.azure_managed_identity import (
+    MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
+    MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
+    MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE,
+)
+from ets.connectors.models import ConnectorCheckpointV1
+from ets.gateway import hosted_runtime
+from ets.gateway.connector_runner import GatewayConnectorRunResult
+from ets.gateway.hosted_runtime import (
+    HostedMicrosoftGatewaySettings,
+    _connector_instance,
+    _entra_connector_instance,
+    _purview_connector_instance,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _base_env(monkeypatch: pytest.MonkeyPatch) -> None:
     values = {
         "ETS_GATEWAY_MANAGED_IDENTITY_CLIENT_ID": "11111111-1111-1111-1111-111111111111",
+        "ETS_GATEWAY_DIRECTORY_MANAGED_IDENTITY_CLIENT_ID": (
+            "44444444-4444-4444-4444-444444444444"
+        ),
+        "ETS_GATEWAY_PURVIEW_MANAGED_IDENTITY_CLIENT_ID": (
+            "55555555-5555-5555-5555-555555555555"
+        ),
         "ETS_GATEWAY_CORE_BASE_URL": "https://core.internal.example",
         "ETS_GATEWAY_CORE_SCOPE": "api://ets-core/.default",
         "ETS_GATEWAY_TENANT_ID": "tenant_echo",
@@ -53,6 +75,8 @@ def test_settings_require_production_jwks_and_server_scope_map(
         "33333333-3333-3333-3333-333333333333"
     ] == ("tenant_echo", "workspace_echo")
     assert settings.poll_interval_seconds == 60
+    assert settings.directory_managed_identity_client_id.startswith("44444444")
+    assert settings.purview_managed_identity_client_id.startswith("55555555")
 
 
 def test_settings_reject_ambiguous_jwks_source(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -105,6 +129,169 @@ def test_connector_instance_uses_deployment_authoritative_scope(
         "scope": "drive",
         "drive_id": "drive-1",
     }
+
+
+def test_settings_require_three_distinct_microsoft_managed_identities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv(
+        "ETS_GATEWAY_PURVIEW_MANAGED_IDENTITY_CLIENT_ID",
+        "44444444-4444-4444-4444-444444444444",
+    )
+
+    with pytest.raises(RuntimeError, match="three distinct managed identities"):
+        HostedMicrosoftGatewaySettings.from_env()
+
+
+def test_hosted_connector_instances_isolate_credentials_sources_and_checkpoints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _base_env(monkeypatch)
+    settings = HostedMicrosoftGatewaySettings.from_env()
+
+    sharepoint = _connector_instance(settings, "1.0")
+    users = _entra_connector_instance(settings, "1.0", "users")
+    groups = _entra_connector_instance(settings, "1.0", "groups")
+    purview = _purview_connector_instance(settings, "1.0")
+
+    assert len({item.instance_id for item in (sharepoint, users, groups, purview)}) == 4
+    assert {
+        item.authentication.credential_ref
+        for item in (sharepoint, users, groups, purview)
+    } == {
+        MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
+        MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
+        MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE,
+    }
+    assert users.settings["collection"] == "users"
+    assert groups.settings["collection"] == "groups"
+    assert purview.settings["content_type"] == "Audit.General"
+    assert purview.settings["include_client_ip"] is False
+    assert all(
+        item.checkpoint.strategy == "source_cursor" and item.checkpoint.durable
+        for item in (sharepoint, users, groups, purview)
+    )
+
+
+def test_runtime_composes_four_durable_workers_without_identity_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv("ETS_GATEWAY_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv(
+        "ETS_GATEWAY_MANIFEST_DIR",
+        str(ROOT / "config" / "connectors" / "enterprise"),
+    )
+
+    class FakeCoreTokens:
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        hosted_runtime,
+        "AzureManagedIdentityCoreTokenProvider",
+        lambda **_kwargs: FakeCoreTokens(),
+    )
+    monkeypatch.setattr(hosted_runtime, "_auth_policy", lambda _settings: object())
+    settings = HostedMicrosoftGatewaySettings.from_env()
+
+    runtime, _management, _auth, _posture = hosted_runtime._compose_runtime(settings)
+
+    assert len(runtime.workers) == 4
+    assert len({id(worker.runner) for worker in runtime.workers}) == 4
+    assert len({worker.principal for worker in runtime.workers}) == 4
+    assert tuple(
+        runtime.store.get_runtime(instance.instance_id).checkpoint
+        for instance in runtime.instances
+    ) == (None, None, None, None)
+    assert {
+        worker.instance.authentication.credential_ref for worker in runtime.workers
+    } == {
+        MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
+        MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
+        MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE,
+    }
+    collected: list[str] = []
+
+    def run_composed_worker(**kwargs: object) -> GatewayConnectorRunResult:
+        instance = kwargs["instance"]
+        assert hasattr(instance, "instance_id")
+        instance_id = str(instance.instance_id)
+        collected.append(instance_id)
+        return GatewayConnectorRunResult(
+            code="ok",
+            source_records=0,
+            committed_local=0,
+            sync_queued=0,
+            partial_commit=0,
+            checkpoint_to_persist=ConnectorCheckpointV1(
+                schema_version="ets.connector.checkpoint.v1",
+                cursor=f"fixture://{instance_id}",
+            ),
+            has_more=False,
+            message="fixture collection",
+        )
+
+    for worker in runtime.workers:
+        monkeypatch.setattr(worker.runner, "run", run_composed_worker)
+
+    runtime.run_cycle()
+
+    assert set(collected) == {instance.instance_id for instance in runtime.instances}
+    assert all(
+        runtime.store.get_runtime(instance.instance_id).checkpoint_revision == 1
+        for instance in runtime.instances
+    )
+
+    failed_worker = runtime.workers[1]
+
+    def fail_one_worker(**_kwargs: object) -> GatewayConnectorRunResult:
+        raise RuntimeError("fixture source failure")
+
+    monkeypatch.setattr(failed_worker.runner, "run", fail_one_worker)
+    collected.clear()
+
+    with pytest.raises(RuntimeError, match="1 bounded operation"):
+        runtime.run_cycle()
+
+    assert set(collected) == {
+        worker.instance.instance_id
+        for worker in runtime.workers
+        if worker is not failed_worker
+    }
+    assert all(
+        runtime.store.get_runtime(instance.instance_id).lease_owner is None
+        for instance in runtime.instances
+    )
+    runtime.microsoft_credentials.close()
+    runtime.core_tokens.close()
+    runtime.event_store.close()
+
+
+def test_hosted_runtime_runbook_preserves_identity_and_live_claim_boundaries() -> None:
+    text = (
+        ROOT
+        / "docs"
+        / "connectors"
+        / "MICROSOFT_P0_HOSTED_RUNTIME_COMPOSITION_V1.md"
+    ).read_text(encoding="utf-8")
+
+    for required in (
+        "four explicit",
+        "azure-mi://microsoft-graph/directory",
+        "azure-mi://office-365-management/purview",
+        "four distinct internal source principals",
+        "explicit allowlist of the four composed instance IDs",
+        "include_client_ip=false",
+        "empty service-specific allowlist",
+        "PublisherIdentifier",
+        "does not prove live token acquisition",
+        "does not start live qualification",
+        "next #543 slice",
+    ):
+        assert required in text
 
 
 @pytest.mark.parametrize("value", ["29", "3601", "not-an-int"])

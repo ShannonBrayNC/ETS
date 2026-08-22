@@ -194,7 +194,9 @@ def test_purview_cross_origin_content_uri_is_rejected_before_retrieval() -> None
     profile = _profile()
     good = _descriptor()["contentUri"]
     assert isinstance(good, str)
-    assert validate_purview_content_uri(profile, good) == good
+    assert validate_purview_content_uri(profile, good) == (
+        f"{good}?PublisherIdentifier={PUBLISHER_ID}"
+    )
 
     with pytest.raises(MicrosoftPurviewActivityError, match="management origin"):
         validate_purview_content_uri(
@@ -206,6 +208,8 @@ def test_purview_cross_origin_content_uri_is_rejected_before_retrieval() -> None
             profile,
             f"{profile.management_root}/api/v1.0/{TENANT_ID}/activity/feed/subscriptions/content",
         )
+    with pytest.raises(MicrosoftPurviewActivityError, match="unsupported query"):
+        validate_purview_content_uri(profile, f"{good}?PublisherIdentifier=attacker")
 
 
 def test_purview_same_content_id_with_changed_descriptor_fails_closed() -> None:
