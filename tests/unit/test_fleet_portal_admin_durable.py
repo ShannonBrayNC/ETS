@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -88,7 +89,7 @@ def session() -> FleetSecuritySession:
 
 
 def runtime(
-    db_path: object,
+    db_path: Path,
     *,
     store: InMemoryEnrollmentStore | None = None,
 ) -> tuple[
@@ -99,7 +100,7 @@ def runtime(
 ]:
     enrollment_store = store or InMemoryEnrollmentStore()
     enrollment = DeviceEnrollmentService(enrollment_store, AcceptIdentity())
-    journal = SQLiteFleetAdminMutationJournal(db_path)  # type: ignore[arg-type]
+    journal = SQLiteFleetAdminMutationJournal(db_path)
     admin = DurableFleetPortalAdminService(
         enrollment_service=enrollment,
         enrollment_store=enrollment_store,
@@ -115,8 +116,8 @@ def submit_pending(
     return enrollment.submit(item, authoritative_scope=item.scope_binding, now=NOW)
 
 
-def test_committed_replay_survives_service_and_journal_restart(tmp_path: object) -> None:
-    db_path = tmp_path / "fleet-admin.db"  # type: ignore[operator]
+def test_committed_replay_survives_service_and_journal_restart(tmp_path: Path) -> None:
+    db_path = tmp_path / "fleet-admin.db"
     store, enrollment, journal, admin = runtime(db_path)
     item = submit_pending(enrollment, record())
     actor = principal()
@@ -150,8 +151,8 @@ def test_committed_replay_survives_service_and_journal_restart(tmp_path: object)
     journal2.close()
 
 
-def test_conflicting_reuse_survives_restart_and_fails_closed(tmp_path: object) -> None:
-    db_path = tmp_path / "fleet-admin.db"  # type: ignore[operator]
+def test_conflicting_reuse_survives_restart_and_fails_closed(tmp_path: Path) -> None:
+    db_path = tmp_path / "fleet-admin.db"
     store, enrollment, journal, admin = runtime(db_path)
     item = submit_pending(enrollment, record())
     actor = principal()
@@ -181,9 +182,9 @@ def test_conflicting_reuse_survives_restart_and_fails_closed(tmp_path: object) -
 
 
 def test_pending_reservation_survives_restart_and_blocks_automatic_replay(
-    tmp_path: object,
+    tmp_path: Path,
 ) -> None:
-    db_path = tmp_path / "fleet-admin.db"  # type: ignore[operator]
+    db_path = tmp_path / "fleet-admin.db"
     _store, _enrollment, journal, _admin = runtime(db_path)
     actor = principal()
     item = record()
@@ -219,8 +220,8 @@ def test_pending_reservation_survives_restart_and_blocks_automatic_replay(
     journal2.close()
 
 
-def test_evidence_survives_restart_and_remains_scope_filtered(tmp_path: object) -> None:
-    db_path = tmp_path / "fleet-admin.db"  # type: ignore[operator]
+def test_evidence_survives_restart_and_remains_scope_filtered(tmp_path: Path) -> None:
+    db_path = tmp_path / "fleet-admin.db"
     store, enrollment, journal, admin = runtime(db_path)
     item = submit_pending(enrollment, record())
     admin.mutate(
@@ -242,8 +243,8 @@ def test_evidence_survives_restart_and_remains_scope_filtered(tmp_path: object) 
     journal2.close()
 
 
-def test_raw_idempotency_key_is_never_persisted(tmp_path: object) -> None:
-    db_path = tmp_path / "fleet-admin.db"  # type: ignore[operator]
+def test_raw_idempotency_key_is_never_persisted(tmp_path: Path) -> None:
+    db_path = tmp_path / "fleet-admin.db"
     _store, enrollment, journal, admin = runtime(db_path)
     item = submit_pending(enrollment, record())
     raw_key = "this-raw-idempotency-value-must-never-be-retained"
@@ -267,8 +268,10 @@ def test_raw_idempotency_key_is_never_persisted(tmp_path: object) -> None:
     assert row[0] == hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
 
-def test_corrupt_retained_result_fails_validation_instead_of_replaying(tmp_path: object) -> None:
-    db_path = tmp_path / "fleet-admin.db"  # type: ignore[operator]
+def test_corrupt_retained_result_fails_validation_instead_of_replaying(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "fleet-admin.db"
     store, enrollment, journal, admin = runtime(db_path)
     item = submit_pending(enrollment, record())
     actor = principal()
@@ -302,8 +305,8 @@ def test_corrupt_retained_result_fails_validation_instead_of_replaying(tmp_path:
     journal2.close()
 
 
-def test_corrupt_retained_evidence_fails_audit_validation(tmp_path: object) -> None:
-    db_path = tmp_path / "fleet-admin.db"  # type: ignore[operator]
+def test_corrupt_retained_evidence_fails_audit_validation(tmp_path: Path) -> None:
+    db_path = tmp_path / "fleet-admin.db"
     store, enrollment, journal, admin = runtime(db_path)
     item = submit_pending(enrollment, record())
     admin.mutate(
