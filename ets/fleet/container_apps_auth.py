@@ -67,11 +67,17 @@ def trusted_context_from_container_apps_principal(
     audience = _one_claim(claims, "aud")
     tenant_id = _one_claim(claims, "tid", _TENANT_CLAIM)
     if issuer != config.issuer:
-        raise ContainerAppsEasyAuthError("EasyAuth issuer does not match Fleet configuration")
+        raise ContainerAppsEasyAuthError(
+            "EasyAuth issuer does not match Fleet configuration"
+        )
     if audience != config.audience:
-        raise ContainerAppsEasyAuthError("EasyAuth audience does not match Fleet configuration")
+        raise ContainerAppsEasyAuthError(
+            "EasyAuth audience does not match Fleet configuration"
+        )
     if tenant_id != config.tenant_id:
-        raise ContainerAppsEasyAuthError("EasyAuth tenant does not match Fleet configuration")
+        raise ContainerAppsEasyAuthError(
+            "EasyAuth tenant does not match Fleet configuration"
+        )
 
     oid = _optional_one_claim(claims, "oid", _OID_CLAIM)
     sub = _optional_one_claim(claims, "sub")
