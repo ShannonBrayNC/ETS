@@ -90,17 +90,18 @@ class TrustedEntraIdentityContext(StrictProductionAuthModel):
 
 
 class FleetSessionStanding(StrictProductionAuthModel):
-    """Current server-side session standing used to invalidate stale browser state."""
+    """Current server-side standing used to invalidate stale browser authorization."""
 
     active: bool
     generation: int = Field(ge=1)
     roles: tuple[FleetRole, ...] = Field(min_length=1, max_length=3)
     not_before_utc: datetime
+    step_up_not_before_utc: datetime | None = None
 
-    @field_validator("not_before_utc")
+    @field_validator("not_before_utc", "step_up_not_before_utc")
     @classmethod
-    def normalize_not_before(cls, value: datetime) -> datetime:
-        return normalize_time(value)
+    def normalize_standing_times(cls, value: datetime | None) -> datetime | None:
+        return None if value is None else normalize_time(value)
 
 
 class FleetScopeResolver(Protocol):
@@ -115,12 +116,13 @@ class FleetScopeResolver(Protocol):
 
 
 class FleetSessionStandingResolver(Protocol):
-    """Resolve current revocation/role/session generation from the server side."""
+    """Resolve revocation/role/session standing from shared server state."""
 
     def resolve_standing(
         self,
         *,
         subject: str,
+        entra_tenant_id: str,
         session_id: str,
     ) -> FleetSessionStanding | None: ...
 
@@ -191,6 +193,7 @@ class ProductionFleetSessionAdapter:
         roles = self._validated_roles(context.roles)
         standing = self._standing_resolver.resolve_standing(
             subject=context.stable_subject,
+            entra_tenant_id=context.tenant_id,
             session_id=context.session_id,
         )
         if standing is None or not standing.active:
@@ -217,13 +220,27 @@ class ProductionFleetSessionAdapter:
             },
             scope_bindings=scopes,
         )
+        step_up = self._effective_step_up(context, standing)
         security_session = FleetSecuritySession(
             session_id=context.session_id,
             csrf_token=context.csrf_token,
             authenticated_at_utc=context.authenticated_at_utc,
-            step_up_at_utc=context.step_up_at_utc,
+            step_up_at_utc=step_up,
         )
         return principal, security_session
+
+    @staticmethod
+    def _effective_step_up(
+        context: TrustedEntraIdentityContext,
+        standing: FleetSessionStanding,
+    ) -> datetime | None:
+        step_up = context.step_up_at_utc
+        if step_up is None:
+            return None
+        minimum = standing.step_up_not_before_utc
+        if minimum is not None and step_up < minimum:
+            return None
+        return step_up
 
     @staticmethod
     def _validated_roles(raw_roles: tuple[str, ...]) -> tuple[FleetRole, ...]:
@@ -276,7 +293,10 @@ class ProductionFleetRequestResolvers:
         cached = getattr(request.state, self._CACHE_KEY, None)
         if isinstance(cached, tuple) and len(cached) == 2:
             principal, session = cached
-            if isinstance(principal, FleetPrincipal) and isinstance(session, FleetSecuritySession):
+            if isinstance(principal, FleetPrincipal) and isinstance(
+                session,
+                FleetSecuritySession,
+            ):
                 return principal, session
 
         raw_context = getattr(request.state, self._config.trusted_context_state_key, None)
