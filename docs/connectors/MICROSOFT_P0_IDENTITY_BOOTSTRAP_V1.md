@@ -27,6 +27,8 @@ service principal to an exact role on an exact resource service principal.
 References:
 
 - [Microsoft Graph permissions reference](https://learn.microsoft.com/graph/permissions-reference)
+- [Get organization](https://learn.microsoft.com/graph/api/organization-get?view=graph-rest-1.0)
+- [List a service principal's app-role assignments](https://learn.microsoft.com/graph/api/serviceprincipal-list-approleassignments?view=graph-rest-1.0)
 - [Office 365 Management APIs setup](https://learn.microsoft.com/office/office-365-management-api/get-started-with-office-365-management-apis)
 - [Grant a service-principal app role](https://learn.microsoft.com/graph/api/serviceprincipal-post-approleassignedto?view=graph-rest-1.0)
 - [Container Apps managed identities](https://learn.microsoft.com/azure/container-apps/managed-identity)
@@ -57,11 +59,14 @@ themselves. Directory mutation remains an explicit delegated operator action.
 - active Azure CLI and Graph contexts bound to the same tenant containing the verified
   `echomedia.ai` domain.
 
-Preview uses process-scoped delegated `User.Read` and `Application.Read.All`. Apply additionally
-requests `AppRoleAssignment.ReadWrite.All`, which Microsoft documents together with
-`Application.Read.All` as the least-privileged delegated permission pair for creating a service
-principal app-role assignment. The script does not request `Directory.Read.All` or
-`Application.ReadWrite.All` and has no app-only secret or certificate path.
+Preview uses process-scoped delegated `User.Read` and `Application.Read.All`. Microsoft documents
+`User.Read` as sufficient for reading the selected organization `id` and `verifiedDomains`, while
+`Application.Read.All` is the least-privileged delegated permission for listing a service
+principal's app-role assignments. Apply additionally requests `AppRoleAssignment.ReadWrite.All`,
+which Microsoft documents together with `Application.Read.All` as the least-privileged delegated
+permission pair for creating a service-principal app-role assignment.
+The script does not request `Directory.Read.All` or `Application.ReadWrite.All` and has no app-only
+secret or certificate path.
 
 ## Preview first
 
@@ -115,8 +120,9 @@ run:
   -Apply
 ```
 
-Apply creates only missing allowlisted assignments, rereads the complete assignment sets, and
-requires both identities to converge exactly. Re-running the command is idempotent.
+Apply creates only missing allowlisted assignments, rereads the complete assignment sets with
+bounded retries for documented Microsoft Graph replication delay, and requires both identities to
+converge exactly. Re-running the command is idempotent.
 
 ## Evidence and nonclaims
 

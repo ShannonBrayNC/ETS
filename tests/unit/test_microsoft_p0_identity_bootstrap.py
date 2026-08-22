@@ -107,7 +107,8 @@ def test_bootstrap_is_preview_first_and_uses_apply_only_write_scope() -> None:
         "mutationRequired = $true",
         "applyRequested = $false",
         "appRoleAssignedTo",
-        "Microsoft connector application-permission assignments did not converge.",
+        "Wait-ForExactAssignmentConvergence",
+        "converge within the bounded retry limit.",
         "reusableCredentialRetained = $false",
         "sourcePayloadRetained = $false",
     ):
@@ -136,6 +137,8 @@ def test_bootstrap_fails_closed_on_identity_or_permission_drift() -> None:
         "Refusing implicit permission broadening or normalization.",
         "duplicate",
         "Microsoft Graph collection exceeded the bounded pagination limit.",
+        "for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++)",
+        "Start-Sleep -Seconds $DelaySeconds",
     ):
         assert required in text
 
@@ -169,6 +172,8 @@ def test_runbook_preserves_preview_evidence_and_live_qualification_boundaries() 
         "preview-first",
         "Application.Read.All",
         "AppRoleAssignment.ReadWrite.All",
+        "organization-get?view=graph-rest-1.0",
+        "serviceprincipal-list-approleassignments?view=graph-rest-1.0",
         "-SharePointManagedIdentityName",
         "does not request `Directory.Read.All`",
         "ActivityFeed.ReadDlp",

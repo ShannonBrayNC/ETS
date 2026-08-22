@@ -206,6 +206,31 @@ function Assert-ExactAssignmentBoundary {
     return $missing.ToArray()
 }
 
+function Wait-ForExactAssignmentConvergence {
+    param(
+        [Parameter(Mandatory = $true)][string]$PrincipalId,
+        [Parameter(Mandatory = $true)][object[]]$Expected,
+        [int]$MaxAttempts = 10,
+        [int]$DelaySeconds = 3
+    )
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $remaining = @(Assert-ExactAssignmentBoundary `
+            -PrincipalId $PrincipalId `
+            -Expected $Expected)
+        if ($remaining.Count -eq 0) {
+            return
+        }
+        if ($attempt -lt $MaxAttempts) {
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+    throw (
+        "Managed identity '$PrincipalId' application-permission assignments did not " +
+        'converge within the bounded retry limit.'
+    )
+}
+
 function Add-AppRoleAssignment {
     param(
         [Parameter(Mandatory = $true)][string]$PrincipalId,
@@ -361,15 +386,12 @@ try {
             Add-AppRoleAssignment -PrincipalId $purview.principalId -Role $role
             $purviewCreated = $true
         }
-        $remainingDirectory = @(Assert-ExactAssignmentBoundary `
+        Wait-ForExactAssignmentConvergence `
             -PrincipalId $directory.principalId `
-            -Expected $directoryRoles)
-        $remainingPurview = @(Assert-ExactAssignmentBoundary `
+            -Expected $directoryRoles
+        Wait-ForExactAssignmentConvergence `
             -PrincipalId $purview.principalId `
-            -Expected $purviewRoles)
-        if ($remainingDirectory.Count -ne 0 -or $remainingPurview.Count -ne 0) {
-            throw 'Microsoft connector application-permission assignments did not converge.'
-        }
+            -Expected $purviewRoles
     }
 
     [pscustomobject]@{
