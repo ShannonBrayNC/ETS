@@ -51,6 +51,7 @@ class FakeCredential:
         self.error = error
         self.requested_scopes: list[tuple[str, ...]] = []
         self.closed = False
+        self.close_count = 0
 
     def get_token(self, *scopes: str) -> FakeAccessToken:
         self.requested_scopes.append(scopes)
@@ -60,6 +61,7 @@ class FakeCredential:
 
     def close(self) -> None:
         self.closed = True
+        self.close_count += 1
 
 
 def reference(value: str = MICROSOFT_GRAPH_CREDENTIAL_REFERENCE) -> CredentialReferenceV1:
@@ -253,8 +255,37 @@ def test_profiled_provider_closes_shared_transport_once() -> None:
     )
 
     instance.close()
+    instance.close()
 
     assert shared.closed is True
+    assert shared.close_count == 1
+
+
+def test_profiled_provider_does_not_initialize_transport_after_close() -> None:
+    created_client_ids: list[str] = []
+    client_id = "11111111-2222-3333-4444-555555555555"
+
+    def credential_factory(value: str) -> FakeCredential:
+        created_client_ids.append(value)
+        return FakeCredential()
+
+    instance = AzureManagedIdentityCredentialProvider(
+        (
+            AzureManagedIdentityCredentialProfile(
+                reference=MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
+                client_id=client_id,
+                scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
+            ),
+        ),
+        credential_factory=credential_factory,
+        clock=lambda: NOW,
+    )
+    instance.close()
+
+    with pytest.raises(CredentialProviderError, match="provider is closed"):
+        instance.resolve(reference(MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE))
+
+    assert created_client_ids == []
 
 
 def test_p0_identity_boundary_is_separated_and_does_not_expand_onedrive() -> None:

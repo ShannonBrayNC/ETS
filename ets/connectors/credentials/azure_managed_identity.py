@@ -1,4 +1,4 @@
-"""Read-only Microsoft Graph credential provider backed by Azure managed identity."""
+"""Microsoft connector credential provider backed by Azure managed identity."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import importlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from threading import Lock
 from typing import Protocol
 from urllib.parse import urlsplit
 
@@ -139,56 +140,79 @@ class AzureManagedIdentityCredentialProvider:
         self._credentials = supplied
         self._credential_factory = credential_factory
         self._clock = clock
+        self._lock = Lock()
+        self._closed = False
 
     def describe(self, reference: CredentialReferenceV1) -> CredentialMetadataV1:
         """Describe a configured identity route without acquiring a token."""
 
-        self._profile(reference)
-        now = self._now()
-        return self._metadata(reference, version=None, expires_at_utc=None, updated_at_utc=now)
+        with self._lock:
+            self._ensure_open()
+            self._profile(reference)
+            now = self._now()
+            return self._metadata(
+                reference,
+                version=None,
+                expires_at_utc=None,
+                updated_at_utc=now,
+            )
 
     def resolve(self, reference: CredentialReferenceV1) -> CredentialLease:
         """Acquire a short-lived token only from the reference's designated UAMI/audience."""
 
-        profile = self._profile(reference)
-        now = self._now()
-        credential = self._credentials.get(profile.client_id)
-        if credential is None:
+        with self._lock:
+            self._ensure_open()
+            profile = self._profile(reference)
+            now = self._now()
+            credential = self._credentials.get(profile.client_id)
+            if credential is None:
+                try:
+                    credential = self._credential_factory(profile.client_id)
+                except Exception as exc:
+                    raise CredentialResolutionError(
+                        "unavailable",
+                        "Azure managed identity credential initialization failed",
+                    ) from exc
+                self._credentials[profile.client_id] = credential
             try:
-                credential = self._credential_factory(profile.client_id)
+                access_token = credential.get_token(profile.scope)
             except Exception as exc:
                 raise CredentialResolutionError(
                     "unavailable",
-                    "Azure managed identity credential initialization failed",
+                    "Azure managed identity could not acquire the configured audience token",
                 ) from exc
-            self._credentials[profile.client_id] = credential
-        try:
-            access_token = credential.get_token(profile.scope)
-        except Exception as exc:
-            raise CredentialResolutionError(
-                "unavailable",
-                "Azure managed identity could not acquire the configured audience token",
-            ) from exc
 
-        material, expires_on, expires_at_utc = _validated_access_token(access_token, now=now)
-        metadata = self._metadata(
-            reference,
-            version=str(expires_on),
-            expires_at_utc=expires_at_utc,
-            updated_at_utc=now,
-        )
-        return CredentialLease(material, metadata)
+            material, expires_on, expires_at_utc = _validated_access_token(access_token, now=now)
+            metadata = self._metadata(
+                reference,
+                version=str(expires_on),
+                expires_at_utc=expires_at_utc,
+                updated_at_utc=now,
+            )
+            return CredentialLease(material, metadata)
 
     def close(self) -> None:
         """Release every initialized managed-identity transport exactly once."""
 
-        closed: set[int] = set()
-        for credential in self._credentials.values():
-            identity = id(credential)
-            if identity in closed:
-                continue
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            credentials: list[ManagedIdentityTokenCredential] = []
+            seen: set[int] = set()
+            for credential in self._credentials.values():
+                identity = id(credential)
+                if identity in seen:
+                    continue
+                credentials.append(credential)
+                seen.add(identity)
+
+        for credential in credentials:
             credential.close()
-            closed.add(identity)
+
+    def _ensure_open(self) -> None:
+        if self._closed:
+            raise CredentialProviderError("Azure managed-identity provider is closed")
 
     def _profile(
         self,
