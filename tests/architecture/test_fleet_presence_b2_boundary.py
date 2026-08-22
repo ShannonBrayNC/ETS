@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+PRESENCE = Path("ets/fleet/presence.py")
 OPS = Path("ets/fleet/presence_ops.py")
 SQLITE = Path("ets/fleet/presence_sqlite.py")
 INGRESS = Path("ets/fleet/presence_api.py")
@@ -46,8 +47,19 @@ def test_ingress_is_bounded_and_does_not_assert_truth_or_health() -> None:
     assert "MAX_EVENT_GRID_BODY_BYTES" in source
     assert "MAX_EVENT_GRID_EVENTS" in source
     assert "MAX_HEARTBEAT_BODY_BYTES" in source
+    assert "HeartbeatEnvelope.model_validate_json(body)" in source
     assert '"evidence_verified": False' in source
     assert '"health_asserted": False' in source
+
+
+def test_accepted_presence_updates_use_atomic_store_contract() -> None:
+    runtime = PRESENCE.read_text(encoding="utf-8")
+    sqlite = SQLITE.read_text(encoding="utf-8")
+    assert "commit_transport_event" in runtime
+    assert "commit_heartbeat_state" in runtime
+    assert "BEGIN IMMEDIATE" in sqlite
+    assert "self._upsert_state(state)" in sqlite
+    assert "self._connection.commit()" in sqlite
 
 
 def test_sqlite_store_uses_durable_journaling_and_outbox() -> None:
