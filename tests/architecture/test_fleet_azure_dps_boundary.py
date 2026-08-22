@@ -90,8 +90,8 @@ def test_retained_live_evidence_is_public_safe() -> None:
 
 def test_operator_doc_requires_narrow_dps_role_scope() -> None:
     text = DOC.read_text(encoding="utf-8")
-    assert "Device Provisioning Service Data Contributor" in text
-    assert "DPS resource scope" in text
-    assert "Owner" in text
-    assert "Contributor" in text
-    assert "not sufficient evidence of physical TPM possession" in text
+    normalized = " ".join(text.split())
+    assert "Device Provisioning Service Data Contributor" in normalized
+    assert "DPS resource scope" in normalized
+    assert "Do not grant Owner or broad Contributor" in normalized
+    assert "not sufficient evidence of physical TPM possession" in normalized
