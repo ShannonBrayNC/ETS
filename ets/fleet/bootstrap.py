@@ -6,7 +6,7 @@ import json
 import os
 import re
 from collections.abc import Mapping
-from typing import cast
+from typing import Any, cast
 
 from ets.fleet.postgres import (
     AzureManagedIdentityPostgresFactory,
@@ -76,7 +76,7 @@ def main() -> None:
         host=host,
         database=database,
         user=runtime_role,
-        credential=cast(object, runtime_credential),
+        credential=cast(Any, runtime_credential),
     )
     enrollment_ready = PostgresEnrollmentStore(runtime_factory).check_ready()
     authorization_ready = PostgresFleetAuthorizationState(runtime_factory).check_ready()
