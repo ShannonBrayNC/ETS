@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BICEP = ROOT / "infra" / "azure" / "ets-gateway.bicep"
+BICEP_WORKFLOW = ROOT / ".github" / "workflows" / "hosted-azure-bicep.yml"
 
 
 def _template() -> str:
@@ -101,3 +102,29 @@ def test_gateway_bicep_outputs_no_secret_material() -> None:
     joined = "\n".join(outputs).lower()
     for prohibited in ("secret", "password", "token", "accountkey", "jwks", "issuer"):
         assert prohibited not in joined
+
+
+def test_gateway_bicep_keeps_graph_client_state_in_a_conditional_secret() -> None:
+    text = _template()
+
+    for required in (
+        "@secure()\n@maxLength(128)\nparam graphClientState string = ''",
+        "assert graphLifecycleConfigurationComplete",
+        "assert graphLifecycleRenewalWindowBounded",
+        "secrets: graphLifecycleConfigured ? [",
+        "name: 'graph-client-state'",
+        "name: 'ETS_GATEWAY_GRAPH_CLIENT_STATE'\n              secretRef: 'graph-client-state'",
+        "name: 'ETS_GATEWAY_GRAPH_NOTIFICATION_URL'",
+        "name: 'ETS_GATEWAY_GRAPH_SUBSCRIPTION_LIFETIME_SECONDS'",
+        "name: 'ETS_GATEWAY_GRAPH_SUBSCRIPTION_RENEWAL_WINDOW_SECONDS'",
+        "external: false",
+    ):
+        assert required in text
+
+    assert "ETS_GATEWAY_GRAPH_SUBSCRIPTION_JSON" not in text
+
+
+def test_hosted_bicep_workflow_compiles_gateway_template() -> None:
+    text = BICEP_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "az bicep build --file infra/azure/ets-gateway.bicep" in text

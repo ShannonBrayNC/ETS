@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, status
 
@@ -31,7 +32,6 @@ from ets.connectors.enterprise.microsoft_entra_connector import (
     MicrosoftEntraDeltaAdapter,
 )
 from ets.connectors.enterprise.microsoft_entra_delta import EntraDeltaCollection
-from ets.connectors.enterprise.microsoft_graph import MicrosoftGraphSubscriptionStateV1
 from ets.connectors.enterprise.microsoft_health import (
     MicrosoftOperationalHealthPolicyV1,
     MicrosoftOperationalPostureV1,
@@ -82,7 +82,23 @@ from ets.gateway.core_relay_http import ETSCoreHttpRelayClient
 from ets.gateway.entra_core_token import AzureManagedIdentityCoreTokenProvider
 from ets.gateway.ingress import GatewayIngressConfig
 from ets.gateway.management_host import create_gateway_management_app
+from ets.gateway.microsoft_graph_commit import (
+    MICROSOFT_GRAPH_RESOURCE_EVENT_TYPE,
+    MICROSOFT_GRAPH_SOURCE_SYSTEM,
+    MICROSOFT_GRAPH_TRANSFORMATION_PROFILE,
+    GatewayMicrosoftGraphResourceCommitter,
+    MicrosoftGraphResourceCommitter,
+)
+from ets.gateway.microsoft_graph_lifecycle import (
+    GRAPH_DRIVE_SUBSCRIPTION_DEFAULT_LIFETIME_SECONDS,
+    GRAPH_DRIVE_SUBSCRIPTION_DEFAULT_RENEWAL_WINDOW_SECONDS,
+    GRAPH_DRIVE_SUBSCRIPTION_MAXIMUM_LIFETIME_SECONDS,
+    GRAPH_DRIVE_SUBSCRIPTION_MINIMUM_LIFETIME_SECONDS,
+    MicrosoftGraphSubscriptionLifecycleManager,
+    sharepoint_drive_subscription_resource,
+)
 from ets.gateway.microsoft_graph_state import SQLiteMicrosoftGraphSubscriptionStore
+from ets.gateway.microsoft_graph_webhook import create_microsoft_graph_webhook_app
 from ets.gateway.microsoft_operational_posture_api import (
     GatewayMicrosoftOperationalPostureService,
     MicrosoftOperationalPostureProvider,
@@ -91,7 +107,7 @@ from ets.gateway.source_registry import SourceRegistration, StaticSourceRegistry
 from ets.runtime.sync_queue import SyncQueue
 from ets.runtime.sync_queue_scope import source_scoped_sync_queue_status
 
-_HOSTED_GATEWAY_VERSION = "0.2.0-p0-microsoft-family-r1"
+_HOSTED_GATEWAY_VERSION = "0.3.0-p0-microsoft-graph-lifecycle-r1"
 _DEFAULT_STATE_DIR = "/var/lib/ets"
 _DEFAULT_MANIFEST_DIR = "/app/config/connectors/enterprise"
 _WORKER_OWNER = "ets-hosted-microsoft-gateway"
@@ -105,6 +121,7 @@ _PURVIEW_SUFFIX = "purview-audit-general"
 _ENTRA_USERS_PRINCIPAL = "gateway://microsoft/entra/users"
 _ENTRA_GROUPS_PRINCIPAL = "gateway://microsoft/entra/groups"
 _PURVIEW_PRINCIPAL = "gateway://microsoft/purview/audit-general"
+_GRAPH_NOTIFICATION_PRINCIPAL = "gateway://microsoft/graph/notifications"
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +150,10 @@ class HostedMicrosoftGatewaySettings:
     auth_audience: str
     auth_tenant_id: str
     auth_app_scope_map: AppScopeMap
-    graph_subscription: MicrosoftGraphSubscriptionStateV1 | None
+    graph_notification_url: str | None
+    graph_client_state: str | None
+    graph_subscription_lifetime_seconds: int
+    graph_subscription_renewal_window_seconds: int
     health_policy: MicrosoftOperationalHealthPolicyV1 | None
 
     @classmethod
@@ -153,22 +173,50 @@ class HostedMicrosoftGatewaySettings:
                 "hosted Gateway requires exactly one of ETS_AUTH_JWKS_JSON or ETS_AUTH_JWKS_URL"
             )
 
-        graph_raw = _optional_env("ETS_GATEWAY_GRAPH_SUBSCRIPTION_JSON")
+        graph_notification_url = _optional_env("ETS_GATEWAY_GRAPH_NOTIFICATION_URL")
+        graph_client_state = _optional_env("ETS_GATEWAY_GRAPH_CLIENT_STATE")
         policy_raw = _optional_env("ETS_GATEWAY_MICROSOFT_HEALTH_POLICY_JSON")
-        if (graph_raw is None) != (policy_raw is None):
-            raise RuntimeError(
-                "Graph subscription and Microsoft health policy must be configured together"
-            )
-        graph_subscription = (
-            None
-            if graph_raw is None
-            else MicrosoftGraphSubscriptionStateV1.model_validate_json(graph_raw)
+        configured_graph_values = (
+            graph_notification_url,
+            graph_client_state,
+            policy_raw,
         )
+        if any(value is not None for value in configured_graph_values) and any(
+            value is None for value in configured_graph_values
+        ):
+            raise RuntimeError(
+                "Graph notification URL, clientState, and health policy must be configured together"
+            )
+        if graph_notification_url is not None:
+            graph_notification_url = _validate_graph_notification_url(
+                graph_notification_url
+            )
+        if graph_client_state is not None and len(graph_client_state) > 128:
+            raise RuntimeError("ETS_GATEWAY_GRAPH_CLIENT_STATE exceeds 128 characters")
         health_policy = (
             None
             if policy_raw is None
             else MicrosoftOperationalHealthPolicyV1.model_validate_json(policy_raw)
         )
+        graph_subscription_lifetime_seconds = _bounded_int_env(
+            "ETS_GATEWAY_GRAPH_SUBSCRIPTION_LIFETIME_SECONDS",
+            default=GRAPH_DRIVE_SUBSCRIPTION_DEFAULT_LIFETIME_SECONDS,
+            minimum=GRAPH_DRIVE_SUBSCRIPTION_MINIMUM_LIFETIME_SECONDS,
+            maximum=GRAPH_DRIVE_SUBSCRIPTION_MAXIMUM_LIFETIME_SECONDS,
+        )
+        graph_subscription_renewal_window_seconds = _bounded_int_env(
+            "ETS_GATEWAY_GRAPH_SUBSCRIPTION_RENEWAL_WINDOW_SECONDS",
+            default=GRAPH_DRIVE_SUBSCRIPTION_DEFAULT_RENEWAL_WINDOW_SECONDS,
+            minimum=60,
+            maximum=GRAPH_DRIVE_SUBSCRIPTION_MAXIMUM_LIFETIME_SECONDS - 1,
+        )
+        if (
+            graph_subscription_renewal_window_seconds
+            >= graph_subscription_lifetime_seconds
+        ):
+            raise RuntimeError(
+                "Graph subscription renewal window must be shorter than its lifetime"
+            )
 
         managed_identity_client_id = _required_env(
             "ETS_GATEWAY_MANAGED_IDENTITY_CLIENT_ID", maximum=100
@@ -224,7 +272,12 @@ class HostedMicrosoftGatewaySettings:
             auth_audience=_required_env("ETS_AUTH_AUDIENCE", maximum=500),
             auth_tenant_id=_required_env("ETS_AUTH_TENANT_ID", maximum=36),
             auth_app_scope_map=_load_app_scope_map(),
-            graph_subscription=graph_subscription,
+            graph_notification_url=graph_notification_url,
+            graph_client_state=graph_client_state,
+            graph_subscription_lifetime_seconds=graph_subscription_lifetime_seconds,
+            graph_subscription_renewal_window_seconds=(
+                graph_subscription_renewal_window_seconds
+            ),
             health_policy=health_policy,
         )
 
@@ -260,7 +313,7 @@ class HostedMicrosoftOperationalPostureProvider(MicrosoftOperationalPostureProvi
         adapter: MicrosoftSharePointDeltaAdapter,
         queue: SyncQueue,
         subscription_store: SQLiteMicrosoftGraphSubscriptionStore,
-        subscription_id: str,
+        subscription_resource: str,
         source_id: str,
         microsoft_tenant_id: str,
         policy: MicrosoftOperationalHealthPolicyV1,
@@ -268,7 +321,7 @@ class HostedMicrosoftOperationalPostureProvider(MicrosoftOperationalPostureProvi
         self._adapter = adapter
         self._queue = queue
         self._subscription_store = subscription_store
-        self._subscription_id = subscription_id
+        self._subscription_resource = subscription_resource
         self._source_id = source_id
         self._microsoft_tenant_id = microsoft_tenant_id
         self._policy = policy
@@ -278,7 +331,10 @@ class HostedMicrosoftOperationalPostureProvider(MicrosoftOperationalPostureProvi
         instance: ConnectorInstanceV1,
         runtime: ConnectorRuntimeStateV1,
     ) -> MicrosoftOperationalPostureV1:
-        subscription = self._subscription_store.get(self._subscription_id)
+        subscription = self._subscription_store.get_for_resource(
+            tenant_id=self._microsoft_tenant_id,
+            resource=self._subscription_resource,
+        )
         if subscription is None:
             raise RuntimeError("configured Microsoft Graph subscription state is unavailable")
         now = datetime.now(UTC)
@@ -320,6 +376,8 @@ class HostedMicrosoftGatewayRuntime:
         microsoft_credentials: AzureManagedIdentityCredentialProvider,
         core_tokens: AzureManagedIdentityCoreTokenProvider,
         graph_subscription_store: SQLiteMicrosoftGraphSubscriptionStore | None,
+        graph_subscription_lifecycle: MicrosoftGraphSubscriptionLifecycleManager | None,
+        graph_resource_committer: MicrosoftGraphResourceCommitter | None,
     ) -> None:
         if not workers:
             raise ValueError("hosted Microsoft Gateway requires at least one connector worker")
@@ -339,6 +397,8 @@ class HostedMicrosoftGatewayRuntime:
         self.microsoft_credentials = microsoft_credentials
         self.core_tokens = core_tokens
         self.graph_subscription_store = graph_subscription_store
+        self.graph_subscription_lifecycle = graph_subscription_lifecycle
+        self.graph_resource_committer = graph_resource_committer
         self._workers_by_instance_id = {
             worker.instance.instance_id: worker for worker in workers
         }
@@ -358,6 +418,11 @@ class HostedMicrosoftGatewayRuntime:
             instance_ids=tuple(self._workers_by_instance_id),
         )
         failures: list[Exception] = []
+        if self.graph_subscription_lifecycle is not None:
+            try:
+                self.graph_subscription_lifecycle.run_once(now=now)
+            except Exception as exc:
+                failures.append(exc)
         for instance_id in claimed:
             worker = self._workers_by_instance_id[instance_id]
             try:
@@ -475,6 +540,15 @@ def create_app_from_env() -> FastAPI:
         auth_mode="production_jwks",
         microsoft_posture_service=posture_service,
     )
+    if (
+        runtime.graph_subscription_store is not None
+        and runtime.graph_resource_committer is not None
+    ):
+        graph_webhook_app = create_microsoft_graph_webhook_app(
+            runtime.graph_subscription_store,
+            resource_committer=runtime.graph_resource_committer,
+        )
+        app.include_router(graph_webhook_app.router)
 
     @app.get("/health", tags=["runtime"])
     def health() -> dict[str, object]:
@@ -681,6 +755,20 @@ def _compose_runtime(
                 clock_quality="unknown",
             ),
             SourceRegistration(
+                principal=_GRAPH_NOTIFICATION_PRINCIPAL,
+                source_id=settings.source_id,
+                source_system=MICROSOFT_GRAPH_SOURCE_SYSTEM,
+                tenant_id=settings.tenant_id,
+                workspace_id=settings.workspace_id,
+                adapter_id="microsoft.graph",
+                adapter_version="1.0.0-g2e-b",
+                event_type=MICROSOFT_GRAPH_RESOURCE_EVENT_TYPE,
+                classification="enterprise_metadata",
+                redaction_profile=MICROSOFT_GRAPH_TRANSFORMATION_PROFILE,
+                minimization_profile=MICROSOFT_GRAPH_TRANSFORMATION_PROFILE,
+                clock_quality="unknown",
+            ),
+            SourceRegistration(
                 principal=_ENTRA_USERS_PRINCIPAL,
                 source_id=_derived_identifier(
                     settings.source_id,
@@ -784,17 +872,39 @@ def _compose_runtime(
     )
 
     graph_store: SQLiteMicrosoftGraphSubscriptionStore | None = None
+    graph_lifecycle: MicrosoftGraphSubscriptionLifecycleManager | None = None
+    graph_committer: MicrosoftGraphResourceCommitter | None = None
     posture_service: GatewayMicrosoftOperationalPostureService | None = None
-    if settings.graph_subscription is not None and settings.health_policy is not None:
+    if settings.graph_notification_url is not None:
+        if settings.graph_client_state is None or settings.health_policy is None:
+            raise RuntimeError("hosted Graph lifecycle configuration is incomplete")
+        graph_resource = sharepoint_drive_subscription_resource(
+            settings.sharepoint_drive_id
+        )
         graph_store = SQLiteMicrosoftGraphSubscriptionStore(
             settings.state_dir / "microsoft-graph-subscriptions.db"
         )
-        graph_store.register(settings.graph_subscription)
+        graph_lifecycle = MicrosoftGraphSubscriptionLifecycleManager(
+            tenant_profile=sharepoint_tenant_profile,
+            credential_resolver=broker,
+            store=graph_store,
+            resource=graph_resource,
+            notification_url=settings.graph_notification_url,
+            client_state=settings.graph_client_state,
+            lifetime_seconds=settings.graph_subscription_lifetime_seconds,
+            renewal_window_seconds=(
+                settings.graph_subscription_renewal_window_seconds
+            ),
+        )
+        graph_committer = GatewayMicrosoftGraphResourceCommitter(
+            ingress,
+            principal=_GRAPH_NOTIFICATION_PRINCIPAL,
+        )
         posture_provider = HostedMicrosoftOperationalPostureProvider(
             adapter=sharepoint_adapter,
             queue=sync_queue,
             subscription_store=graph_store,
-            subscription_id=settings.graph_subscription.subscription_id,
+            subscription_resource=graph_resource,
             source_id=settings.source_id,
             microsoft_tenant_id=settings.microsoft_tenant_id,
             policy=settings.health_policy,
@@ -813,6 +923,8 @@ def _compose_runtime(
         microsoft_credentials=microsoft_credentials,
         core_tokens=core_tokens,
         graph_subscription_store=graph_store,
+        graph_subscription_lifecycle=graph_lifecycle,
+        graph_resource_committer=graph_committer,
     )
     return runtime, management, _auth_policy(settings), posture_service
 
@@ -1049,6 +1161,26 @@ def _optional_env(name: str) -> str | None:
         return None
     normalized = value.strip()
     return normalized or None
+
+
+def _validate_graph_notification_url(value: str) -> str:
+    if len(value) > 2_000:
+        raise RuntimeError("ETS_GATEWAY_GRAPH_NOTIFICATION_URL exceeds configured bound")
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.port not in {None, 443}
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path != "/gateway/v1/microsoft/graph"
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError(
+            "Graph notification URL must be an exact HTTPS hosted webhook URL"
+        )
+    return value
 
 
 def _bounded_int_env(

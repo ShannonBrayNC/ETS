@@ -112,6 +112,79 @@ class SQLiteMicrosoftGraphSubscriptionStore:
                 ) from exc
             return None if row is None else self._decode(row[0])
 
+    def get_for_resource(
+        self,
+        *,
+        tenant_id: str,
+        resource: str,
+    ) -> MicrosoftGraphSubscriptionStateV1 | None:
+        """Return the sole subscription for an exact tenant/resource boundary."""
+
+        with self._lock:
+            try:
+                rows = self._connection.execute(
+                    """
+                    SELECT state_json
+                    FROM graph_subscriptions
+                    WHERE lower(tenant_id) = lower(?) AND resource = ?
+                    ORDER BY subscription_id
+                    """,
+                    (tenant_id, resource),
+                ).fetchall()
+            except sqlite3.Error as exc:
+                raise MicrosoftGraphSubscriptionStateStoreError(
+                    "unable to read Graph subscription resource state"
+                ) from exc
+            if len(rows) > 1:
+                raise MicrosoftGraphSubscriptionStateStoreError(
+                    "multiple Graph subscriptions exist for one governed resource"
+                )
+            return None if not rows else self._decode(rows[0][0])
+
+    def replace_for_resource(self, state: MicrosoftGraphSubscriptionStateV1) -> None:
+        """Atomically trust one replacement subscription for a governed resource."""
+
+        with self._lock:
+            try:
+                self._connection.execute("BEGIN IMMEDIATE")
+                try:
+                    row = self._connection.execute(
+                        """
+                        SELECT tenant_id, resource, client_state_sha256
+                        FROM graph_subscriptions
+                        WHERE subscription_id = ?
+                        """,
+                        (state.subscription_id,),
+                    ).fetchone()
+                    if row is not None and row != (
+                        state.tenant_id,
+                        state.resource,
+                        state.client_state_sha256,
+                    ):
+                        raise MicrosoftGraphSubscriptionStateStoreError(
+                            "Graph replacement reused an existing subscription identity"
+                        )
+                    self._write(state)
+                    self._connection.execute(
+                        """
+                        DELETE FROM graph_subscriptions
+                        WHERE lower(tenant_id) = lower(?)
+                          AND resource = ?
+                          AND subscription_id <> ?
+                        """,
+                        (state.tenant_id, state.resource, state.subscription_id),
+                    )
+                    self._connection.execute("COMMIT")
+                except Exception:
+                    self._connection.execute("ROLLBACK")
+                    raise
+            except MicrosoftGraphSubscriptionStateStoreError:
+                raise
+            except sqlite3.Error as exc:
+                raise MicrosoftGraphSubscriptionStateStoreError(
+                    "unable to replace Graph subscription resource state"
+                ) from exc
+
     def snapshot(self) -> Mapping[str, MicrosoftGraphSubscriptionStateV1]:
         """Return a validated snapshot suitable for webhook notification parsing."""
 

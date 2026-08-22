@@ -86,11 +86,27 @@ param authTenantId string
 @minLength(2)
 param authAppScopeMapJson string
 
-@description('Durable Graph subscription state JSON. Empty until #390 subscription provisioning.')
-param graphSubscriptionJson string = ''
+@description('Exact public HTTPS Graph webhook URL. Empty until protected ingress is separately authorized.')
+@maxLength(2000)
+param graphNotificationUrl string = ''
 
-@description('Governed Microsoft health policy JSON. Empty until live #390 posture is enabled.')
+@description('Server-owned Graph clientState trust secret. Empty until protected ingress is separately authorized.')
+@secure()
+@maxLength(128)
+param graphClientState string = ''
+
+@description('Governed Microsoft health policy JSON. Empty until Graph lifecycle is enabled.')
 param microsoftHealthPolicyJson string = ''
+
+@description('Requested lifetime for the approved SharePoint drive Graph subscription.')
+@minValue(3600)
+@maxValue(2538000)
+param graphSubscriptionLifetimeSeconds int = 2419200
+
+@description('Renewal window before the approved SharePoint drive Graph subscription expires.')
+@minValue(60)
+@maxValue(2537999)
+param graphSubscriptionRenewalWindowSeconds int = 86400
 
 @description('Bounded poll cadence shared by the composed Microsoft connector instances.')
 @minValue(30)
@@ -110,10 +126,15 @@ var stateFileShareName = 'ets-gateway-state-q1-v2'
 var stateKeyVaultName = take('ets-${resourceToken}-gkv', 24)
 var stateStorageSecretName = 'azure-files-account-key'
 var environmentStorageName = take('ets-${resourceToken}-state-q1-v2', 32)
+var graphLifecyclePartiallyConfigured = !empty(graphNotificationUrl) || !empty(graphClientState) || !empty(microsoftHealthPolicyJson)
+var graphLifecycleConfigured = !empty(graphNotificationUrl) && !empty(graphClientState) && !empty(microsoftHealthPolicyJson)
 var keyVaultSecretsUserRoleId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '4633458b-17de-408a-b874-0445c86b69e6'
 )
+
+assert graphLifecycleConfigurationComplete = !graphLifecyclePartiallyConfigured || graphLifecycleConfigured
+assert graphLifecycleRenewalWindowBounded = graphSubscriptionRenewalWindowSeconds < graphSubscriptionLifetimeSeconds
 
 resource managedEnvironment 'Microsoft.App/managedEnvironments@2026-01-01' existing = {
   name: managedEnvironmentName
@@ -276,6 +297,12 @@ resource gateway 'Microsoft.App/containerApps@2026-01-01' = {
           lifecycle: 'None'
         }
       ]
+      secrets: graphLifecycleConfigured ? [
+        {
+          name: 'graph-client-state'
+          value: graphClientState
+        }
+      ] : []
       registries: [
         {
           server: registryPull.outputs.loginServer
@@ -312,7 +339,7 @@ resource gateway 'Microsoft.App/containerApps@2026-01-01' = {
             '-m'
             'ets.gateway.container_entrypoint'
           ]
-          env: [
+          env: concat([
             {
               name: 'ETS_GATEWAY_STATE_DIR'
               value: '/var/lib/ets'
@@ -377,14 +404,28 @@ resource gateway 'Microsoft.App/containerApps@2026-01-01' = {
               name: 'ETS_GATEWAY_POLL_INTERVAL_SECONDS'
               value: string(pollIntervalSeconds)
             }
+          ], graphLifecycleConfigured ? [
             {
-              name: 'ETS_GATEWAY_GRAPH_SUBSCRIPTION_JSON'
-              value: graphSubscriptionJson
+              name: 'ETS_GATEWAY_GRAPH_NOTIFICATION_URL'
+              value: graphNotificationUrl
+            }
+            {
+              name: 'ETS_GATEWAY_GRAPH_CLIENT_STATE'
+              secretRef: 'graph-client-state'
+            }
+            {
+              name: 'ETS_GATEWAY_GRAPH_SUBSCRIPTION_LIFETIME_SECONDS'
+              value: string(graphSubscriptionLifetimeSeconds)
+            }
+            {
+              name: 'ETS_GATEWAY_GRAPH_SUBSCRIPTION_RENEWAL_WINDOW_SECONDS'
+              value: string(graphSubscriptionRenewalWindowSeconds)
             }
             {
               name: 'ETS_GATEWAY_MICROSOFT_HEALTH_POLICY_JSON'
               value: microsoftHealthPolicyJson
             }
+          ] : [], [
             {
               name: 'ETS_AUTH_MODE'
               value: 'production_jwks'
@@ -409,7 +450,7 @@ resource gateway 'Microsoft.App/containerApps@2026-01-01' = {
               name: 'ETS_AUTH_APP_SCOPE_MAP_JSON'
               value: authAppScopeMapJson
             }
-          ]
+          ])
           volumeMounts: [
             {
               volumeName: 'gateway-state'

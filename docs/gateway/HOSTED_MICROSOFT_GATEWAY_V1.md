@@ -20,12 +20,14 @@ The hosted profile:
 - mounts `/var/lib/ets` on a durable Azure Files volume;
 - stores the Azure Files account key in Key Vault and does not place it in container
   environment variables;
-- uses one user-assigned runtime identity for Microsoft Graph and ETS Core token
-  acquisition;
+- uses the SharePoint/Core UAMI only for the approved SharePoint drive, Graph subscription
+  lifecycle, and ETS Core token acquisition;
+- uses a directory UAMI only for Graph users/groups delta and a Purview UAMI only for the Office
+  365 Management Activity audience;
 - uses a separate pull-only identity for the private ACR image;
 - uses production JWKS management authentication and server-derived ETS scope;
-- polls one approved SharePoint drive through the existing
-  `microsoft.sharepoint.onedrive_delta` adapter;
+- polls one approved SharePoint drive, Entra users/groups, and Purview `Audit.General` through four
+  isolated connector instances;
 - commits normalized candidates through the existing Gateway local-append and durable
   synchronization queue;
 - relays those exact locally committed events to ETS Core over HTTPS using a scoped
@@ -33,8 +35,10 @@ The hosted profile:
 - preserves connector checkpoint, retry, gap, queue, and local event state across
   Container App revision restart.
 
-The management ingress remains internal. Public Microsoft Graph webhook exposure is a
-separate #390 qualification step and must not be inferred from this profile.
+The management ingress remains internal. Graph lifecycle and webhook code are composed when their
+complete server-owned configuration is present, but the checked-in Bicep retains `external: false`.
+Public/protected callback exposure is a separate #539 qualification step and must not be inferred
+from this profile.
 
 ## Deployment-authoritative identity
 
@@ -94,14 +98,13 @@ cryptographic verification.
 
 ## Microsoft posture activation
 
-The management posture route is installed only when both
-`ETS_GATEWAY_GRAPH_SUBSCRIPTION_JSON` and
-`ETS_GATEWAY_MICROSOFT_HEALTH_POLICY_JSON` are supplied. This allows #389 to deploy the
-Gateway before #390 creates the real Graph subscription while preventing a synthetic
-subscription from being represented as live health.
+The management posture route is installed only when the exact Graph notification URL, secret-backed
+clientState, and governed health policy are configured together. The runtime derives the approved
+`drives/{drive-id}/root` resource, creates or renews its subscription through the SharePoint UAMI,
+and reads the exact durable subscription for posture. Operator-supplied subscription identity/state
+JSON is not trusted.
 
-After #390 provisions the EchoMedia subscription, both values must describe that exact
-subscription and the approved governed health policy. The provider then combines:
+The provider combines:
 
 - live SharePoint adapter health;
 - durable connector runtime;
@@ -136,9 +139,10 @@ identity/hash and upstream acknowledgement before marking a queue row synchroniz
    without `evidence.create` is denied ingestion.
 6. Provision the Gateway managed identity with EchoMedia `Sites.Selected` access to the
    designated SharePoint site.
-7. Create/register the real Microsoft Graph subscription and enable the exact posture
-   configuration.
-8. Complete #390 source-to-proof qualification, including notification/delta recovery.
+7. Authorize protected Graph callback ingress, supply the exact lifecycle/posture configuration,
+   and let the runtime create and validate the real subscription.
+8. Complete #539 and #540 source-to-proof qualification, including renewal and
+   notification/delta recovery.
 9. Freeze source SHA, image digest, connector instance, ETS scope, Microsoft tenant and
    subscription, and health-policy profile.
 10. Run probe 1 of the governed 72-hour soak. The clock begins only at that successful

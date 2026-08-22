@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -58,8 +59,32 @@ def _base_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for name, value in values.items():
         monkeypatch.setenv(name, value)
     monkeypatch.delenv("ETS_AUTH_JWKS_URL", raising=False)
-    monkeypatch.delenv("ETS_GATEWAY_GRAPH_SUBSCRIPTION_JSON", raising=False)
+    monkeypatch.delenv("ETS_GATEWAY_GRAPH_NOTIFICATION_URL", raising=False)
+    monkeypatch.delenv("ETS_GATEWAY_GRAPH_CLIENT_STATE", raising=False)
     monkeypatch.delenv("ETS_GATEWAY_MICROSOFT_HEALTH_POLICY_JSON", raising=False)
+
+
+def _enable_graph_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "ETS_GATEWAY_GRAPH_NOTIFICATION_URL",
+        "https://gateway.example.test/gateway/v1/microsoft/graph",
+    )
+    monkeypatch.setenv("ETS_GATEWAY_GRAPH_CLIENT_STATE", "server-owned-client-state")
+    monkeypatch.setenv(
+        "ETS_GATEWAY_MICROSOFT_HEALTH_POLICY_JSON",
+        json.dumps(
+            {
+                "schema_version": (
+                    "ets.connector.microsoft.operational_health_policy.v1"
+                ),
+                "profile_id": "microsoft-p0",
+                "subscription_renewal_warning_seconds": 86_400,
+                "maximum_collection_lag_seconds": 900,
+                "maximum_unsynchronized_age_seconds": 900,
+                "maximum_source_queue_depth": 100,
+            }
+        ),
+    )
 
 
 def test_settings_require_production_jwks_and_server_scope_map(
@@ -92,23 +117,41 @@ def test_settings_require_graph_subscription_and_policy_together(
 ) -> None:
     _base_env(monkeypatch)
     monkeypatch.setenv(
-        "ETS_GATEWAY_GRAPH_SUBSCRIPTION_JSON",
-        json.dumps(
-            {
-                "schema_version": "ets.connector.microsoft.graph_subscription_state.v1",
-                "subscription_id": "subscription-1",
-                "tenant_id": "22222222-2222-2222-2222-222222222222",
-                "cloud": "global",
-                "resource": "drives/drive-1/root",
-                "client_state_sha256": "0" * 64,
-                "expiration_date_time": "2026-08-21T12:00:00Z",
-                "status": "active",
-                "gap_state": "none",
-            }
-        ),
+        "ETS_GATEWAY_GRAPH_NOTIFICATION_URL",
+        "https://gateway.example.test/gateway/v1/microsoft/graph",
     )
 
     with pytest.raises(RuntimeError, match="configured together"):
+        HostedMicrosoftGatewaySettings.from_env()
+
+
+def test_settings_accept_exact_server_owned_graph_lifecycle_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _base_env(monkeypatch)
+    _enable_graph_lifecycle(monkeypatch)
+
+    settings = HostedMicrosoftGatewaySettings.from_env()
+
+    assert settings.graph_notification_url == (
+        "https://gateway.example.test/gateway/v1/microsoft/graph"
+    )
+    assert settings.graph_client_state == "server-owned-client-state"
+    assert settings.graph_subscription_lifetime_seconds == 28 * 24 * 60 * 60
+    assert settings.graph_subscription_renewal_window_seconds == 24 * 60 * 60
+
+
+def test_settings_reject_graph_notification_url_with_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _base_env(monkeypatch)
+    _enable_graph_lifecycle(monkeypatch)
+    monkeypatch.setenv(
+        "ETS_GATEWAY_GRAPH_NOTIFICATION_URL",
+        "https://gateway.example.test/gateway/v1/microsoft/graph?source=payload",
+    )
+
+    with pytest.raises(RuntimeError, match="exact HTTPS"):
         HostedMicrosoftGatewaySettings.from_env()
 
 
@@ -245,6 +288,19 @@ def test_runtime_composes_four_durable_workers_without_identity_fallback(
         for instance in runtime.instances
     )
 
+    class FailingGraphLifecycle:
+        def run_once(self, *, now: object) -> None:
+            raise RuntimeError("fixture Graph lifecycle failure")
+
+    runtime.graph_subscription_lifecycle = FailingGraphLifecycle()  # type: ignore[assignment]
+    collected.clear()
+
+    with pytest.raises(RuntimeError, match="1 bounded operation"):
+        runtime.run_cycle()
+
+    assert set(collected) == {instance.instance_id for instance in runtime.instances}
+    runtime.graph_subscription_lifecycle = None
+
     failed_worker = runtime.workers[1]
 
     def fail_one_worker(**_kwargs: object) -> GatewayConnectorRunResult:
@@ -270,6 +326,76 @@ def test_runtime_composes_four_durable_workers_without_identity_fallback(
     runtime.event_store.close()
 
 
+def test_runtime_composes_graph_lifecycle_for_exact_sharepoint_drive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _base_env(monkeypatch)
+    _enable_graph_lifecycle(monkeypatch)
+    monkeypatch.setenv("ETS_GATEWAY_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv(
+        "ETS_GATEWAY_MANIFEST_DIR",
+        str(ROOT / "config" / "connectors" / "enterprise"),
+    )
+
+    class FakeCoreTokens:
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        hosted_runtime,
+        "AzureManagedIdentityCoreTokenProvider",
+        lambda **_kwargs: FakeCoreTokens(),
+    )
+    monkeypatch.setattr(hosted_runtime, "_auth_policy", lambda _settings: object())
+
+    runtime, _management, _auth, posture = hosted_runtime._compose_runtime(
+        HostedMicrosoftGatewaySettings.from_env()
+    )
+
+    assert runtime.graph_subscription_store is not None
+    assert runtime.graph_subscription_store.snapshot() == {}
+    assert runtime.graph_subscription_lifecycle is not None
+    assert runtime.graph_subscription_lifecycle.resource == "drives/drive-1/root"
+    assert runtime.graph_resource_committer is not None
+    assert posture is not None
+    runtime.microsoft_credentials.close()
+    runtime.core_tokens.close()
+    runtime.graph_subscription_store.close()
+    runtime.event_store.close()
+
+
+def test_hosted_app_installs_bounded_graph_webhook_when_lifecycle_is_enabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _base_env(monkeypatch)
+    _enable_graph_lifecycle(monkeypatch)
+    monkeypatch.setenv("ETS_GATEWAY_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv(
+        "ETS_GATEWAY_MANIFEST_DIR",
+        str(ROOT / "config" / "connectors" / "enterprise"),
+    )
+
+    class FakeCoreTokens:
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        hosted_runtime,
+        "AzureManagedIdentityCoreTokenProvider",
+        lambda **_kwargs: FakeCoreTokens(),
+    )
+    monkeypatch.setattr(hosted_runtime, "_auth_policy", lambda _settings: object())
+
+    app = hosted_runtime.create_app_from_env()
+
+    assert "/gateway/v1/microsoft/graph" in {
+        getattr(route, "path", None) for route in app.routes
+    }
+    asyncio.run(app.router.on_shutdown[0]())
+
+
 def test_hosted_runtime_runbook_preserves_identity_and_live_claim_boundaries() -> None:
     text = (
         ROOT
@@ -289,7 +415,29 @@ def test_hosted_runtime_runbook_preserves_identity_and_live_claim_boundaries() -
         "PublisherIdentifier",
         "does not prove live token acquisition",
         "does not start live qualification",
-        "next #543 slice",
+        "MICROSOFT_P0_GRAPH_LIFECYCLE_COMPOSITION_V1.md",
+    ):
+        assert required in text
+
+
+def test_hosted_graph_lifecycle_runbook_preserves_live_activation_boundaries() -> None:
+    text = (
+        ROOT
+        / "docs"
+        / "connectors"
+        / "MICROSOFT_P0_GRAPH_LIFECYCLE_COMPOSITION_V1.md"
+    ).read_text(encoding="utf-8")
+
+    for required in (
+        "drives/{percent-encoded-drive-id}/root",
+        "requests only the `updated` change type",
+        "42,300-minute OneDrive maximum",
+        "atomically distrust the old ID",
+        "never promoted to ETS evidence",
+        "Container Apps `secretRef`",
+        "retains `external: false`",
+        "does not acquire a live token",
+        "does not start the 72-hour soak",
     ):
         assert required in text
 
