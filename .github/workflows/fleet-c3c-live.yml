@@ -14,6 +14,10 @@ on:
         description: "Exact main/source SHA being qualified."
         required: true
         type: string
+      fleet_image:
+        description: "Immutable Fleet OCI image repository@sha256:digest from the protected Fleet Q0 publication; required for compose-edge."
+        required: false
+        type: string
       resource_group:
         description: "Azure resource group containing the Fleet C3B control plane."
         required: true
@@ -38,6 +42,11 @@ on:
       operator_group_ids_json:
         description: "JSON array of allowed Entra group object IDs."
         required: true
+        type: string
+      step_up_auth_context_id:
+        description: "Microsoft Entra Conditional Access authentication-context ID required for Fleet SecurityAdmin step-up."
+        required: true
+        default: "c1"
         type: string
       auth_secret_setting_name:
         description: "Existing Azure-side EasyAuth client-secret setting name. The secret value is never read by this workflow."
@@ -83,6 +92,8 @@ jobs:
         shell: bash
         env:
           OPERATOR_GROUP_IDS_JSON: ${{ inputs.operator_group_ids_json }}
+          FLEET_IMAGE: ${{ inputs.fleet_image }}
+          STEP_UP_AUTH_CONTEXT_ID: ${{ inputs.step_up_auth_context_id }}
         run: |
           set -euo pipefail
           printf '%s' '${{ inputs.expected_source_sha }}' | grep -Eq '^[0-9a-f]{40}$'
@@ -93,6 +104,7 @@ jobs:
           test -n '${{ inputs.entra_client_id }}'
           test -n '${{ inputs.entra_audience }}'
           test -n '${{ inputs.auth_secret_setting_name }}'
+          printf '%s' "${STEP_UP_AUTH_CONTEXT_ID}" | grep -Eq '^c[0-9]{1,2}$'
           python - <<'PY'
           import json
           import os
@@ -102,11 +114,18 @@ jobs:
           assert all(isinstance(item, str) and len(item) == 36 for item in values)
           assert len(values) == len(set(values))
           PY
-          if [ '${{ inputs.phase }}' = 'approve-and-qualify-route' ]; then
-            test -n '${{ inputs.frontdoor_profile_name }}'
-            test -n '${{ inputs.frontdoor_endpoint_name }}'
-            test -n '${{ inputs.private_link_connection_name }}'
-          fi
+          case '${{ inputs.phase }}' in
+            compose-edge)
+              test -n "${FLEET_IMAGE}"
+              printf '%s' "${FLEET_IMAGE}" | grep -Eq '^[^[:space:]]+@sha256:[0-9a-f]{64}$'
+              ;;
+            approve-and-qualify-route)
+              test -n '${{ inputs.frontdoor_profile_name }}'
+              test -n '${{ inputs.frontdoor_endpoint_name }}'
+              test -n '${{ inputs.private_link_connection_name }}'
+              ;;
+            *) exit 2 ;;
+          esac
 
       - name: Azure login using protected workload identity
         uses: azure/login@v2
@@ -118,6 +137,9 @@ jobs:
       - name: Verify exact Azure tenant subscription and private Fleet origin
         id: origin
         shell: bash
+        env:
+          EXPECTED_APP: ${{ inputs.container_app_name }}
+          EXPECTED_ENV: ${{ inputs.managed_environment_name }}
         run: |
           set -euo pipefail
           active_subscription="$(az account show --query id -o tsv)"
@@ -168,10 +190,54 @@ jobs:
           test "${match}" = "${secret_name}"
           echo "Required EasyAuth secret setting exists in Azure; value was not read."
 
+      - name: Deploy exact immutable C3C Fleet runtime configuration
+        if: inputs.phase == 'compose-edge'
+        shell: bash
+        env:
+          FLEET_IMAGE: ${{ inputs.fleet_image }}
+          STEP_UP_AUTH_CONTEXT_ID: ${{ inputs.step_up_auth_context_id }}
+        run: |
+          set -euo pipefail
+          az containerapp update \
+            --resource-group '${{ inputs.resource_group }}' \
+            --name '${{ inputs.container_app_name }}' \
+            --image "${FLEET_IMAGE}" \
+            --set-env-vars \
+              ETS_FLEET_AUTH_BRIDGE=container-apps-easyauth \
+              ETS_FLEET_STEP_UP_ACRS="${STEP_UP_AUTH_CONTEXT_ID}" \
+            --only-show-errors \
+            -o none
+
+          az containerapp show \
+            --resource-group '${{ inputs.resource_group }}' \
+            --name '${{ inputs.container_app_name }}' \
+            --query "properties.template.containers[?name=='fleet-bff'] | [0].{image:image,env:env}" \
+            -o json > "${RUNNER_TEMP}/fleet-runtime.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          runtime = json.loads(
+              Path(os.environ['RUNNER_TEMP'], 'fleet-runtime.json').read_text()
+          )
+          assert runtime['image'] == os.environ['FLEET_IMAGE']
+          env = {
+              item['name']: item.get('value')
+              for item in runtime.get('env', [])
+              if isinstance(item, dict) and item.get('name')
+          }
+          assert env['ETS_FLEET_AUTH_BRIDGE'] == 'container-apps-easyauth'
+          assert env['ETS_FLEET_STEP_UP_ACRS'] == os.environ['STEP_UP_AUTH_CONTEXT_ID']
+          PY
+
       - name: Compose EasyAuth Front Door Premium WAF Private Link boundary
         id: compose
         if: inputs.phase == 'compose-edge'
         shell: bash
+        env:
+          FLEET_IMAGE: ${{ inputs.fleet_image }}
+          STEP_UP_AUTH_CONTEXT_ID: ${{ inputs.step_up_auth_context_id }}
         run: |
           set -euo pipefail
           az deployment group create \
@@ -208,6 +274,8 @@ jobs:
               'schema_version': 'ets.fleet.c3c.compose.v1',
               'source_sha': os.environ['GITHUB_SHA'],
               'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'fleet_image': os.environ['FLEET_IMAGE'],
+              'step_up_auth_context_id': os.environ['STEP_UP_AUTH_CONTEXT_ID'],
               'front_door_profile': outputs['frontDoorProfileName']['value'],
               'front_door_endpoint': outputs['frontDoorEndpointName']['value'],
               'front_door_host': outputs['frontDoorEndpointHostName']['value'],
@@ -236,7 +304,6 @@ jobs:
           PY
 
       - name: Inspect exact pending Private Link connection
-        id: inspect_link
         if: inputs.phase == 'approve-and-qualify-route'
         shell: bash
         run: |
@@ -366,7 +433,7 @@ jobs:
               'claim_state': {
                   'software_composed': True,
                   'shared_store_qualified': False,
-                  'entra_enforced': True,
+                  'entra_enforced': False,
                   'azure_private_origin_qualified': True,
                   'frontdoor_route_qualified': True,
                   'public_hostname_tls_qualified': False,
