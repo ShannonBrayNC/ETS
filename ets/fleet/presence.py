@@ -122,7 +122,7 @@ class NormalizedConnectionEvent(StrictPresenceModel):
         return value.upper()
 
     @classmethod
-    def from_azure_payload(cls, raw: dict[str, Any]) -> "NormalizedConnectionEvent":
+    def from_azure_payload(cls, raw: dict[str, Any]) -> NormalizedConnectionEvent:
         event_type = raw.get("type", raw.get("eventType"))
         event_time = raw.get("time", raw.get("eventTime"))
         source = raw.get("source", raw.get("topic"))
