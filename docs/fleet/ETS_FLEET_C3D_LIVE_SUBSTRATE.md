@@ -14,7 +14,9 @@ The protected workflow accepts only an exact approved source SHA and an immutabl
 etsq1a352eb89.azurecr.io/ets/fleet/control-plane@sha256:<digest>
 ```
 
-Mutable tags are not deployment authority.
+Mutable tags are not deployment authority. The workflow also requires the exact successful Fleet Q0 workflow-run ID and downloads its retained manifest **before any Azure mutation**. The manifest source SHA must equal the checked-out deployment SHA, its immutable image must equal the requested deployment image, and its vulnerability/credential-retention gates must pass. A Q0 image built from an earlier source revision is not valid for a later C3D deployment even if the repository name and digest are otherwise well formed.
+
+This means a new Fleet Q0 must be published after any merged change to the C3D runtime/bootstrap code that the live image must execute.
 
 ## Identity separation
 
@@ -50,19 +52,20 @@ The Fleet BFF exact audience is the governed Entra application client ID. The is
 
 ## Deployment sequence
 
-1. validate exact source SHA and canonical Fleet Q0 digest;
-2. verify Azure subscription/tenant and private ACR posture;
-3. create or verify the governed single-tenant Fleet Entra application and exact app roles;
-4. deploy `ets-fleet-c3d-live.bicep`, which composes C3B plus the migration UAMI and private manual migration job;
-5. run the migration job inside the Fleet managed environment;
-6. create/verify the runtime PostgreSQL Entra role by object ID;
-7. apply Fleet schema and authorization migrations;
-8. grant runtime data-plane privileges and prove the runtime identity can read the expected schema;
-9. set the fail-closed runtime bridge contract (`container-apps-easyauth`) and configured step-up authentication-context ID without enabling the public EasyAuth edge yet;
-10. run a separate private-network readiness job from the same managed environment;
-11. verify the managed environment is internal/public-disabled, PostgreSQL is Entra-only/public-disabled, the Fleet image is the exact immutable digest, and the app has at least two replicas;
-12. attempt a bounded PostgreSQL TCP connection from the public GitHub runner and require denial;
-13. retain a sanitized C3C handoff artifact.
+1. validate the exact source SHA, Q0 workflow-run identity, retained Q0 manifest, and canonical immutable Fleet image;
+2. require the Q0 manifest source SHA and immutable image to match the deployment inputs before Azure login/mutation;
+3. verify Azure subscription/tenant and private ACR posture;
+4. create or verify the governed single-tenant Fleet Entra application and exact app roles;
+5. deploy `ets-fleet-c3d-live.bicep`, which composes C3B plus the migration UAMI and private manual migration job;
+6. run the migration job inside the Fleet managed environment;
+7. create/verify the runtime PostgreSQL Entra role by object ID;
+8. apply Fleet schema and authorization migrations;
+9. grant runtime data-plane privileges and prove the runtime identity can read the expected schema;
+10. set the fail-closed runtime bridge contract (`container-apps-easyauth`) and configured step-up authentication-context ID without enabling the public EasyAuth edge yet;
+11. run a separate private-network readiness job from the same managed environment;
+12. verify the managed environment is internal/public-disabled, PostgreSQL is Entra-only/public-disabled, the Fleet image is the exact immutable digest, and the app has at least two replicas;
+13. attempt a bounded PostgreSQL TCP connection from the public GitHub runner and require denial;
+14. retain a sanitized C3C handoff artifact that includes the exact Q0 workflow-run ID.
 
 ## Readiness semantics
 
@@ -79,7 +82,7 @@ This establishes process/auth-configuration/store readiness only. It says nothin
 
 ## C3C handoff
 
-A successful C3D evidence package supplies C3C with the exact source/image and sanitized live resource identities needed for `compose-edge`, including the Fleet Container App, internal managed environment, PostgreSQL server, runtime identity, and Entra application client ID.
+A successful C3D evidence package supplies C3C with the exact source/image/Q0-run binding and sanitized live resource identities needed for `compose-edge`, including the Fleet Container App, internal managed environment, PostgreSQL server, runtime identity, and Entra application client ID.
 
 C3C still must independently provision and qualify:
 
