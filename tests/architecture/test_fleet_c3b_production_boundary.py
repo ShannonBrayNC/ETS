@@ -92,7 +92,10 @@ def test_azure_composition_is_private_entra_only_and_multi_replica() -> None:
     assert "param postgresHighAvailabilityMode string = 'ZoneRedundant'" in source
     assert "output resolvedPostgresServerVersion string = postgres.properties.version" in source
     assert "output resolvedPostgresSkuName string = postgresSkuName" in source
-    assert "output resolvedPostgresHighAvailabilityMode string = postgresHighAvailabilityMode" in source
+    assert (
+        "output resolvedPostgresHighAvailabilityMode string = postgresHighAvailabilityMode"
+        in source
+    )
     assert "output deploymentLocation string = location" in source
 
 

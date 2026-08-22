@@ -21,8 +21,15 @@ def test_c3d_uses_separate_migration_and_runtime_managed_identities() -> None:
     assert "ETS_FLEET_RUNTIME_CLIENT_ID" in source
     assert "python" in source and "ets.fleet.bootstrap" in source
     assert "Microsoft.App/jobs@2025-01-01" in source
-    assert "output resolvedPostgresServerVersion string = fleetC3b.outputs.resolvedPostgresServerVersion" in source
-    assert "output resolvedPostgresSkuName string = fleetC3b.outputs.resolvedPostgresSkuName" in source
+    assert (
+        "output resolvedPostgresServerVersion string = "
+        "fleetC3b.outputs.resolvedPostgresServerVersion"
+        in source
+    )
+    assert (
+        "output resolvedPostgresSkuName string = fleetC3b.outputs.resolvedPostgresSkuName"
+        in source
+    )
     assert "output deploymentLocation string = fleetC3b.outputs.deploymentLocation" in source
     assert "password" not in source.lower()
     assert "connectionstring" not in source.lower()
