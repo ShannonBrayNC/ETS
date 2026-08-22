@@ -1,6 +1,6 @@
 name: Fleet C3D Exact-Source Status Probe
 
-# Probe revision: 3
+# Probe revision: 4
 on:
   push:
     branches:
