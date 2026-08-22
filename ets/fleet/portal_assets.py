@@ -120,7 +120,11 @@ FLEET_DARK_PRO_CSS = r"""
 }
 
 * { box-sizing: border-box; }
-html { background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+html {
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
 body { margin: 0; min-height: 100vh; background: var(--bg); }
 button, a { font: inherit; }
 button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
