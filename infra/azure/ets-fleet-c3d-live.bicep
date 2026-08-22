@@ -200,6 +200,7 @@ output migrationIdentityClientId string = migrationIdentity.properties.clientId
 output migrationIdentityPrincipalId string = migrationIdentity.properties.principalId
 output migrationJobName string = migrationJob.name
 output postgresServerName string = fleetC3b.outputs.postgresServerName
+output postgresServerVersion string = fleetC3b.outputs.postgresServerVersion
 output postgresPrivateFqdn string = fleetC3b.outputs.postgresPrivateFqdn
 output fleetDatabaseName string = fleetPostgresDatabase
 output immutableFleetImage string = fleetImage

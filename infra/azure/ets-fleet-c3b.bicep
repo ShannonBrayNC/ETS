@@ -202,7 +202,6 @@ resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2025-08-01' = {
     storage: {
       storageSizeGB: 64
     }
-    version: '17'
   }
 }
 
@@ -420,6 +419,7 @@ output fleetRuntimeIdentityClientId string = runtimeIdentity.properties.clientId
 output fleetRuntimeIdentityPrincipalId string = runtimeIdentity.properties.principalId
 output postgresServerId string = postgres.id
 output postgresServerName string = postgres.name
+output postgresServerVersion string = postgres.properties.version
 output postgresPrivateFqdn string = postgres.properties.fullyQualifiedDomainName
 output publicHostnameActivated bool = false
 output corePublicEndpointCreated bool = false
