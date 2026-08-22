@@ -145,11 +145,16 @@ class OperatorNotification(StrictOperationsModel):
             MaterialTransitionType.REVOKED: "Device revoked",
         }
         label = labels[transition.transition_type]
+        lifecycle = (
+            transition.registration_state.value
+            if transition.registration_state is not None
+            else "unknown"
+        )
         body = (
             f"{label} for {transition.device_id}. "
             f"Transport={transition.transport_presence.value}; "
             f"heartbeat={transition.heartbeat_posture.value}; "
-            f"lifecycle={transition.registration_state.value if transition.registration_state else 'unknown'}. "
+            f"lifecycle={lifecycle}. "
             "This is operational presence metadata, not an evidence-verification or health claim."
         )
         notification_id = hashlib.sha256(
@@ -320,9 +325,14 @@ class FleetPresenceCoordinator:
         return decision
 
     def evaluate(self, device_id: str, *, now: datetime) -> PresenceState | None:
-        current = self._presence.snapshot(device_id, now=normalize_time(now))
+        current_time = normalize_time(now)
+        current = self._presence.snapshot(device_id, now=current_time)
         if current is not None:
-            self._evaluate_state(current, now=normalize_time(now), source_reason="policy_evaluation")
+            self._evaluate_state(
+                current,
+                now=current_time,
+                source_reason="policy_evaluation",
+            )
         return current
 
     def dispatch_pending(
@@ -443,7 +453,11 @@ class FleetPresenceCoordinator:
         )
         since = now - self._notification_window
         notification = None
-        if self._store.count_notifications_since(state.device_id, since_utc=since) < self._max_notifications:
+        notification_count = self._store.count_notifications_since(
+            state.device_id,
+            since_utc=since,
+        )
+        if notification_count < self._max_notifications:
             notification = OperatorNotification.from_transition(transition)
         return self._store.record_transition(transition, notification)
 
