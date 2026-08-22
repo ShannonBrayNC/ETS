@@ -2,12 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
 from ets.connectors.credentials.azure_managed_identity import (
+    MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
     MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
     MICROSOFT_GRAPH_DEFAULT_SCOPE,
+    MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE,
+    MICROSOFT_PURVIEW_DEFAULT_SCOPE,
+    AzureManagedIdentityCredentialProfile,
+    AzureManagedIdentityCredentialProvider,
     AzureManagedIdentityGraphCredentialProvider,
 )
 from ets.connectors.credentials.models import (
@@ -20,6 +26,10 @@ from ets.connectors.credentials.provider import (
 )
 
 NOW = datetime(2026, 8, 16, 21, 0, tzinfo=UTC)
+ROOT = Path(__file__).resolve().parents[1]
+IDENTITY_BOUNDARY = (
+    ROOT / "docs" / "connectors" / "MICROSOFT_P0_IDENTITY_BOUNDARY_V1.md"
+).read_text(encoding="utf-8")
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,3 +149,125 @@ def test_provider_closes_underlying_credential() -> None:
     instance.close()
 
     assert credential.closed is True
+
+
+def test_profiled_provider_routes_directory_and_purview_to_separate_identities() -> None:
+    directory = FakeCredential()
+    purview = FakeCredential(
+        token=FakeAccessToken(
+            token="purview-runtime-token",
+            expires_on=int((NOW + timedelta(hours=1)).timestamp()),
+        )
+    )
+    directory_client_id = "11111111-2222-3333-4444-555555555555"
+    purview_client_id = "66666666-7777-8888-9999-000000000000"
+    instance = AzureManagedIdentityCredentialProvider(
+        (
+            AzureManagedIdentityCredentialProfile(
+                reference=MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
+                client_id=directory_client_id,
+                scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
+            ),
+            AzureManagedIdentityCredentialProfile(
+                reference=MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE,
+                client_id=purview_client_id,
+                scope=MICROSOFT_PURVIEW_DEFAULT_SCOPE,
+            ),
+        ),
+        credentials={
+            directory_client_id: directory,
+            purview_client_id: purview,
+        },
+        clock=lambda: NOW,
+    )
+
+    with instance.resolve(reference(MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE)) as lease:
+        assert lease.reveal() == b"graph-runtime-token"
+    with instance.resolve(reference(MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE)) as lease:
+        assert lease.reveal() == b"purview-runtime-token"
+
+    assert directory.requested_scopes == [(MICROSOFT_GRAPH_DEFAULT_SCOPE,)]
+    assert purview.requested_scopes == [(MICROSOFT_PURVIEW_DEFAULT_SCOPE,)]
+
+
+def test_profiled_provider_rejects_unconfigured_reference_without_token_request() -> None:
+    directory = FakeCredential()
+    client_id = "11111111-2222-3333-4444-555555555555"
+    instance = AzureManagedIdentityCredentialProvider(
+        (
+            AzureManagedIdentityCredentialProfile(
+                reference=MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
+                client_id=client_id,
+                scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
+            ),
+        ),
+        credentials={client_id: directory},
+        clock=lambda: NOW,
+    )
+
+    with pytest.raises(CredentialProviderError, match="unconfigured reference"):
+        instance.resolve(reference(MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE))
+
+    assert directory.requested_scopes == []
+
+
+@pytest.mark.parametrize(
+    ("reference_value", "scope"),
+    (
+        ("local://microsoft-graph/directory", MICROSOFT_GRAPH_DEFAULT_SCOPE),
+        (MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE, "http://graph.microsoft.com/.default"),
+        (MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE, "https://graph.microsoft.com/User.Read.All"),
+        (MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE, "https://user@example.com/.default"),
+    ),
+)
+def test_profile_rejects_non_qualified_reference_or_audience(
+    reference_value: str,
+    scope: str,
+) -> None:
+    with pytest.raises(ValueError):
+        AzureManagedIdentityCredentialProfile(
+            reference=reference_value,
+            client_id="11111111-2222-3333-4444-555555555555",
+            scope=scope,
+        )
+
+
+def test_profiled_provider_closes_shared_transport_once() -> None:
+    shared = FakeCredential()
+    client_id = "11111111-2222-3333-4444-555555555555"
+    instance = AzureManagedIdentityCredentialProvider(
+        (
+            AzureManagedIdentityCredentialProfile(
+                reference=MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
+                client_id=client_id,
+                scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
+            ),
+            AzureManagedIdentityCredentialProfile(
+                reference=MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
+                client_id=client_id,
+                scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
+            ),
+        ),
+        credentials={client_id: shared},
+        clock=lambda: NOW,
+    )
+
+    instance.close()
+
+    assert shared.closed is True
+
+
+def test_p0_identity_boundary_is_separated_and_does_not_expand_onedrive() -> None:
+    for required in (
+        MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
+        MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
+        MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE,
+        "\x60User.Read.All\x60",
+        "\x60Group.Read.All\x60",
+        "\x60ActivityFeed.Read\x60",
+        "must not receive \x60Directory.Read.All\x60",
+        "does not grant \x60Files.Read.All\x60",
+        "does not start the soak clock",
+        "public hostname",
+    ):
+        assert required in IDENTITY_BOUNDARY
