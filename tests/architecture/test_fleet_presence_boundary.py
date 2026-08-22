@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 SOURCE = Path("ets/fleet/presence.py")
@@ -8,8 +9,16 @@ DOC = Path("docs/fleet/ETS_FLEET_PRESENCE_RUNTIME_V1.md")
 
 def test_presence_runtime_is_provider_neutral_and_does_not_import_product_planes() -> None:
     source = SOURCE.read_text(encoding="utf-8")
-    forbidden_imports = (
-        "azure.",
+    tree = ast.parse(source)
+    imported_modules: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported_modules.extend(alias.name.lower() for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module is not None:
+            imported_modules.append(node.module.lower())
+
+    forbidden_prefixes = (
+        "azure",
         "azure_",
         "ets.core",
         "ets.edge",
@@ -17,8 +26,13 @@ def test_presence_runtime_is_provider_neutral_and_does_not_import_product_planes
         "requests",
         "httpx",
     )
-    for forbidden in forbidden_imports:
-        assert forbidden not in source.lower()
+    for module in imported_modules:
+        assert not any(
+            module == forbidden
+            or module.startswith(f"{forbidden}.")
+            or (forbidden.endswith("_") and module.startswith(forbidden))
+            for forbidden in forbidden_prefixes
+        )
 
 
 def test_presence_runtime_does_not_use_iot_hub_twin_connection_state_as_truth() -> None:
