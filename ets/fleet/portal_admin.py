@@ -14,7 +14,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ets.fleet.models import (
     DeviceEnrollmentRecord,
-    EnrollmentValidationError,
     RegistrationState,
     ScopeBinding,
     normalize_time,
@@ -54,7 +53,7 @@ _DESTRUCTIVE_ACTIONS = _SECURITY_ADMIN_ACTIONS
 
 
 class FleetSecuritySession(StrictAdminModel):
-    """Server-owned authenticated session metadata; never constructed from request JSON."""
+    """Server-owned authenticated session metadata; never request JSON."""
 
     session_id: str = Field(min_length=16, max_length=256)
     csrf_token: str = Field(min_length=32, max_length=256)
@@ -150,7 +149,7 @@ class _IdempotencyEntry(StrictAdminModel):
 
 
 class FleetPortalAdminService:
-    """Authorization/idempotency/evidence wrapper around DeviceEnrollmentService."""
+    """Authorization/idempotency/evidence wrapper around enrollment lifecycle."""
 
     def __init__(
         self,
@@ -186,11 +185,9 @@ class FleetPortalAdminService:
 
         current = self._current_authorized_record(principal, device_id)
         self._require_confirmation(action, device_id, confirmation)
-
         request_fingerprint = _request_fingerprint(
             action=action,
             device_id=device_id,
-            enrollment_id=current.enrollment_id,
             confirmation=confirmation,
             replacement_enrollment_id=replacement_enrollment_id,
             overlap_expires_at_utc=overlap_expires_at_utc,
@@ -205,7 +202,7 @@ class FleetPortalAdminService:
                     request_fingerprint,
                 ):
                     raise FleetAdminIdempotencyConflict(
-                        "idempotency key was already used for a different Fleet mutation"
+                        "idempotency key was already used for another Fleet mutation"
                     )
                 return retained.result.model_copy(update={"idempotent_replay": True})
 
@@ -246,7 +243,7 @@ class FleetPortalAdminService:
     ) -> tuple[FleetAdministrativeEvidence, ...]:
         if limit < 1 or limit > 1000:
             raise ValueError("audit export limit is outside the supported range")
-        authorized = []
+        authorized: list[FleetAdministrativeEvidence] = []
         for record in self._evidence_sink.list_records():
             scope = ScopeBinding(
                 tenant_id=record.tenant_id,
@@ -294,7 +291,9 @@ class FleetPortalAdminService:
             )
         if action is FleetAdminAction.BEGIN_ROTATION:
             if replacement_enrollment_id is None or overlap_expires_at_utc is None:
-                raise ValueError("credential rotation requires replacement enrollment and overlap expiry")
+                raise ValueError(
+                    "credential rotation requires replacement enrollment and overlap expiry"
+                )
             replacement = self._store.get_enrollment(replacement_enrollment_id)
             if replacement is None or replacement.device_id != current.device_id:
                 raise FleetAdminNotFound("fleet device not found")
@@ -303,23 +302,20 @@ class FleetPortalAdminService:
                 overlap_expires_at_utc=overlap_expires_at_utc,
                 now=now,
             )
-            refreshed_id = self._store.get_current_enrollment_id(current.device_id)
-            if refreshed_id is None:
-                raise RuntimeError("Fleet rotation did not establish a current enrollment")
-            refreshed = self._store.get_enrollment(refreshed_id)
-            if refreshed is None:
-                raise RuntimeError("Fleet rotation current enrollment is missing")
-            return refreshed
+            return self._current_record_or_raise(current.device_id)
         if action is FleetAdminAction.COMPLETE_ROTATION:
             self._enrollment_service.complete_rotation(current.device_id, now=now)
-            refreshed_id = self._store.get_current_enrollment_id(current.device_id)
-            if refreshed_id is None:
-                raise RuntimeError("Fleet rotation completion lost current enrollment")
-            refreshed = self._store.get_enrollment(refreshed_id)
-            if refreshed is None:
-                raise RuntimeError("Fleet rotation completion current enrollment is missing")
-            return refreshed
+            return self._current_record_or_raise(current.device_id)
         raise AssertionError("unsupported Fleet administrative action")
+
+    def _current_record_or_raise(self, device_id: str) -> DeviceEnrollmentRecord:
+        enrollment_id = self._store.get_current_enrollment_id(device_id)
+        if enrollment_id is None:
+            raise RuntimeError("Fleet mutation lost current enrollment")
+        record = self._store.get_enrollment(enrollment_id)
+        if record is None:
+            raise RuntimeError("Fleet mutation current enrollment is missing")
+        return record
 
     def _current_authorized_record(
         self,
@@ -349,7 +345,9 @@ class FleetPortalAdminService:
             if FleetRole.SECURITY_ADMIN not in roles:
                 raise FleetAdminForbidden("Fleet SecurityAdmin role is required")
             if not security_session.has_fresh_step_up(now=now):
-                raise FleetAdminStepUpRequired("fresh step-up authentication is required")
+                raise FleetAdminStepUpRequired(
+                    "fresh step-up authentication is required"
+                )
             return
         if not ({FleetRole.OPERATOR, FleetRole.SECURITY_ADMIN} & roles):
             raise FleetAdminForbidden("Fleet Operator role is required")
@@ -376,7 +374,9 @@ class FleetPortalAdminService:
             return
         expected = f"{action.name}:{device_id}"
         if confirmation is None or not compare_digest(confirmation, expected):
-            raise FleetAdminConfirmationError("destructive Fleet action confirmation mismatch")
+            raise FleetAdminConfirmationError(
+                "destructive Fleet action confirmation mismatch"
+            )
 
     @staticmethod
     def _evidence(
@@ -420,7 +420,6 @@ def _request_fingerprint(
     *,
     action: FleetAdminAction,
     device_id: str,
-    enrollment_id: str,
     confirmation: str | None,
     replacement_enrollment_id: str | None,
     overlap_expires_at_utc: datetime | None,
@@ -430,7 +429,6 @@ def _request_fingerprint(
             "action": action.value,
             "confirmation": confirmation,
             "device_id": device_id,
-            "enrollment_id": enrollment_id,
             "overlap_expires_at_utc": (
                 None
                 if overlap_expires_at_utc is None
