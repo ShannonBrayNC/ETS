@@ -123,7 +123,17 @@ class NormalizedConnectionEvent(StrictPresenceModel):
 
     @classmethod
     def from_azure_payload(cls, raw: dict[str, Any]) -> NormalizedConnectionEvent:
-        event_type = raw.get("type", raw.get("eventType"))
+        raw_event_type = raw.get("type", raw.get("eventType"))
+        event_type: Literal[
+            "Microsoft.Devices.DeviceConnected",
+            "Microsoft.Devices.DeviceDisconnected",
+        ]
+        if raw_event_type == "Microsoft.Devices.DeviceConnected":
+            event_type = "Microsoft.Devices.DeviceConnected"
+        elif raw_event_type == "Microsoft.Devices.DeviceDisconnected":
+            event_type = "Microsoft.Devices.DeviceDisconnected"
+        else:
+            raise ValueError("unsupported IoT Hub connection event type")
         event_time = raw.get("time", raw.get("eventTime"))
         source = raw.get("source", raw.get("topic"))
         data = raw.get("data")
