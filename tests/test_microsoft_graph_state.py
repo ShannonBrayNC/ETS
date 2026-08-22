@@ -19,10 +19,15 @@ TENANT_ID = "11111111-1111-1111-1111-111111111111"
 EXPIRATION = datetime(2026, 8, 17, 12, 0, tzinfo=UTC)
 
 
-def _state(*, status: str = "active", gap_state: str = "none") -> MicrosoftGraphSubscriptionStateV1:
+def _state(
+    *,
+    subscription_id: str = "subscription-001",
+    status: str = "active",
+    gap_state: str = "none",
+) -> MicrosoftGraphSubscriptionStateV1:
     return MicrosoftGraphSubscriptionStateV1(
         schema_version="ets.connector.microsoft.graph_subscription_state.v1",
-        subscription_id="subscription-001",
+        subscription_id=subscription_id,
         tenant_id=TENANT_ID,
         cloud="global",
         resource="drives/drive-001/root",
@@ -111,4 +116,39 @@ def test_reauthorization_preserves_possible_gap_state(tmp_path: Path) -> None:
 
     assert updated.status == "reauthorization_required"
     assert updated.gap_state == "possible"
+    store.close()
+
+
+def test_replace_for_resource_removes_prior_subscription_atomically(tmp_path: Path) -> None:
+    database = tmp_path / "graph-state.db"
+    store = SQLiteMicrosoftGraphSubscriptionStore(database)
+    store.register(_state(subscription_id="subscription-old"))
+
+    replacement = _state(
+        subscription_id="subscription-new",
+        gap_state="possible",
+    )
+    store.replace_for_resource(replacement)
+
+    assert store.get("subscription-old") is None
+    assert store.get_for_resource(
+        tenant_id=TENANT_ID,
+        resource="drives/drive-001/root",
+    ) == replacement
+    store.close()
+
+
+def test_resource_lookup_fails_closed_on_duplicate_subscriptions(tmp_path: Path) -> None:
+    store = SQLiteMicrosoftGraphSubscriptionStore(tmp_path / "graph-state.db")
+    store.register(_state(subscription_id="subscription-one"))
+    store.register(_state(subscription_id="subscription-two"))
+
+    with pytest.raises(
+        MicrosoftGraphSubscriptionStateStoreError,
+        match="multiple Graph subscriptions",
+    ):
+        store.get_for_resource(
+            tenant_id=TENANT_ID,
+            resource="drives/drive-001/root",
+        )
     store.close()

@@ -82,5 +82,7 @@ completeness, delta continuity, Purview subscription readiness, Graph webhook li
 source-to-proof operation. It does not start live qualification, the 72-hour soak, or public
 hostname activation.
 
-The next #543 slice must wire the approved SharePoint-backed Microsoft Graph subscription
-lifecycle into the hosted runtime before #539 and #540 can begin protected live qualification.
+The approved SharePoint-backed Microsoft Graph subscription lifecycle is composed by
+[`MICROSOFT_P0_GRAPH_LIFECYCLE_COMPOSITION_V1.md`](./MICROSOFT_P0_GRAPH_LIFECYCLE_COMPOSITION_V1.md).
+Protected live qualification under #539 and #540 still requires an approved immutable image and
+explicit operator activation.
