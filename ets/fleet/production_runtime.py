@@ -1,4 +1,4 @@
-"""Fail-closed production composition for the ETS Fleet C3B control plane."""
+"""Fail-closed production composition for the ETS Fleet C3C control plane."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from datetime import datetime
 
 from fastapi import FastAPI
 
+from ets.fleet.container_apps_auth import ContainerAppsEasyAuthMiddleware
 from ets.fleet.entra_session import (
     ProductionFleetAuthConfig,
     ProductionFleetRequestResolvers,
@@ -41,7 +42,7 @@ class _RejectPortalEnrollmentSubmission:
 
 
 class _UnknownPresence:
-    """C3B does not fabricate presence when no shared presence source is composed."""
+    """C3C does not fabricate presence when no shared presence source is composed."""
 
     def snapshot(self, device_id: str, *, now: datetime) -> None:
         del device_id, now
@@ -49,12 +50,12 @@ class _UnknownPresence:
 
 
 def create_production_fleet_app() -> FastAPI:
-    """Create the private C3B Fleet BFF from required production environment state.
+    """Create the protected Fleet BFF from required production environment state.
 
-    The request identity context itself is intentionally not reconstructed from
-    browser headers here. C3C must bind a protected hosting adapter that places a
-    ``TrustedEntraIdentityContext`` in request state after cryptographic/platform
-    authentication. Until that bridge exists, portal routes remain 401 fail-closed.
+    Azure Container Apps EasyAuth must authenticate the request before the bridge
+    consumes its platform-injected principal. Browser-selected ETS authority is
+    never accepted. Missing or malformed trusted context means portal routes remain
+    401 fail-closed; missing bridge configuration fails startup entirely.
     """
 
     host = _required_env("ETS_FLEET_POSTGRES_HOST")
@@ -65,6 +66,12 @@ def create_production_fleet_app() -> FastAPI:
         audience=_required_env("ETS_FLEET_ENTRA_AUDIENCE"),
         tenant_id=_required_env("ETS_FLEET_ENTRA_TENANT_ID"),
     )
+    auth_bridge = _required_env("ETS_FLEET_AUTH_BRIDGE")
+    if auth_bridge != "container-apps-easyauth":
+        raise RuntimeError(
+            "ETS_FLEET_AUTH_BRIDGE must be container-apps-easyauth in production"
+        )
+    step_up_auth_context_id = _required_env("ETS_FLEET_STEP_UP_ACRS")
 
     connection_factory = AzureManagedIdentityPostgresFactory(
         host=host,
@@ -111,10 +118,15 @@ def create_production_fleet_app() -> FastAPI:
 
     app = FastAPI(
         title="ETS Fleet Control Plane",
-        version="c3b",
+        version="c3c",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
+    )
+    app.add_middleware(
+        ContainerAppsEasyAuthMiddleware,
+        config=auth_config,
+        step_up_auth_context_id=step_up_auth_context_id,
     )
     app.include_router(
         build_fleet_portal_router(
