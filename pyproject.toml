@@ -24,12 +24,14 @@ ets-verify = "ets.verifier.cli:main"
 
 [project.optional-dependencies]
 dev = [
+    "azure-identity>=1.17,<2",
     "click>=8.3.3,<9",
     "grpcio>=1.82.1,<2",
     "httpx>=0.28,<1",
     "msgpack>=1.2.1,<2",
     "opentelemetry-proto>=1.44,<2",
     "pip-audit>=2.10,<3",
+    "psycopg[binary]>=3.2,<4",
     "pytest>=9.0.3,<10",
     "ruff>=0.8,<1",
     "mypy>=1.13,<2",
@@ -51,6 +53,11 @@ azure = [
     "azure-data-tables>=12,<13",
     "azure-identity>=1.17,<2",
     "azure-keyvault-keys>=4.9,<5",
+]
+fleet = [
+    "azure-identity>=1.17,<2",
+    "psycopg[binary]>=3.2,<4",
+    "uvicorn>=0.47,<1",
 ]
 hosted = [
     "azure-data-tables>=12,<13",
@@ -76,6 +83,10 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Retain conventional TypeVar syntax at the DB/Pydantic adapter boundary for strict Mypy clarity.
+"ets/fleet/postgres.py" = ["UP047"]
 
 [tool.mypy]
 python_version = "3.12"

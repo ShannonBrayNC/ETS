@@ -1,0 +1,52 @@
+name: Fleet C3B PostgreSQL
+
+on:
+  pull_request:
+    paths:
+      - "ets/fleet/**"
+      - "tests/integration/test_fleet_postgres_c3b.py"
+      - "pyproject.toml"
+      - ".github/workflows/fleet-c3b-postgres.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres:
+    name: Shared PostgreSQL qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      ETS_TEST_POSTGRES_DSN: postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+
+      - name: Run Fleet PostgreSQL integration qualification
+        run: python -m pytest -q tests/integration/test_fleet_postgres_c3b.py

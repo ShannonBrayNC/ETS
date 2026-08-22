@@ -22,11 +22,16 @@ from ets.fleet.portal_admin import (
     FleetPortalAdminService,
     FleetSecuritySession,
 )
+from ets.fleet.portal_admin_durable import (
+    FleetAdminDurabilityError,
+    FleetAdminMutationPending,
+)
 from ets.fleet.portal_assets import (
     FLEET_DARK_PRO_CSS,
     FLEET_DARK_PRO_HTML,
     FLEET_DARK_PRO_JS,
 )
+from ets.fleet.store import EnrollmentStoreConflict
 
 PrincipalResolver = Callable[[Request], FleetPrincipal | None]
 SecuritySessionResolver = Callable[[Request], FleetSecuritySession | None]
@@ -61,6 +66,22 @@ class FleetMutationBody(BaseModel):
     overlap_expires_at_utc: datetime | None = None
 
 
+class FleetPortalReadiness(BaseModel):
+    """Safe production readiness dimensions; never a device/trust/proof claim."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    auth_config_ready: bool
+    store_ready: bool
+
+    @property
+    def ready(self) -> bool:
+        return self.auth_config_ready and self.store_ready
+
+
+ReadinessProbe = Callable[[], FleetPortalReadiness]
+
+
 def build_fleet_portal_router(
     *,
     service: FleetPortalService,
@@ -68,6 +89,7 @@ def build_fleet_portal_router(
     admin_service: FleetPortalAdminService | None = None,
     security_session_resolver: SecuritySessionResolver | None = None,
     mutation_rate_limiter: MutationRateLimiter | None = None,
+    readiness_probe: ReadinessProbe | None = None,
 ) -> APIRouter:
     """Build Fleet portal routes behind trusted Entra/session boundaries."""
 
@@ -77,6 +99,35 @@ def build_fleet_portal_router(
         )
 
     router = APIRouter(tags=["fleet-portal"])
+
+    if readiness_probe is not None:
+
+        @router.get("/fleet/readyz", include_in_schema=False)
+        def production_readiness() -> JSONResponse:
+            try:
+                readiness = readiness_probe()
+            except Exception:
+                readiness = FleetPortalReadiness(
+                    auth_config_ready=False,
+                    store_ready=False,
+                )
+            payload = {
+                "ready": readiness.ready,
+                "process_ready": True,
+                "auth_config_ready": readiness.auth_config_ready,
+                "store_ready": readiness.store_ready,
+                "evidence_verified": False,
+                "health_asserted": False,
+            }
+            return JSONResponse(
+                status_code=(
+                    status.HTTP_200_OK
+                    if readiness.ready
+                    else status.HTTP_503_SERVICE_UNAVAILABLE
+                ),
+                content=payload,
+                headers=_SECURITY_HEADERS,
+            )
 
     @router.get("/fleet", include_in_schema=False)
     @router.get("/fleet/", include_in_schema=False)
@@ -217,15 +268,30 @@ def build_fleet_portal_router(
                     status.HTTP_409_CONFLICT,
                     "ETS_FLEET_IDEMPOTENCY_CONFLICT",
                 )
+            except FleetAdminMutationPending:
+                _raise_sanitized(
+                    status.HTTP_409_CONFLICT,
+                    "ETS_FLEET_RECONCILIATION_REQUIRED",
+                )
             except FleetAdminConfirmationError:
                 _raise_sanitized(
                     status.HTTP_409_CONFLICT,
                     "ETS_FLEET_CONFIRMATION_REQUIRED",
                 )
+            except EnrollmentStoreConflict:
+                _raise_sanitized(
+                    status.HTTP_409_CONFLICT,
+                    "ETS_FLEET_CONCURRENT_UPDATE",
+                )
             except EnrollmentValidationError:
                 _raise_sanitized(
                     status.HTTP_409_CONFLICT,
                     "ETS_FLEET_LIFECYCLE_CONFLICT",
+                )
+            except FleetAdminDurabilityError:
+                _raise_sanitized(
+                    status.HTTP_503_SERVICE_UNAVAILABLE,
+                    "ETS_FLEET_DURABILITY_UNAVAILABLE",
                 )
             except ValueError:
                 _raise_sanitized(
@@ -242,6 +308,11 @@ def build_fleet_portal_router(
             principal = _require_principal(request, principal_resolver)
             try:
                 records = admin_service.audit_export(principal, limit=limit)
+            except FleetAdminDurabilityError:
+                _raise_sanitized(
+                    status.HTTP_503_SERVICE_UNAVAILABLE,
+                    "ETS_FLEET_DURABILITY_UNAVAILABLE",
+                )
             except ValueError:
                 _raise_sanitized(
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
