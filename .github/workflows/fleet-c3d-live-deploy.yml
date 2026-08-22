@@ -7,6 +7,10 @@ on:
         description: Exact approved main SHA to deploy
         required: true
         type: string
+      q0_workflow_run_id:
+        description: Successful Fleet C3C Q0 workflow run bound to expected_source_sha
+        required: true
+        type: string
       fleet_image:
         description: Protected Fleet Q0 repository@sha256:digest
         required: true
@@ -32,7 +36,7 @@ on:
         default: ETS Fleet Control Plane
         type: string
       provision_entra_application:
-        description: Create/converge the governed Fleet app if it is absent or incomplete
+        description: Create/converge the governed Fleet app if absent or incomplete
         required: true
         default: true
         type: boolean
@@ -53,6 +57,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 env:
@@ -72,11 +77,12 @@ jobs:
           ref: ${{ inputs.expected_source_sha }}
           persist-credentials: false
 
-      - name: Validate exact source immutable image and bounded inputs
+      - name: Validate exact source and bounded deployment inputs
         shell: bash
         env:
           FLEET_IMAGE: ${{ inputs.fleet_image }}
           EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+          Q0_RUN_ID: ${{ inputs.q0_workflow_run_id }}
           ACR_NAME: ${{ inputs.container_registry_name }}
           STEP_UP_AUTH_CONTEXT_ID: ${{ inputs.step_up_auth_context_id }}
         run: |
@@ -84,6 +90,7 @@ jobs:
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$EXPECTED_SOURCE_SHA"
           printf '%s' "$EXPECTED_SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$'
+          printf '%s' "$Q0_RUN_ID" | grep -Eq '^[1-9][0-9]*$'
           printf '%s' "$STEP_UP_AUTH_CONTEXT_ID" | grep -Eq '^c[0-9]{1,2}$'
           expected_subject="${ACR_NAME}.azurecr.io/ets/fleet/control-plane"
           FLEET_IMAGE="$FLEET_IMAGE" EXPECTED_SUBJECT="$expected_subject" python - <<'PY'
@@ -92,9 +99,83 @@ jobs:
 
           image = os.environ['FLEET_IMAGE']
           subject = os.environ['EXPECTED_SUBJECT']
-          pattern = re.escape(subject) + r'@sha256:[0-9a-f]{64}'
-          if re.fullmatch(pattern, image) is None:
+          if re.fullmatch(re.escape(subject) + r'@sha256:[0-9a-f]{64}', image) is None:
               raise SystemExit('fleet_image must be the approved Fleet Q0 repository@sha256 digest')
+          PY
+
+      - name: Require Q0 run and retained manifest from the same exact source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          Q0_RUN_ID: ${{ inputs.q0_workflow_run_id }}
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+          FLEET_IMAGE: ${{ inputs.fleet_image }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/fleet-c3d "${RUNNER_TEMP}/fleet-q0"
+          gh run view "$Q0_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json databaseId,event,headBranch,headSha,status,conclusion \
+            > "${RUNNER_TEMP}/q0-run.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(Path(os.environ['RUNNER_TEMP'], 'q0-run.json').read_text())
+          if str(run.get('databaseId')) != os.environ['Q0_RUN_ID']:
+              raise SystemExit('Fleet Q0 workflow run identity mismatch')
+          if run.get('event') != 'workflow_dispatch':
+              raise SystemExit('Fleet Q0 run was not workflow_dispatch')
+          if run.get('headBranch') != 'main':
+              raise SystemExit('Fleet Q0 run was not executed from main')
+          if run.get('headSha') != os.environ['EXPECTED_SOURCE_SHA']:
+              raise SystemExit('Fleet Q0 run is not bound to expected_source_sha')
+          if run.get('status') != 'completed' or run.get('conclusion') != 'success':
+              raise SystemExit('Fleet Q0 run is not successful')
+          PY
+          gh run download "$Q0_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "fleet-c3c-q0-image-${Q0_RUN_ID}" \
+            --dir "${RUNNER_TEMP}/fleet-q0"
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          candidates = list(Path(os.environ['RUNNER_TEMP'], 'fleet-q0').rglob('manifest.json'))
+          if len(candidates) != 1:
+              raise SystemExit('Fleet Q0 manifest is missing or ambiguous')
+          manifest = json.loads(candidates[0].read_text(encoding='utf-8'))
+          digest = manifest.get('image_digest')
+          checks = (
+              manifest.get('schema_version') == 'ets.fleet.c3c.q0_image.v1',
+              manifest.get('source_sha') == os.environ['EXPECTED_SOURCE_SHA'],
+              str(manifest.get('workflow_run_id')) == os.environ['Q0_RUN_ID'],
+              manifest.get('immutable_image') == os.environ['FLEET_IMAGE'],
+              manifest.get('vulnerability_gate') == 'PASS',
+              manifest.get('registry_credentials_retained') is False,
+              manifest.get('customer_identifiers_retained') is False,
+              isinstance(digest, str) and re.fullmatch(r'sha256:[0-9a-f]{64}', digest) is not None,
+              isinstance(digest, str) and os.environ['FLEET_IMAGE'].endswith('@' + digest),
+          )
+          if not all(checks):
+              raise SystemExit('Fleet Q0 manifest failed exact-source deployment binding')
+          evidence = {
+              'schema_version': 'ets.fleet.c3d.q0_binding.v1',
+              'source_sha': os.environ['EXPECTED_SOURCE_SHA'],
+              'q0_workflow_run_id': int(os.environ['Q0_RUN_ID']),
+              'immutable_fleet_image': os.environ['FLEET_IMAGE'],
+              'image_digest': digest,
+              'vulnerability_gate': 'PASS',
+              'registry_credentials_retained': False,
+              'customer_identifiers_retained': False,
+          }
+          Path('evidence/fleet-c3d/q0-binding.json').write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          print(json.dumps(evidence, indent=2, sort_keys=True))
           PY
 
       - name: Azure login using protected workload identity
@@ -130,7 +211,6 @@ jobs:
           APPLY: ${{ inputs.provision_entra_application }}
         run: |
           set -euo pipefail
-          mkdir -p evidence/fleet-c3d
           python - <<'PY'
           import json
           import uuid
@@ -153,17 +233,14 @@ jobs:
           Path('/tmp/fleet-app-roles.json').write_text(json.dumps(roles), encoding='utf-8')
           PY
 
-          apps="$(az ad app list --display-name "$DISPLAY_NAME" --query '[].{id:id,appId:appId,displayName:displayName,signInAudience:signInAudience,appRoles:appRoles,web:web}' -o json)"
+          apps="$(az ad app list --display-name "$DISPLAY_NAME" --query '[].{appId:appId,signInAudience:signInAudience,appRoles:appRoles,web:web}' -o json)"
           app_count="$(APPS="$apps" python -c 'import json,os; print(len(json.loads(os.environ["APPS"])))')"
           if [ "$app_count" -gt 1 ]; then
             echo 'Multiple Entra applications use the governed Fleet display name.' >&2
             exit 1
           fi
           if [ "$app_count" -eq 0 ]; then
-            if [ "$APPLY" != 'true' ]; then
-              echo 'Governed Fleet Entra application is missing and provisioning is disabled.' >&2
-              exit 1
-            fi
+            test "$APPLY" = 'true' || { echo 'Governed Fleet Entra application is missing.' >&2; exit 1; }
             app="$(az ad app create --display-name "$DISPLAY_NAME" --sign-in-audience AzureADMyOrg --app-roles @/tmp/fleet-app-roles.json -o json)"
             app_id="$(APP="$app" python -c 'import json,os; print(json.loads(os.environ["APP"])["appId"])')"
             az ad app update --id "$app_id" --enable-id-token-issuance true --app-roles @/tmp/fleet-app-roles.json
@@ -178,19 +255,12 @@ jobs:
           expected = json.loads(Path(os.environ['ROLE_FILE']).read_text())
           if app.get('signInAudience') != 'AzureADMyOrg':
               raise SystemExit('Fleet Entra application must remain single-tenant')
-          actual_roles = sorted(
-              (
-                  item.get('value'),
-                  item.get('id'),
-                  item.get('isEnabled'),
-                  tuple(item.get('allowedMemberTypes') or []),
-              )
-              for item in (app.get('appRoles') or [])
+          actual = sorted(
+              (r.get('value'), r.get('id'), r.get('isEnabled'), tuple(r.get('allowedMemberTypes') or []))
+              for r in (app.get('appRoles') or [])
           )
-          expected_roles = sorted(
-              (item['value'], item['id'], True, ('User',)) for item in expected
-          )
-          if actual_roles and actual_roles != expected_roles:
+          wanted = sorted((r['value'], r['id'], True, ('User',)) for r in expected)
+          if actual and actual != wanted:
               raise SystemExit('Existing Fleet Entra app roles differ from governed contract')
           PY
             if [ "$APPLY" = 'true' ]; then
@@ -198,12 +268,10 @@ jobs:
             fi
           fi
 
-          sp_count="$(az ad sp list --filter "appId eq '$app_id'" --query 'length([])' -o tsv)"
+          service_principals="$(az ad sp list --filter "appId eq '$app_id'" -o json)"
+          sp_count="$(SPS="$service_principals" python -c 'import json,os; print(len(json.loads(os.environ["SPS"])))')"
           if [ "$sp_count" -eq 0 ]; then
-            if [ "$APPLY" != 'true' ]; then
-              echo 'Fleet service principal is missing and provisioning is disabled.' >&2
-              exit 1
-            fi
+            test "$APPLY" = 'true' || { echo 'Fleet service principal is missing.' >&2; exit 1; }
             az ad sp create --id "$app_id" --only-show-errors -o none
           elif [ "$sp_count" -ne 1 ]; then
             echo 'Fleet service principal resolution is ambiguous.' >&2
@@ -218,20 +286,15 @@ jobs:
 
           app = json.loads(os.environ['VERIFIED'])
           expected = json.loads(Path(os.environ['ROLE_FILE']).read_text())
-          if app.get('signInAudience') != 'AzureADMyOrg':
-              raise SystemExit('Fleet Entra app is not single-tenant')
-          if app.get('idTokens') is not True:
-              raise SystemExit('Fleet Entra app is not enabled for EasyAuth ID tokens')
+          if app.get('signInAudience') != 'AzureADMyOrg' or app.get('idTokens') is not True:
+              raise SystemExit('Fleet Entra app does not satisfy single-tenant ID-token contract')
           actual = sorted((r.get('value'), r.get('id'), r.get('isEnabled')) for r in app.get('appRoles') or [])
           wanted = sorted((r['value'], r['id'], True) for r in expected)
           if actual != wanted:
               raise SystemExit('Fleet Entra app role contract did not converge')
-          if app.get('passwordCredentials'):
-              raise SystemExit('C3D does not adopt an Entra app that already retains client secrets')
-          if app.get('keyCredentials'):
-              raise SystemExit('C3D does not adopt an Entra app that already retains application keys')
+          if app.get('passwordCredentials') or app.get('keyCredentials'):
+              raise SystemExit('C3D does not adopt an Entra app with reusable application credentials')
           PY
-
           echo "client_id=$app_id" >> "$GITHUB_OUTPUT"
           echo "issuer=https://login.microsoftonline.com/${EXPECTED_TENANT_ID}/v2.0" >> "$GITHUB_OUTPUT"
           printf '%s\n' "$app_id" > evidence/fleet-c3d/entra-client-id.txt
@@ -282,7 +345,7 @@ jobs:
           if outputs['publicHostnameActivated']['value'] is not False:
               raise SystemExit('C3D may not activate the public Fleet hostname')
           if outputs['immutableFleetImage']['value'] != os.environ['FLEET_IMAGE']:
-              raise SystemExit('C3D deployment image differs from protected Q0 image')
+              raise SystemExit('C3D deployment image differs from exact-source Q0 image')
           public = {key: outputs[key]['value'] for key in required}
           Path('evidence/fleet-c3d/deployment-outputs.json').write_text(
               json.dumps(public, indent=2, sort_keys=True) + '\n', encoding='utf-8'
@@ -300,7 +363,6 @@ jobs:
           PY
 
       - name: Run private Entra-only PostgreSQL bootstrap
-        id: migrate
         shell: bash
         env:
           RESOURCE_GROUP: ${{ inputs.resource_group }}
@@ -318,7 +380,6 @@ jobs:
           az containerapp job logs show --name "$MIGRATION_JOB" --resource-group "$RESOURCE_GROUP" --execution "$execution" --container fleet-migration --tail 100 > evidence/fleet-c3d/migration.log 2>&1 || true
           printf 'execution=%s\nstatus=%s\n' "$execution" "$status" > evidence/fleet-c3d/migration-status.txt
           test "$status" = 'Succeeded'
-          echo "execution=$execution" >> "$GITHUB_OUTPUT"
 
       - name: Enable fail-closed EasyAuth bridge contract without public auth activation
         shell: bash
@@ -337,7 +398,6 @@ jobs:
             --only-show-errors -o none
 
       - name: Deploy and run private readiness probe
-        id: readiness
         shell: bash
         env:
           RESOURCE_GROUP: ${{ inputs.resource_group }}
@@ -345,11 +405,12 @@ jobs:
           ORIGIN_FQDN: ${{ steps.deploy.outputs.origin_fqdn }}
           RUNTIME_IDENTITY_NAME: ${{ steps.deploy.outputs.runtime_identity_name }}
           ACR_NAME: ${{ inputs.container_registry_name }}
+          ACR_RESOURCE_GROUP: ${{ inputs.container_registry_resource_group }}
           FLEET_IMAGE: ${{ inputs.fleet_image }}
         run: |
           set -euo pipefail
           runtime_identity_id="$(az identity show --resource-group "$RESOURCE_GROUP" --name "$RUNTIME_IDENTITY_NAME" --query id -o tsv)"
-          registry_server="$(az acr show --resource-group '${{ inputs.container_registry_resource_group }}' --name "$ACR_NAME" --query loginServer -o tsv)"
+          registry_server="$(az acr show --resource-group "$ACR_RESOURCE_GROUP" --name "$ACR_NAME" --query loginServer -o tsv)"
           job_name="ets-fleet-ready-${GITHUB_RUN_ID:0:12}"
           az deployment group create \
             --resource-group "$RESOURCE_GROUP" \
@@ -373,8 +434,6 @@ jobs:
           az containerapp job logs show --name "$job_name" --resource-group "$RESOURCE_GROUP" --execution "$execution" --container fleet-readiness --tail 100 > evidence/fleet-c3d/readiness.log 2>&1 || true
           printf 'execution=%s\nstatus=%s\n' "$execution" "$status" > evidence/fleet-c3d/readiness-status.txt
           test "$status" = 'Succeeded'
-          echo "job_name=$job_name" >> "$GITHUB_OUTPUT"
-          echo "execution=$execution" >> "$GITHUB_OUTPUT"
 
       - name: Verify private production posture and retain C3C handoff
         shell: bash
@@ -386,6 +445,7 @@ jobs:
           FLEET_IMAGE: ${{ inputs.fleet_image }}
           CLIENT_ID: ${{ steps.entra.outputs.client_id }}
           EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+          Q0_RUN_ID: ${{ inputs.q0_workflow_run_id }}
         run: |
           set -euo pipefail
           az containerapp show --resource-group "$RESOURCE_GROUP" --name "$APP_NAME" -o json > "${RUNNER_TEMP}/app.json"
@@ -408,7 +468,7 @@ jobs:
           fleet = next(item for item in containers if item.get('name') == 'fleet-bff')
           scale = (app_props.get('template') or {}).get('scale') or {}
           if fleet.get('image') != os.environ['FLEET_IMAGE']:
-              raise SystemExit('live Fleet app is not pinned to the protected immutable image')
+              raise SystemExit('live Fleet app is not pinned to exact-source Q0 image')
           if scale.get('minReplicas') != 2 or int(scale.get('maxReplicas', 0)) < 2:
               raise SystemExit('live Fleet app is not configured for at least two replicas')
           if env_props.get('publicNetworkAccess') != 'Disabled':
@@ -436,6 +496,7 @@ jobs:
           handoff = {
               'schema_version': 'ets.fleet.c3d.live_handoff.v1',
               'source_sha': os.environ['EXPECTED_SOURCE_SHA'],
+              'q0_workflow_run_id': int(os.environ['Q0_RUN_ID']),
               'workflow_run_id': os.environ['GITHUB_RUN_ID'],
               'immutable_fleet_image': os.environ['FLEET_IMAGE'],
               'resource_group': os.environ['RESOURCE_GROUP'],
