@@ -364,6 +364,20 @@ def test_event_grid_ingress_passes_runtime_source_checks(tmp_path: Path) -> None
     store.close()
 
 
+def test_unenrolled_html_shaped_device_cannot_generate_notification(tmp_path: Path) -> None:
+    coordinator, _, store = _runtime(tmp_path / "presence.db")
+    event = _event(event_id="event-injection")
+    event["subject"] = "devices/<script>alert(1)</script>"
+    data = event["data"]
+    assert isinstance(data, dict)
+    data["deviceId"] = "<script>alert(1)</script>"
+    decision = coordinator.ingest_transport(event, received_at_utc=NOW)
+    assert decision.accepted is False
+    assert decision.reason is PresenceReason.UNKNOWN_DEVICE
+    assert store.list_pending_notifications() == []
+    store.close()
+
+
 def test_heartbeat_ingress_is_bounded_and_returns_no_truth_claim(tmp_path: Path) -> None:
     coordinator, _, store = _runtime(tmp_path / "presence.db")
     app = FastAPI()
@@ -377,7 +391,7 @@ def test_heartbeat_ingress_is_bounded_and_returns_no_truth_claim(tmp_path: Path)
     client = TestClient(app)
     response = client.post(
         "/fleet/v1/heartbeat",
-        json=_heartbeat().model_dump(mode="json"),
+        json=_heartbeat(observed_at=datetime.now(UTC)).model_dump(mode="json"),
     )
     assert response.status_code == 200
     assert response.json()["accepted"] is True
