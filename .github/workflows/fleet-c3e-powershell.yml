@@ -4,8 +4,11 @@ on:
   pull_request:
     paths:
       - "scripts/azure/ensure-fleet-entra-application.ps1"
+      - "scripts/azure/ensure-fleet-entra-application-device-auth.ps1"
       - "tests/architecture/test_fleet_c3e_entra_bootstrap.py"
+      - "tests/architecture/test_fleet_c3e_device_auth_recovery.py"
       - "docs/fleet/ETS_FLEET_C3E_ENTRA_BOOTSTRAP.md"
+      - "docs/fleet/ETS_FLEET_C3E_DEVICE_AUTH_RECOVERY.md"
       - ".github/workflows/fleet-c3e-powershell.yml"
   workflow_dispatch:
 
@@ -26,19 +29,24 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $path = 'scripts/azure/ensure-fleet-entra-application.ps1'
-          $tokens = $null
-          $parseErrors = $null
-          [void][System.Management.Automation.Language.Parser]::ParseFile(
-              $path,
-              [ref]$tokens,
-              [ref]$parseErrors
+          $paths = @(
+              'scripts/azure/ensure-fleet-entra-application.ps1',
+              'scripts/azure/ensure-fleet-entra-application-device-auth.ps1'
           )
-          if ($parseErrors.Count -ne 0) {
-              $parseErrors | ForEach-Object { Write-Error $_.Message }
-              throw 'Fleet C3E delegated Entra bootstrap contains PowerShell parse errors.'
+          foreach ($path in $paths) {
+              $tokens = $null
+              $parseErrors = $null
+              [void][System.Management.Automation.Language.Parser]::ParseFile(
+                  $path,
+                  [ref]$tokens,
+                  [ref]$parseErrors
+              )
+              if ($parseErrors.Count -ne 0) {
+                  $parseErrors | ForEach-Object { Write-Error $_.Message }
+                  throw "Fleet C3E PowerShell contains parse errors: $path"
+              }
+              if ($tokens.Count -eq 0) {
+                  throw "Fleet C3E PowerShell parsed to an empty token stream: $path"
+              }
+              Write-Host "Parsed $path with $($tokens.Count) tokens and zero parse errors."
           }
-          if ($tokens.Count -eq 0) {
-              throw 'Fleet C3E delegated Entra bootstrap parsed to an empty token stream.'
-          }
-          Write-Host "Parsed $($tokens.Count) PowerShell tokens with zero parse errors."
