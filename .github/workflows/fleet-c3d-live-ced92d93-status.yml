@@ -1,0 +1,46 @@
+name: Fleet C3D Exact-Source Status ced92d93
+
+on:
+  push:
+    branches:
+      - qualification/fleet-c3d-live-ced92d93
+    paths:
+      - .github/workflows/fleet-c3d-live-ced92d93-status.yml
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Report exact-source Q0 state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SOURCE_SHA: ced92d9383c2fa1c0cbf8e61004c958e5e8fa698
+        shell: bash
+        run: |
+          set -euo pipefail
+          q0_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow fleet-c3c-q0-image.yml --event workflow_dispatch --branch main --limit 20 --json databaseId,headSha,status,conclusion,createdAt)"
+          Q0_JSON="$q0_json" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected = os.environ['EXPECTED_SOURCE_SHA']
+          rows = [r for r in json.loads(os.environ['Q0_JSON']) if r.get('headSha') == expected]
+          rows.sort(key=lambda r: int(r['databaseId']), reverse=True)
+          q0 = rows[0] if rows else None
+          body = [
+              '### Fleet C3D post-#531 exact-source status',
+              '',
+              f'Source SHA: `{expected}`',
+              f'Q0: `{json.dumps(q0, sort_keys=True) if q0 else "missing"}`',
+              '',
+              'Read-only status probe; no Azure deployment or public-hostname activation performed.',
+          ]
+          Path('/tmp/status.md').write_text('\n'.join(body) + '\n', encoding='utf-8')
+          PY
+          gh issue comment 528 --repo "$GITHUB_REPOSITORY" --body-file /tmp/status.md
