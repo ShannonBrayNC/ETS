@@ -46,6 +46,18 @@ class InMemoryEnrollmentStore:
         with self._lock:
             self._current[device_id] = enrollment_id
 
+    def list_current_enrollments(self) -> list[DeviceEnrollmentRecord]:
+        """Return a stable snapshot of current device enrollments for read-side views."""
+
+        with self._lock:
+            enrollment_ids = tuple(self._current.values())
+            records = [
+                self._enrollments[enrollment_id]
+                for enrollment_id in enrollment_ids
+                if enrollment_id in self._enrollments
+            ]
+        return sorted(records, key=lambda item: item.device_id)
+
     def get_public_identity_owner(self, fingerprint: str) -> str | None:
         with self._lock:
             return self._identity_owner.get(fingerprint)
