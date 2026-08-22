@@ -128,7 +128,11 @@ def _event_type(event: dict[str, Any]) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _validation_response(event: dict[str, Any], *, expected_source: str) -> dict[str, str]:
+def _validation_response(
+    event: dict[str, Any],
+    *,
+    expected_source: str,
+) -> dict[str, object]:
     source = event.get("topic", event.get("source", ""))
     if not isinstance(source, str) or source.rstrip("/").lower() != expected_source:
         raise HTTPException(status_code=403, detail="unexpected Event Grid validation source")
