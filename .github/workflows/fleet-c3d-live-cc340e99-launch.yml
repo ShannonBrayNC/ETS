@@ -1,0 +1,194 @@
+name: Fleet C3D Exact-Source Live Launch
+
+on:
+  push:
+    branches:
+      - qualification/fleet-c3d-live-cc340e99
+    paths:
+      - .github/workflows/fleet-c3d-live-cc340e99-launch.yml
+
+permissions:
+  contents: read
+  actions: write
+  issues: write
+
+env:
+  EXPECTED_SOURCE_SHA: cc340e99d8d95347557949e937e6ed2dc47d2746
+  ACR_NAME: etsq1a352eb89
+  ACR_RESOURCE_GROUP: rg-ets-q1-eastus
+  FLEET_RESOURCE_GROUP: rg-ets-live-eastus
+  FLEET_REPOSITORY: ets/fleet/control-plane
+
+jobs:
+  launch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Dispatch exact-main Fleet Q0 publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          test "$main_sha" = "$EXPECTED_SOURCE_SHA"
+          gh workflow run fleet-c3c-q0-image.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f container_registry_name="$ACR_NAME" \
+            -f container_registry_resource_group="$ACR_RESOURCE_GROUP" \
+            -f image_repository="$FLEET_REPOSITORY"
+
+      - name: Resolve successful exact-source Q0 and validate retained manifest
+        id: q0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          q0_id=''
+          for _ in $(seq 1 180); do
+            q0_id="$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow fleet-c3c-q0-image.yml \
+              --event workflow_dispatch \
+              --branch main \
+              --limit 20 \
+              --json databaseId,headSha,status,conclusion \
+              --jq '.[] | select(.headSha == env.EXPECTED_SOURCE_SHA) | .databaseId' \
+              | head -n 1)"
+            if [ -n "$q0_id" ]; then
+              status="$(gh run view "$q0_id" --repo "$GITHUB_REPOSITORY" --json status --jq .status)"
+              if [ "$status" = 'completed' ]; then
+                conclusion="$(gh run view "$q0_id" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)"
+                test "$conclusion" = 'success'
+                break
+              fi
+            fi
+            sleep 10
+          done
+          test -n "$q0_id"
+          test "$(gh run view "$q0_id" --repo "$GITHUB_REPOSITORY" --json status --jq .status)" = 'completed'
+          test "$(gh run view "$q0_id" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = 'success'
+
+          rm -rf /tmp/fleet-q0
+          mkdir -p /tmp/fleet-q0
+          gh run download "$q0_id" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "fleet-c3c-q0-image-${q0_id}" \
+            --dir /tmp/fleet-q0
+
+          EXPECTED_Q0_RUN_ID="$q0_id" python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          manifest = json.loads(Path('/tmp/fleet-q0/manifest.json').read_text(encoding='utf-8'))
+          expected = os.environ['EXPECTED_SOURCE_SHA']
+          run_id = os.environ['EXPECTED_Q0_RUN_ID']
+          subject = f"{os.environ['ACR_NAME']}.azurecr.io/{os.environ['FLEET_REPOSITORY']}"
+          digest = manifest.get('image_digest')
+          immutable = manifest.get('immutable_image')
+          checks = (
+              manifest.get('schema_version') == 'ets.fleet.c3c.q0_image.v1',
+              manifest.get('source_sha') == expected,
+              str(manifest.get('workflow_run_id')) == run_id,
+              manifest.get('vulnerability_gate') == 'PASS',
+              manifest.get('registry_credentials_retained') is False,
+              manifest.get('customer_identifiers_retained') is False,
+              isinstance(digest, str) and re.fullmatch(r'sha256:[0-9a-f]{64}', digest) is not None,
+              isinstance(digest, str) and immutable == f'{subject}@{digest}',
+          )
+          if not all(checks):
+              raise SystemExit('Fleet Q0 retained manifest failed exact-source validation')
+          Path('/tmp/immutable-image.txt').write_text(str(immutable), encoding='utf-8')
+          PY
+
+          immutable_image="$(cat /tmp/immutable-image.txt)"
+          echo "q0_run_id=$q0_id" >> "$GITHUB_OUTPUT"
+          echo "immutable_image=$immutable_image" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch protected C3D private live deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMMUTABLE_IMAGE: ${{ steps.q0.outputs.immutable_image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)" = "$EXPECTED_SOURCE_SHA"
+          gh workflow run fleet-c3d-live-deploy.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f expected_source_sha="$EXPECTED_SOURCE_SHA" \
+            -f fleet_image="$IMMUTABLE_IMAGE" \
+            -f resource_group="$FLEET_RESOURCE_GROUP" \
+            -f container_registry_name="$ACR_NAME" \
+            -f container_registry_resource_group="$ACR_RESOURCE_GROUP" \
+            -f entra_application_display_name='ETS Fleet Control Plane' \
+            -f provision_entra_application=true \
+            -f step_up_auth_context_id=c1 \
+            -f postgres_high_availability_mode=ZoneRedundant
+
+      - name: Resolve C3D run and post sanitized classification
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          Q0_RUN_ID: ${{ steps.q0.outputs.q0_run_id }}
+          IMMUTABLE_IMAGE: ${{ steps.q0.outputs.immutable_image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          c3d_id=''
+          c3d_status='missing'
+          c3d_conclusion=''
+          if [ -n "${IMMUTABLE_IMAGE:-}" ]; then
+            for _ in $(seq 1 240); do
+              c3d_id="$(gh run list \
+                --repo "$GITHUB_REPOSITORY" \
+                --workflow fleet-c3d-live-deploy.yml \
+                --event workflow_dispatch \
+                --branch main \
+                --limit 20 \
+                --json databaseId,headSha,status,conclusion \
+                --jq '.[] | select(.headSha == env.EXPECTED_SOURCE_SHA) | .databaseId' \
+                | head -n 1)"
+              if [ -n "$c3d_id" ]; then
+                c3d_status="$(gh run view "$c3d_id" --repo "$GITHUB_REPOSITORY" --json status --jq .status)"
+                if [ "$c3d_status" = 'completed' ]; then
+                  c3d_conclusion="$(gh run view "$c3d_id" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)"
+                  break
+                fi
+              fi
+              sleep 10
+            done
+          fi
+
+          classification='fleet_c3d_live_not_completed'
+          qualified=false
+          if [ "$c3d_status" = 'completed' ] && [ "$c3d_conclusion" = 'success' ]; then
+            classification='fleet_c3d_live_private_substrate_qualified'
+            qualified=true
+          elif [ "$c3d_status" = 'completed' ]; then
+            classification='fleet_c3d_live_private_substrate_failed'
+          fi
+
+          cat > /tmp/c3d-comment.md <<EOF
+          ### Fleet C3D exact-source live qualification
+
+          Source SHA: \`${EXPECTED_SOURCE_SHA}\`
+          Q0 run: \`${Q0_RUN_ID:-unresolved}\`
+          Immutable image: \`${IMMUTABLE_IMAGE:-unresolved}\`
+          C3D run: \`${c3d_id:-unresolved}\`
+          C3D status: \`${c3d_status}\`
+          C3D conclusion: \`${c3d_conclusion:-none}\`
+          Classification: \`${classification}\`
+          Qualified: \`${qualified}\`
+
+          \`fleet.lanternprotocol.net\` remains unactivated. This sequence does not create or activate the Fleet custom hostname.
+          EOF
+          gh issue comment 528 --repo "$GITHUB_REPOSITORY" --body-file /tmp/c3d-comment.md
+
+          if [ "$qualified" != 'true' ]; then
+            exit 1
+          fi
