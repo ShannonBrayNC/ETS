@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
 from datetime import datetime
 from typing import Protocol, TypeVar, cast
@@ -26,14 +26,11 @@ from ets.fleet.portal_admin_durable import (
     FleetAdminDurabilityError,
     FleetAdminMutationPending,
 )
+from ets.fleet.store import EnrollmentStoreConflict
 
 _POSTGRES_SCHEMA_VERSION = 1
 _POSTGRES_TOKEN_SCOPE = "https://ossrdbms-aad.database.windows.net/.default"
 _CONFLICT_SQLSTATES = frozenset({"23505", "40001", "40P01"})
-
-
-class FleetStoreConflict(RuntimeError):
-    """A concurrent authoritative Fleet write could not be serialized safely."""
 
 
 class FleetStoreSchemaError(RuntimeError):
@@ -158,7 +155,7 @@ class _PostgresTransactionManager:
                 connection.rollback()
             finally:
                 if _is_concurrency_conflict(exc):
-                    raise FleetStoreConflict(
+                    raise EnrollmentStoreConflict(
                         "concurrent Fleet state changed; retry from fresh authoritative state"
                     ) from exc
             raise
@@ -181,7 +178,7 @@ class PostgresEnrollmentStore:
     def __init__(self, connection_factory: PostgresConnectionFactory) -> None:
         self._transactions = _PostgresTransactionManager(connection_factory)
 
-    def transaction(self) -> Iterator[None]:
+    def transaction(self) -> AbstractContextManager[None]:
         return self._transactions.transaction()
 
     def get_enrollment(self, enrollment_id: str) -> DeviceEnrollmentRecord | None:
@@ -322,7 +319,7 @@ class PostgresEnrollmentStore:
                 (fingerprint, device_id),
             )
             if cursor.rowcount != 1:
-                raise FleetStoreConflict(
+                raise EnrollmentStoreConflict(
                     "public identity is already bound to another Fleet device"
                 )
 
