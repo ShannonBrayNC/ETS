@@ -93,6 +93,16 @@ class PostgresFleetAuthorizationState:
             roles = tuple(FleetRole(str(item)) for item in decoded)
             if not roles or len(set(roles)) != len(roles):
                 raise ValueError("stored Fleet roles are empty or duplicated")
+            raw_active = row["active"]
+            if not isinstance(raw_active, bool):
+                raise ValueError("stored Fleet active flag is invalid")
+            raw_generation = row["generation"]
+            if (
+                isinstance(raw_generation, bool)
+                or not isinstance(raw_generation, int)
+                or raw_generation < 1
+            ):
+                raise ValueError("stored Fleet session generation is invalid")
             not_before = row["not_before_utc"]
             if not isinstance(not_before, datetime):
                 raise ValueError("stored Fleet not-before timestamp is invalid")
@@ -100,8 +110,8 @@ class PostgresFleetAuthorizationState:
             if raw_step_up is not None and not isinstance(raw_step_up, datetime):
                 raise ValueError("stored Fleet step-up timestamp is invalid")
             return FleetSessionStanding(
-                active=bool(row["active"]),
-                generation=int(row["generation"]),
+                active=raw_active,
+                generation=raw_generation,
                 roles=roles,
                 not_before_utc=not_before,
                 step_up_not_before_utc=raw_step_up,
