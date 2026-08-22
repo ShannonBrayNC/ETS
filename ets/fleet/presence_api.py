@@ -87,7 +87,7 @@ def build_fleet_presence_router(
         if not isinstance(payload, dict):
             raise HTTPException(status_code=422, detail="heartbeat envelope must be a JSON object")
         try:
-            envelope = HeartbeatEnvelope.model_validate(payload)
+            envelope = HeartbeatEnvelope.model_validate_json(body)
         except ValidationError as exc:
             raise HTTPException(
                 status_code=422,
