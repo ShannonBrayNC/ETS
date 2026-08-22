@@ -31,3 +31,4 @@ jobs:
             az bicep install
             az bicep build --file infra/azure/ets-hosted.bicep --stdout > /dev/null
             az bicep build --file infra/azure/ets-fleet-c3b.bicep --stdout > /dev/null
+            az bicep build --file infra/azure/ets-fleet-c3c-frontdoor.bicep --stdout > /dev/null

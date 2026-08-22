@@ -1,0 +1,319 @@
+name: Fleet C3C Q0 Immutable Image Publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      container_registry_name:
+        description: "Existing approved private Azure Container Registry name."
+        required: true
+        type: string
+      container_registry_resource_group:
+        description: "Resource group containing the approved private ACR."
+        required: true
+        type: string
+      image_repository:
+        description: "Non-customer ACR repository path for the Fleet control-plane image."
+        required: true
+        default: "ets/fleet/control-plane"
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: fleet-c3c-q0-image
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build scan attest and publish immutable Fleet image
+    runs-on: ubuntu-24.04
+    environment: ets-azure-q1
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out exact merged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Require main source and Fleet production image boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "main"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test -f Dockerfile.fleet
+          test -f ets/fleet/production_runtime.py
+          test -f ets/fleet/container_apps_auth.py
+          test -f scripts/acr_oauth_docker_login.py
+          grep -Fq 'USER ets' Dockerfile.fleet
+          grep -Fq 'ets.fleet.production_entrypoint' Dockerfile.fleet
+          mkdir -p evidence/fleet-c3c-q0-image
+          printf 'schema_version=ets.fleet.c3c.q0_image.v1\nsource_sha=%s\nworkflow_run_id=%s\n' \
+            "${GITHUB_SHA}" "${GITHUB_RUN_ID}" \
+            > evidence/fleet-c3c-q0-image/source.txt
+
+      - name: Azure login with protected workload identity
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate approved private ACR posture
+        id: registry
+        shell: bash
+        env:
+          ACR_NAME: ${{ inputs.container_registry_name }}
+          ACR_RESOURCE_GROUP: ${{ inputs.container_registry_resource_group }}
+          IMAGE_REPOSITORY: ${{ inputs.image_repository }}
+        run: |
+          set -euo pipefail
+          python - "$IMAGE_REPOSITORY" <<'PY'
+          import re
+          import sys
+
+          repository = sys.argv[1]
+          if re.fullmatch(r"[a-z0-9]+(?:[._/-][a-z0-9]+)*", repository) is None:
+              raise SystemExit("image_repository must be a lowercase non-empty ACR repository path")
+          PY
+
+          active_subscription="$(az account show --query id -o tsv)"
+          registry_json="$(az acr show \
+            --name "${ACR_NAME}" \
+            --resource-group "${ACR_RESOURCE_GROUP}" \
+            --query '{id:id,loginServer:loginServer,adminUserEnabled:adminUserEnabled}' \
+            -o json)"
+          printf '%s\n' "${registry_json}" > "${RUNNER_TEMP}/registry.json"
+
+          ACTIVE_SUBSCRIPTION="${active_subscription}" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(Path(os.environ['RUNNER_TEMP'], 'registry.json').read_text())
+          assert payload['adminUserEnabled'] is False
+          registry_subscription = payload['id'].split('/')[2]
+          assert registry_subscription.lower() == os.environ['ACTIVE_SUBSCRIPTION'].lower()
+          PY
+
+          arm_status="$(az acr config authentication-as-arm show \
+            --registry "${ACR_NAME}" \
+            --resource-group "${ACR_RESOURCE_GROUP}" \
+            --query status -o tsv | tr '[:upper:]' '[:lower:]')"
+          test "${arm_status}" = "enabled"
+
+          registry_server="$(python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          print(json.loads(Path(os.environ['RUNNER_TEMP'], 'registry.json').read_text())['loginServer'])
+          PY
+          )"
+          tag="fleet-${GITHUB_SHA:0:12}-${GITHUB_RUN_ID}"
+          subject_name="${registry_server}/${IMAGE_REPOSITORY}"
+          tag_ref="${subject_name}:${tag}"
+          echo "registry_server=${registry_server}" >> "$GITHUB_OUTPUT"
+          echo "subject_name=${subject_name}" >> "$GITHUB_OUTPUT"
+          echo "tag_ref=${tag_ref}" >> "$GITHUB_OUTPUT"
+
+          cat > evidence/fleet-c3c-q0-image/registry.txt <<EOF
+          registry_name=${ACR_NAME}
+          registry_resource_group=${ACR_RESOURCE_GROUP}
+          registry_server=${registry_server}
+          image_repository=${IMAGE_REPOSITORY}
+          acr_admin_user_enabled=false
+          arm_audience_authentication=true
+          registry_credentials_retained=false
+          docker_authentication=direct_acr_oauth_exchange
+          EOF
+
+      - name: Authenticate Docker through ACR OAuth exchange
+        shell: bash
+        env:
+          REGISTRY_SERVER: ${{ steps.registry.outputs.registry_server }}
+        run: |
+          set -euo pipefail
+          export ACR_TENANT_ID="$(az account show --query tenantId -o tsv)"
+          export ACR_AAD_ACCESS_TOKEN="$(az account get-access-token \
+            --scope https://containerregistry.azure.net/.default \
+            --query accessToken -o tsv)"
+          python scripts/acr_oauth_docker_login.py
+          unset ACR_AAD_ACCESS_TOKEN ACR_TENANT_ID
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.2.0
+
+      - name: Build and push Fleet control-plane image
+        id: build
+        uses: docker/build-push-action@v7.2.0
+        with:
+          context: .
+          file: ./Dockerfile.fleet
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.registry.outputs.tag_ref }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=ETS Fleet Control Plane
+          provenance: mode=max
+          sbom: true
+
+      - name: Require canonical immutable image
+        id: image
+        shell: bash
+        env:
+          SUBJECT_NAME: ${{ steps.registry.outputs.subject_name }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          python - "$IMAGE_DIGEST" <<'PY'
+          import re
+          import sys
+
+          if re.fullmatch(r"sha256:[0-9a-f]{64}", sys.argv[1]) is None:
+              raise SystemExit("Fleet build did not return a canonical sha256 image digest")
+          PY
+          immutable_ref="${SUBJECT_NAME}@${IMAGE_DIGEST}"
+          docker buildx imagetools inspect "${immutable_ref}" >/dev/null
+          echo "immutable_ref=${immutable_ref}" >> "$GITHUB_OUTPUT"
+          echo "digest=${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "${immutable_ref}" > evidence/fleet-c3c-q0-image/immutable-image.txt
+
+      - name: Generate retained SPDX JSON SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: ${{ steps.image.outputs.immutable_ref }}
+          format: spdx-json
+          output-file: evidence/fleet-c3c-q0-image/sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Generate retained HIGH CRITICAL vulnerability report
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.image.outputs.immutable_ref }}
+          scan-type: image
+          format: json
+          output: evidence/fleet-c3c-q0-image/trivy-high-critical.json
+          exit-code: '0'
+          ignore-unfixed: false
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          scanners: vuln
+
+      - name: Summarize vulnerability gate and Fleet image manifest
+        id: gate
+        shell: bash
+        env:
+          SUBJECT_NAME: ${{ steps.registry.outputs.subject_name }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          IMMUTABLE_REF: ${{ steps.image.outputs.immutable_ref }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path('evidence/fleet-c3c-q0-image')
+          report = json.loads((root / 'trivy-high-critical.json').read_text(encoding='utf-8'))
+          severities = ('HIGH', 'CRITICAL')
+          fixable = {severity: 0 for severity in severities}
+          upstream_unfixed = {severity: 0 for severity in severities}
+          for result in report.get('Results') or []:
+              for finding in result.get('Vulnerabilities') or []:
+                  severity = str(finding.get('Severity', '')).upper()
+                  if severity not in fixable:
+                      continue
+                  if str(finding.get('FixedVersion') or '').strip():
+                      fixable[severity] += 1
+                  else:
+                      upstream_unfixed[severity] += 1
+          gate = 'PASS' if sum(fixable.values()) == 0 else 'FAIL'
+          summary = {
+              'gate': gate,
+              'policy': 'fail_on_fixable_high_critical_v1',
+              'fixable': {
+                  'high': fixable['HIGH'],
+                  'critical': fixable['CRITICAL'],
+              },
+              'upstream_unfixed': {
+                  'high': upstream_unfixed['HIGH'],
+                  'critical': upstream_unfixed['CRITICAL'],
+              },
+          }
+          (root / 'vulnerability-gate.json').write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          manifest = {
+              'schema_version': 'ets.fleet.c3c.q0_image.v1',
+              'source_sha': os.environ['GITHUB_SHA'],
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'subject_name': os.environ['SUBJECT_NAME'],
+              'image_digest': os.environ['IMAGE_DIGEST'],
+              'immutable_image': os.environ['IMMUTABLE_REF'],
+              'sbom': 'sbom.spdx.json',
+              'vulnerability_report': 'trivy-high-critical.json',
+              'vulnerability_gate': gate,
+              'vulnerability_gate_policy': 'fail_on_fixable_high_critical_v1',
+              'registry_credentials_retained': False,
+              'customer_identifiers_retained': False,
+          }
+          (root / 'manifest.json').write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          with Path(os.environ['GITHUB_OUTPUT']).open('a', encoding='utf-8') as output:
+              output.write(f'vulnerability_gate={gate}\n')
+          print(json.dumps(manifest, indent=2))
+          PY
+
+      - name: Create GitHub build provenance attestation
+        uses: actions/attest@v4.2.1
+        with:
+          subject-name: ${{ steps.registry.outputs.subject_name }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+
+      - name: Create GitHub SBOM attestation
+        uses: actions/attest@v4.2.1
+        with:
+          subject-name: ${{ steps.registry.outputs.subject_name }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          sbom-path: evidence/fleet-c3c-q0-image/sbom.spdx.json
+          push-to-registry: true
+
+      - name: Upload non-secret Fleet Q0 image evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: fleet-c3c-q0-image-${{ github.run_id }}
+          path: evidence/fleet-c3c-q0-image/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Log out Docker from ACR
+        if: always() && steps.registry.outputs.registry_server != ''
+        shell: bash
+        env:
+          REGISTRY_SERVER: ${{ steps.registry.outputs.registry_server }}
+        run: docker logout "${REGISTRY_SERVER}" >/dev/null 2>&1 || true
+
+      - name: Enforce vulnerability gate
+        if: always()
+        shell: bash
+        env:
+          VULNERABILITY_GATE: ${{ steps.gate.outputs.vulnerability_gate }}
+        run: |
+          if [ "${VULNERABILITY_GATE}" != "PASS" ]; then
+            echo "Fleet Q0 image contains fixable HIGH/CRITICAL vulnerability findings." >&2
+            exit 1
+          fi
