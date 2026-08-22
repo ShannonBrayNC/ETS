@@ -21,6 +21,7 @@ def test_c3d_uses_separate_migration_and_runtime_managed_identities() -> None:
     assert "ETS_FLEET_RUNTIME_CLIENT_ID" in source
     assert "python" in source and "ets.fleet.bootstrap" in source
     assert "Microsoft.App/jobs@2025-01-01" in source
+    assert "output postgresServerVersion string = fleetC3b.outputs.postgresServerVersion" in source
     assert "password" not in source.lower()
     assert "connectionstring" not in source.lower()
     assert "Microsoft.Cdn" not in source
@@ -76,6 +77,7 @@ def test_live_workflow_requires_exact_q0_and_never_activates_public_hostname() -
     assert "authentication-as-arm" in source
     assert "az deployment group create" in source
     assert "ets-fleet-c3d-live.bicep" in source
+    assert "'postgresServerVersion'" in source
     assert "az containerapp job start" in source
     assert "ETS_FLEET_AUTH_BRIDGE=container-apps-easyauth" in source
     assert "ets-fleet-c3d-readiness.bicep" in source

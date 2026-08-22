@@ -245,6 +245,7 @@ jobs:
               'fleetRuntimeIdentityName', 'fleetRuntimeIdentityClientId',
               'fleetRuntimeIdentityPrincipalId', 'migrationIdentityName',
               'migrationJobName', 'postgresServerName', 'postgresPrivateFqdn',
+              'postgresServerVersion',
               'fleetDatabaseName', 'immutableFleetImage', 'publicHostnameActivated',
           )
           for key in required:
