@@ -10,6 +10,10 @@ from typing import Protocol
 from ets.fleet.models import DeviceEnrollmentRecord, RotationWindow
 
 
+class EnrollmentStoreConflict(RuntimeError):
+    """An authoritative Fleet write conflicted with concurrent retained state."""
+
+
 class EnrollmentStore(Protocol):
     """Provider-neutral authoritative Fleet enrollment persistence boundary.
 
