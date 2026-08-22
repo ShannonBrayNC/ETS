@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import ast
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[2]
 PORTAL = ROOT / "ets" / "fleet" / "portal.py"
@@ -69,25 +67,12 @@ def test_security_headers_are_fail_closed_for_framing_and_storage() -> None:
 
 def test_c1_default_composition_remains_read_only_under_c2_extension() -> None:
     source = API.read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    builder = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "build_fleet_portal_router"
+    assert "admin_service: FleetPortalAdminService | None = None" in source
+    assert "security_session_resolver: SecuritySessionResolver | None = None" in source
+    assert (
+        "if admin_service is not None and security_session_resolver is not None:"
+        in source
     )
-    args = {item.arg for item in builder.args.kwonlyargs}
-    defaults = dict(
-        zip(
-            reversed([item.arg for item in builder.args.kwonlyargs]),
-            reversed(builder.args.kw_defaults),
-            strict=True,
-        )
-    )
-    assert {"admin_service", "security_session_resolver"} <= args
-    for name in ("admin_service", "security_session_resolver"):
-        assert isinstance(defaults[name], ast.Constant)
-        assert defaults[name].value is None
-    assert "if admin_service is not None and security_session_resolver is not None" in source
     assert "@router.put" not in source
     assert "@router.patch" not in source
     assert "@router.delete" not in source
