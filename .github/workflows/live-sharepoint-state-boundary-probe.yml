@@ -62,6 +62,33 @@ jobs:
           set -euo pipefail
           mkdir -p evidence/live-sharepoint-state-boundary
 
+          write_failure_evidence() {
+            python - "$1" "$2" "$3" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          failure_class, execution_status, marker_attempts = sys.argv[1:]
+          payload = {
+              "schema_version": "ets.live.sharepoint_state_boundary.failure.v1",
+              "source_sha": os.environ["GITHUB_SHA"],
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "execution_status": execution_status or "unknown",
+              "failure_class": failure_class,
+              "marker_attempts": int(marker_attempts),
+              "result_marker_present": False,
+              "customer_identifiers_retained": False,
+              "reusable_credential_retained": False,
+              "public_evidence_safe": True,
+              "m365_source_to_proof_claimed": False,
+              "soak_clock_started": False,
+          }
+          out = Path("evidence/live-sharepoint-state-boundary/failure.json")
+          out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+          }
+
           if ! [[ "$MARKER" =~ ^[a-z0-9][a-z0-9-]{5,31}$ ]]; then
             echo "::error::marker is outside the public-safe profile"
             exit 1
@@ -167,24 +194,60 @@ jobs:
             sleep 3
           done
 
-          replica="$(az containerapp job replica list \
-            --name "$job_name" \
-            --resource-group "$RESOURCE_GROUP" \
-            --execution "$execution" \
-            --query '[0].name' -o tsv)"
-          test -n "$replica"
+          if [ "$status" != "Succeeded" ]; then
+            case "$status" in
+              Failed|Canceled) failure_class="probe_execution_${status,,}" ;;
+              *) failure_class="probe_execution_not_terminal" ;;
+            esac
+            write_failure_evidence "$failure_class" "$status" 0
+            echo "::error::bounded Gateway state probe execution ended with status ${status:-unknown}"
+            exit 1
+          fi
+
+          replica=""
+          for _ in $(seq 1 12); do
+            replica="$(az containerapp job replica list \
+              --name "$job_name" \
+              --resource-group "$RESOURCE_GROUP" \
+              --execution "$execution" \
+              --query '[0].name' -o tsv 2>/dev/null || true)"
+            if [ -n "$replica" ]; then
+              break
+            fi
+            sleep 5
+          done
+          if [ -z "$replica" ]; then
+            write_failure_evidence "probe_replica_unavailable" "$status" 0
+            echo "::error::bounded Gateway state probe replica was unavailable after bounded retries"
+            exit 1
+          fi
 
           raw="$RUNNER_TEMP/sharepoint-state-boundary.log"
-          az containerapp job logs show \
-            --name "$job_name" \
-            --resource-group "$RESOURCE_GROUP" \
-            --execution "$execution" \
-            --replica "$replica" \
-            --container sharepoint-state-probe \
-            --format text \
-            --only-show-errors > "$raw" 2>&1 || true
+          marker_found=false
+          marker_attempts=0
+          for marker_attempts in $(seq 1 12); do
+            az containerapp job logs show \
+              --name "$job_name" \
+              --resource-group "$RESOURCE_GROUP" \
+              --execution "$execution" \
+              --replica "$replica" \
+              --container sharepoint-state-probe \
+              --format text \
+              --only-show-errors > "$raw" 2>&1 || true
+            if grep -Eq 'ETS_SP_STATE_PROBE_B64=[A-Za-z0-9_=-]+' "$raw"; then
+              marker_found=true
+              break
+            fi
+            sleep 5
+          done
+          if [ "$marker_found" != "true" ]; then
+            write_failure_evidence "probe_result_marker_unavailable" "$status" "$marker_attempts"
+            rm -f "$raw"
+            echo "::error::bounded Gateway state probe result marker was unavailable after bounded retries"
+            exit 1
+          fi
 
-          python - "$raw" <<'PY'
+          if ! python - "$raw" <<'PY'
           import base64
           import json
           import re
@@ -312,8 +375,13 @@ jobs:
                   value = str(value).lower()
               print(key + "=" + str(value))
           PY
+          then
+            write_failure_evidence "probe_result_payload_invalid" "$status" "$marker_attempts"
+            rm -f "$raw"
+            echo "::error::bounded Gateway state probe result payload was invalid"
+            exit 1
+          fi
 
-          test "$status" = "Succeeded"
           rm -f "$raw"
 
       - name: Upload bounded Gateway state evidence
