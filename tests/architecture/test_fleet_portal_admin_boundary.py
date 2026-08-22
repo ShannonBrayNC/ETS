@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import ast
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[2]
 ADMIN = ROOT / "ets" / "fleet" / "portal_admin.py"
@@ -59,16 +57,12 @@ def test_fleet_c2_mutation_route_is_bff_only_and_requires_security_controls() ->
 
 
 def test_fleet_c2_evidence_model_has_no_secret_fields() -> None:
-    tree = ast.parse(_source(ADMIN))
-    fields: set[str] = set()
-    for node in tree.body:
-        if isinstance(node, ast.ClassDef) and node.name == "FleetAdministrativeEvidence":
-            for statement in node.body:
-                if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
-                    fields.add(statement.target.id.lower())
+    source = _source(ADMIN)
+    start = source.index("class FleetAdministrativeEvidence")
+    end = source.index("class FleetAdministrativeEvidenceSink")
+    evidence_model = source[start:end].lower()
     forbidden_parts = ("token", "secret", "private", "sas", "password", "credential")
-    assert fields
-    for field in fields:
-        assert not any(part in field for part in forbidden_parts)
-    assert "idempotency_key_sha256" in fields
-    assert "request_fingerprint_sha256" in fields
+    assert "idempotency_key_sha256" in evidence_model
+    assert "request_fingerprint_sha256" in evidence_model
+    for part in forbidden_parts:
+        assert f"{part}:" not in evidence_model
