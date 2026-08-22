@@ -17,6 +17,7 @@ from ets.fleet.entra_session import (
 )
 from ets.fleet.models import ScopeBinding
 from ets.fleet.portal import FleetRole
+from ets.fleet.production_runtime import create_production_fleet_app
 
 NOW = datetime(2026, 8, 22, 6, 30, tzinfo=UTC)
 ISSUER = "https://login.microsoftonline.com/tenant-id/v2.0"
@@ -133,6 +134,13 @@ def test_wrong_issuer_audience_tenant_expiry_generation_or_roles_fail_closed(
         adapter(StaticAuthorizationState()).resolve(context(**updates))
 
 
+def test_unknown_or_forged_app_role_fails_closed() -> None:
+    with pytest.raises(FleetProductionAuthenticationError, match="unsupported Fleet app role"):
+        adapter(StaticAuthorizationState()).resolve(
+            context(roles=("Fleet.Root",))
+        )
+
+
 def test_revoked_session_or_absent_server_scope_fails_closed() -> None:
     revoked = StaticAuthorizationState(
         standing=FleetSessionStanding(
@@ -201,3 +209,21 @@ def test_production_cookie_policy_rejects_insecure_or_non_host_cookie() -> None:
         FleetSessionCookiePolicy(secure=False)
     with pytest.raises(ValidationError):
         FleetSessionCookiePolicy(domain="lanternprotocol.net")
+
+
+def test_production_startup_fails_closed_when_required_configuration_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    required = (
+        "ETS_FLEET_POSTGRES_HOST",
+        "ETS_FLEET_POSTGRES_DATABASE",
+        "ETS_FLEET_POSTGRES_USER",
+        "ETS_FLEET_ENTRA_ISSUER",
+        "ETS_FLEET_ENTRA_AUDIENCE",
+        "ETS_FLEET_ENTRA_TENANT_ID",
+    )
+    for name in required:
+        monkeypatch.delenv(name, raising=False)
+
+    with pytest.raises(RuntimeError, match="ETS_FLEET_POSTGRES_HOST is required"):
+        create_production_fleet_app()
