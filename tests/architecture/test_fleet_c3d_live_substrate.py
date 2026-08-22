@@ -8,6 +8,7 @@ READINESS_BICEP = ROOT / "infra" / "azure" / "ets-fleet-c3d-readiness.bicep"
 WORKFLOW = ROOT / ".github" / "workflows" / "fleet-c3d-live-deploy.yml"
 BOOTSTRAP = ROOT / "ets" / "fleet" / "bootstrap.py"
 READINESS = ROOT / "ets" / "fleet" / "private_readiness_probe.py"
+ENTRA_BOOTSTRAP = ROOT / "scripts" / "azure" / "ensure-fleet-entra-application.ps1"
 
 
 def test_c3d_uses_separate_migration_and_runtime_managed_identities() -> None:
@@ -60,6 +61,7 @@ def test_live_workflow_requires_exact_q0_and_never_activates_public_hostname() -
     assert "expected_source_sha" in source
     assert "q0_workflow_run_id" in source
     assert "fleet_image" in source
+    assert "entra_client_id" in source
     assert "actions: read" in source
     assert "gh run view" in source
     assert "gh run download" in source
@@ -86,14 +88,37 @@ def test_live_workflow_requires_exact_q0_and_never_activates_public_hostname() -
     assert "custom-domain" not in source
 
 
-def test_governed_fleet_entra_registration_is_single_tenant_and_role_exact() -> None:
+def test_c3d_github_identity_has_no_graph_application_mutation_path() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
+    lowered = source.lower()
+    assert "entra_client_id" in source
+    assert "github_graph_write_required=false" in source
+    assert "az ad app" not in lowered
+    assert "az ad sp" not in lowered
+    assert "graph.microsoft.com" not in lowered
+    assert "application.readwrite" not in lowered
+    assert "connect-mggraph" not in lowered
+    assert "provision_entra_application" not in source
+    assert "entra_application_display_name" not in source
+
+
+def test_delegated_entra_bootstrap_is_separate_from_c3d_workflow() -> None:
+    source = ENTRA_BOOTSTRAP.read_text(encoding="utf-8")
+    assert "Connect-MgGraph" in source
+    assert "-ContextScope Process" in source
+    assert "Application.ReadWrite.All" in source
     assert "AzureADMyOrg" in source
-    assert "--enable-id-token-issuance true" in source
     assert "Fleet.Viewer" in source
     assert "Fleet.Operator" in source
     assert "Fleet.SecurityAdmin" in source
-    assert "allowedMemberTypes" in source
-    assert "az ad sp create" in source
-    assert "az ad app credential reset" not in source
-    assert "--client-secret" not in source
+    assert "19292461-7726-5197-acd4-6da5cf9d5440" in source
+    assert "b1c406fc-6d94-5397-a37d-7b23192f052f" in source
+    assert "cd7b83d7-7fbe-5b30-811d-5b6b8fa79fb4" in source
+    assert "enableIdTokenIssuance = $true" in source
+    assert "enableAccessTokenIssuance = $false" in source
+    assert "oauth2PermissionScopes" in source
+    assert "preAuthorizedApplications" in source
+    assert "knownClientApplications" in source
+    assert "passwordCredentials" in source
+    assert "keyCredentials" in source
+    assert "githubGraphWriteRequired = $false" in source

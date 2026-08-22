@@ -1,0 +1,44 @@
+name: Fleet C3E PowerShell
+
+on:
+  pull_request:
+    paths:
+      - "scripts/azure/ensure-fleet-entra-application.ps1"
+      - "tests/architecture/test_fleet_c3e_entra_bootstrap.py"
+      - "docs/fleet/ETS_FLEET_C3E_ENTRA_BOOTSTRAP.md"
+      - ".github/workflows/fleet-c3e-powershell.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parse:
+    name: Parse delegated Fleet Entra bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Parse PowerShell without executing Graph or Azure operations
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'scripts/azure/ensure-fleet-entra-application.ps1'
+          $tokens = $null
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $path,
+              [ref]$tokens,
+              [ref]$parseErrors
+          )
+          if ($parseErrors.Count -ne 0) {
+              $parseErrors | ForEach-Object { Write-Error $_.Message }
+              throw 'Fleet C3E delegated Entra bootstrap contains PowerShell parse errors.'
+          }
+          if ($tokens.Count -eq 0) {
+              throw 'Fleet C3E delegated Entra bootstrap parsed to an empty token stream.'
+          }
+          Write-Host "Parsed $($tokens.Count) PowerShell tokens with zero parse errors."
