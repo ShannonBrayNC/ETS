@@ -13,17 +13,38 @@ from fastapi import FastAPI, HTTPException, status
 
 from ets.api.auth import AppScopeMap, AuthPolicy, ProductionJWKSAuthPolicy
 from ets.connectors.credentials.azure_managed_identity import (
+    MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
     MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
-    AzureManagedIdentityGraphCredentialProvider,
+    MICROSOFT_GRAPH_DEFAULT_SCOPE,
+    MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE,
+    MICROSOFT_PURVIEW_DEFAULT_SCOPE,
+    AzureManagedIdentityCredentialProfile,
+    AzureManagedIdentityCredentialProvider,
 )
 from ets.connectors.credentials.broker import CredentialBroker
 from ets.connectors.credentials.models import CredentialReferenceV1
 from ets.connectors.enterprise.microsoft import MicrosoftTenantProfileV1
+from ets.connectors.enterprise.microsoft_entra_connector import (
+    ENTRA_CONNECTOR_ID,
+    ENTRA_OBSERVED_EVENT_TYPE,
+    ENTRA_SOURCE_SYSTEM,
+    MicrosoftEntraDeltaAdapter,
+)
+from ets.connectors.enterprise.microsoft_entra_delta import EntraDeltaCollection
 from ets.connectors.enterprise.microsoft_graph import MicrosoftGraphSubscriptionStateV1
 from ets.connectors.enterprise.microsoft_health import (
     MicrosoftOperationalHealthPolicyV1,
     MicrosoftOperationalPostureV1,
     evaluate_microsoft_operational_posture,
+)
+from ets.connectors.enterprise.microsoft_purview_activity import (
+    MicrosoftPurviewManagementProfile,
+    purview_management_profile,
+)
+from ets.connectors.enterprise.microsoft_purview_connector import (
+    PURVIEW_EVENT_TYPE,
+    PURVIEW_SOURCE_SYSTEM,
+    MicrosoftPurviewActivityAdapter,
 )
 from ets.connectors.enterprise.microsoft_sharepoint_connector import (
     SHAREPOINT_CONNECTOR_ID,
@@ -48,6 +69,7 @@ from ets.connectors.runtime_store import (
     ConnectorInstanceNotFoundError,
     ConnectorRuntimeStore,
 )
+from ets.connectors.sdk import ConnectorAdapter
 from ets.core.sqlite_store import SQLiteEventStore
 from ets.gateway.connector_ingress import GatewayConnectorIngressService
 from ets.gateway.connector_management import (
@@ -69,10 +91,20 @@ from ets.gateway.source_registry import SourceRegistration, StaticSourceRegistry
 from ets.runtime.sync_queue import SyncQueue
 from ets.runtime.sync_queue_scope import source_scoped_sync_queue_status
 
-_HOSTED_GATEWAY_VERSION = "0.1.0-p0-gateway-r1"
+_HOSTED_GATEWAY_VERSION = "0.2.0-p0-microsoft-family-r1"
 _DEFAULT_STATE_DIR = "/var/lib/ets"
 _DEFAULT_MANIFEST_DIR = "/app/config/connectors/enterprise"
 _WORKER_OWNER = "ets-hosted-microsoft-gateway"
+_SHAREPOINT_PROFILE_ID = "hosted-microsoft"
+_DIRECTORY_PROFILE_ID = "hosted-microsoft-directory"
+_PURVIEW_PROFILE_ID = "hosted-microsoft-purview"
+_PURVIEW_CONNECTOR_ID = "microsoft.purview.activity"
+_ENTRA_USERS_SUFFIX = "entra-users"
+_ENTRA_GROUPS_SUFFIX = "entra-groups"
+_PURVIEW_SUFFIX = "purview-audit-general"
+_ENTRA_USERS_PRINCIPAL = "gateway://microsoft/entra/users"
+_ENTRA_GROUPS_PRINCIPAL = "gateway://microsoft/entra/groups"
+_PURVIEW_PRINCIPAL = "gateway://microsoft/purview/audit-general"
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +114,8 @@ class HostedMicrosoftGatewaySettings:
     state_dir: Path
     manifest_dir: Path
     managed_identity_client_id: str
+    directory_managed_identity_client_id: str
+    purview_managed_identity_client_id: str
     core_base_url: str
     core_scope: str
     tenant_id: str
@@ -136,12 +170,39 @@ class HostedMicrosoftGatewaySettings:
             else MicrosoftOperationalHealthPolicyV1.model_validate_json(policy_raw)
         )
 
+        managed_identity_client_id = _required_env(
+            "ETS_GATEWAY_MANAGED_IDENTITY_CLIENT_ID", maximum=100
+        )
+        directory_managed_identity_client_id = _required_env(
+            "ETS_GATEWAY_DIRECTORY_MANAGED_IDENTITY_CLIENT_ID", maximum=100
+        )
+        purview_managed_identity_client_id = _required_env(
+            "ETS_GATEWAY_PURVIEW_MANAGED_IDENTITY_CLIENT_ID", maximum=100
+        )
+        identity_client_ids = {
+            managed_identity_client_id.casefold(),
+            directory_managed_identity_client_id.casefold(),
+            purview_managed_identity_client_id.casefold(),
+        }
+        if len(identity_client_ids) != 3:
+            raise RuntimeError(
+                "hosted Microsoft connector profiles require three distinct managed identities"
+            )
+
+        microsoft_application_id = _required_env(
+            "ETS_GATEWAY_MICROSOFT_APPLICATION_ID", maximum=36
+        )
+        if microsoft_application_id.casefold() != managed_identity_client_id.casefold():
+            raise RuntimeError(
+                "SharePoint Microsoft application id must match the SharePoint/Core identity"
+            )
+
         return cls(
             state_dir=state_dir,
             manifest_dir=manifest_dir,
-            managed_identity_client_id=_required_env(
-                "ETS_GATEWAY_MANAGED_IDENTITY_CLIENT_ID", maximum=100
-            ),
+            managed_identity_client_id=managed_identity_client_id,
+            directory_managed_identity_client_id=directory_managed_identity_client_id,
+            purview_managed_identity_client_id=purview_managed_identity_client_id,
             core_base_url=_required_env("ETS_GATEWAY_CORE_BASE_URL", maximum=500),
             core_scope=_required_env("ETS_GATEWAY_CORE_SCOPE", maximum=500),
             tenant_id=_required_env("ETS_GATEWAY_TENANT_ID", maximum=128),
@@ -152,9 +213,7 @@ class HostedMicrosoftGatewaySettings:
             microsoft_tenant_id=_required_env(
                 "ETS_GATEWAY_MICROSOFT_TENANT_ID", maximum=36
             ),
-            microsoft_application_id=_required_env(
-                "ETS_GATEWAY_MICROSOFT_APPLICATION_ID", maximum=36
-            ),
+            microsoft_application_id=microsoft_application_id,
             sharepoint_drive_id=_required_env(
                 "ETS_GATEWAY_SHAREPOINT_DRIVE_ID", maximum=500
             ),
@@ -168,6 +227,28 @@ class HostedMicrosoftGatewaySettings:
             graph_subscription=graph_subscription,
             health_policy=health_policy,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class HostedMicrosoftConnectorWorker:
+    """One deployment-authoritative connector instance and isolated collection runner."""
+
+    instance: ConnectorInstanceV1
+    adapter: ConnectorAdapter
+    runner: GatewayConnectorCollectionRunner
+    principal: str
+
+
+class HostedMicrosoftPurviewProfileResolver:
+    """Resolve exactly one server-owned Purview Management Activity profile."""
+
+    def __init__(self, profile: MicrosoftPurviewManagementProfile) -> None:
+        self._profile = profile
+
+    def resolve(self, profile_id: str) -> MicrosoftPurviewManagementProfile:
+        if profile_id != self._profile.profile_id:
+            raise ValueError("unknown hosted Purview management profile")
+        return self._profile
 
 
 class HostedMicrosoftOperationalPostureProvider(MicrosoftOperationalPostureProvider):
@@ -226,65 +307,94 @@ class HostedMicrosoftOperationalPostureProvider(MicrosoftOperationalPostureProvi
 
 
 class HostedMicrosoftGatewayRuntime:
-    """Own the durable hosted Gateway services and one bounded polling worker."""
+    """Own the durable hosted Gateway services and bounded Microsoft polling workers."""
 
     def __init__(
         self,
         *,
         settings: HostedMicrosoftGatewaySettings,
-        instance: ConnectorInstanceV1,
+        workers: tuple[HostedMicrosoftConnectorWorker, ...],
         store: ConnectorRuntimeStore,
-        runner: GatewayConnectorCollectionRunner,
-        adapter: MicrosoftSharePointDeltaAdapter,
         relay: GatewayCoreRelayWorker,
         event_store: SQLiteEventStore,
-        graph_credentials: AzureManagedIdentityGraphCredentialProvider,
+        microsoft_credentials: AzureManagedIdentityCredentialProvider,
         core_tokens: AzureManagedIdentityCoreTokenProvider,
         graph_subscription_store: SQLiteMicrosoftGraphSubscriptionStore | None,
     ) -> None:
+        if not workers:
+            raise ValueError("hosted Microsoft Gateway requires at least one connector worker")
+        instance_ids = tuple(worker.instance.instance_id for worker in workers)
+        if len(instance_ids) != len(set(instance_ids)):
+            raise ValueError("hosted Microsoft connector instance ids must be unique")
+        principals = tuple(worker.principal for worker in workers)
+        if len(principals) != len(set(principals)):
+            raise ValueError("hosted Microsoft connector principals must be unique")
         self.settings = settings
-        self.instance = instance
+        self.workers = workers
+        self.instances = tuple(worker.instance for worker in workers)
+        self.instance = workers[0].instance
         self.store = store
-        self.runner = runner
-        self.adapter = adapter
         self.relay = relay
         self.event_store = event_store
-        self.graph_credentials = graph_credentials
+        self.microsoft_credentials = microsoft_credentials
         self.core_tokens = core_tokens
         self.graph_subscription_store = graph_subscription_store
+        self._workers_by_instance_id = {
+            worker.instance.instance_id: worker for worker in workers
+        }
         self.last_worker_error: str | None = None
         self.last_worker_cycle_at_utc: datetime | None = None
         self._task: asyncio.Task[None] | None = None
 
     def run_cycle(self) -> None:
-        """Run one due source collection and one bounded Core relay drain."""
+        """Run every due composed source once and one bounded Core relay drain."""
 
         now = datetime.now(UTC)
         claimed = self.store.claim_due(
             owner=_WORKER_OWNER,
             now=now,
             lease_seconds=min(max(self.settings.poll_interval_seconds * 2, 60), 3600),
-            limit=1,
+            limit=len(self.workers),
+            instance_ids=tuple(self._workers_by_instance_id),
         )
-        if self.instance.instance_id in claimed:
+        failures: list[Exception] = []
+        for instance_id in claimed:
+            worker = self._workers_by_instance_id[instance_id]
             try:
-                self._run_claimed_collection(now)
+                self._run_claimed_collection(worker, now)
+            except Exception as exc:
+                failures.append(exc)
             finally:
-                self.store.release_lease(
-                    self.instance.instance_id,
-                    owner=_WORKER_OWNER,
-                    now=datetime.now(UTC),
-                )
-        self.relay.run_once(limit=50)
+                try:
+                    self.store.release_lease(
+                        instance_id,
+                        owner=_WORKER_OWNER,
+                        now=datetime.now(UTC),
+                    )
+                except Exception as exc:
+                    failures.append(exc)
+        try:
+            self.relay.run_once(limit=50)
+        except Exception as exc:
+            failures.append(exc)
         self.last_worker_cycle_at_utc = datetime.now(UTC)
+        if failures:
+            raise RuntimeError(
+                f"hosted Microsoft cycle failed in {len(failures)} bounded operation(s)"
+            ) from failures[0]
         self.last_worker_error = None
 
-    def _run_claimed_collection(self, now: datetime) -> None:
-        runtime = self.store.get_runtime(self.instance.instance_id)
-        result = self.runner.run(
-            adapter=self.adapter,
-            instance=self.instance,
-            principal=self.settings.source_principal,
+    def _run_claimed_collection(
+        self,
+        worker: HostedMicrosoftConnectorWorker,
+        now: datetime,
+    ) -> None:
+        instance = worker.instance
+        runtime = self.store.get_runtime(instance.instance_id)
+        result = worker.runner.run(
+            adapter=worker.adapter,
+            instance=instance,
+            principal=worker.principal,
             checkpoint=runtime.checkpoint,
         )
         if result.code == "ok":
@@ -292,7 +402,7 @@ class HostedMicrosoftGatewayRuntime:
                 "collection_gap" if runtime.gap_open else "healthy_observation"
             )
             self.store.set_checkpoint(
-                self.instance.instance_id,
+                instance.instance_id,
                 result.checkpoint_to_persist,
                 expected_checkpoint_revision=runtime.checkpoint_revision,
                 observation_state=observation_state,
@@ -306,21 +416,21 @@ class HostedMicrosoftGatewayRuntime:
             "throttled",
             "authentication_failed",
         }:
-            if runtime.retry_count >= self.instance.retry.max_attempts:
-                self.store.mark_gap(self.instance.instance_id, now=now)
+            if runtime.retry_count >= instance.retry.max_attempts:
+                self.store.mark_gap(instance.instance_id, now=now)
                 return
             multiplier = 2 ** min(runtime.retry_count, 6)
             delay = min(
                 self.settings.poll_interval_seconds * multiplier,
-                min(self.instance.retry.max_age_seconds, 3600),
+                min(instance.retry.max_age_seconds, 3600),
             )
             self.store.schedule_retry(
-                self.instance.instance_id,
+                instance.instance_id,
                 next_attempt_at_utc=now + timedelta(seconds=delay),
                 now=now,
             )
             return
-        self.store.mark_gap(self.instance.instance_id, now=now)
+        self.store.mark_gap(instance.instance_id, now=now)
 
     async def start(self) -> None:
         if self._task is not None:
@@ -336,7 +446,7 @@ class HostedMicrosoftGatewayRuntime:
                 await task
             except asyncio.CancelledError:
                 pass
-        self.graph_credentials.close()
+        self.microsoft_credentials.close()
         self.core_tokens.close()
         if self.graph_subscription_store is not None:
             self.graph_subscription_store.close()
@@ -376,7 +486,8 @@ def create_app_from_env() -> FastAPI:
 
     @app.get("/ready", tags=["runtime"])
     def ready() -> dict[str, object]:
-        runtime.store.get_instance(runtime.instance.instance_id)
+        for instance in runtime.instances:
+            runtime.store.get_instance(instance.instance_id)
         runtime.event_store.list_entries()
         if runtime.last_worker_error is not None:
             raise HTTPException(
@@ -387,6 +498,7 @@ def create_app_from_env() -> FastAPI:
             "status": "ready",
             "service": "ets-gateway",
             "instance_id": runtime.instance.instance_id,
+            "instance_ids": [instance.instance_id for instance in runtime.instances],
             "last_worker_cycle_at_utc": (
                 None
                 if runtime.last_worker_cycle_at_utc is None
@@ -425,35 +537,107 @@ def _compose_runtime(
     if not settings.manifest_dir.is_dir():
         raise RuntimeError("Gateway connector manifest directory is unavailable")
 
-    graph_credentials = AzureManagedIdentityGraphCredentialProvider(
-        client_id=settings.managed_identity_client_id
+    microsoft_credentials = AzureManagedIdentityCredentialProvider(
+        (
+            AzureManagedIdentityCredentialProfile(
+                reference=MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
+                client_id=settings.managed_identity_client_id,
+                scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
+            ),
+            AzureManagedIdentityCredentialProfile(
+                reference=MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
+                client_id=settings.directory_managed_identity_client_id,
+                scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
+            ),
+            AzureManagedIdentityCredentialProfile(
+                reference=MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE,
+                client_id=settings.purview_managed_identity_client_id,
+                scope=MICROSOFT_PURVIEW_DEFAULT_SCOPE,
+            ),
+        )
     )
     broker = CredentialBroker()
-    broker.register(graph_credentials)
-    credential_ref = CredentialReferenceV1(
-        schema_version="ets.connector.credential_ref.v1",
-        ref=MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
-    )
-    tenant_profile = MicrosoftTenantProfileV1(
+    broker.register(microsoft_credentials)
+    sharepoint_tenant_profile = MicrosoftTenantProfileV1(
         schema_version="ets.connector.microsoft.tenant_profile.v1",
         tenant_id=settings.microsoft_tenant_id,
         application_id=settings.microsoft_application_id,
         cloud="global",
-        credential_ref=credential_ref,
+        credential_ref=_credential_reference(MICROSOFT_GRAPH_CREDENTIAL_REFERENCE),
         consent_state="granted",
+    )
+    directory_tenant_profile = MicrosoftTenantProfileV1(
+        schema_version="ets.connector.microsoft.tenant_profile.v1",
+        tenant_id=settings.microsoft_tenant_id,
+        application_id=settings.directory_managed_identity_client_id,
+        cloud="global",
+        credential_ref=_credential_reference(MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE),
+        consent_state="granted",
+    )
+    purview_tenant_profile = MicrosoftTenantProfileV1(
+        schema_version="ets.connector.microsoft.tenant_profile.v1",
+        tenant_id=settings.microsoft_tenant_id,
+        application_id=settings.purview_managed_identity_client_id,
+        cloud="global",
+        credential_ref=_credential_reference(MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE),
+        consent_state="granted",
+    )
+    purview_profile = purview_management_profile(
+        _PURVIEW_PROFILE_ID,
+        purview_tenant_profile,
+        plan="enterprise",
+        publisher_identifier=settings.microsoft_tenant_id,
     )
 
     registry = ConnectorRegistry.from_manifest_directory(settings.manifest_dir)
-    definition = registry.get_definition(SHAREPOINT_CONNECTOR_ID)
-    adapter = MicrosoftSharePointDeltaAdapter(
-        definition,
+    sharepoint_definition = registry.get_definition(SHAREPOINT_CONNECTOR_ID)
+    entra_definition = registry.get_definition(ENTRA_CONNECTOR_ID)
+    purview_definition = registry.get_definition(_PURVIEW_CONNECTOR_ID)
+    sharepoint_adapter = MicrosoftSharePointDeltaAdapter(
+        sharepoint_definition,
         broker,
-        {"hosted-microsoft": tenant_profile},
+        {_SHAREPOINT_PROFILE_ID: sharepoint_tenant_profile},
     )
-    registry.register_adapter(adapter)
+    entra_adapter = MicrosoftEntraDeltaAdapter(
+        entra_definition,
+        broker,
+        {_DIRECTORY_PROFILE_ID: directory_tenant_profile},
+    )
+    purview_adapter = MicrosoftPurviewActivityAdapter(
+        purview_definition,
+        HostedMicrosoftPurviewProfileResolver(purview_profile),
+        broker,
+    )
+    registry.register_adapter(sharepoint_adapter)
+    registry.register_adapter(entra_adapter)
+    registry.register_adapter(purview_adapter)
 
-    instance = _connector_instance(settings, definition.adapter_version)
-    registry.validate_adapter_instance(instance)
+    sharepoint_instance = _connector_instance(
+        settings,
+        sharepoint_definition.adapter_version,
+    )
+    entra_users_instance = _entra_connector_instance(
+        settings,
+        entra_definition.adapter_version,
+        "users",
+    )
+    entra_groups_instance = _entra_connector_instance(
+        settings,
+        entra_definition.adapter_version,
+        "groups",
+    )
+    purview_instance = _purview_connector_instance(
+        settings,
+        purview_definition.adapter_version,
+    )
+    instances = (
+        sharepoint_instance,
+        entra_users_instance,
+        entra_groups_instance,
+        purview_instance,
+    )
+    for instance in instances:
+        registry.validate_adapter_instance(instance)
 
     runtime_store = ConnectorRuntimeStore(settings.state_dir / "connector-runtime.db")
     management = ConnectorManagementService(
@@ -468,15 +652,17 @@ def _compose_runtime(
         can_manage=True,
         can_read=True,
     )
-    try:
-        existing = runtime_store.get_instance(instance.instance_id)
-    except ConnectorInstanceNotFoundError:
-        management.create_instance(bootstrap, instance)
-    else:
-        if existing.instance != instance:
-            raise RuntimeError(
-                "persisted connector instance differs from deployment-authoritative configuration"
-            )
+    for instance in instances:
+        try:
+            existing = runtime_store.get_instance(instance.instance_id)
+        except ConnectorInstanceNotFoundError:
+            management.create_instance(bootstrap, instance)
+        else:
+            if existing.instance != instance:
+                raise RuntimeError(
+                    "persisted connector instance differs from deployment-authoritative "
+                    "configuration"
+                )
 
     source_registry = StaticSourceRegistry(
         (
@@ -487,11 +673,65 @@ def _compose_runtime(
                 tenant_id=settings.tenant_id,
                 workspace_id=settings.workspace_id,
                 adapter_id=SHAREPOINT_CONNECTOR_ID,
-                adapter_version=definition.adapter_version,
+                adapter_version=sharepoint_definition.adapter_version,
                 event_type=SHAREPOINT_OBSERVED_EVENT_TYPE,
                 classification="enterprise_metadata",
                 redaction_profile="microsoft_sharepoint_metadata_v1",
                 minimization_profile="microsoft_sharepoint_metadata_v1",
+                clock_quality="unknown",
+            ),
+            SourceRegistration(
+                principal=_ENTRA_USERS_PRINCIPAL,
+                source_id=_derived_identifier(
+                    settings.source_id,
+                    _ENTRA_USERS_SUFFIX,
+                    maximum=500,
+                ),
+                source_system=ENTRA_SOURCE_SYSTEM,
+                tenant_id=settings.tenant_id,
+                workspace_id=settings.workspace_id,
+                adapter_id=ENTRA_CONNECTOR_ID,
+                adapter_version=entra_definition.adapter_version,
+                event_type=ENTRA_OBSERVED_EVENT_TYPE,
+                classification="enterprise_directory_metadata",
+                redaction_profile="microsoft_entra_directory_metadata_v1",
+                minimization_profile="microsoft_entra_directory_metadata_v1",
+                clock_quality="unknown",
+            ),
+            SourceRegistration(
+                principal=_ENTRA_GROUPS_PRINCIPAL,
+                source_id=_derived_identifier(
+                    settings.source_id,
+                    _ENTRA_GROUPS_SUFFIX,
+                    maximum=500,
+                ),
+                source_system=ENTRA_SOURCE_SYSTEM,
+                tenant_id=settings.tenant_id,
+                workspace_id=settings.workspace_id,
+                adapter_id=ENTRA_CONNECTOR_ID,
+                adapter_version=entra_definition.adapter_version,
+                event_type=ENTRA_OBSERVED_EVENT_TYPE,
+                classification="enterprise_directory_metadata",
+                redaction_profile="microsoft_entra_directory_metadata_v1",
+                minimization_profile="microsoft_entra_directory_metadata_v1",
+                clock_quality="unknown",
+            ),
+            SourceRegistration(
+                principal=_PURVIEW_PRINCIPAL,
+                source_id=_derived_identifier(
+                    settings.source_id,
+                    _PURVIEW_SUFFIX,
+                    maximum=500,
+                ),
+                source_system=PURVIEW_SOURCE_SYSTEM,
+                tenant_id=settings.tenant_id,
+                workspace_id=settings.workspace_id,
+                adapter_id=_PURVIEW_CONNECTOR_ID,
+                adapter_version=purview_definition.adapter_version,
+                event_type=PURVIEW_EVENT_TYPE,
+                classification="enterprise_audit_metadata",
+                redaction_profile="microsoft_purview_common_schema_v1",
+                minimization_profile="microsoft_purview_common_schema_v1",
                 clock_quality="unknown",
             ),
         )
@@ -504,7 +744,32 @@ def _compose_runtime(
         sync_queue=sync_queue,
         config=GatewayIngressConfig(collector_id="ets-gateway-hosted-microsoft"),
     )
-    runner = GatewayConnectorCollectionRunner(ingress)
+    workers = (
+        HostedMicrosoftConnectorWorker(
+            instance=sharepoint_instance,
+            adapter=sharepoint_adapter,
+            runner=GatewayConnectorCollectionRunner(ingress),
+            principal=settings.source_principal,
+        ),
+        HostedMicrosoftConnectorWorker(
+            instance=entra_users_instance,
+            adapter=entra_adapter,
+            runner=GatewayConnectorCollectionRunner(ingress),
+            principal=_ENTRA_USERS_PRINCIPAL,
+        ),
+        HostedMicrosoftConnectorWorker(
+            instance=entra_groups_instance,
+            adapter=entra_adapter,
+            runner=GatewayConnectorCollectionRunner(ingress),
+            principal=_ENTRA_GROUPS_PRINCIPAL,
+        ),
+        HostedMicrosoftConnectorWorker(
+            instance=purview_instance,
+            adapter=purview_adapter,
+            runner=GatewayConnectorCollectionRunner(ingress),
+            principal=_PURVIEW_PRINCIPAL,
+        ),
+    )
     core_tokens = AzureManagedIdentityCoreTokenProvider(
         client_id=settings.managed_identity_client_id,
         core_scope=settings.core_scope,
@@ -526,7 +791,7 @@ def _compose_runtime(
         )
         graph_store.register(settings.graph_subscription)
         posture_provider = HostedMicrosoftOperationalPostureProvider(
-            adapter=adapter,
+            adapter=sharepoint_adapter,
             queue=sync_queue,
             subscription_store=graph_store,
             subscription_id=settings.graph_subscription.subscription_id,
@@ -541,13 +806,11 @@ def _compose_runtime(
 
     runtime = HostedMicrosoftGatewayRuntime(
         settings=settings,
-        instance=instance,
+        workers=workers,
         store=runtime_store,
-        runner=runner,
-        adapter=adapter,
         relay=relay,
         event_store=event_store,
-        graph_credentials=graph_credentials,
+        microsoft_credentials=microsoft_credentials,
         core_tokens=core_tokens,
         graph_subscription_store=graph_store,
     )
@@ -598,11 +861,133 @@ def _connector_instance(
         ),
         gap_detection=ConnectorGapPolicy(enabled=True),
         settings={
-            "tenant_profile_id": "hosted-microsoft",
+            "tenant_profile_id": _SHAREPOINT_PROFILE_ID,
             "scope": "drive",
             "drive_id": settings.sharepoint_drive_id,
         },
     )
+
+
+def _entra_connector_instance(
+    settings: HostedMicrosoftGatewaySettings,
+    adapter_version: str,
+    collection: EntraDeltaCollection,
+) -> ConnectorInstanceV1:
+    suffix = _ENTRA_USERS_SUFFIX if collection == "users" else _ENTRA_GROUPS_SUFFIX
+    return ConnectorInstanceV1(
+        schema_version="ets.connector.instance.v1",
+        instance_id=_derived_identifier(settings.instance_id, suffix, maximum=128),
+        connector_id=ENTRA_CONNECTOR_ID,
+        connector_version=adapter_version,
+        enabled=True,
+        scope=ConnectorScope(
+            tenant_id=settings.tenant_id,
+            workspace_id=settings.workspace_id,
+        ),
+        source=ConnectorSource(
+            name=f"EchoMedia Entra {collection.title()}",
+            environment="production",
+        ),
+        authentication=ConnectorAuthentication(
+            method="bearer",
+            credential_ref=MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
+        ),
+        collection=ConnectorCollection(
+            mode="poll",
+            interval_seconds=settings.poll_interval_seconds,
+            batch_size=1000,
+        ),
+        checkpoint=ConnectorCheckpointPolicy(
+            strategy="source_cursor",
+            durable=True,
+        ),
+        policy=ConnectorPolicyBinding(
+            capture_profile="ets.capture.microsoft.entra.directory-metadata.v1",
+            normalization_profile="ets.connector.microsoft.entra-directory-delta.v1",
+        ),
+        retry=ConnectorRetryPolicy(
+            max_attempts=8,
+            backoff="exponential",
+            max_age_seconds=86_400,
+        ),
+        gap_detection=ConnectorGapPolicy(enabled=True),
+        settings={
+            "tenant_profile_id": _DIRECTORY_PROFILE_ID,
+            "collection": collection,
+        },
+    )
+
+
+def _purview_connector_instance(
+    settings: HostedMicrosoftGatewaySettings,
+    adapter_version: str,
+) -> ConnectorInstanceV1:
+    return ConnectorInstanceV1(
+        schema_version="ets.connector.instance.v1",
+        instance_id=_derived_identifier(
+            settings.instance_id,
+            _PURVIEW_SUFFIX,
+            maximum=128,
+        ),
+        connector_id=_PURVIEW_CONNECTOR_ID,
+        connector_version=adapter_version,
+        enabled=True,
+        scope=ConnectorScope(
+            tenant_id=settings.tenant_id,
+            workspace_id=settings.workspace_id,
+        ),
+        source=ConnectorSource(
+            name="EchoMedia Purview Audit General",
+            environment="production",
+        ),
+        authentication=ConnectorAuthentication(
+            method="bearer",
+            credential_ref=MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE,
+        ),
+        collection=ConnectorCollection(
+            mode="poll",
+            interval_seconds=settings.poll_interval_seconds,
+            batch_size=500,
+        ),
+        checkpoint=ConnectorCheckpointPolicy(
+            strategy="source_cursor",
+            durable=True,
+        ),
+        policy=ConnectorPolicyBinding(
+            capture_profile="ets.capture.microsoft.purview.audit-metadata.v1",
+            normalization_profile="ets.connector.microsoft-purview.common-schema.v1",
+        ),
+        retry=ConnectorRetryPolicy(
+            max_attempts=8,
+            backoff="exponential",
+            max_age_seconds=86_400,
+        ),
+        gap_detection=ConnectorGapPolicy(enabled=True),
+        settings={
+            "management_profile_id": _PURVIEW_PROFILE_ID,
+            "content_type": "Audit.General",
+            "service_specific_allowlist": [],
+            "include_client_ip": False,
+            "poll_window_seconds": 3600,
+            "overlap_seconds": 300,
+        },
+    )
+
+
+def _credential_reference(value: str) -> CredentialReferenceV1:
+    return CredentialReferenceV1(
+        schema_version="ets.connector.credential_ref.v1",
+        ref=value,
+    )
+
+
+def _derived_identifier(base: str, suffix: str, *, maximum: int) -> str:
+    value = f"{base}.{suffix}"
+    if len(value) > maximum:
+        raise RuntimeError(
+            f"derived hosted Microsoft identifier exceeds {maximum} characters"
+        )
+    return value
 
 
 def _auth_policy(settings: HostedMicrosoftGatewaySettings) -> AuthPolicy:

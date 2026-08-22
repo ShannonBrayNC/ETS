@@ -210,7 +210,9 @@ def test_purview_content_uri_is_revalidated_before_credential_use_and_normalized
 
     assert len(content.records) == 1
     assert content.records[0].operation == "FileAccessed"
-    assert opener.requests[0].full_url == _descriptor().content_uri
+    assert opener.requests[0].full_url == (
+        f"{_descriptor().content_uri}?PublisherIdentifier={PUBLISHER_ID}"
+    )
 
     bad = MicrosoftPurviewContentDescriptorV1(
         content_type="Audit.General",

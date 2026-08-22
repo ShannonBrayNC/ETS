@@ -133,6 +133,7 @@ IDs, assignment outcomes, and the explicit `reusableCredentialRetained=false` an
 
 This bootstrap does not prove token acquisition, source authorization, delta continuity, Purview
 subscription health, evidence completeness, live source-to-proof operation, or customer isolation.
-It does not start the 72-hour soak and does not authorize a public hostname. The next #543 slice
-must compose the separated credential profiles and connector instances in the hosted runtime and
-qualify each identity/audience pair independently.
+It does not start the 72-hour soak and does not authorize a public hostname. The separated
+credential profiles and connector instances are composed by
+[`MICROSOFT_P0_HOSTED_RUNTIME_COMPOSITION_V1.md`](./MICROSOFT_P0_HOSTED_RUNTIME_COMPOSITION_V1.md);
+each identity/audience pair still requires independent live qualification.

@@ -318,6 +318,7 @@ class ConnectorRuntimeStore:
         now: datetime,
         lease_seconds: int,
         limit: int,
+        instance_ids: tuple[str, ...] | None = None,
     ) -> tuple[str, ...]:
         if not 1 <= len(owner) <= 200:
             raise ValueError("lease owner must be 1-200 characters")
@@ -325,22 +326,36 @@ class ConnectorRuntimeStore:
             raise ValueError("lease_seconds must be 1-3600")
         if not 1 <= limit <= 1000:
             raise ValueError("claim limit must be 1-1000")
+        if instance_ids is not None:
+            if not instance_ids:
+                raise ValueError("instance_ids must not be empty when supplied")
+            if len(instance_ids) != len(set(instance_ids)):
+                raise ValueError("instance_ids must be unique")
+            if any(not 1 <= len(instance_id) <= 128 for instance_id in instance_ids):
+                raise ValueError("instance_ids contain an invalid connector instance id")
         current = _utc(now)
         lease_expires = current + timedelta(seconds=lease_seconds)
+        instance_filter = ""
+        instance_parameters: tuple[object, ...] = ()
+        if instance_ids is not None:
+            placeholders = ", ".join("?" for _ in instance_ids)
+            instance_filter = f"AND r.instance_id IN ({placeholders})"
+            instance_parameters = tuple(instance_ids)
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             rows = connection.execute(
-                """
+                f"""
                 SELECT r.instance_id
                 FROM connector_runtime r
                 JOIN connector_instances i ON i.instance_id = r.instance_id
                 WHERE json_extract(i.payload_json, '$.enabled') = 1
                   AND (r.next_attempt_at_utc IS NULL OR r.next_attempt_at_utc <= ?)
                   AND (r.lease_expires_at_utc IS NULL OR r.lease_expires_at_utc <= ?)
+                  {instance_filter}
                 ORDER BY r.instance_id
                 LIMIT ?
                 """,
-                (_time(current), _time(current), limit),
+                (_time(current), _time(current), *instance_parameters, limit),
             ).fetchall()
             claimed = tuple(str(row["instance_id"]) for row in rows)
             for claimed_instance_id in claimed:
