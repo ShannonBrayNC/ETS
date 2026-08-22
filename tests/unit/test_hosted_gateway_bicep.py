@@ -109,8 +109,11 @@ def test_gateway_bicep_keeps_graph_client_state_in_a_conditional_secret() -> Non
 
     for required in (
         "@secure()\n@maxLength(128)\nparam graphClientState string = ''",
-        "assert graphLifecycleConfigurationComplete",
-        "assert graphLifecycleRenewalWindowBounded",
+        (
+            "fail('Graph notification URL, clientState, and health policy must be "
+            "configured together.')"
+        ),
+        "fail('Graph subscription renewal window must be shorter than its lifetime.')",
         "secrets: graphLifecycleConfigured ? [",
         "name: 'graph-client-state'",
         "name: 'ETS_GATEWAY_GRAPH_CLIENT_STATE'\n              secretRef: 'graph-client-state'",

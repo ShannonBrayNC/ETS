@@ -127,14 +127,17 @@ var stateKeyVaultName = take('ets-${resourceToken}-gkv', 24)
 var stateStorageSecretName = 'azure-files-account-key'
 var environmentStorageName = take('ets-${resourceToken}-state-q1-v2', 32)
 var graphLifecyclePartiallyConfigured = !empty(graphNotificationUrl) || !empty(graphClientState) || !empty(microsoftHealthPolicyJson)
-var graphLifecycleConfigured = !empty(graphNotificationUrl) && !empty(graphClientState) && !empty(microsoftHealthPolicyJson)
+var graphLifecycleInputsComplete = !empty(graphNotificationUrl) && !empty(graphClientState) && !empty(microsoftHealthPolicyJson)
+var graphLifecycleConfigurationValidated = !graphLifecyclePartiallyConfigured || graphLifecycleInputsComplete
+  ? graphLifecycleInputsComplete
+  : fail('Graph notification URL, clientState, and health policy must be configured together.')
+var graphLifecycleConfigured = graphSubscriptionRenewalWindowSeconds < graphSubscriptionLifetimeSeconds
+  ? graphLifecycleConfigurationValidated
+  : fail('Graph subscription renewal window must be shorter than its lifetime.')
 var keyVaultSecretsUserRoleId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '4633458b-17de-408a-b874-0445c86b69e6'
 )
-
-assert graphLifecycleConfigurationComplete = !graphLifecyclePartiallyConfigured || graphLifecycleConfigured
-assert graphLifecycleRenewalWindowBounded = graphSubscriptionRenewalWindowSeconds < graphSubscriptionLifetimeSeconds
 
 resource managedEnvironment 'Microsoft.App/managedEnvironments@2026-01-01' existing = {
   name: managedEnvironmentName
