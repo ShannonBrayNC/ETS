@@ -111,6 +111,24 @@ class PostgresFleetAuthorizationState:
                 "stored Fleet session standing failed validation"
             ) from exc
 
+    def check_ready(self) -> bool:
+        """Return only whether the two C3B authorization tables are present."""
+
+        try:
+            with self._transaction() as connection:
+                row = connection.execute(
+                    """
+                    SELECT
+                        to_regclass('public.fleet_principal_scopes') AS scopes_table,
+                        to_regclass('public.fleet_session_standing') AS standing_table
+                    """
+                ).fetchone()
+        except Exception:
+            return False
+        if row is None:
+            return False
+        return row.get("scopes_table") is not None and row.get("standing_table") is not None
+
     def grant_scope(
         self,
         *,
