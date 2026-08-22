@@ -1,5 +1,6 @@
 name: Fleet C3D Exact-Source Status ced92d93
 
+# Probe revision: 2
 on:
   push:
     branches:
@@ -24,19 +25,24 @@ jobs:
         run: |
           set -euo pipefail
           q0_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow fleet-c3c-q0-image.yml --event workflow_dispatch --branch main --limit 20 --json databaseId,headSha,status,conclusion,createdAt)"
-          Q0_JSON="$q0_json" python - <<'PY'
+          launcher_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow fleet-c3d-live-ced92d93-q0.yml --event push --branch qualification/fleet-c3d-live-ced92d93 --limit 10 --json databaseId,headSha,status,conclusion,createdAt)"
+          Q0_JSON="$q0_json" LAUNCHER_JSON="$launcher_json" python - <<'PY'
           import json
           import os
           from pathlib import Path
 
           expected = os.environ['EXPECTED_SOURCE_SHA']
-          rows = [r for r in json.loads(os.environ['Q0_JSON']) if r.get('headSha') == expected]
-          rows.sort(key=lambda r: int(r['databaseId']), reverse=True)
-          q0 = rows[0] if rows else None
+          q0_rows = [r for r in json.loads(os.environ['Q0_JSON']) if r.get('headSha') == expected]
+          q0_rows.sort(key=lambda r: int(r['databaseId']), reverse=True)
+          q0 = q0_rows[0] if q0_rows else None
+          launcher_rows = json.loads(os.environ['LAUNCHER_JSON'])
+          launcher_rows.sort(key=lambda r: int(r['databaseId']), reverse=True)
+          launcher = launcher_rows[0] if launcher_rows else None
           body = [
               '### Fleet C3D post-#531 exact-source status',
               '',
               f'Source SHA: `{expected}`',
+              f'Launcher: `{json.dumps(launcher, sort_keys=True) if launcher else "missing"}`',
               f'Q0: `{json.dumps(q0, sort_keys=True) if q0 else "missing"}`',
               '',
               'Read-only status probe; no Azure deployment or public-hostname activation performed.',
