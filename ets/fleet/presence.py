@@ -299,8 +299,15 @@ class PresenceStore(Protocol):
     def put_state(self, state: PresenceState) -> None: ...
     def has_transport_event(self, event_id: str) -> bool: ...
     def remember_transport_event(self, event_id: str) -> None: ...
+    def commit_transport_event(self, event_id: str, state: PresenceState) -> bool: ...
     def has_boot_session(self, device_id: str, boot_session_id: str) -> bool: ...
     def remember_boot_session(self, device_id: str, boot_session_id: str) -> None: ...
+    def commit_heartbeat_state(
+        self,
+        device_id: str,
+        boot_session_id: str,
+        state: PresenceState,
+    ) -> None: ...
 
 
 class InMemoryPresenceStore:
@@ -328,6 +335,14 @@ class InMemoryPresenceStore:
         with self._lock:
             self._transport_event_ids.add(event_id)
 
+    def commit_transport_event(self, event_id: str, state: PresenceState) -> bool:
+        with self._lock:
+            if event_id in self._transport_event_ids:
+                return False
+            self._transport_event_ids.add(event_id)
+            self._states[state.device_id] = state
+            return True
+
     def has_boot_session(self, device_id: str, boot_session_id: str) -> bool:
         with self._lock:
             return boot_session_id in self._boot_sessions.get(device_id, set())
@@ -335,6 +350,16 @@ class InMemoryPresenceStore:
     def remember_boot_session(self, device_id: str, boot_session_id: str) -> None:
         with self._lock:
             self._boot_sessions.setdefault(device_id, set()).add(boot_session_id)
+
+    def commit_heartbeat_state(
+        self,
+        device_id: str,
+        boot_session_id: str,
+        state: PresenceState,
+    ) -> None:
+        with self._lock:
+            self._boot_sessions.setdefault(device_id, set()).add(boot_session_id)
+            self._states[state.device_id] = state
 
 
 class FleetPresenceService:
@@ -455,8 +480,13 @@ class FleetPresenceService:
                     "last_transport_received_at_utc": received_at,
                 }
             )
-            self._presence_store.remember_transport_event(event.event_id)
-            self._presence_store.put_state(state)
+            if not self._presence_store.commit_transport_event(event.event_id, state):
+                return PresenceDecision(
+                    accepted=False,
+                    reason=PresenceReason.DUPLICATE_EVENT,
+                    device_id=event.device_id,
+                    state=self.snapshot(event.device_id, now=received_at),
+                )
             return PresenceDecision(
                 accepted=True,
                 reason=PresenceReason.TRANSPORT_ACCEPTED,
@@ -591,11 +621,11 @@ class FleetPresenceService:
                     "profile_version": payload.profile_version,
                 }
             )
-            self._presence_store.remember_boot_session(
+            self._presence_store.commit_heartbeat_state(
                 payload.device_id,
                 payload.boot_session_id,
+                state,
             )
-            self._presence_store.put_state(state)
             return PresenceDecision(
                 accepted=True,
                 reason=PresenceReason.HEARTBEAT_ACCEPTED,
