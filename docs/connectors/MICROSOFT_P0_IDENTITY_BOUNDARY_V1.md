@@ -65,6 +65,9 @@ Live qualification must independently prove:
 The identity boundary does not start the soak clock and does not authorize public hostname
 activation.
 
+The preview-first infrastructure and operator procedure is defined in
+[`MICROSOFT_P0_IDENTITY_BOOTSTRAP_V1.md`](./MICROSOFT_P0_IDENTITY_BOOTSTRAP_V1.md).
+
 ## Microsoft references
 
 - [User delta permissions](https://learn.microsoft.com/graph/api/user-delta?view=graph-rest-1.0)

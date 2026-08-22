@@ -100,6 +100,8 @@ param pollIntervalSeconds int = 60
 var resourceToken = uniqueString(resourceGroup().id, environmentName, connectorInstanceId)
 var gatewayName = take('ets-${resourceToken}-gw', 32)
 var gatewayIdentityName = take('ets-${resourceToken}-gw-id', 128)
+var directoryIdentityName = take('ets-${resourceToken}-gw-dir-id', 128)
+var purviewIdentityName = take('ets-${resourceToken}-gw-pur-id', 128)
 var registryPullIdentityName = take('ets-${resourceToken}-gw-pull', 128)
 var stateStorageAccountName = take('etsgw${resourceToken}', 24)
 // Rotate the Q1 state share instead of deleting the prior forensic share. The live Gateway
@@ -119,6 +121,16 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2026-01-01' exist
 
 resource gatewayIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: gatewayIdentityName
+  location: location
+}
+
+resource directoryIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: directoryIdentityName
+  location: location
+}
+
+resource purviewIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: purviewIdentityName
   location: location
 }
 
@@ -237,6 +249,8 @@ resource gateway 'Microsoft.App/containerApps@2026-01-01' = {
     type: 'UserAssigned'
     userAssignedIdentities: {
       '${gatewayIdentity.id}': {}
+      '${directoryIdentity.id}': {}
+      '${purviewIdentity.id}': {}
       '${registryPullIdentity.id}': {}
     }
   }
@@ -247,6 +261,14 @@ resource gateway 'Microsoft.App/containerApps@2026-01-01' = {
       identitySettings: [
         {
           identity: gatewayIdentity.id
+          lifecycle: 'Main'
+        }
+        {
+          identity: directoryIdentity.id
+          lifecycle: 'Main'
+        }
+        {
+          identity: purviewIdentity.id
           lifecycle: 'Main'
         }
         {
@@ -302,6 +324,14 @@ resource gateway 'Microsoft.App/containerApps@2026-01-01' = {
             {
               name: 'ETS_GATEWAY_MANAGED_IDENTITY_CLIENT_ID'
               value: gatewayIdentity.properties.clientId
+            }
+            {
+              name: 'ETS_GATEWAY_DIRECTORY_MANAGED_IDENTITY_CLIENT_ID'
+              value: directoryIdentity.properties.clientId
+            }
+            {
+              name: 'ETS_GATEWAY_PURVIEW_MANAGED_IDENTITY_CLIENT_ID'
+              value: purviewIdentity.properties.clientId
             }
             {
               name: 'ETS_GATEWAY_CORE_BASE_URL'
@@ -446,6 +476,14 @@ resource gateway 'Microsoft.App/containerApps@2026-01-01' = {
 
 output gatewayManagedIdentityResourceId string = gatewayIdentity.id
 output gatewayManagedIdentityClientId string = gatewayIdentity.properties.clientId
+output directoryManagedIdentityName string = directoryIdentity.name
+output directoryManagedIdentityResourceId string = directoryIdentity.id
+output directoryManagedIdentityClientId string = directoryIdentity.properties.clientId
+output directoryManagedIdentityPrincipalId string = directoryIdentity.properties.principalId
+output purviewManagedIdentityName string = purviewIdentity.name
+output purviewManagedIdentityResourceId string = purviewIdentity.id
+output purviewManagedIdentityClientId string = purviewIdentity.properties.clientId
+output purviewManagedIdentityPrincipalId string = purviewIdentity.properties.principalId
 output registryPullIdentityResourceId string = registryPullIdentity.id
 output gatewayContainerAppName string = gateway.name
 output gatewayInternalIngressFqdn string = gateway.properties.configuration.ingress.fqdn
