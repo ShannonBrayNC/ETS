@@ -19,6 +19,7 @@ import json
 from datetime import UTC, datetime
 
 from fastapi import Request
+from pydantic import ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 from starlette.types import ASGIApp
@@ -105,20 +106,25 @@ def trusted_context_from_container_apps_principal(
         tenant_id=tenant_id,
     )
 
-    return TrustedEntraIdentityContext(
-        issuer=issuer,
-        audience=audience,
-        tenant_id=tenant_id,
-        oid=oid,
-        sub=sub,
-        roles=tuple(roles),
-        expires_at_utc=expires_at,
-        authenticated_at_utc=authenticated_at,
-        session_id=session_id,
-        session_generation=1,
-        csrf_token=csrf_token,
-        step_up_at_utc=step_up_at,
-    )
+    try:
+        return TrustedEntraIdentityContext(
+            issuer=issuer,
+            audience=audience,
+            tenant_id=tenant_id,
+            oid=oid,
+            sub=sub,
+            roles=tuple(roles),
+            expires_at_utc=expires_at,
+            authenticated_at_utc=authenticated_at,
+            session_id=session_id,
+            session_generation=1,
+            csrf_token=csrf_token,
+            step_up_at_utc=step_up_at,
+        )
+    except ValidationError as exc:
+        raise ContainerAppsEasyAuthError(
+            "EasyAuth principal does not satisfy the Fleet trusted-context contract"
+        ) from exc
 
 
 class ContainerAppsEasyAuthMiddleware(BaseHTTPMiddleware):
