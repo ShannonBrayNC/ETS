@@ -1,0 +1,172 @@
+name: Fleet C3C Q0 Readback 6b852b50
+
+on:
+  push:
+    branches:
+      - qualification/fleet-c3c-q0-6b852b50
+    paths:
+      - .github/workflows/fleet-c3c-q0-readback-6b852b50.yml
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+jobs:
+  readback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      EXPECTED_SOURCE_SHA: 6b852b50da511df659f27c0d0f81c41c9f8d25c8
+    steps:
+      - name: Resolve exact-source Fleet Q0 run and retained manifest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/fleet-c3c-q0-readback
+          python - <<'PY'
+          import io
+          import json
+          import os
+          import re
+          import zipfile
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+
+          repo = os.environ['REPOSITORY']
+          expected = os.environ['EXPECTED_SOURCE_SHA']
+          headers = {
+              'Accept': 'application/vnd.github+json',
+              'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+              'X-GitHub-Api-Version': '2026-03-10',
+          }
+          runs_url = f'https://api.github.com/repos/{repo}/actions/workflows/fleet-c3c-q0-image.yml/runs?event=workflow_dispatch&per_page=50'
+          with urlopen(Request(runs_url, headers=headers), timeout=30.0) as response:
+              runs = json.loads(response.read().decode('utf-8')).get('workflow_runs', [])
+          matches = [
+              run for run in runs
+              if run.get('head_sha') == expected and run.get('head_branch') == 'main'
+          ]
+          matches.sort(key=lambda item: int(item['id']), reverse=True)
+          if not matches:
+              result = {
+                  'schema_version': 'ets.fleet.c3c.q0_readback.v1',
+                  'source_sha': expected,
+                  'classification': 'fleet_q0_exact_source_run_missing',
+                  'qualified': False,
+              }
+          else:
+              run = matches[0]
+              result = {
+                  'schema_version': 'ets.fleet.c3c.q0_readback.v1',
+                  'source_sha': expected,
+                  'q0_workflow_run_id': run['id'],
+                  'q0_status': run.get('status'),
+                  'q0_conclusion': run.get('conclusion'),
+                  'qualified': False,
+              }
+              if run.get('status') != 'completed' or run.get('conclusion') != 'success':
+                  result['classification'] = 'fleet_q0_exact_source_not_successful'
+              else:
+                  artifacts_url = f"https://api.github.com/repos/{repo}/actions/runs/{run['id']}/artifacts?per_page=100"
+                  with urlopen(Request(artifacts_url, headers=headers), timeout=30.0) as response:
+                      artifacts = json.loads(response.read().decode('utf-8')).get('artifacts', [])
+                  wanted_name = f"fleet-c3c-q0-image-{run['id']}"
+                  found = [a for a in artifacts if a.get('name') == wanted_name and not a.get('expired')]
+                  if len(found) != 1:
+                      result['classification'] = 'fleet_q0_artifact_missing_or_ambiguous'
+                  else:
+                      artifact = found[0]
+                      with urlopen(Request(artifact['archive_download_url'], headers=headers), timeout=60.0) as response:
+                          payload = response.read(128 * 1024 * 1024 + 1)
+                      if len(payload) > 128 * 1024 * 1024:
+                          raise RuntimeError('Fleet Q0 artifact exceeds bounded size')
+                      with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                          manifest = json.loads(archive.read('manifest.json').decode('utf-8'))
+                      digest = manifest.get('image_digest')
+                      immutable = manifest.get('immutable_image')
+                      subject = 'etsq1a352eb89.azurecr.io/ets/fleet/control-plane'
+                      checks = (
+                          manifest.get('schema_version') == 'ets.fleet.c3c.q0_image.v1',
+                          manifest.get('source_sha') == expected,
+                          str(manifest.get('workflow_run_id')) == str(run['id']),
+                          manifest.get('vulnerability_gate') == 'PASS',
+                          manifest.get('registry_credentials_retained') is False,
+                          manifest.get('customer_identifiers_retained') is False,
+                          isinstance(digest, str) and re.fullmatch(r'sha256:[0-9a-f]{64}', digest) is not None,
+                          isinstance(digest, str) and immutable == f'{subject}@{digest}',
+                      )
+                      if not all(checks):
+                          result['classification'] = 'fleet_q0_manifest_failed_validation'
+                      else:
+                          result.update({
+                              'classification': 'fleet_q0_exact_source_qualified',
+                              'qualified': True,
+                              'q0_artifact_id': artifact['id'],
+                              'immutable_image': immutable,
+                              'image_digest': digest,
+                              'vulnerability_gate': 'PASS',
+                              'registry_credentials_retained': False,
+                              'customer_identifiers_retained': False,
+                          })
+          Path('evidence/fleet-c3c-q0-readback/result.json').write_text(
+              json.dumps(result, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          print(json.dumps(result, indent=2, sort_keys=True))
+          PY
+
+      - name: Post sanitized Q0 readback to FLEET-C3 parent
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+
+          path = Path('evidence/fleet-c3c-q0-readback/result.json')
+          result = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {
+              'schema_version': 'ets.fleet.c3c.q0_readback.v1',
+              'source_sha': os.environ['EXPECTED_SOURCE_SHA'],
+              'classification': 'fleet_q0_readback_failed_unclassified',
+              'qualified': False,
+          }
+          body = (
+              '### Fleet C3C Q0 exact-source readback\n\n'
+              f"Readback run: {os.environ['RUN_URL']}\n\n"
+              '```json\n' + json.dumps(result, indent=2, sort_keys=True) + '\n```\n\n'
+              'This readback is GitHub-only and performs no Azure mutation.'
+          )
+          req = Request(
+              f"https://api.github.com/repos/{os.environ['REPOSITORY']}/issues/521/comments",
+              data=json.dumps({'body': body}).encode('utf-8'),
+              headers={
+                  'Accept': 'application/vnd.github+json',
+                  'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+                  'X-GitHub-Api-Version': '2026-03-10',
+                  'Content-Type': 'application/json',
+              },
+              method='POST',
+          )
+          with urlopen(req, timeout=30.0) as response:
+              if response.status != 201:
+                  raise RuntimeError(f'issue comment returned HTTP {response.status}')
+          PY
+
+      - name: Retain sanitized Q0 readback
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: fleet-c3c-q0-readback-${{ github.run_id }}
+          path: evidence/fleet-c3c-q0-readback/
+          if-no-files-found: warn
+          retention-days: 90
