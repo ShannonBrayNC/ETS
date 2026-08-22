@@ -1,5 +1,6 @@
 name: Fleet C3D Exact-Source Q0 Dispatch ced92d93
 
+# Launcher revision: 2
 on:
   push:
     branches:
@@ -25,11 +26,18 @@ jobs:
           set -euo pipefail
           actual="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
           test "$actual" = "$EXPECTED_SOURCE_SHA"
-          gh workflow run fleet-c3c-q0-image.yml --repo "$GITHUB_REPOSITORY" --ref main
+          gh workflow run fleet-c3c-q0-image.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f container_registry_name=etsq1a352eb89 \
+            -f container_registry_resource_group=rg-ets-q1-eastus \
+            -f image_repository=ets/fleet/control-plane
           {
             echo '### Fleet C3D post-#531 Q0 dispatched'
             echo
             echo "Source SHA: \`$EXPECTED_SOURCE_SHA\`"
+            echo 'Registry: `etsq1a352eb89` in `rg-ets-q1-eastus`'
+            echo 'Repository: `ets/fleet/control-plane`'
             echo
             echo 'A fresh Fleet Q0 was dispatched from exact merged `main`. No C3D deployment or public-hostname activation is performed by this launcher.'
           } > /tmp/comment.md
