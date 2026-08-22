@@ -134,6 +134,24 @@ def test_malformed_or_non_entra_platform_principal_fails_closed(header: str) -> 
         )
 
 
+def test_typed_context_validation_failure_is_normalized_to_auth_failure() -> None:
+    payload = json.loads(base64.b64decode(_principal_header()).decode("utf-8"))
+    claims = payload["claims"]
+    claims.extend(
+        [
+            {"typ": "roles", "val": "Fleet.ExtraOne"},
+            {"typ": "roles", "val": "Fleet.ExtraTwo"},
+            {"typ": "roles", "val": "Fleet.ExtraThree"},
+        ]
+    )
+    with pytest.raises(ContainerAppsEasyAuthError, match="trusted-context contract"):
+        trusted_context_from_container_apps_principal(
+            _principal_header(claims=claims),
+            config=_config(),
+            step_up_auth_context_id="c1",
+        )
+
+
 def test_ambiguous_security_critical_claim_fails_closed() -> None:
     payload = json.loads(base64.b64decode(_principal_header()).decode("utf-8"))
     claims = payload["claims"]
