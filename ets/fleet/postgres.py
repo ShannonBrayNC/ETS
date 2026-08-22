@@ -375,7 +375,10 @@ class PostgresEnrollmentStore:
             row = self._transactions.connection().execute(
                 "SELECT schema_version FROM ets_fleet_schema WHERE singleton = TRUE"
             ).fetchone()
-            return row is not None and int(row["schema_version"]) == _POSTGRES_SCHEMA_VERSION
+            return row is not None and _require_int(
+                row["schema_version"],
+                "Fleet schema version",
+            ) == _POSTGRES_SCHEMA_VERSION
 
 
 class PostgresFleetAdminMutationJournal:
@@ -575,7 +578,11 @@ class PostgresFleetAdminMutationJournal:
                 WHERE status = 'pending'
                 """
             ).fetchone()
-            return 0 if row is None else int(row["item_count"])
+            return (
+                0
+                if row is None
+                else _require_int(row["item_count"], "Fleet pending mutation count")
+            )
 
 
 _MIGRATION_STATEMENTS = (
@@ -690,7 +697,7 @@ def apply_fleet_postgres_migrations(
         ).fetchone()
         if row is None:
             raise FleetStoreSchemaError("Fleet PostgreSQL schema version row is missing")
-        version = int(row["schema_version"])
+        version = _require_int(row["schema_version"], "Fleet schema version")
         if version != _POSTGRES_SCHEMA_VERSION:
             raise FleetStoreSchemaError(
                 f"unsupported Fleet PostgreSQL schema version: {version}"
@@ -718,6 +725,12 @@ def _validated_json_model(
     except (ValidationError, ValueError, TypeError) as exc:
         error_type = FleetAdminDurabilityError if durability_error else FleetStoreSchemaError
         raise error_type(f"stored {label} failed validation") from exc
+
+
+def _require_int(raw: object, name: str) -> int:
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise FleetStoreSchemaError(f"stored {name} is not an integer")
+    return raw
 
 
 def _require_sha256(value: str, name: str) -> None:
