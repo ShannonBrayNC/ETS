@@ -82,4 +82,14 @@ def test_c3e_runbook_keeps_public_hostname_out_of_scope() -> None:
     assert "Application.ReadWrite.All" in source
     assert "GitHub Actions Azure workload identity does not receive that permission" in source
     assert "does not activate EasyAuth" in source
-    assert "fleet.lanternprotocol.net" in source
+    expected_non_claim = (
+        "C3E does not activate EasyAuth, assign production users/groups to Fleet roles, "
+        "prove step-up authentication, create Front Door, alter DNS, or qualify "
+        "`fleet.lanternprotocol.net`. Those remain C3C gates."
+    )
+    matching_non_claims = [
+        line.strip()
+        for line in source.splitlines()
+        if line.strip().startswith("C3E does not activate EasyAuth,")
+    ]
+    assert matching_non_claims == [expected_non_claim]
