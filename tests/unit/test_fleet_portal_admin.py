@@ -55,7 +55,7 @@ class EmptyPresence:
 
 def record(
     *,
-    enrollment_id: str = "enr_001",
+    enrollment_id: str = "enr_0001",
     fingerprint: str = A,
     thumbprint: str = D,
     device_id: str | None = None,
@@ -262,7 +262,7 @@ def test_rotation_replay_is_idempotent_after_current_enrollment_changes() -> Non
     store, enrollment, evidence, admin = runtime()
     current = enroll(enrollment, record())
     replacement = record(
-        enrollment_id="enr_002",
+        enrollment_id="enr_0002",
         fingerprint=B,
         thumbprint=E,
         device_id=current.device_id,
