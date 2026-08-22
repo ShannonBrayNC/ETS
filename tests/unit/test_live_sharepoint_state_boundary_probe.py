@@ -9,6 +9,9 @@ WORKFLOW = (
 BICEP = (
     ROOT / "infra" / "azure" / "ets-live-sharepoint-state-probe.bicep"
 ).read_text(encoding="utf-8")
+PRE_SOAK_GATE = (
+    ROOT / "docs" / "connectors" / "MICROSOFT_P0_PRE_SOAK_GATE_V1.md"
+).read_text(encoding="utf-8")
 
 
 def test_state_probe_is_manual_protected_and_uses_existing_gateway_state() -> None:
@@ -62,3 +65,49 @@ def test_state_probe_remains_public_safe_and_makes_no_qualification_claim() -> N
     assert '"soak_clock_started": False' in BICEP
     assert "ETS_SP_STATE_PROBE_B64=" in BICEP
     assert "evidence/live-sharepoint-state-boundary/*.json" in WORKFLOW
+
+
+def test_state_probe_retries_terminal_replica_and_result_marker_retrieval() -> None:
+    assert "for _ in $(seq 1 60)" in WORKFLOW
+    assert "probe_execution_not_terminal" in WORKFLOW
+    assert "for _ in $(seq 1 12)" in WORKFLOW
+    assert "for marker_attempts in $(seq 1 12)" in WORKFLOW
+    assert "probe_replica_unavailable" in WORKFLOW
+    assert "probe_result_marker_unavailable" in WORKFLOW
+    assert "sleep 5" in WORKFLOW
+
+
+def test_state_probe_retains_only_sanitized_failure_evidence() -> None:
+    assert '"schema_version": "ets.live.sharepoint_state_boundary.failure.v1"' in WORKFLOW
+    assert '"result_marker_present": False' in WORKFLOW
+    assert '"customer_identifiers_retained": False' in WORKFLOW
+    assert '"reusable_credential_retained": False' in WORKFLOW
+    assert '"public_evidence_safe": True' in WORKFLOW
+    assert "probe_result_payload_invalid" in WORKFLOW
+    assert "failure.json" in WORKFLOW
+    assert 'path: evidence/live-sharepoint-state-boundary/*.json' in WORKFLOW
+    assert "sharepoint-state-boundary.log" not in WORKFLOW.split("path:", 1)[1]
+
+
+def test_p0_pre_soak_gate_freezes_the_bounded_connector_family() -> None:
+    for required_slice in (
+        "Entra users and groups delta",
+        "SharePoint and OneDrive metadata/delta",
+        "Purview Management Activity audit",
+        "Graph subscription validation",
+        "Gateway durable-state probe",
+    ):
+        assert required_slice in PRE_SOAK_GATE
+    assert "fault and recovery exercises before the soak" in PRE_SOAK_GATE
+    assert "non-destructive canaries only" in PRE_SOAK_GATE
+    assert "An invalidated attempt is never resumed or counted" in PRE_SOAK_GATE
+    assert "Public hostname activation is outside this gate" in PRE_SOAK_GATE
+    for deferred_workload in (
+        "Teams message content",
+        "Exchange mailbox content",
+        "Power Platform runtime",
+        "Copilot and Viva",
+        "government-cloud variants",
+        "broad multitenancy",
+    ):
+        assert deferred_workload in PRE_SOAK_GATE
