@@ -19,6 +19,9 @@ def test_c3d_uses_separate_migration_and_runtime_managed_identities() -> None:
     assert "postgresEntraAdministratorType: 'ServicePrincipal'" in source
     assert "ETS_FLEET_RUNTIME_PRINCIPAL_ID" in source
     assert "ETS_FLEET_RUNTIME_CLIENT_ID" in source
+    assert "identity: migrationIdentity.id\n          lifecycle: 'Main'" in source
+    assert "identity: runtimeIdentityResourceId\n          lifecycle: 'Main'" in source
+    assert source.count("lifecycle: 'Main'") == 2
     assert "python" in source and "ets.fleet.bootstrap" in source
     assert "Microsoft.App/jobs@2025-01-01" in source
     assert (
@@ -58,6 +61,7 @@ def test_c3d_readiness_is_private_and_does_not_claim_trust_or_health() -> None:
     probe = READINESS.read_text(encoding="utf-8")
     assert "managedEnvironmentName" in bicep
     assert "runtimeIdentityResourceId" in bicep
+    assert "identity: runtimeIdentityResourceId\n          lifecycle: 'None'" in bicep
     assert "ETS_FLEET_INTERNAL_BASE_URL" in bicep
     assert "ets.fleet.private_readiness_probe" in bicep
     assert 'payload.get("evidence_verified") is not False' in probe

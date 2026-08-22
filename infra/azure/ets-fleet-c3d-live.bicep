@@ -127,11 +127,11 @@ resource migrationJob 'Microsoft.App/jobs@2025-01-01' = {
       identitySettings: [
         {
           identity: migrationIdentity.id
-          lifecycle: 'None'
+          lifecycle: 'Main'
         }
         {
           identity: runtimeIdentityResourceId
-          lifecycle: 'None'
+          lifecycle: 'Main'
         }
       ]
       registries: [

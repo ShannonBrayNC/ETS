@@ -314,7 +314,7 @@ resource fleetApp 'Microsoft.App/containerApps@2025-01-01' = {
       identitySettings: [
         {
           identity: runtimeIdentity.id
-          lifecycle: 'None'
+          lifecycle: 'Main'
         }
       ]
       registries: [
