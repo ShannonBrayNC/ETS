@@ -63,10 +63,14 @@ def test_production_runtime_fails_closed_until_trusted_auth_bridge_exists() -> N
 
 def test_azure_composition_is_private_entra_only_and_multi_replica() -> None:
     source = BICEP.read_text(encoding="utf-8")
+    lines = {line.strip() for line in source.splitlines()}
     assert "passwordAuth: 'Disabled'" in source
     assert "activeDirectoryAuth: 'Enabled'" in source
     assert source.count("publicNetworkAccess: 'Disabled'") >= 2
-    assert "privatelink.postgres.database.azure.com" in source
+    assert (
+        "var postgresPrivateDnsZoneName = 'privatelink.postgres.database.azure.com'"
+        in lines
+    )
     assert "'postgresqlServer'" in source
     assert "minReplicas: 2" in source
     assert "maxReplicas: 6" in source
