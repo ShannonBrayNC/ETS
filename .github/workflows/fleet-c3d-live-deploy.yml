@@ -20,10 +20,17 @@ on:
         required: true
         type: string
       resource_group:
-        description: Existing live ETS resource group
+        description: Existing East US 2 live ETS resource group
         required: true
-        default: rg-ets-live-eastus
+        default: rg-ets-live-eastus2
         type: string
+      deployment_location:
+        description: Approved private Fleet deployment region
+        required: true
+        default: eastus2
+        type: choice
+        options:
+          - eastus2
       container_registry_name:
         description: Approved private ACR name
         required: true
@@ -39,6 +46,20 @@ on:
         required: true
         default: c1
         type: string
+      postgres_server_version:
+        description: Capability-qualified PostgreSQL major version
+        required: true
+        default: "17"
+        type: choice
+        options:
+          - "17"
+      postgres_sku_name:
+        description: Capability-qualified General Purpose PostgreSQL SKU
+        required: true
+        default: Standard_D2ds_v5
+        type: choice
+        options:
+          - Standard_D2ds_v5
       postgres_high_availability_mode:
         description: PostgreSQL Flexible Server HA mode
         required: true
@@ -46,8 +67,6 @@ on:
         type: choice
         options:
           - ZoneRedundant
-          - SameZone
-          - Disabled
 
 permissions:
   contents: read
@@ -80,6 +99,11 @@ jobs:
           ENTRA_CLIENT_ID: ${{ inputs.entra_client_id }}
           ACR_NAME: ${{ inputs.container_registry_name }}
           STEP_UP_AUTH_CONTEXT_ID: ${{ inputs.step_up_auth_context_id }}
+          RESOURCE_GROUP: ${{ inputs.resource_group }}
+          DEPLOYMENT_LOCATION: ${{ inputs.deployment_location }}
+          POSTGRES_VERSION: ${{ inputs.postgres_server_version }}
+          POSTGRES_SKU: ${{ inputs.postgres_sku_name }}
+          HA_MODE: ${{ inputs.postgres_high_availability_mode }}
         run: |
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
@@ -88,6 +112,11 @@ jobs:
           printf '%s' "$Q0_RUN_ID" | grep -Eq '^[1-9][0-9]*$'
           printf '%s' "$ENTRA_CLIENT_ID" | grep -Eqi '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
           printf '%s' "$STEP_UP_AUTH_CONTEXT_ID" | grep -Eq '^c[0-9]{1,2}$'
+          test "$RESOURCE_GROUP" = 'rg-ets-live-eastus2'
+          test "$DEPLOYMENT_LOCATION" = 'eastus2'
+          test "$POSTGRES_VERSION" = '17'
+          test "$POSTGRES_SKU" = 'Standard_D2ds_v5'
+          test "$HA_MODE" = 'ZoneRedundant'
           expected_subject="${ACR_NAME}.azurecr.io/ets/fleet/control-plane"
           FLEET_IMAGE="$FLEET_IMAGE" EXPECTED_SUBJECT="$expected_subject" python - <<'PY'
           import os
@@ -193,6 +222,7 @@ jobs:
         shell: bash
         env:
           RESOURCE_GROUP: ${{ inputs.resource_group }}
+          DEPLOYMENT_LOCATION: ${{ inputs.deployment_location }}
           ACR_NAME: ${{ inputs.container_registry_name }}
           ACR_RESOURCE_GROUP: ${{ inputs.container_registry_resource_group }}
         run: |
@@ -201,11 +231,105 @@ jobs:
           active_tenant="$(az account show --query tenantId -o tsv)"
           test "${active_subscription,,}" = "${EXPECTED_SUBSCRIPTION_ID,,}"
           test "${active_tenant,,}" = "${EXPECTED_TENANT_ID,,}"
-          az group show --name "$RESOURCE_GROUP" --query id -o tsv >/dev/null
+          resource_group_location="$(az group show --name "$RESOURCE_GROUP" --query location -o tsv | tr '[:upper:]' '[:lower:]')"
+          test "$resource_group_location" = "$DEPLOYMENT_LOCATION"
           admin_enabled="$(az acr show --name "$ACR_NAME" --resource-group "$ACR_RESOURCE_GROUP" --query adminUserEnabled -o tsv | tr '[:upper:]' '[:lower:]')"
           test "$admin_enabled" = 'false'
           arm_status="$(az acr config authentication-as-arm show --registry "$ACR_NAME" --resource-group "$ACR_RESOURCE_GROUP" --query status -o tsv | tr '[:upper:]' '[:lower:]')"
           test "$arm_status" = 'enabled'
+
+      - name: Require subscription-qualified PostgreSQL region version SKU and HA
+        shell: bash
+        env:
+          DEPLOYMENT_LOCATION: ${{ inputs.deployment_location }}
+          POSTGRES_VERSION: ${{ inputs.postgres_server_version }}
+          POSTGRES_SKU: ${{ inputs.postgres_sku_name }}
+          HA_MODE: ${{ inputs.postgres_high_availability_mode }}
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+        run: |
+          set -euo pipefail
+          subscription_id="$(az account show --query id -o tsv)"
+          capability_url="https://management.azure.com/subscriptions/${subscription_id}/providers/Microsoft.DBforPostgreSQL/locations/${DEPLOYMENT_LOCATION}/capabilities?api-version=2025-08-01"
+          az rest --method get --url "$capability_url" --only-show-errors \
+            > "${RUNNER_TEMP}/postgres-capabilities.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(os.environ['RUNNER_TEMP'], 'postgres-capabilities.json').read_text()
+          )
+          entries = payload.get('value') or []
+          if not entries:
+              raise SystemExit('PostgreSQL capability response is empty')
+
+          restricted = {
+              str(entry.get('restricted') or '').lower() for entry in entries
+          }
+          if 'enabled' in restricted:
+              raise SystemExit('PostgreSQL provisioning is restricted in the requested region')
+
+          expected_version = os.environ['POSTGRES_VERSION']
+          versions = {
+              str(version.get('name'))
+              for entry in entries
+              for version in (entry.get('supportedServerVersions') or [])
+              if str(version.get('status') or '').lower() != 'disabled'
+          }
+          if expected_version not in versions:
+              raise SystemExit('PostgreSQL version is not subscription-qualified in the requested region')
+
+          expected_sku = os.environ['POSTGRES_SKU']
+          skus = [
+              sku
+              for entry in entries
+              for edition in (entry.get('supportedServerEditions') or [])
+              for sku in (edition.get('supportedServerSkus') or [])
+              if str(sku.get('name') or '').lower() == expected_sku.lower()
+              and str(sku.get('status') or '').lower() != 'disabled'
+          ]
+          if not skus:
+              raise SystemExit('PostgreSQL SKU is not subscription-qualified in the requested region')
+
+          expected_ha = os.environ['HA_MODE']
+          qualified_skus = [
+              sku for sku in skus if expected_ha in (sku.get('supportedHaMode') or [])
+          ]
+          if not qualified_skus:
+              raise SystemExit('PostgreSQL HA mode is not supported by the requested SKU')
+          if expected_ha == 'ZoneRedundant':
+              zone_ha = {
+                  str(entry.get('zoneRedundantHaSupported') or '').lower()
+                  for entry in entries
+              }
+              if 'enabled' not in zone_ha:
+                  raise SystemExit('Zone-redundant PostgreSQL HA is disabled in the requested region')
+
+          zones = sorted({
+              str(zone)
+              for sku in qualified_skus
+              for zone in (sku.get('supportedZones') or [])
+          })
+          if expected_ha == 'ZoneRedundant' and len(zones) < 2:
+              raise SystemExit('Zone-redundant PostgreSQL HA requires at least two supported zones')
+
+          evidence = {
+              'schema_version': 'ets.fleet.c3d.postgres_capability.v1',
+              'source_sha': os.environ['EXPECTED_SOURCE_SHA'],
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'deployment_location': os.environ['DEPLOYMENT_LOCATION'],
+              'region_restricted': False,
+              'postgres_server_version': expected_version,
+              'postgres_sku_name': expected_sku,
+              'postgres_high_availability_mode': expected_ha,
+              'supported_zones': zones,
+          }
+          Path('evidence/fleet-c3d/postgres-capability.json').write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          print(json.dumps(evidence, indent=2, sort_keys=True))
+          PY
 
       - name: Deploy private C3B substrate and controlled migration job
         id: deploy
@@ -216,6 +340,9 @@ jobs:
           ACR_RESOURCE_GROUP: ${{ inputs.container_registry_resource_group }}
           FLEET_IMAGE: ${{ inputs.fleet_image }}
           CLIENT_ID: ${{ inputs.entra_client_id }}
+          DEPLOYMENT_LOCATION: ${{ inputs.deployment_location }}
+          POSTGRES_VERSION: ${{ inputs.postgres_server_version }}
+          POSTGRES_SKU: ${{ inputs.postgres_sku_name }}
           HA_MODE: ${{ inputs.postgres_high_availability_mode }}
         run: |
           set -euo pipefail
@@ -231,6 +358,9 @@ jobs:
               fleetEntraTenantId="$EXPECTED_TENANT_ID" \
               fleetEntraIssuer="$issuer" \
               fleetEntraAudience="$CLIENT_ID" \
+              location="$DEPLOYMENT_LOCATION" \
+              postgresServerVersion="$POSTGRES_VERSION" \
+              postgresSkuName="$POSTGRES_SKU" \
               postgresHighAvailabilityMode="$HA_MODE" \
             --only-show-errors -o json > "${RUNNER_TEMP}/fleet-c3d-deployment.json"
           python - <<'PY'
@@ -245,7 +375,8 @@ jobs:
               'fleetRuntimeIdentityName', 'fleetRuntimeIdentityClientId',
               'fleetRuntimeIdentityPrincipalId', 'migrationIdentityName',
               'migrationJobName', 'postgresServerName', 'postgresPrivateFqdn',
-              'postgresServerVersion',
+              'resolvedPostgresServerVersion', 'resolvedPostgresSkuName',
+              'resolvedPostgresHighAvailabilityMode', 'deploymentLocation',
               'fleetDatabaseName', 'immutableFleetImage', 'publicHostnameActivated',
           )
           for key in required:
@@ -256,6 +387,15 @@ jobs:
           if outputs['immutableFleetImage']['value'] != os.environ['FLEET_IMAGE']:
               raise SystemExit('C3D deployment image differs from exact-source Q0 image')
           public = {key: outputs[key]['value'] for key in required}
+          expected = {
+              'deploymentLocation': os.environ['DEPLOYMENT_LOCATION'],
+              'resolvedPostgresServerVersion': os.environ['POSTGRES_VERSION'],
+              'resolvedPostgresSkuName': os.environ['POSTGRES_SKU'],
+              'resolvedPostgresHighAvailabilityMode': os.environ['HA_MODE'],
+          }
+          for key, value in expected.items():
+              if str(public[key]).lower() != value.lower():
+                  raise SystemExit(f'C3D deployment output {key} differs from capability-qualified input')
           Path('evidence/fleet-c3d/deployment-outputs.json').write_text(
               json.dumps(public, indent=2, sort_keys=True) + '\n', encoding='utf-8'
           )
@@ -355,6 +495,10 @@ jobs:
           CLIENT_ID: ${{ inputs.entra_client_id }}
           EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
           Q0_RUN_ID: ${{ inputs.q0_workflow_run_id }}
+          DEPLOYMENT_LOCATION: ${{ inputs.deployment_location }}
+          POSTGRES_VERSION: ${{ inputs.postgres_server_version }}
+          POSTGRES_SKU: ${{ inputs.postgres_sku_name }}
+          HA_MODE: ${{ inputs.postgres_high_availability_mode }}
         run: |
           set -euo pipefail
           az containerapp show --resource-group "$RESOURCE_GROUP" --name "$APP_NAME" -o json > "${RUNNER_TEMP}/app.json"
@@ -391,6 +535,20 @@ jobs:
           if network.get('publicNetworkAccess') != 'Disabled':
               raise SystemExit('Fleet PostgreSQL public network access is not disabled')
 
+          expected_location = os.environ['DEPLOYMENT_LOCATION'].lower()
+          for resource, label in ((app, 'Fleet app'), (env, 'Fleet environment'), (pg, 'Fleet PostgreSQL')):
+              if str(resource.get('location') or '').lower() != expected_location:
+                  raise SystemExit(f'{label} is outside the capability-qualified region')
+          pg_version = str(pg_props.get('version') or pg.get('version') or '')
+          pg_sku = pg.get('sku') or {}
+          pg_ha = pg_props.get('highAvailability') or {}
+          if pg_version != os.environ['POSTGRES_VERSION']:
+              raise SystemExit('Fleet PostgreSQL version differs from capability-qualified version')
+          if str(pg_sku.get('name') or '').lower() != os.environ['POSTGRES_SKU'].lower():
+              raise SystemExit('Fleet PostgreSQL SKU differs from capability-qualified SKU')
+          if str(pg_ha.get('mode') or '').lower() != os.environ['HA_MODE'].lower():
+              raise SystemExit('Fleet PostgreSQL HA mode differs from capability-qualified mode')
+
           pg_host = pg_props.get('fullyQualifiedDomainName') or pg.get('fullyQualifiedDomainName')
           public_socket_denied = False
           if pg_host:
@@ -409,9 +567,13 @@ jobs:
               'workflow_run_id': os.environ['GITHUB_RUN_ID'],
               'immutable_fleet_image': os.environ['FLEET_IMAGE'],
               'resource_group': os.environ['RESOURCE_GROUP'],
+              'deployment_location': os.environ['DEPLOYMENT_LOCATION'],
               'container_app_name': app['name'],
               'managed_environment_name': env['name'],
               'postgres_server_name': pg['name'],
+              'postgres_server_version': pg_version,
+              'postgres_sku_name': pg_sku['name'],
+              'postgres_high_availability_mode': pg_ha['mode'],
               'entra_client_id': os.environ['CLIENT_ID'],
               'entra_bootstrap_delegated': True,
               'github_graph_write_required': False,

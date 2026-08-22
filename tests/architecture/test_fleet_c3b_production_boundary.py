@@ -86,11 +86,17 @@ def test_azure_composition_is_private_entra_only_and_multi_replica() -> None:
     assert "corePublicEndpointCreated bool = false" in source
     assert "gatewayPublicEndpointCreated bool = false" in source
     assert "iotPublicManagementEndpointCreated bool = false" in source
-    # Do not pin the flexible-server major version in ARM. The provider may
-    # reject a valid major with an empty allowed-version set for a target
-    # subscription/region; retain the service-selected version as evidence.
-    assert "version: '17'" not in source
-    assert "output postgresServerVersion string = postgres.properties.version" in source
+    assert "param postgresServerVersion string = '17'" in source
+    assert "version: postgresServerVersion" in source
+    assert "param postgresSkuName string = 'Standard_D2ds_v5'" in source
+    assert "param postgresHighAvailabilityMode string = 'ZoneRedundant'" in source
+    assert "output resolvedPostgresServerVersion string = postgres.properties.version" in source
+    assert "output resolvedPostgresSkuName string = postgresSkuName" in source
+    assert (
+        "output resolvedPostgresHighAvailabilityMode string = postgresHighAvailabilityMode"
+        in source
+    )
+    assert "output deploymentLocation string = location" in source
 
 
 def test_fleet_runtime_image_drops_root_privileges() -> None:

@@ -21,7 +21,16 @@ def test_c3d_uses_separate_migration_and_runtime_managed_identities() -> None:
     assert "ETS_FLEET_RUNTIME_CLIENT_ID" in source
     assert "python" in source and "ets.fleet.bootstrap" in source
     assert "Microsoft.App/jobs@2025-01-01" in source
-    assert "output postgresServerVersion string = fleetC3b.outputs.postgresServerVersion" in source
+    assert (
+        "output resolvedPostgresServerVersion string = "
+        "fleetC3b.outputs.resolvedPostgresServerVersion"
+        in source
+    )
+    assert (
+        "output resolvedPostgresSkuName string = fleetC3b.outputs.resolvedPostgresSkuName"
+        in source
+    )
+    assert "output deploymentLocation string = fleetC3b.outputs.deploymentLocation" in source
     assert "password" not in source.lower()
     assert "connectionstring" not in source.lower()
     assert "Microsoft.Cdn" not in source
@@ -63,6 +72,16 @@ def test_live_workflow_requires_exact_q0_and_never_activates_public_hostname() -
     assert "q0_workflow_run_id" in source
     assert "fleet_image" in source
     assert "entra_client_id" in source
+    assert "deployment_location" in source
+    assert "default: eastus2" in source
+    assert "default: rg-ets-live-eastus2" in source
+    assert "postgres_server_version" in source
+    assert 'default: "17"' in source
+    assert "postgres_sku_name" in source
+    assert "Standard_D2ds_v5" in source
+    assert "zoneRedundantHaSupported" in source
+    assert "postgres-capability.json" in source
+    assert "capabilities?api-version=2025-08-01" in source
     assert "actions: read" in source
     assert "gh run view" in source
     assert "gh run download" in source
@@ -77,7 +96,10 @@ def test_live_workflow_requires_exact_q0_and_never_activates_public_hostname() -
     assert "authentication-as-arm" in source
     assert "az deployment group create" in source
     assert "ets-fleet-c3d-live.bicep" in source
-    assert "'postgresServerVersion'" in source
+    assert "'resolvedPostgresServerVersion'" in source
+    assert "'resolvedPostgresSkuName'" in source
+    assert "'resolvedPostgresHighAvailabilityMode'" in source
+    assert "'deploymentLocation'" in source
     assert "az containerapp job start" in source
     assert "ETS_FLEET_AUTH_BRIDGE=container-apps-easyauth" in source
     assert "ets-fleet-c3d-readiness.bicep" in source

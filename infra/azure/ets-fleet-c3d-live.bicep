@@ -40,6 +40,15 @@ param fleetEntraAudience string
 @minLength(1)
 param fleetPostgresDatabase string = 'fleet'
 
+@description('PostgreSQL major version qualified by the subscription and region capability gate.')
+@allowed([
+  '17'
+])
+param postgresServerVersion string = '17'
+
+@description('General Purpose PostgreSQL SKU qualified by the subscription and region capability gate.')
+param postgresSkuName string = 'Standard_D2ds_v5'
+
 @description('PostgreSQL high-availability mode.')
 @allowed([
   'Disabled'
@@ -89,6 +98,8 @@ module fleetC3b './ets-fleet-c3b.bicep' = {
     postgresEntraAdministratorType: 'ServicePrincipal'
     fleetPostgresUser: runtimeIdentityName
     fleetPostgresDatabase: fleetPostgresDatabase
+    postgresServerVersion: postgresServerVersion
+    postgresSkuName: postgresSkuName
     postgresHighAvailabilityMode: postgresHighAvailabilityMode
   }
 }
@@ -200,7 +211,10 @@ output migrationIdentityClientId string = migrationIdentity.properties.clientId
 output migrationIdentityPrincipalId string = migrationIdentity.properties.principalId
 output migrationJobName string = migrationJob.name
 output postgresServerName string = fleetC3b.outputs.postgresServerName
-output postgresServerVersion string = fleetC3b.outputs.postgresServerVersion
+output resolvedPostgresServerVersion string = fleetC3b.outputs.resolvedPostgresServerVersion
+output resolvedPostgresSkuName string = fleetC3b.outputs.resolvedPostgresSkuName
+output resolvedPostgresHighAvailabilityMode string = fleetC3b.outputs.resolvedPostgresHighAvailabilityMode
+output deploymentLocation string = fleetC3b.outputs.deploymentLocation
 output postgresPrivateFqdn string = fleetC3b.outputs.postgresPrivateFqdn
 output fleetDatabaseName string = fleetPostgresDatabase
 output immutableFleetImage string = fleetImage
