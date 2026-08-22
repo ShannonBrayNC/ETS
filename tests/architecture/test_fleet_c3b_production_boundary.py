@@ -78,6 +78,7 @@ def test_azure_composition_is_private_entra_only_and_multi_replica() -> None:
     assert "minReplicas: 2" in source
     assert "maxReplicas: 6" in source
     assert "AZURE_CLIENT_ID" in source
+    assert "identity: runtimeIdentity.id\n          lifecycle: 'Main'" in source
     assert "ETS_FLEET_POSTGRES_PASSWORD" not in source
     assert "administratorLoginPassword" not in source
     assert "Microsoft.Cdn/profiles" not in source
