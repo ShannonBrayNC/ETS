@@ -15,6 +15,10 @@ on:
         description: Protected Fleet Q0 repository@sha256:digest
         required: true
         type: string
+      entra_client_id:
+        description: Client ID from the separately governed delegated Fleet Entra bootstrap
+        required: true
+        type: string
       resource_group:
         description: Existing live ETS resource group
         required: true
@@ -30,16 +34,6 @@ on:
         required: true
         default: rg-ets-q1-eastus
         type: string
-      entra_application_display_name:
-        description: Governed single-tenant Fleet Entra application display name
-        required: true
-        default: ETS Fleet Control Plane
-        type: string
-      provision_entra_application:
-        description: Create/converge the governed Fleet app if absent or incomplete
-        required: true
-        default: true
-        type: boolean
       step_up_auth_context_id:
         description: Entra authentication-context ID reserved for SecurityAdmin step-up
         required: true
@@ -77,12 +71,13 @@ jobs:
           ref: ${{ inputs.expected_source_sha }}
           persist-credentials: false
 
-      - name: Validate exact source and bounded deployment inputs
+      - name: Validate exact source bounded inputs and delegated Entra handoff
         shell: bash
         env:
           FLEET_IMAGE: ${{ inputs.fleet_image }}
           EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
           Q0_RUN_ID: ${{ inputs.q0_workflow_run_id }}
+          ENTRA_CLIENT_ID: ${{ inputs.entra_client_id }}
           ACR_NAME: ${{ inputs.container_registry_name }}
           STEP_UP_AUTH_CONTEXT_ID: ${{ inputs.step_up_auth_context_id }}
         run: |
@@ -91,6 +86,7 @@ jobs:
           test "$actual" = "$EXPECTED_SOURCE_SHA"
           printf '%s' "$EXPECTED_SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$'
           printf '%s' "$Q0_RUN_ID" | grep -Eq '^[1-9][0-9]*$'
+          printf '%s' "$ENTRA_CLIENT_ID" | grep -Eqi '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
           printf '%s' "$STEP_UP_AUTH_CONTEXT_ID" | grep -Eq '^c[0-9]{1,2}$'
           expected_subject="${ACR_NAME}.azurecr.io/ets/fleet/control-plane"
           FLEET_IMAGE="$FLEET_IMAGE" EXPECTED_SUBJECT="$expected_subject" python - <<'PY'
@@ -102,6 +98,14 @@ jobs:
           if re.fullmatch(re.escape(subject) + r'@sha256:[0-9a-f]{64}', image) is None:
               raise SystemExit('fleet_image must be the approved Fleet Q0 repository@sha256 digest')
           PY
+          mkdir -p evidence/fleet-c3d
+          printf '%s\n' "$ENTRA_CLIENT_ID" > evidence/fleet-c3d/entra-client-id.txt
+          cat > evidence/fleet-c3d/entra-bootstrap-boundary.txt <<EOF
+          delegated_entra_bootstrap_required=true
+          github_graph_write_required=false
+          github_graph_application_mutation=false
+          entra_client_id=$ENTRA_CLIENT_ID
+          EOF
 
       - name: Require Q0 run and retained manifest from the same exact source
         shell: bash
@@ -203,102 +207,6 @@ jobs:
           arm_status="$(az acr config authentication-as-arm show --registry "$ACR_NAME" --resource-group "$ACR_RESOURCE_GROUP" --query status -o tsv | tr '[:upper:]' '[:lower:]')"
           test "$arm_status" = 'enabled'
 
-      - name: Ensure governed Fleet Entra application and exact app roles
-        id: entra
-        shell: bash
-        env:
-          DISPLAY_NAME: ${{ inputs.entra_application_display_name }}
-          APPLY: ${{ inputs.provision_entra_application }}
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import json
-          import uuid
-          from pathlib import Path
-
-          roles = []
-          for value, display, description in (
-              ('Fleet.Viewer', 'Fleet Viewer', 'Read authorized Fleet control-plane objects.'),
-              ('Fleet.Operator', 'Fleet Operator', 'Perform bounded Fleet operational mutations.'),
-              ('Fleet.SecurityAdmin', 'Fleet Security Administrator', 'Perform step-up protected Fleet trust mutations.'),
-          ):
-              roles.append({
-                  'allowedMemberTypes': ['User'],
-                  'description': description,
-                  'displayName': display,
-                  'id': str(uuid.uuid5(uuid.NAMESPACE_URL, f'https://lanternprotocol.net/ets/fleet/{value}')),
-                  'isEnabled': True,
-                  'value': value,
-              })
-          Path('/tmp/fleet-app-roles.json').write_text(json.dumps(roles), encoding='utf-8')
-          PY
-
-          apps="$(az ad app list --display-name "$DISPLAY_NAME" --query '[].{appId:appId,signInAudience:signInAudience,appRoles:appRoles,web:web}' -o json)"
-          app_count="$(APPS="$apps" python -c 'import json,os; print(len(json.loads(os.environ["APPS"])))')"
-          if [ "$app_count" -gt 1 ]; then
-            echo 'Multiple Entra applications use the governed Fleet display name.' >&2
-            exit 1
-          fi
-          if [ "$app_count" -eq 0 ]; then
-            test "$APPLY" = 'true' || { echo 'Governed Fleet Entra application is missing.' >&2; exit 1; }
-            app="$(az ad app create --display-name "$DISPLAY_NAME" --sign-in-audience AzureADMyOrg --app-roles @/tmp/fleet-app-roles.json -o json)"
-            app_id="$(APP="$app" python -c 'import json,os; print(json.loads(os.environ["APP"])["appId"])')"
-            az ad app update --id "$app_id" --enable-id-token-issuance true --app-roles @/tmp/fleet-app-roles.json
-          else
-            app_id="$(APPS="$apps" python -c 'import json,os; print(json.loads(os.environ["APPS"])[0]["appId"])')"
-            APP_JSON="$apps" ROLE_FILE=/tmp/fleet-app-roles.json python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          app = json.loads(os.environ['APP_JSON'])[0]
-          expected = json.loads(Path(os.environ['ROLE_FILE']).read_text())
-          if app.get('signInAudience') != 'AzureADMyOrg':
-              raise SystemExit('Fleet Entra application must remain single-tenant')
-          actual = sorted(
-              (r.get('value'), r.get('id'), r.get('isEnabled'), tuple(r.get('allowedMemberTypes') or []))
-              for r in (app.get('appRoles') or [])
-          )
-          wanted = sorted((r['value'], r['id'], True, ('User',)) for r in expected)
-          if actual and actual != wanted:
-              raise SystemExit('Existing Fleet Entra app roles differ from governed contract')
-          PY
-            if [ "$APPLY" = 'true' ]; then
-              az ad app update --id "$app_id" --enable-id-token-issuance true --app-roles @/tmp/fleet-app-roles.json
-            fi
-          fi
-
-          service_principals="$(az ad sp list --filter "appId eq '$app_id'" -o json)"
-          sp_count="$(SPS="$service_principals" python -c 'import json,os; print(len(json.loads(os.environ["SPS"])))')"
-          if [ "$sp_count" -eq 0 ]; then
-            test "$APPLY" = 'true' || { echo 'Fleet service principal is missing.' >&2; exit 1; }
-            az ad sp create --id "$app_id" --only-show-errors -o none
-          elif [ "$sp_count" -ne 1 ]; then
-            echo 'Fleet service principal resolution is ambiguous.' >&2
-            exit 1
-          fi
-
-          verified="$(az ad app show --id "$app_id" --query '{appId:appId,signInAudience:signInAudience,idTokens:web.implicitGrantSettings.enableIdTokenIssuance,appRoles:appRoles,passwordCredentials:passwordCredentials,keyCredentials:keyCredentials}' -o json)"
-          VERIFIED="$verified" ROLE_FILE=/tmp/fleet-app-roles.json python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          app = json.loads(os.environ['VERIFIED'])
-          expected = json.loads(Path(os.environ['ROLE_FILE']).read_text())
-          if app.get('signInAudience') != 'AzureADMyOrg' or app.get('idTokens') is not True:
-              raise SystemExit('Fleet Entra app does not satisfy single-tenant ID-token contract')
-          actual = sorted((r.get('value'), r.get('id'), r.get('isEnabled')) for r in app.get('appRoles') or [])
-          wanted = sorted((r['value'], r['id'], True) for r in expected)
-          if actual != wanted:
-              raise SystemExit('Fleet Entra app role contract did not converge')
-          if app.get('passwordCredentials') or app.get('keyCredentials'):
-              raise SystemExit('C3D does not adopt an Entra app with reusable application credentials')
-          PY
-          echo "client_id=$app_id" >> "$GITHUB_OUTPUT"
-          echo "issuer=https://login.microsoftonline.com/${EXPECTED_TENANT_ID}/v2.0" >> "$GITHUB_OUTPUT"
-          printf '%s\n' "$app_id" > evidence/fleet-c3d/entra-client-id.txt
-
       - name: Deploy private C3B substrate and controlled migration job
         id: deploy
         shell: bash
@@ -307,11 +215,11 @@ jobs:
           ACR_NAME: ${{ inputs.container_registry_name }}
           ACR_RESOURCE_GROUP: ${{ inputs.container_registry_resource_group }}
           FLEET_IMAGE: ${{ inputs.fleet_image }}
-          CLIENT_ID: ${{ steps.entra.outputs.client_id }}
-          ISSUER: ${{ steps.entra.outputs.issuer }}
+          CLIENT_ID: ${{ inputs.entra_client_id }}
           HA_MODE: ${{ inputs.postgres_high_availability_mode }}
         run: |
           set -euo pipefail
+          issuer="https://login.microsoftonline.com/${EXPECTED_TENANT_ID}/v2.0"
           az deployment group create \
             --resource-group "$RESOURCE_GROUP" \
             --name "fleet-c3d-${GITHUB_RUN_ID}" \
@@ -321,7 +229,7 @@ jobs:
               containerRegistryResourceGroup="$ACR_RESOURCE_GROUP" \
               fleetImage="$FLEET_IMAGE" \
               fleetEntraTenantId="$EXPECTED_TENANT_ID" \
-              fleetEntraIssuer="$ISSUER" \
+              fleetEntraIssuer="$issuer" \
               fleetEntraAudience="$CLIENT_ID" \
               postgresHighAvailabilityMode="$HA_MODE" \
             --only-show-errors -o json > "${RUNNER_TEMP}/fleet-c3d-deployment.json"
@@ -443,7 +351,7 @@ jobs:
           ENVIRONMENT_NAME: ${{ steps.deploy.outputs.environment_name }}
           POSTGRES_NAME: ${{ steps.deploy.outputs.postgres_name }}
           FLEET_IMAGE: ${{ inputs.fleet_image }}
-          CLIENT_ID: ${{ steps.entra.outputs.client_id }}
+          CLIENT_ID: ${{ inputs.entra_client_id }}
           EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
           Q0_RUN_ID: ${{ inputs.q0_workflow_run_id }}
         run: |
@@ -504,6 +412,8 @@ jobs:
               'managed_environment_name': env['name'],
               'postgres_server_name': pg['name'],
               'entra_client_id': os.environ['CLIENT_ID'],
+              'entra_bootstrap_delegated': True,
+              'github_graph_write_required': False,
               'migration_job_name': outputs['migrationJobName'],
               'runtime_identity_name': outputs['fleetRuntimeIdentityName'],
               'minimum_replicas': 2,
