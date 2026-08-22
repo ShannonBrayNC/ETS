@@ -1,0 +1,249 @@
+name: Fleet C3C Live Preflight 6b852b50
+
+on:
+  push:
+    branches:
+      - qualification/fleet-c3c-q0-6b852b50
+    paths:
+      - .github/workflows/fleet-c3c-live-preflight-6b852b50.yml
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    environment: ets-azure-q1
+    timeout-minutes: 15
+    env:
+      RESOURCE_GROUP: rg-ets-live-eastus
+      EXPECTED_SOURCE_SHA: 6b852b50da511df659f27c0d0f81c41c9f8d25c8
+    steps:
+      - name: Azure login using protected workload identity
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Inspect Fleet substrate without mutation
+        id: inspect
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/fleet-c3c-preflight
+          az group show --name "${RESOURCE_GROUP}" -o json > "${RUNNER_TEMP}/rg.json"
+          az containerapp list --resource-group "${RESOURCE_GROUP}" -o json > "${RUNNER_TEMP}/apps.json"
+          az postgres flexible-server list --resource-group "${RESOURCE_GROUP}" -o json > "${RUNNER_TEMP}/pg.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          temp = Path(os.environ['RUNNER_TEMP'])
+          apps = json.loads((temp / 'apps.json').read_text(encoding='utf-8'))
+          servers = json.loads((temp / 'pg.json').read_text(encoding='utf-8'))
+
+          fleet_apps = []
+          for app in apps:
+              containers = (((app.get('properties') or {}).get('template') or {}).get('containers') or [])
+              if any(isinstance(c, dict) and c.get('name') == 'fleet-bff' for c in containers):
+                  fleet_apps.append(app)
+
+          result = {
+              'schema_version': 'ets.fleet.c3c.preflight.v1',
+              'source_sha': os.environ['EXPECTED_SOURCE_SHA'],
+              'resource_group': os.environ['RESOURCE_GROUP'],
+              'fleet_app_count': len(fleet_apps),
+              'fleet_postgres_candidate_count': 0,
+              'classification': 'unknown',
+              'ready_for_c3c_compose': False,
+              'secrets_read': False,
+          }
+
+          if len(fleet_apps) != 1:
+              result['classification'] = (
+                  'fleet_c3b_substrate_missing' if len(fleet_apps) == 0
+                  else 'fleet_c3b_substrate_ambiguous'
+              )
+          else:
+              app = fleet_apps[0]
+              props = app.get('properties') or {}
+              env_id = props.get('environmentId')
+              result['container_app_name'] = app.get('name')
+              result['managed_environment_id'] = env_id
+              container = next(
+                  c for c in ((props.get('template') or {}).get('containers') or [])
+                  if c.get('name') == 'fleet-bff'
+              )
+              env_values = {
+                  item.get('name'): item.get('value')
+                  for item in container.get('env') or []
+                  if isinstance(item, dict) and item.get('name') and 'secretRef' not in item
+              }
+              result['entra_tenant_configured'] = bool(env_values.get('ETS_FLEET_ENTRA_TENANT_ID'))
+              result['entra_issuer_configured'] = bool(env_values.get('ETS_FLEET_ENTRA_ISSUER'))
+              result['entra_audience_configured'] = bool(env_values.get('ETS_FLEET_ENTRA_AUDIENCE'))
+              result['postgres_host_configured'] = bool(env_values.get('ETS_FLEET_POSTGRES_HOST'))
+              result['postgres_database_configured'] = bool(env_values.get('ETS_FLEET_POSTGRES_DATABASE'))
+              result['postgres_user_configured'] = bool(env_values.get('ETS_FLEET_POSTGRES_USER'))
+
+              candidates = []
+              for server in servers:
+                  sp = server.get('authConfig') or server.get('properties', {}).get('authConfig') or {}
+                  network = server.get('network') or server.get('properties', {}).get('network') or {}
+                  if (
+                      str(server.get('name', '')).find('fleet') >= 0
+                      and str(sp.get('activeDirectoryAuth', '')).lower() == 'enabled'
+                      and str(sp.get('passwordAuth', '')).lower() == 'disabled'
+                      and str(network.get('publicNetworkAccess', '')).lower() == 'disabled'
+                  ):
+                      candidates.append(server)
+              result['fleet_postgres_candidate_count'] = len(candidates)
+              if len(candidates) == 1:
+                  result['postgres_server_name'] = candidates[0].get('name')
+
+              if not env_id:
+                  result['classification'] = 'fleet_managed_environment_missing'
+              elif len(candidates) != 1:
+                  result['classification'] = (
+                      'fleet_private_postgres_missing' if len(candidates) == 0
+                      else 'fleet_private_postgres_ambiguous'
+                  )
+              else:
+                  result['classification'] = 'inspect_environment_and_easyauth'
+
+          out = Path('evidence/fleet-c3c-preflight/preflight.json')
+          out.write_text(json.dumps(result, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print(json.dumps(result, indent=2, sort_keys=True))
+          with Path(os.environ['GITHUB_OUTPUT']).open('a', encoding='utf-8') as handle:
+              handle.write(f"classification={result['classification']}\n")
+              handle.write(f"app_name={result.get('container_app_name', '')}\n")
+              handle.write(f"environment_id={result.get('managed_environment_id', '')}\n")
+          PY
+
+      - name: Inspect exact managed environment and EasyAuth metadata
+        if: steps.inspect.outputs.classification == 'inspect_environment_and_easyauth'
+        shell: bash
+        env:
+          APP_NAME: ${{ steps.inspect.outputs.app_name }}
+          ENVIRONMENT_ID: ${{ steps.inspect.outputs.environment_id }}
+        run: |
+          set -euo pipefail
+          az containerapp env show --ids "${ENVIRONMENT_ID}" -o json > "${RUNNER_TEMP}/env.json"
+          APP_ID="$(az containerapp show --resource-group "${RESOURCE_GROUP}" --name "${APP_NAME}" --query id -o tsv)"
+          auth_status=0
+          az rest --method get --url "https://management.azure.com${APP_ID}/authConfigs/current?api-version=2026-01-01" > "${RUNNER_TEMP}/auth.json" 2>"${RUNNER_TEMP}/auth.err" || auth_status=$?
+          secret_names="$(az containerapp secret list --resource-group "${RESOURCE_GROUP}" --name "${APP_NAME}" --query '[].name' -o json)"
+          SECRET_NAMES_JSON="${secret_names}" AUTH_STATUS="${auth_status}" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path('evidence/fleet-c3c-preflight')
+          result = json.loads((root / 'preflight.json').read_text(encoding='utf-8'))
+          env = json.loads(Path(os.environ['RUNNER_TEMP'], 'env.json').read_text(encoding='utf-8'))
+          props = env.get('properties') or {}
+          result['managed_environment_name'] = env.get('name')
+          result['managed_environment_internal'] = bool((props.get('vnetConfiguration') or {}).get('internal'))
+          result['managed_environment_public_network_access'] = props.get('publicNetworkAccess')
+          names = json.loads(os.environ['SECRET_NAMES_JSON'])
+          result['easyauth_secret_setting_present'] = 'MICROSOFT_PROVIDER_AUTHENTICATION_SECRET' in names
+
+          if os.environ['AUTH_STATUS'] == '0':
+              auth = json.loads(Path(os.environ['RUNNER_TEMP'], 'auth.json').read_text(encoding='utf-8'))
+              a = (((auth.get('properties') or {}).get('identityProviders') or {}).get('azureActiveDirectory') or {})
+              registration = a.get('registration') or {}
+              validation = a.get('validation') or {}
+              groups = (((validation.get('defaultAuthorizationPolicy') or {}).get('allowedPrincipals') or {}).get('groups') or [])
+              result['easyauth_configured'] = bool(a.get('enabled'))
+              result['entra_client_id_present'] = bool(registration.get('clientId'))
+              result['operator_group_count'] = len(groups)
+              result['token_store_enabled'] = bool((((auth.get('properties') or {}).get('login') or {}).get('tokenStore') or {}).get('enabled'))
+          else:
+              result['easyauth_configured'] = False
+              result['entra_client_id_present'] = False
+              result['operator_group_count'] = 0
+              result['token_store_enabled'] = None
+
+          private_ok = (
+              result['managed_environment_internal'] is True
+              and result['managed_environment_public_network_access'] == 'Disabled'
+          )
+          auth_bootstrap_ok = (
+              result['easyauth_secret_setting_present']
+              and result['entra_client_id_present']
+              and result['operator_group_count'] > 0
+          )
+          if not private_ok:
+              result['classification'] = 'fleet_private_origin_posture_invalid'
+          elif not auth_bootstrap_ok:
+              result['classification'] = 'fleet_entra_easyauth_bootstrap_required'
+          else:
+              result['classification'] = 'fleet_c3c_compose_prerequisites_present'
+              result['ready_for_c3c_compose'] = True
+          (root / 'preflight.json').write_text(json.dumps(result, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print(json.dumps(result, indent=2, sort_keys=True))
+          PY
+
+      - name: Post sanitized preflight result to FLEET-C3 parent
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+
+          path = Path('evidence/fleet-c3c-preflight/preflight.json')
+          if path.exists():
+              result = json.loads(path.read_text(encoding='utf-8'))
+          else:
+              result = {
+                  'schema_version': 'ets.fleet.c3c.preflight.v1',
+                  'source_sha': os.environ.get('EXPECTED_SOURCE_SHA'),
+                  'classification': 'fleet_c3c_preflight_failed_unclassified',
+                  'ready_for_c3c_compose': False,
+                  'secrets_read': False,
+              }
+          body = (
+              '### FLEET-C3C live preflight\n\n'
+              f"Run: {os.environ['RUN_URL']}\n\n"
+              '```json\n'
+              + json.dumps(result, indent=2, sort_keys=True)
+              + '\n```\n\n'
+              '`fleet.lanternprotocol.net` remains unactivated; no Azure mutation was performed by this preflight.'
+          )
+          endpoint = f"https://api.github.com/repos/{os.environ['REPOSITORY']}/issues/521/comments"
+          req = Request(
+              endpoint,
+              data=json.dumps({'body': body}).encode('utf-8'),
+              headers={
+                  'Accept': 'application/vnd.github+json',
+                  'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+                  'X-GitHub-Api-Version': '2026-03-10',
+                  'Content-Type': 'application/json',
+              },
+              method='POST',
+          )
+          with urlopen(req, timeout=30.0) as response:
+              if response.status != 201:
+                  raise RuntimeError(f'issue comment returned HTTP {response.status}')
+          PY
+
+      - name: Retain sanitized preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: fleet-c3c-preflight-${{ github.run_id }}
+          path: evidence/fleet-c3c-preflight/
+          if-no-files-found: warn
+          retention-days: 90
