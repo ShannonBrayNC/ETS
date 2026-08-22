@@ -1,0 +1,51 @@
+name: Fleet C3D Exact-Source Status Probe
+
+on:
+  push:
+    branches:
+      - qualification/fleet-c3d-live-cc340e99
+    paths:
+      - .github/workflows/fleet-c3d-live-cc340e99-status.yml
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Report exact-source workflow state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SOURCE_SHA: cc340e99d8d95347557949e937e6ed2dc47d2746
+        shell: bash
+        run: |
+          set -euo pipefail
+          q0_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow fleet-c3c-q0-image.yml --event workflow_dispatch --branch main --limit 20 --json databaseId,headSha,status,conclusion,createdAt)"
+          c3d_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow fleet-c3d-live-deploy.yml --event workflow_dispatch --branch main --limit 20 --json databaseId,headSha,status,conclusion,createdAt)"
+          Q0_JSON="$q0_json" C3D_JSON="$c3d_json" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected = os.environ['EXPECTED_SOURCE_SHA']
+          def pick(raw: str):
+              rows = [r for r in json.loads(raw) if r.get('headSha') == expected]
+              rows.sort(key=lambda r: int(r['databaseId']), reverse=True)
+              return rows[0] if rows else None
+          q0 = pick(os.environ['Q0_JSON'])
+          c3d = pick(os.environ['C3D_JSON'])
+          body = [
+              '### Fleet C3D exact-source status probe',
+              '',
+              f'Source SHA: `{expected}`',
+              f'Q0: `{json.dumps(q0, sort_keys=True) if q0 else "missing"}`',
+              f'C3D: `{json.dumps(c3d, sort_keys=True) if c3d else "missing"}`',
+              '',
+              'Read-only GitHub Actions status probe; no Azure mutation performed.',
+          ]
+          Path('/tmp/status.md').write_text('\n'.join(body) + '\n', encoding='utf-8')
+          PY
+          gh issue comment 528 --repo "$GITHUB_REPOSITORY" --body-file /tmp/status.md
