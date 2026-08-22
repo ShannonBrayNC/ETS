@@ -57,7 +57,8 @@ def test_production_runtime_fails_closed_until_trusted_auth_bridge_exists() -> N
     assert "ContainerAppsEasyAuthMiddleware" in source
     assert 'auth_bridge = _required_env("ETS_FLEET_AUTH_BRIDGE")' in source
     assert 'auth_bridge != "container-apps-easyauth"' in source
-    assert "portal routes remain 401 fail-closed" in source
+    assert "Missing or malformed trusted context" in source
+    assert "401 fail-closed" in source
     assert "Fleet PostgreSQL schema is not ready" in source
     assert "evidence_verified" not in source
     assert "health_asserted" not in source
