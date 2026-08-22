@@ -18,7 +18,12 @@ from ets.fleet.models import (
     RegistrationState,
     ScopeBinding,
 )
-from ets.fleet.presence import FleetPresenceService, HeartbeatEnvelope, HeartbeatPayload, PresenceReason
+from ets.fleet.presence import (
+    FleetPresenceService,
+    HeartbeatEnvelope,
+    HeartbeatPayload,
+    PresenceReason,
+)
 from ets.fleet.presence_api import build_fleet_presence_router
 from ets.fleet.presence_ops import (
     FleetPresenceCoordinator,
@@ -313,7 +318,9 @@ def test_event_grid_ingress_requires_auth_and_supports_validation(tmp_path: Path
             coordinator=coordinator,
             expected_iothub_resource_id=HUB_ID,
             production=True,
-            event_grid_authenticator=lambda request: request.headers.get("authorization") == "Bearer ok",
+            event_grid_authenticator=lambda request: (
+                request.headers.get("authorization") == "Bearer ok"
+            ),
         )
     )
     client = TestClient(app)
