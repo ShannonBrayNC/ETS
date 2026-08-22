@@ -67,7 +67,7 @@ class DeviceEnrollmentService:
         now: datetime,
     ) -> DeviceEnrollmentRecord:
         current_time = normalize_time(now)
-        with self._lock:
+        with self._lock, self._store.transaction():
             existing = self._store.get_enrollment(record.enrollment_id)
             if existing is not None:
                 code = (
@@ -110,7 +110,7 @@ class DeviceEnrollmentService:
 
     def activate(self, enrollment_id: str, *, now: datetime) -> DeviceEnrollmentRecord:
         current_time = normalize_time(now)
-        with self._lock:
+        with self._lock, self._store.transaction():
             record = self._require_record(enrollment_id)
             self._require_pending_and_usable(record, current_time)
             activated = self._with_state(
@@ -131,7 +131,7 @@ class DeviceEnrollmentService:
         now: datetime,
     ) -> DeviceEnrollmentRecord:
         current_time = normalize_time(now)
-        with self._lock:
+        with self._lock, self._store.transaction():
             record = self._require_record(enrollment_id)
             if target not in _ALLOWED_TRANSITIONS[record.registration_state]:
                 self._raise(
@@ -157,7 +157,7 @@ class DeviceEnrollmentService:
                 EnrollmentErrorCode.ROTATION_OVERLAP_INVALID,
                 "rotation overlap exceeds policy",
             )
-        with self._lock:
+        with self._lock, self._store.transaction():
             replacement = self._require_record(replacement_enrollment_id)
             current = self._current_record(replacement.device_id)
             if current is None:
@@ -196,7 +196,7 @@ class DeviceEnrollmentService:
         now: datetime,
     ) -> DeviceEnrollmentRecord:
         current_time = normalize_time(now)
-        with self._lock:
+        with self._lock, self._store.transaction():
             rotation = self._store.get_rotation(device_id)
             if rotation is None:
                 self._raise(
@@ -221,7 +221,7 @@ class DeviceEnrollmentService:
     ) -> AuthorizationDecision:
         current_time = normalize_time(now)
         fingerprint = validate_sha256(public_key_fingerprint_sha256)
-        with self._lock:
+        with self._lock, self._store.transaction():
             current = self._current_record(device_id)
             if current is None:
                 return self._deny(device_id, AuthorizationReason.UNKNOWN_DEVICE)
