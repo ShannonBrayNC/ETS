@@ -74,7 +74,8 @@ Until that trusted bridge is installed, the dedicated C3B runtime intentionally 
 - minimum two and maximum six application replicas;
 - one user-assigned managed identity for runtime ACR pull and PostgreSQL token acquisition;
 - Azure Database for PostgreSQL Flexible Server with Microsoft Entra authentication enabled and password authentication disabled;
-- a service-selected supported PostgreSQL major version, retained as a sanitized deployment output rather than pinned in ARM; this avoids an Azure provider capability-validation inconsistency while preserving the exact resolved version for C3D/C3C evidence;
+- PostgreSQL 17 on `Standard_D2ds_v5`, pinned only after the protected workflow proves the subscription exposes that version and SKU in East US 2;
+- ZoneRedundant PostgreSQL HA, admitted only when both the region capability and target-SKU capability report support with at least two zones;
 - PostgreSQL public network access disabled;
 - a PostgreSQL Private Endpoint using group `postgresqlServer`;
 - `privatelink.postgres.database.azure.com` private DNS linked to the Fleet VNet;

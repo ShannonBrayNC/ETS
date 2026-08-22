@@ -63,6 +63,12 @@ param fleetPostgresDatabase string = 'fleet'
 @description('General Purpose PostgreSQL SKU.')
 param postgresSkuName string = 'Standard_D2ds_v5'
 
+@description('PostgreSQL major version qualified by the subscription and region capability gate.')
+@allowed([
+  '17'
+])
+param postgresServerVersion string = '17'
+
 @description('PostgreSQL high-availability mode. ZoneRedundant is preferred where the region supports it.')
 @allowed([
   'Disabled'
@@ -202,6 +208,7 @@ resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2025-08-01' = {
     storage: {
       storageSizeGB: 64
     }
+    version: postgresServerVersion
   }
 }
 
@@ -419,7 +426,10 @@ output fleetRuntimeIdentityClientId string = runtimeIdentity.properties.clientId
 output fleetRuntimeIdentityPrincipalId string = runtimeIdentity.properties.principalId
 output postgresServerId string = postgres.id
 output postgresServerName string = postgres.name
-output postgresServerVersion string = postgres.properties.version
+output resolvedPostgresServerVersion string = postgres.properties.version
+output resolvedPostgresSkuName string = postgresSkuName
+output resolvedPostgresHighAvailabilityMode string = postgresHighAvailabilityMode
+output deploymentLocation string = location
 output postgresPrivateFqdn string = postgres.properties.fullyQualifiedDomainName
 output publicHostnameActivated bool = false
 output corePublicEndpointCreated bool = false
