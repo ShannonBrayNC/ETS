@@ -1,0 +1,36 @@
+name: Fleet C3D Exact-Source Q0 Dispatch ced92d93
+
+on:
+  push:
+    branches:
+      - qualification/fleet-c3d-live-ced92d93
+    paths:
+      - .github/workflows/fleet-c3d-live-ced92d93-q0.yml
+
+permissions:
+  contents: read
+  actions: write
+  issues: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dispatch Fleet Q0 from exact merged main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SOURCE_SHA: ced92d9383c2fa1c0cbf8e61004c958e5e8fa698
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          test "$actual" = "$EXPECTED_SOURCE_SHA"
+          gh workflow run fleet-c3c-q0-image.yml --repo "$GITHUB_REPOSITORY" --ref main
+          {
+            echo '### Fleet C3D post-#531 Q0 dispatched'
+            echo
+            echo "Source SHA: \`$EXPECTED_SOURCE_SHA\`"
+            echo
+            echo 'A fresh Fleet Q0 was dispatched from exact merged `main`. No C3D deployment or public-hostname activation is performed by this launcher.'
+          } > /tmp/comment.md
+          gh issue comment 528 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
