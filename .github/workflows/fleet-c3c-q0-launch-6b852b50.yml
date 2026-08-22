@@ -1,0 +1,238 @@
+name: Fleet C3C Q0 Exact-Source Launch 6b852b50
+
+on:
+  push:
+    branches:
+      - qualification/fleet-c3c-q0-6b852b50
+    paths:
+      - .github/workflows/fleet-c3c-q0-launch-6b852b50.yml
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: fleet-c3c-q0-launch-6b852b50
+  cancel-in-progress: false
+
+jobs:
+  launch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - name: Require exact approved main source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_SOURCE_SHA: 6b852b50da511df659f27c0d0f81c41c9f8d25c8
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from urllib.request import Request, urlopen
+
+          repo = os.environ['REPOSITORY']
+          expected = os.environ['EXPECTED_SOURCE_SHA']
+          req = Request(
+              f'https://api.github.com/repos/{repo}/branches/main',
+              headers={
+                  'Accept': 'application/vnd.github+json',
+                  'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+                  'X-GitHub-Api-Version': '2026-03-10',
+              },
+          )
+          with urlopen(req, timeout=30.0) as response:
+              branch = json.loads(response.read().decode('utf-8'))
+          actual = branch['commit']['sha']
+          if actual != expected:
+              raise SystemExit(f'main moved: expected {expected}, found {actual}')
+          print(f'Exact approved main source confirmed: {actual}')
+          PY
+
+      - name: Dispatch Fleet C3C Q0 immutable image publication
+        id: dispatch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+
+          repo = os.environ['REPOSITORY']
+          endpoint = f'https://api.github.com/repos/{repo}/actions/workflows/fleet-c3c-q0-image.yml/dispatches'
+          payload = {
+              'ref': 'main',
+              'inputs': {
+                  'container_registry_name': 'etsq1a352eb89',
+                  'container_registry_resource_group': 'rg-ets-q1-eastus',
+                  'image_repository': 'ets/fleet/control-plane',
+              },
+              'return_run_details': True,
+          }
+          req = Request(
+              endpoint,
+              data=json.dumps(payload, separators=(',', ':')).encode('utf-8'),
+              headers={
+                  'Accept': 'application/vnd.github+json',
+                  'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+                  'X-GitHub-Api-Version': '2026-03-10',
+                  'Content-Type': 'application/json',
+              },
+              method='POST',
+          )
+          with urlopen(req, timeout=30.0) as response:
+              if response.status != 200:
+                  raise RuntimeError(f'dispatch returned HTTP {response.status}')
+              result = json.loads(response.read().decode('utf-8'))
+          run_id = result.get('workflow_run_id')
+          run_url = result.get('run_url')
+          if not isinstance(run_id, int) or run_id <= 0:
+              raise RuntimeError('dispatch response omitted workflow_run_id')
+          if not isinstance(run_url, str):
+              raise RuntimeError('dispatch response omitted run_url')
+          with Path(os.environ['GITHUB_OUTPUT']).open('a', encoding='utf-8') as handle:
+              handle.write(f'run_id={run_id}\n')
+              handle.write(f'run_url={run_url}\n')
+          print(f'Dispatched Fleet Q0 run {run_id}')
+          PY
+
+      - name: Require exact-source Q0 success
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+          RUN_URL: ${{ steps.dispatch.outputs.run_url }}
+          EXPECTED_SOURCE_SHA: 6b852b50da511df659f27c0d0f81c41c9f8d25c8
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import time
+          from urllib.request import Request, urlopen
+
+          headers = {
+              'Accept': 'application/vnd.github+json',
+              'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+              'X-GitHub-Api-Version': '2026-03-10',
+          }
+          deadline = time.monotonic() + 64 * 60
+          while time.monotonic() < deadline:
+              with urlopen(Request(os.environ['RUN_URL'], headers=headers), timeout=30.0) as response:
+                  run = json.loads(response.read().decode('utf-8'))
+              if run.get('id') != int(os.environ['RUN_ID']):
+                  raise RuntimeError('run identity mismatch')
+              if run.get('event') != 'workflow_dispatch':
+                  raise RuntimeError('Q0 run was not workflow_dispatch')
+              if run.get('head_branch') != 'main':
+                  raise RuntimeError('Q0 run is not pinned to main')
+              if run.get('head_sha') != os.environ['EXPECTED_SOURCE_SHA']:
+                  raise RuntimeError('Q0 run source SHA mismatch')
+              if run.get('status') == 'completed':
+                  if run.get('conclusion') != 'success':
+                      raise RuntimeError(f"Q0 concluded {run.get('conclusion')!r}")
+                  print(f"Fleet Q0 run {run['id']} succeeded")
+                  break
+              time.sleep(10)
+          else:
+              raise RuntimeError('Fleet Q0 did not complete within bounded wait')
+          PY
+
+      - name: Validate retained Fleet Q0 manifest and handoff
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+          EXPECTED_SOURCE_SHA: 6b852b50da511df659f27c0d0f81c41c9f8d25c8
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import io
+          import json
+          import os
+          import re
+          import time
+          import zipfile
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+
+          repo = os.environ['REPOSITORY']
+          run_id = int(os.environ['RUN_ID'])
+          headers = {
+              'Accept': 'application/vnd.github+json',
+              'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+              'X-GitHub-Api-Version': '2026-03-10',
+          }
+          listing_url = f'https://api.github.com/repos/{repo}/actions/runs/{run_id}/artifacts?per_page=100'
+          artifact = None
+          for _ in range(12):
+              with urlopen(Request(listing_url, headers=headers), timeout=30.0) as response:
+                  listing = json.loads(response.read().decode('utf-8'))
+              matches = [a for a in listing.get('artifacts', []) if a.get('name') == f'fleet-c3c-q0-image-{run_id}' and a.get('expired') is False]
+              if len(matches) == 1:
+                  artifact = matches[0]
+                  break
+              if len(matches) > 1:
+                  raise RuntimeError('multiple Fleet Q0 artifacts matched')
+              time.sleep(5)
+          if artifact is None:
+              raise RuntimeError('Fleet Q0 artifact unavailable')
+          with urlopen(Request(artifact['archive_download_url'], headers=headers), timeout=60.0) as response:
+              payload = response.read(128 * 1024 * 1024 + 1)
+          if len(payload) > 128 * 1024 * 1024:
+              raise RuntimeError('Fleet Q0 artifact exceeds bounded size')
+          with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+              manifest = json.loads(archive.read('manifest.json').decode('utf-8'))
+          if manifest.get('schema_version') != 'ets.fleet.c3c.q0_image.v1':
+              raise RuntimeError('unexpected Fleet Q0 schema')
+          if manifest.get('source_sha') != os.environ['EXPECTED_SOURCE_SHA']:
+              raise RuntimeError('Fleet Q0 manifest source mismatch')
+          if str(manifest.get('workflow_run_id')) != str(run_id):
+              raise RuntimeError('Fleet Q0 manifest run mismatch')
+          if manifest.get('vulnerability_gate') != 'PASS':
+              raise RuntimeError('Fleet Q0 vulnerability gate failed')
+          if manifest.get('registry_credentials_retained') is not False:
+              raise RuntimeError('Fleet Q0 did not prove credential non-retention')
+          if manifest.get('customer_identifiers_retained') is not False:
+              raise RuntimeError('Fleet Q0 did not prove customer-id non-retention')
+          digest = manifest.get('image_digest')
+          subject = 'etsq1a352eb89.azurecr.io/ets/fleet/control-plane'
+          immutable = manifest.get('immutable_image')
+          if not isinstance(digest, str) or re.fullmatch(r'sha256:[0-9a-f]{64}', digest) is None:
+              raise RuntimeError('Fleet Q0 digest is not canonical')
+          if manifest.get('subject_name') != subject or immutable != f'{subject}@{digest}':
+              raise RuntimeError('Fleet Q0 immutable subject mismatch')
+          out = Path('evidence/fleet-c3c-q0-launch')
+          out.mkdir(parents=True, exist_ok=True)
+          handoff = {
+              'schema_version': 'ets.fleet.c3c.q0_handoff.v1',
+              'source_sha': os.environ['EXPECTED_SOURCE_SHA'],
+              'q0_workflow_run_id': run_id,
+              'q0_artifact_id': artifact['id'],
+              'immutable_image': immutable,
+              'image_digest': digest,
+              'vulnerability_gate': 'PASS',
+              'registry_credentials_retained': False,
+              'customer_identifiers_retained': False,
+          }
+          (out / 'handoff.json').write_text(json.dumps(handoff, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print(json.dumps(handoff, indent=2, sort_keys=True))
+          PY
+
+      - name: Retain sanitized Q0 launch handoff
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: fleet-c3c-q0-launch-${{ github.run_id }}
+          path: evidence/fleet-c3c-q0-launch/
+          if-no-files-found: warn
+          retention-days: 90
