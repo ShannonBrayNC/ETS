@@ -1,6 +1,6 @@
 name: Fleet C3D Exact-Source Status Probe
 
-# Probe revision: 2
+# Probe revision: 3
 on:
   push:
     branches:
@@ -26,22 +26,29 @@ jobs:
           set -euo pipefail
           q0_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow fleet-c3c-q0-image.yml --event workflow_dispatch --branch main --limit 20 --json databaseId,headSha,status,conclusion,createdAt)"
           c3d_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow fleet-c3d-live-deploy.yml --event workflow_dispatch --branch main --limit 20 --json databaseId,headSha,status,conclusion,createdAt)"
-          Q0_JSON="$q0_json" C3D_JSON="$c3d_json" python - <<'PY'
+          launcher_json="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow fleet-c3d-live-cc340e99-launch.yml --event push --branch qualification/fleet-c3d-live-cc340e99 --limit 10 --json databaseId,headSha,status,conclusion,createdAt)"
+          Q0_JSON="$q0_json" C3D_JSON="$c3d_json" LAUNCHER_JSON="$launcher_json" python - <<'PY'
           import json
           import os
           from pathlib import Path
 
           expected = os.environ['EXPECTED_SOURCE_SHA']
-          def pick(raw: str):
+          def pick_exact(raw: str):
               rows = [r for r in json.loads(raw) if r.get('headSha') == expected]
               rows.sort(key=lambda r: int(r['databaseId']), reverse=True)
               return rows[0] if rows else None
-          q0 = pick(os.environ['Q0_JSON'])
-          c3d = pick(os.environ['C3D_JSON'])
+          def pick_latest(raw: str):
+              rows = json.loads(raw)
+              rows.sort(key=lambda r: int(r['databaseId']), reverse=True)
+              return rows[0] if rows else None
+          q0 = pick_exact(os.environ['Q0_JSON'])
+          c3d = pick_exact(os.environ['C3D_JSON'])
+          launcher = pick_latest(os.environ['LAUNCHER_JSON'])
           body = [
               '### Fleet C3D exact-source status probe',
               '',
               f'Source SHA: `{expected}`',
+              f'Launcher: `{json.dumps(launcher, sort_keys=True) if launcher else "missing"}`',
               f'Q0: `{json.dumps(q0, sort_keys=True) if q0 else "missing"}`',
               f'C3D: `{json.dumps(c3d, sort_keys=True) if c3d else "missing"}`',
               '',
