@@ -54,7 +54,9 @@ def test_entra_adapter_never_uses_browser_headers_as_authority() -> None:
 
 def test_production_runtime_fails_closed_until_trusted_auth_bridge_exists() -> None:
     source = RUNTIME.read_text(encoding="utf-8")
-    assert "TrustedEntraIdentityContext" in source
+    assert "ContainerAppsEasyAuthMiddleware" in source
+    assert 'auth_bridge = _required_env("ETS_FLEET_AUTH_BRIDGE")' in source
+    assert 'auth_bridge != "container-apps-easyauth"' in source
     assert "portal routes remain 401 fail-closed" in source
     assert "Fleet PostgreSQL schema is not ready" in source
     assert "evidence_verified" not in source
