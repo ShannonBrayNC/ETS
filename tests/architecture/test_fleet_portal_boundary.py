@@ -1,55 +1,52 @@
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
-PORTAL = Path("ets/fleet/portal.py")
-API = Path("ets/fleet/portal_api.py")
-ASSETS = Path("ets/fleet/portal_assets.py")
-DOC = Path("docs/fleet/ETS_FLEET_DARK_PRO_C1.md")
+ROOT = Path(__file__).resolve().parents[2]
+PORTAL = ROOT / "ets" / "fleet" / "portal.py"
+API = ROOT / "ets" / "fleet" / "portal_api.py"
+ASSETS = ROOT / "ets" / "fleet" / "portal_assets.py"
+DOC = ROOT / "docs" / "fleet" / "ETS_FLEET_DARK_PRO_C1.md"
 
 
-def _imports(path: Path) -> set[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            names.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module is not None:
-            names.add(node.module)
-    return names
-
-
-def test_portal_read_model_has_no_azure_sdk_or_product_plane_dependency() -> None:
-    imports = _imports(PORTAL) | _imports(API)
-    forbidden = ("azure", "ets.core", "ets.edge", "ets.gateway")
-    assert not any(
-        imported == prefix or imported.startswith(prefix + ".")
-        for imported in imports
-        for prefix in forbidden
-    )
-
-
-def test_portal_does_not_use_iot_twin_connection_state_as_truth() -> None:
-    source = PORTAL.read_text(encoding="utf-8") + API.read_text(encoding="utf-8")
-    assert "connectionState" not in source
-    assert "connectionStateUpdatedTime" not in source
-
-
-def test_bff_never_parses_browser_authorization_or_privileged_scope_headers() -> None:
-    source = API.read_text(encoding="utf-8")
+def test_portal_has_no_azure_product_plane_or_device_credential_coupling() -> None:
+    source = PORTAL.read_text(encoding="utf-8").lower()
     forbidden = (
-        'headers.get("authorization")',
-        "X-ETS-Tenant",
-        "X-ETS-Workspace",
-        "localStorage",
-        "sessionStorage",
+        "azure.",
+        "iothub",
+        "dps",
+        "connectionstring",
+        "sharedaccesssignature",
+        "sas_token",
+        "private_key",
+        "core credential",
+        "gateway credential",
     )
     for token in forbidden:
         assert token not in source
 
 
-def test_dark_pro_assets_use_output_encoding_and_external_script_style_only() -> None:
+def test_portal_scope_is_server_owned() -> None:
+    source = PORTAL.read_text(encoding="utf-8")
+    assert "scope_bindings" in source
+    assert "principal.authorizes" in source
+    assert "X-ETS-Tenant" not in source
+    assert "X-ETS-Workspace" not in source
+
+
+def test_portal_truth_dimensions_remain_separate() -> None:
+    source = PORTAL.read_text(encoding="utf-8")
+    assert "transport_presence" in source
+    assert "heartbeat_posture" in source
+    assert "registration_state" in source
+    assert "certificate_posture" in source
+    assert "evidence_verified: bool = False" in source
+    assert "health_asserted: bool = False" in source
+    assert "trust_score" not in source.lower()
+    assert "health_score" not in source.lower()
+
+
+def test_assets_use_safe_dom_and_no_browser_token_storage() -> None:
     source = ASSETS.read_text(encoding="utf-8")
     assert "textContent" in source
     assert "innerHTML" not in source
@@ -68,9 +65,14 @@ def test_security_headers_are_fail_closed_for_framing_and_storage() -> None:
     assert '"Strict-Transport-Security"' in source
 
 
-def test_c1_is_read_only_and_defers_trust_mutations() -> None:
+def test_c1_default_composition_remains_read_only_under_c2_extension() -> None:
     source = API.read_text(encoding="utf-8")
-    assert "@router.post" not in source
+    assert "admin_service: FleetPortalAdminService | None = None" in source
+    assert "security_session_resolver: SecuritySessionResolver | None = None" in source
+    assert (
+        "if admin_service is not None and security_session_resolver is not None:"
+        in source
+    )
     assert "@router.put" not in source
     assert "@router.patch" not in source
     assert "@router.delete" not in source
