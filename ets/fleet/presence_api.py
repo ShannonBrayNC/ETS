@@ -51,7 +51,10 @@ def build_fleet_presence_router(
         body = await _bounded_body(request, MAX_EVENT_GRID_BODY_BYTES, "Event Grid")
         payload = _load_json(body, "Event Grid payload")
         if not isinstance(payload, list) or not payload:
-            raise HTTPException(status_code=422, detail="Event Grid payload must be a non-empty array")
+            raise HTTPException(
+                status_code=422,
+                detail="Event Grid payload must be a non-empty array",
+            )
         if len(payload) > MAX_EVENT_GRID_EVENTS:
             raise HTTPException(status_code=413, detail="Event Grid batch exceeds event limit")
         if not all(isinstance(item, dict) for item in payload):
@@ -86,7 +89,10 @@ def build_fleet_presence_router(
         try:
             envelope = HeartbeatEnvelope.model_validate(payload)
         except ValidationError as exc:
-            raise HTTPException(status_code=422, detail="heartbeat envelope failed validation") from exc
+            raise HTTPException(
+                status_code=422,
+                detail="heartbeat envelope failed validation",
+            ) from exc
         decision = coordinator.ingest_heartbeat(
             envelope,
             received_at_utc=datetime.now(UTC),
