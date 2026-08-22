@@ -17,11 +17,11 @@ import binascii
 import hashlib
 import json
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
+from starlette.types import ASGIApp
 
 from ets.fleet.entra_session import (
     ProductionFleetAuthConfig,
@@ -62,9 +62,16 @@ def trusted_context_from_container_apps_principal(
         raise ContainerAppsEasyAuthError("EasyAuth principal has no claims")
     claims = _normalize_claims(raw_claims)
 
-    issuer = _one_claim(claims, "iss")
+    issuer = _one_claim(claims, "iss").rstrip("/")
     audience = _one_claim(claims, "aud")
     tenant_id = _one_claim(claims, "tid", _TENANT_CLAIM)
+    if issuer != config.issuer:
+        raise ContainerAppsEasyAuthError("EasyAuth issuer does not match Fleet configuration")
+    if audience != config.audience:
+        raise ContainerAppsEasyAuthError("EasyAuth audience does not match Fleet configuration")
+    if tenant_id != config.tenant_id:
+        raise ContainerAppsEasyAuthError("EasyAuth tenant does not match Fleet configuration")
+
     oid = _optional_one_claim(claims, "oid", _OID_CLAIM)
     sub = _optional_one_claim(claims, "sub")
     if oid is None and sub is None:
@@ -119,7 +126,7 @@ class ContainerAppsEasyAuthMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app: Any,
+        app: ASGIApp,
         *,
         config: ProductionFleetAuthConfig,
         step_up_auth_context_id: str,
