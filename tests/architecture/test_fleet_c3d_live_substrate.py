@@ -58,7 +58,15 @@ def test_c3d_readiness_is_private_and_does_not_claim_trust_or_health() -> None:
 def test_live_workflow_requires_exact_q0_and_never_activates_public_hostname() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     assert "expected_source_sha" in source
+    assert "q0_workflow_run_id" in source
     assert "fleet_image" in source
+    assert "actions: read" in source
+    assert "gh run view" in source
+    assert "gh run download" in source
+    assert "fleet-c3c-q0-image-${Q0_RUN_ID}" in source
+    assert "manifest.get('source_sha') == os.environ['EXPECTED_SOURCE_SHA']" in source
+    assert "manifest.get('immutable_image') == os.environ['FLEET_IMAGE']" in source
+    assert "manifest.get('vulnerability_gate') == 'PASS'" in source
     assert "ets/fleet/control-plane" in source
     assert "@sha256:" in source
     assert "azure/login@v3.0.0" in source
