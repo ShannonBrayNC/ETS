@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import AbstractContextManager, contextmanager
 from threading import RLock
 from typing import Protocol
 
@@ -9,6 +11,15 @@ from ets.fleet.models import DeviceEnrollmentRecord, RotationWindow
 
 
 class EnrollmentStore(Protocol):
+    """Provider-neutral authoritative Fleet enrollment persistence boundary.
+
+    ``transaction`` is intentionally part of the contract so a production shared
+    store can bind one complete ``DeviceEnrollmentService`` lifecycle operation to
+    a database transaction. Local profiles retain the same semantics through the
+    in-memory re-entrant lock.
+    """
+
+    def transaction(self) -> AbstractContextManager[None]: ...
     def get_enrollment(self, enrollment_id: str) -> DeviceEnrollmentRecord | None: ...
     def put_enrollment(self, record: DeviceEnrollmentRecord) -> None: ...
     def get_current_enrollment_id(self, device_id: str) -> str | None: ...
@@ -29,6 +40,18 @@ class InMemoryEnrollmentStore:
         self._current: dict[str, str] = {}
         self._identity_owner: dict[str, str] = {}
         self._rotations: dict[str, RotationWindow] = {}
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """Serialize one complete local lifecycle operation.
+
+        The lock is re-entrant because credential rotation invokes activation as a
+        nested lifecycle operation. PostgreSQL C3B supplies the same nesting
+        behavior with one shared SERIALIZABLE transaction per outer operation.
+        """
+
+        with self._lock:
+            yield
 
     def get_enrollment(self, enrollment_id: str) -> DeviceEnrollmentRecord | None:
         with self._lock:
