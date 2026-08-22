@@ -63,7 +63,7 @@ jobs:
           dps_json="$(az iot dps show \
             --name "${DPS_NAME}" \
             --resource-group "${DPS_RESOURCE_GROUP}" \
-            --query '{id:id,name:name,resourceGroup:resourceGroup}' \
+            --query '{id:id,name:name}' \
             -o json)"
           printf '%s\n' "${dps_json}" > "${RUNNER_TEMP}/dps.json"
           python - <<'PY'
@@ -73,8 +73,9 @@ jobs:
 
           payload = json.loads(Path(os.environ["RUNNER_TEMP"], "dps.json").read_text())
           assert payload["name"] == os.environ["DPS_NAME"]
-          assert payload["resourceGroup"] == os.environ["DPS_RESOURCE_GROUP"]
-          assert payload["id"].split("/")[2].lower() == os.environ["AZURE_SUBSCRIPTION_ID"].lower()
+          parts = payload["id"].split("/")
+          assert parts[2].lower() == os.environ["AZURE_SUBSCRIPTION_ID"].lower()
+          assert parts[4].lower() == os.environ["DPS_RESOURCE_GROUP"].lower()
           PY
         env:
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
