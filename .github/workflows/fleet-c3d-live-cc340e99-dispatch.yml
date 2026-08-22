@@ -20,16 +20,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SOURCE_SHA: cc340e99d8d95347557949e937e6ed2dc47d2746
+          Q0_WORKFLOW_RUN_ID: '32560231754'
           IMMUTABLE_IMAGE: etsq1a352eb89.azurecr.io/ets/fleet/control-plane@sha256:9f449e81b6c87becadb7433d735b52f2500ce799913c448605b28eea15c8f62b
         shell: bash
         run: |
           set -euo pipefail
           test "$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)" = "$EXPECTED_SOURCE_SHA"
+          q0="$(gh run view "$Q0_WORKFLOW_RUN_ID" --repo "$GITHUB_REPOSITORY" --json headSha,status,conclusion --jq '[.headSha,.status,.conclusion] | @tsv')"
+          test "$q0" = "$EXPECTED_SOURCE_SHA	completed	success"
           cat > /tmp/dispatch.json <<EOF
           {
             "ref": "main",
             "inputs": {
               "expected_source_sha": "$EXPECTED_SOURCE_SHA",
+              "q0_workflow_run_id": "$Q0_WORKFLOW_RUN_ID",
               "fleet_image": "$IMMUTABLE_IMAGE",
               "resource_group": "rg-ets-live-eastus",
               "container_registry_name": "etsq1a352eb89",
@@ -51,6 +55,7 @@ jobs:
           ### Fleet C3D API dispatch accepted
 
           Source SHA: \`$EXPECTED_SOURCE_SHA\`
+          Q0 run: \`$Q0_WORKFLOW_RUN_ID\`
           Immutable image: \`$IMMUTABLE_IMAGE\`
           GitHub accepted the protected C3D workflow dispatch. The custom Fleet hostname remains unactivated.
           EOF
