@@ -203,14 +203,18 @@ class ProductionFleetSessionAdapter:
         if context.authenticated_at_utc < standing.not_before_utc:
             raise FleetProductionAuthenticationError("Fleet session predates current authorization")
         if set(roles) != set(standing.roles):
-            raise FleetProductionAuthenticationError("Fleet app roles changed after session issuance")
+            raise FleetProductionAuthenticationError(
+                "Fleet app roles changed after session issuance"
+            )
 
         scopes = self._scope_resolver.resolve_scopes(
             subject=context.stable_subject,
             entra_tenant_id=context.tenant_id,
         )
         if not scopes:
-            raise FleetProductionAuthenticationError("Fleet principal has no server-owned ETS scope")
+            raise FleetProductionAuthenticationError(
+                "Fleet principal has no server-owned ETS scope"
+            )
 
         principal = principal_from_entra_claims(
             {
