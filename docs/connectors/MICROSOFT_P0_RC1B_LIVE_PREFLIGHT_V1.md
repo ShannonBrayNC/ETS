@@ -103,6 +103,11 @@ only non-destructive canaries.
 On success the workflow uploads one sanitized JSON handoff and comments on #540 with the exact
 source SHA, immutable image digest, and boolean outcomes. On failure it retains a fail-closed
 artifact that sets `preflight_passed=false`, `rc1b_live_qualified=false`, and
-`soak_clock_started=false` without copying raw job logs into public evidence.
+`soak_clock_started=false` without copying raw job logs into public evidence. An in-container
+exception hook emits only an allow-listed `failure_code`; the workflow retrieves that marker even
+when the Container Apps execution status is `Failed`, validates its exact public-safe shape, and
+deletes the private raw log before uploading evidence. If no valid marker is available, the
+workflow retains only `bounded_failure_marker_unavailable`. Both paths use the same sanitized
+`ets.live_microsoft.rc1b_preflight_failure.v2` evidence shape.
 
 No live preflight is performed merely by merging these assets.

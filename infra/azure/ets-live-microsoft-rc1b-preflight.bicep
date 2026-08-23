@@ -49,18 +49,41 @@ import base64
 import json
 import os
 import sqlite3
+import sys
 import time
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
-from azure.identity import ManagedIdentityCredential
-
 GRAPH_ROOT = "https://graph.microsoft.com"
 GRAPH_SCOPE = GRAPH_ROOT + "/.default"
 MAXIMUM_RESPONSE_BYTES = 2 * 1024 * 1024
 RESULT_MARKER = "ETS_M365_RC1B_PREFLIGHT_B64="
+FAILURE_MARKER = "ETS_M365_RC1B_PREFLIGHT_FAILURE_B64="
+FAILURE_CODE = "probe_initialization_failed"
+
+
+def emit_sanitized_failure(exception_type, exception, traceback):
+    payload = {
+        "schema_version": "ets.live_microsoft.rc1b_preflight_runtime_failure.v1",
+        "failure_code": FAILURE_CODE,
+        "raw_directory_payload_retained": False,
+        "customer_identifiers_retained": False,
+        "reusable_credential_retained": False,
+        "public_evidence_safe": True,
+        "rc1b_live_qualified": False,
+        "soak_clock_started": False,
+    }
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    print(FAILURE_MARKER + base64.urlsafe_b64encode(raw).decode("ascii"))
+    sys.__excepthook__(exception_type, exception, traceback)
+
+
+sys.excepthook = emit_sanitized_failure
+
+from azure.identity import ManagedIdentityCredential
+
 STATE_DIR = Path("/mnt/gateway-state")
 BASE_INSTANCE_ID = os.environ["ETS_RC1B_INSTANCE_ID"]
 DIRECTORY_CLIENT_ID = os.environ["ETS_RC1B_DIRECTORY_CLIENT_ID"]
@@ -201,6 +224,7 @@ def runtime_is_stable(snapshot):
     )
 
 
+FAILURE_CODE = "directory_identity_token_acquisition_failed"
 credential = ManagedIdentityCredential(client_id=DIRECTORY_CLIENT_ID)
 try:
     access_token = credential.get_token(GRAPH_SCOPE).token
@@ -209,17 +233,22 @@ finally:
 if not isinstance(access_token, str) or not access_token:
     raise RuntimeError("directory managed identity returned an empty token")
 
+FAILURE_CODE = "users_delta_request_failed"
 users_status, users_payload = request_json(
     GRAPH_ROOT + "/v1.0/users/delta?$select=id&$top=1",
     access_token,
 )
+FAILURE_CODE = "groups_delta_request_failed"
 groups_status, groups_payload = request_json(
     GRAPH_ROOT + "/v1.0/groups/delta?$select=id&$top=1",
     access_token,
 )
+FAILURE_CODE = "users_delta_validation_failed"
 validate_delta_page("users", users_status, users_payload)
+FAILURE_CODE = "groups_delta_validation_failed"
 validate_delta_page("groups", groups_status, groups_payload)
 
+FAILURE_CODE = "directory_sharepoint_negative_control_request_failed"
 drive_status, _ = request_json(
     GRAPH_ROOT
     + "/v1.0/drives/"
@@ -227,9 +256,11 @@ drive_status, _ = request_json(
     + "/root?$select=id",
     access_token,
 )
+FAILURE_CODE = "directory_sharepoint_negative_control_failed"
 if drive_status != 403:
     raise RuntimeError("directory identity was not denied access to the SharePoint drive")
 
+FAILURE_CODE = "directory_runtime_state_unstable"
 runtime = None
 for _ in range(20):
     runtime = read_runtime_rows()
@@ -239,6 +270,7 @@ for _ in range(20):
 if runtime is None or not runtime_is_stable(runtime):
     raise RuntimeError("live Entra connector runtimes did not reach stable delta state")
 
+FAILURE_CODE = "directory_event_state_incomplete"
 event_state = {
     "users": {"observed": False, "removed": False},
     "groups": {"observed": False, "removed": False},
@@ -274,6 +306,7 @@ with connect_ro("gateway-events.db") as connection:
 if not event_state["users"]["observed"] or not event_state["groups"]["observed"]:
     raise RuntimeError("live Entra connectors have not committed both collection families")
 
+FAILURE_CODE = "directory_core_sync_incomplete"
 queue_state = {
     "users": {"synchronized": False, "clean": True},
     "groups": {"synchronized": False, "clean": True},
@@ -297,6 +330,7 @@ with connect_ro("gateway-sync.db") as connection:
 if not all(item["synchronized"] and item["clean"] for item in queue_state.values()):
     raise RuntimeError("live Entra Core synchronization is incomplete or unhealthy")
 
+FAILURE_CODE = "preflight_result_emission_failed"
 result = {
     "schema_version": "ets.live_microsoft.rc1b_preflight.v1",
     "directory_identity_token_acquired": True,
