@@ -94,7 +94,7 @@ def test_p0_pre_soak_gate_freezes_the_bounded_connector_family() -> None:
         "Entra users and groups delta",
         "SharePoint and OneDrive metadata/delta",
         "Purview Management Activity audit",
-        "Graph subscription validation",
+        "verified absence of Graph drive-subscription configuration",
         "Gateway durable-state probe",
     ):
         assert required_slice in PRE_SOAK_GATE
@@ -103,6 +103,8 @@ def test_p0_pre_soak_gate_freezes_the_bounded_connector_family() -> None:
     assert "An invalidated attempt is never resumed or counted" in PRE_SOAK_GATE
     assert "Public hostname activation is outside this gate" in PRE_SOAK_GATE
     for deferred_workload in (
+        "Graph drive subscriptions",
+        "Entra-RBAC Event Hubs consumer",
         "Teams message content",
         "Exchange mailbox content",
         "Power Platform runtime",

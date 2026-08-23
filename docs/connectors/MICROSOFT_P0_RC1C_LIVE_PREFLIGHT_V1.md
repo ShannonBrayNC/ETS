@@ -7,8 +7,8 @@ Live qualification: #539
 
 This gate proves the dedicated Purview managed identity, Office 365 Management audience,
 exact `ActivityFeed.Read` role, and bounded `Audit.General` polling composition before any
-subscription mutation. It also proves that the unresolved Microsoft Graph callback boundary has
-not been activated accidentally.
+subscription mutation. It also proves that the Microsoft Graph drive-subscription boundary deferred
+by ADR-009 has not been activated accidentally.
 
 The preflight is manual, protected by the `ets-azure-q1` environment, pinned to one exact
 `main` source SHA and one already-deployed private-ACR digest, and implemented as an ephemeral
@@ -28,15 +28,11 @@ lifecycle. This slice does not add `Files.Read.All`, `Files.ReadWrite.All`, `Sit
 RBAC and no public webhook, but that delivery option does not reduce the drive subscription
 permission and requires a separately qualified consumer boundary.
 
-A separate governed decision must either:
-
-1. approve and qualify a dedicated broader Graph subscription identity plus a separate delivery
-   boundary, preferring Entra-RBAC Event Hubs over a protected public callback; or
-2. defer the Graph subscription slice and retain polling/delta as the bounded RC1 path.
-
-ADR-009 proposes the second option for P0, with Event Hubs as the preferred future delivery
-candidate. It remains proposed until the project owner and independent reviewer approve it and the
-governed issue exit criteria are updated:
+ADR-009 approved the second option for P0: retain polling/delta, qualify Purview independently, and
+defer the Graph subscription slice. Entra-RBAC Event Hubs is the preferred future delivery candidate,
+but it requires a new post-P0 permission review and separately qualified private consumer boundary.
+The project owner and LanternProtocol approved #552, and the #537/#539/#541 issue contracts were
+reconciled after merge:
 
 - [`ADR-009-microsoft-graph-drive-subscription-p0.md`](../adr/ADR-009-microsoft-graph-drive-subscription-p0.md)
 
@@ -105,7 +101,12 @@ booleans/counters, and the Purview subscription status enum. It fixes:
 
 - `graph_callback_ingress_external=false`;
 - `graph_lifecycle_configuration_present=false`;
-- `graph_subscription_permission_decision_pending=true`;
+- `graph_subscription_scope_decision=deferred_from_p0`;
+- `graph_subscription_scope_decision_record=ADR-009`;
+- `graph_subscription_deferred_from_p0=true`;
+- `graph_future_delivery_profile=azure_event_hubs_entra_rbac`;
+- `graph_permission_mutation_performed=false`;
+- `graph_subscription_operation_performed=false`;
 - `rc1c_live_qualified=false`; and
 - `soak_clock_started=false`.
 

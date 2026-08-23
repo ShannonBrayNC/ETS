@@ -1,7 +1,8 @@
 # ADR-009: Defer Microsoft Graph drive subscriptions from the P0 release candidate
 
-Status: Proposed for independent approval
+Status: Accepted
 Date: 2026-08-23
+Accepted through: #552 (`3e40e73b807d93f67d707cac567e154b8f37d60e`)
 Parent: #537
 Related: #539, #540, #541
 
@@ -33,7 +34,7 @@ Primary references:
 - [Azure Event Hubs delivery](https://learn.microsoft.com/en-us/graph/change-notifications-delivery-event-hubs)
 - [Webhook delivery](https://learn.microsoft.com/en-us/graph/change-notifications-delivery-webhooks)
 
-## Proposed decision
+## Decision
 
 For the bounded P0 release candidate:
 
@@ -49,9 +50,11 @@ For the bounded P0 release candidate:
 7. Evaluate Entra-RBAC Event Hubs as the preferred future delivery candidate before considering a
    public webhook. SAS/connection-string delivery is not an acceptable production fallback.
 
-Acceptance of this ADR requires the project owner and independent reviewer to update the governed
-exit language in #537, #539, and #541. Until that review occurs, the existing issue exit criteria
-remain authoritative and the pre-soak gate stays blocked.
+The project owner approved the exact #552 head after all checks passed, LanternProtocol supplied the
+independent approval, and the governed exit language in #537, #539, and #541 was reconciled after
+merge. The pre-soak gate remains blocked by the protected live RC1B, Purview, recovery, evidence
+reconciliation, candidate-freeze, and soak requirements; accepting this ADR satisfies none of those
+live gates.
 
 ## Re-entry gate for Graph subscriptions
 
@@ -75,8 +78,7 @@ existing runtime identity.
 
 - P0 preserves the narrow approved drive boundary and private Gateway ingress.
 - RC1B delta polling remains the authoritative SharePoint/OneDrive change-discovery mechanism.
-- RC1C can proceed with Purview polling only after the issue governance is amended and its protected
-  live qualification succeeds.
+- RC1C can proceed with Purview polling under its protected live qualification contract.
 - Near-real-time drive notifications and Graph lifecycle evidence are deferred and cannot be
   represented as P0-qualified.
 - The candidate freeze and 72-hour soak remain blocked by the still-required live RC1B, Purview,
@@ -85,5 +87,5 @@ existing runtime identity.
 ## Validation
 
 Architecture tests pin the exact P0 role allowlists, empty Graph lifecycle defaults, private Gateway
-ingress, the RC1C fail-closed decision flag, and the prohibition on SAS/public-callback fallback.
-They do not approve this proposed decision or perform a live Azure or Microsoft operation.
+ingress, the RC1C explicit deferral flags, and the prohibition on SAS/public-callback fallback. They
+do not perform a live Azure or Microsoft operation.
