@@ -18,6 +18,12 @@ Teams message content, Exchange mailbox content, Power Platform runtime, Copilot
 
 ## Entry sequence
 
+The current #537/#539 exit language still requires Graph subscription lifecycle. ADR-009 proposes
+deferring that slice from P0 because the documented application permission is broader than the
+approved drive-scoped identity. Until the ADR is independently approved and the governed issues are
+updated, this pre-soak gate remains blocked; repository documentation alone cannot change the
+candidate scope.
+
 1. Live-qualify every P0 slice on approved source.
 2. Execute bounded fault and recovery exercises before the soak, including cursor replay, subscription expiry, throttling/backoff, job restart, Gateway state recovery, and evidence-loss fail-closed behavior.
 3. Reconcile all results and close evidence gaps.
@@ -25,6 +31,9 @@ Teams message content, Exchange mailbox content, Power Platform runtime, Copilot
 5. Start a new governed soak attempt. An invalidated attempt is never resumed or counted.
 
 Any source, image, configuration, or identity mutation after freeze requires a fresh Q0 and a new candidate.
+
+Proposed decision record:
+[`ADR-009-microsoft-graph-drive-subscription-p0.md`](../adr/ADR-009-microsoft-graph-drive-subscription-p0.md).
 
 ## Soak behavior
 

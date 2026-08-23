@@ -12,7 +12,7 @@ protected live qualification; it is not a live tenant mutation or public-ingress
 
 ## Fixed subscription boundary
 
-### Live permission decision remains open
+### P0 decision remains open
 
 Microsoft's current documentation lists `Files.Read.All` to create an application subscription for
 OneDrive for Business `driveItem` and `Files.ReadWrite.All` to list that subscription class. It does
@@ -21,9 +21,16 @@ remains inactive behind its all-or-none configuration boundary, but it MUST NOT 
 live-ready under the current permission profile.
 
 No repository change may silently grant `Files.Read.All`, `Files.ReadWrite.All`, or expose the
-callback. #539 requires a governed choice between a separately qualified subscription
-identity/ingress design and deferral of the webhook slice. The read-only decision gate is documented in
-[`MICROSOFT_P0_RC1C_LIVE_PREFLIGHT_V1.md`](./MICROSOFT_P0_RC1C_LIVE_PREFLIGHT_V1.md).
+callback. Microsoft also supports Graph notification delivery through Azure Event Hubs with Entra
+RBAC, which avoids a public webhook but does not reduce the drive subscription permission. It adds a
+new sender/consumer/checkpoint boundary that is not composed in the current candidate.
+
+ADR-009 proposes retaining the bounded delta-polling path for P0, qualifying Purview independently,
+and deferring Graph subscriptions. The proposal does not change #539 or the pre-soak gate until it is
+approved and the governed issues are updated:
+
+- [`ADR-009-microsoft-graph-drive-subscription-p0.md`](../adr/ADR-009-microsoft-graph-drive-subscription-p0.md)
+- [`MICROSOFT_P0_RC1C_LIVE_PREFLIGHT_V1.md`](./MICROSOFT_P0_RC1C_LIVE_PREFLIGHT_V1.md)
 
 The deployment supplies the approved SharePoint drive ID. The runtime derives the Graph resource as
 `drives/{percent-encoded-drive-id}/root`; an environment value cannot select a different resource.
@@ -42,6 +49,7 @@ References:
 - [Create a Microsoft Graph subscription](https://learn.microsoft.com/en-us/graph/api/subscription-post-subscriptions?view=graph-rest-1.0)
 - [Microsoft Graph subscription resource and lifetime](https://learn.microsoft.com/en-us/graph/api/resources/subscription?view=graph-rest-1.0)
 - [Receive Graph change notifications through webhooks](https://learn.microsoft.com/en-us/graph/change-notifications-delivery-webhooks)
+- [Receive Graph change notifications through Azure Event Hubs](https://learn.microsoft.com/en-us/graph/change-notifications-delivery-event-hubs)
 - [Renew a Microsoft Graph subscription](https://learn.microsoft.com/en-us/graph/api/subscription-update?view=graph-rest-1.0)
 
 ## Lifecycle convergence

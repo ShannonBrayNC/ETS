@@ -24,17 +24,28 @@ creating a OneDrive for Business `driveItem` change-notification subscription an
 
 RC1C therefore MUST NOT assume that the polling permission also authorizes Graph subscription
 lifecycle. This slice does not add `Files.Read.All`, `Files.ReadWrite.All`, `Sites.Read.All`,
-`Subscription.Read.All`, or any other Graph role. A separate governed decision must either:
+`Subscription.Read.All`, or any other Graph role. Microsoft supports Event Hubs delivery with Entra
+RBAC and no public webhook, but that delivery option does not reduce the drive subscription
+permission and requires a separately qualified consumer boundary.
 
-1. approve and qualify a dedicated broader Graph subscription identity plus protected public
-   callback ingress; or
-2. defer the Graph webhook slice and retain polling/delta as the bounded RC1 path.
+A separate governed decision must either:
+
+1. approve and qualify a dedicated broader Graph subscription identity plus a separate delivery
+   boundary, preferring Entra-RBAC Event Hubs over a protected public callback; or
+2. defer the Graph subscription slice and retain polling/delta as the bounded RC1 path.
+
+ADR-009 proposes the second option for P0, with Event Hubs as the preferred future delivery
+candidate. It remains proposed until the project owner and independent reviewer approve it and the
+governed issue exit criteria are updated:
+
+- [`ADR-009-microsoft-graph-drive-subscription-p0.md`](../adr/ADR-009-microsoft-graph-drive-subscription-p0.md)
 
 References:
 
 - [Create a Microsoft Graph subscription](https://learn.microsoft.com/en-us/graph/api/subscription-post-subscriptions?view=graph-rest-1.0)
 - [List Microsoft Graph subscriptions](https://learn.microsoft.com/en-us/graph/api/subscription-list?view=graph-rest-1.0)
 - [Receive Graph change notifications through webhooks](https://learn.microsoft.com/en-us/graph/change-notifications-delivery-webhooks)
+- [Receive Graph change notifications through Azure Event Hubs](https://learn.microsoft.com/en-us/graph/change-notifications-delivery-event-hubs)
 - [Office 365 Management Activity API reference](https://learn.microsoft.com/en-us/office/office-365-management-api/office-365-management-activity-api-reference)
 
 ## Exact live assertions
