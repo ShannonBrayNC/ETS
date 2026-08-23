@@ -12,6 +12,12 @@ param(
     [ValidateLength(1, 512)]
     [string]$SharePointDriveId,
 
+    [string]$ImageSourceSha = '',
+
+    [string]$ContainerImage = '',
+
+    [string]$Q0WorkflowRunId = '',
+
     [string]$Repository = 'ShannonBrayNC/ETS',
 
     [string]$EnvironmentName = 'ets-azure-q1',
@@ -129,6 +135,21 @@ if (-not $etsTenant -or -not $etsWorkspace -or -not $sharePointDrive) {
 if ($DispatchDeployment -and -not $Apply) {
     throw '-DispatchDeployment requires -Apply.'
 }
+if ($DispatchDeployment) {
+    if ($ImageSourceSha -cnotmatch '^[0-9a-f]{40}$') {
+        throw '-DispatchDeployment requires a canonical -ImageSourceSha.'
+    }
+    if (
+        $ContainerImage -cnotmatch (
+            '^etsq1a352eb89\.azurecr\.io/ets/hosted-q1@sha256:[0-9a-f]{64}$'
+        )
+    ) {
+        throw '-DispatchDeployment requires the exact private-ACR -ContainerImage digest.'
+    }
+    if ($Q0WorkflowRunId -cnotmatch '^[1-9][0-9]*$') {
+        throw '-DispatchDeployment requires a canonical -Q0WorkflowRunId.'
+    }
+}
 
 $activeTenant = (az account show --query tenantId -o tsv).Trim()
 if ($LASTEXITCODE -ne 0 -or -not $activeTenant) {
@@ -239,7 +260,10 @@ $dispatched = $false
 if ($DispatchDeployment) {
     gh workflow run live-core-gateway-deployment.yml `
         --repo $Repository `
-        --ref main | Out-Null
+        --ref main `
+        -f "image_source_sha=$ImageSourceSha" `
+        -f "container_image=$ContainerImage" `
+        -f "q0_workflow_run_id=$Q0WorkflowRunId" | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw 'Failed to dispatch the protected persistent Core/Gateway deployment workflow.'
     }

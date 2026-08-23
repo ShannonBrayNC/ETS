@@ -70,7 +70,14 @@ secret or certificate path.
 
 ## Preview first
 
-Deploy the pre-bootstrap template and retain its outputs only in the protected operator workspace:
+First run `.github/workflows/live-gateway-identity-bootstrap.yml` manually from `main` through the
+protected `ets-azure-q1` environment. It deploys the deterministic SharePoint/Core, directory, and
+Purview identities, verifies their Azure client/principal/resource identities are all distinct, and
+retains only their non-customer names and bounded readiness booleans. It does not assign a Microsoft
+Graph or Office 365 Management application role.
+
+An authorized Azure operator may instead deploy the same pre-bootstrap template from a trusted
+workspace and retain its full outputs only there:
 
 ```powershell
 az deployment group create `

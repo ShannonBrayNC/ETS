@@ -26,6 +26,9 @@ the approved drive-scoped delta-polling path and independently qualifies Purview
 remains blocked until the included live slices, recovery matrix, evidence reconciliation, and
 candidate freeze complete.
 
+The protected exact-source preparation and RC1B/RC1C preflight order is defined by
+[`MICROSOFT_P0_LIVE_RELEASE_SEQUENCE_V1.md`](./MICROSOFT_P0_LIVE_RELEASE_SEQUENCE_V1.md).
+
 1. Live-qualify every P0 slice on approved source.
 2. Execute bounded fault and recovery exercises before the soak, including delta/audit cursor replay, Purview subscription disable/recovery, throttling/backoff, job restart, Gateway state recovery, and evidence-loss fail-closed behavior.
 3. Reconcile all results and close evidence gaps.

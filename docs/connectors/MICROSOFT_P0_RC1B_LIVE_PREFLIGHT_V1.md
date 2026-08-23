@@ -14,6 +14,9 @@ The preflight is deliberately read-only against Microsoft Graph. It creates and 
 ephemeral Azure Container Apps job. Passing it is not completion of #540, candidate freeze, or soak
 entry.
 
+The identity, Q0 publication, and private deployment prerequisites are ordered by
+[`MICROSOFT_P0_LIVE_RELEASE_SEQUENCE_V1.md`](./MICROSOFT_P0_LIVE_RELEASE_SEQUENCE_V1.md).
+
 ## Protected invocation
 
 Run `.github/workflows/live-microsoft-rc1b-preflight.yml` from `main` in the protected

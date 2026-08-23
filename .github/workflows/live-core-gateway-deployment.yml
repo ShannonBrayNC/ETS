@@ -2,8 +2,22 @@ name: Live Core Gateway Deployment
 
 on:
   workflow_dispatch:
+    inputs:
+      image_source_sha:
+        description: Exact approved main SHA used by the successful Q0 image publication
+        required: true
+        type: string
+      container_image:
+        description: Exact Q0 private-ACR image as registry/repository@sha256:<digest>
+        required: true
+        type: string
+      q0_workflow_run_id:
+        description: Successful Hosted Azure Q0 image-publication workflow run ID
+        required: true
+        type: string
 
 permissions:
+  actions: read
   contents: read
   id-token: write
   issues: write
@@ -27,12 +41,14 @@ jobs:
       SOURCE_ID: m365-sharepoint-primary
       LOG_ID: ets-live-primary
       GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id
+      DIRECTORY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-dir-id
+      PURVIEW_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-pur-id
       ACR_NAME: etsq1a352eb89
       ACR_RESOURCE_GROUP: rg-ets-q1-eastus
-      CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63
-      Q0_SOURCE_SHA: 9a4c3a8aefc50a960bdd3ce34b28f86fd69f1535
-      Q0_IMAGE_DIGEST: sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63
-      HANDOFF_ISSUE: '389'
+      CONTAINER_IMAGE: ${{ inputs.container_image }}
+      Q0_SOURCE_SHA: ${{ inputs.image_source_sha }}
+      Q0_WORKFLOW_RUN_ID: ${{ inputs.q0_workflow_run_id }}
+      HANDOFF_ISSUE: '537'
       CORE_SCOPE: ${{ secrets.ETS_LIVE_CORE_SCOPE }}
       AUTH_AUDIENCE: ${{ secrets.ETS_LIVE_AUTH_AUDIENCE }}
       AUTH_ISSUER: ${{ secrets.ETS_LIVE_AUTH_ISSUER }}
@@ -48,6 +64,7 @@ jobs:
       - name: Check out deployment source
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.image_source_sha }}
           persist-credentials: false
 
       - name: Assert protected release boundary
@@ -56,9 +73,27 @@ jobs:
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/main"
           test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$Q0_SOURCE_SHA" = "$GITHUB_SHA"
           test -f infra/azure/ets-hosted.bicep
           test -f infra/azure/ets-gateway.bicep
-          test "$CONTAINER_IMAGE" = "${ACR_NAME}.azurecr.io/ets/hosted-q1@${Q0_IMAGE_DIGEST}"
+          python - <<'PY'
+          import os
+          import re
+
+          source = os.environ["Q0_SOURCE_SHA"]
+          image = os.environ["CONTAINER_IMAGE"]
+          run_id = os.environ["Q0_WORKFLOW_RUN_ID"]
+          registry = os.environ["ACR_NAME"] + ".azurecr.io"
+          if re.fullmatch(r"[0-9a-f]{40}", source) is None:
+              raise SystemExit("image_source_sha is not canonical")
+          pattern = rf"{re.escape(registry)}/ets/hosted-q1@sha256:[0-9a-f]{{64}}"
+          if re.fullmatch(pattern, image) is None:
+              raise SystemExit("container_image is outside the exact hosted Q0 ACR boundary")
+          if re.fullmatch(r"[1-9][0-9]*", run_id) is None:
+              raise SystemExit("q0_workflow_run_id is not canonical")
+          PY
+          echo "Q0_IMAGE_DIGEST=${CONTAINER_IMAGE##*@}" >> "$GITHUB_ENV"
           test -n "$CORE_SCOPE"
           test -n "$AUTH_AUDIENCE"
           test -n "$AUTH_ISSUER"
@@ -80,6 +115,74 @@ jobs:
           echo "::add-mask::$MICROSOFT_TENANT_ID"
           echo "::add-mask::$SHAREPOINT_DRIVE_ID"
 
+      - name: Verify exact successful Q0 publication evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          q0_dir="$RUNNER_TEMP/microsoft-rc1-q0"
+          run_json="$RUNNER_TEMP/microsoft-rc1-q0-run.json"
+          mkdir -p "$q0_dir"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/runs/$Q0_WORKFLOW_RUN_ID" > "$run_json"
+          gh run download "$Q0_WORKFLOW_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "host-az-q0-image-$Q0_WORKFLOW_RUN_ID" \
+            --dir "$q0_dir"
+          python - "$run_json" "$q0_dir" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          run = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected_run_id = int(os.environ["Q0_WORKFLOW_RUN_ID"])
+          expected_source = os.environ["Q0_SOURCE_SHA"]
+          expected_image = os.environ["CONTAINER_IMAGE"]
+          expected_digest = expected_image.rsplit("@", 1)[1]
+          expected_run = {
+              "id": expected_run_id,
+              "path": ".github/workflows/hosted-azure-q0-image.yml",
+              "event": "workflow_dispatch",
+              "head_branch": "main",
+              "head_sha": expected_source,
+              "status": "completed",
+              "conclusion": "success",
+          }
+          for key, value in expected_run.items():
+              if run.get(key) != value:
+                  raise SystemExit(f"Q0 workflow run mismatch for {key}")
+
+          root = Path(sys.argv[2])
+          manifest_paths = list(root.rglob("manifest.json"))
+          gate_paths = list(root.rglob("vulnerability-gate.json"))
+          if len(manifest_paths) != 1 or len(gate_paths) != 1:
+              raise SystemExit("Q0 evidence artifact shape is ambiguous")
+          manifest = json.loads(manifest_paths[0].read_text(encoding="utf-8"))
+          gate = json.loads(gate_paths[0].read_text(encoding="utf-8"))
+          expected_manifest = {
+              "schema_version": "ets.host_az.q0_image.v1",
+              "source_sha": expected_source,
+              "workflow_run_id": str(expected_run_id),
+              "image_digest": expected_digest,
+              "immutable_image": expected_image,
+              "vulnerability_gate": "PASS",
+              "registry_credentials_retained": False,
+              "customer_identifiers_retained": False,
+          }
+          for key, value in expected_manifest.items():
+              if manifest.get(key) != value:
+                  raise SystemExit(f"Q0 publication manifest mismatch for {key}")
+          if gate.get("gate") != "PASS":
+              raise SystemExit("Q0 vulnerability gate did not pass")
+          fixable = gate.get("fixable") or {}
+          if fixable.get("high") != 0 or fixable.get("critical") != 0:
+              raise SystemExit("Q0 evidence contains fixable HIGH/CRITICAL findings")
+          PY
+          rm -rf "$q0_dir" "$run_json"
+
       - name: Azure login with workload identity
         uses: azure/login@v3.0.0
         with:
@@ -93,7 +196,8 @@ jobs:
           set -euo pipefail
           az extension add --name containerapp --upgrade --yes --only-show-errors
 
-      - name: Validate tenant, live resource group, identity, and scope map
+      - name: Validate tenant, live resource group, separated identities, and scope map
+        id: identity
         shell: bash
         env:
           EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -116,19 +220,36 @@ jobs:
           group_json="$RUNNER_TEMP/live-group.json"
           az group show --name "$RESOURCE_GROUP" -o json > "$group_json"
           identity_json="$RUNNER_TEMP/live-gateway-identity.json"
+          directory_identity_json="$RUNNER_TEMP/live-directory-identity.json"
+          purview_identity_json="$RUNNER_TEMP/live-purview-identity.json"
           az identity show \
             --resource-group "$RESOURCE_GROUP" \
             --name "$GATEWAY_IDENTITY_NAME" \
             -o json > "$identity_json"
+          az identity show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$DIRECTORY_IDENTITY_NAME" \
+            -o json > "$directory_identity_json"
+          az identity show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$PURVIEW_IDENTITY_NAME" \
+            -o json > "$purview_identity_json"
 
-          gateway_client_id="$(python - "$group_json" "$identity_json" <<'PY'
+          identity_outputs="$RUNNER_TEMP/live-microsoft-identity-outputs.txt"
+          python - \
+            "$group_json" "$identity_json" "$directory_identity_json" "$purview_identity_json" \
+            > "$identity_outputs" <<'PY'
           import json
           import os
           import sys
           from pathlib import Path
 
           group = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          identity = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          identities = {
+              "gateway": json.loads(Path(sys.argv[2]).read_text(encoding="utf-8")),
+              "directory": json.loads(Path(sys.argv[3]).read_text(encoding="utf-8")),
+              "purview": json.loads(Path(sys.argv[4]).read_text(encoding="utf-8")),
+          }
 
           if str(group.get("location") or "").casefold() != os.environ["LOCATION"].casefold():
               raise SystemExit("live resource group is in an unexpected Azure region")
@@ -142,12 +263,26 @@ jobs:
               if str(tags.get(key) or "").casefold() != value.casefold():
                   raise SystemExit(f"live resource group ownership tag mismatch: {key}")
 
-          if str(identity.get("name") or "") != os.environ["GATEWAY_IDENTITY_NAME"]:
-              raise SystemExit("Gateway managed identity name mismatch")
-          client_id = str(identity.get("clientId") or "").strip()
-          principal_id = str(identity.get("principalId") or "").strip()
-          if not client_id or not principal_id:
-              raise SystemExit("Gateway managed identity is missing client/principal identity")
+          expected_names = {
+              "gateway": os.environ["GATEWAY_IDENTITY_NAME"],
+              "directory": os.environ["DIRECTORY_IDENTITY_NAME"],
+              "purview": os.environ["PURVIEW_IDENTITY_NAME"],
+          }
+          client_ids = {}
+          principal_ids = {}
+          for profile, identity in identities.items():
+              if str(identity.get("name") or "") != expected_names[profile]:
+                  raise SystemExit(f"{profile} managed identity name mismatch")
+              client_ids[profile] = str(identity.get("clientId") or "").strip()
+              principal_ids[profile] = str(identity.get("principalId") or "").strip()
+              if not client_ids[profile] or not principal_ids[profile]:
+                  raise SystemExit(
+                      f"{profile} managed identity is missing client/principal identity"
+                  )
+          if len({value.casefold() for value in client_ids.values()}) != 3:
+              raise SystemExit("Microsoft runtime identity client IDs are not distinct")
+          if len({value.casefold() for value in principal_ids.values()}) != 3:
+              raise SystemExit("Microsoft runtime identity principal IDs are not distinct")
 
           expected_tenant = os.environ["EXPECTED_TENANT_ID"].casefold()
           if os.environ["AUTH_TENANT_ID"].casefold() != expected_tenant:
@@ -176,7 +311,7 @@ jobs:
           if not isinstance(scope_map, dict) or len(scope_map) != 1:
               raise SystemExit("live app scope map must contain exactly one Gateway client")
           key = next(iter(scope_map))
-          if key.casefold() != client_id.casefold():
+          if key.casefold() != client_ids["gateway"].casefold():
               raise SystemExit("app scope map key does not match the live Gateway client ID")
           binding = scope_map[key]
           if not isinstance(binding, dict):
@@ -186,11 +321,18 @@ jobs:
           if binding.get("workspace_id") != os.environ["ETS_WORKSPACE_ID"]:
               raise SystemExit("Gateway scope binding workspace does not match protected ETS workspace")
 
-          print(client_id)
+          for profile, client_id in client_ids.items():
+              print(f"{profile}_client_id={client_id}")
           PY
-          )"
-          test -n "$gateway_client_id"
-          echo "::add-mask::$gateway_client_id"
+          while IFS='=' read -r key value; do
+            test -n "$key"
+            test -n "$value"
+            echo "::add-mask::$value"
+            printf '%s=%s\n' "$key" "$value" >> "$GITHUB_OUTPUT"
+          done < "$identity_outputs"
+          rm -f \
+            "$group_json" "$identity_json" "$directory_identity_json" \
+            "$purview_identity_json" "$identity_outputs"
 
       - name: Deploy persistent ETS Core
         id: core
@@ -249,14 +391,11 @@ jobs:
         env:
           MANAGED_ENVIRONMENT_NAME: ${{ steps.environment.outputs.name }}
           CORE_FQDN: ${{ steps.core.outputs.core_fqdn }}
+          QUALIFIED_GATEWAY_CLIENT_ID: ${{ steps.identity.outputs.gateway_client_id }}
+          QUALIFIED_DIRECTORY_CLIENT_ID: ${{ steps.identity.outputs.directory_client_id }}
+          QUALIFIED_PURVIEW_CLIENT_ID: ${{ steps.identity.outputs.purview_client_id }}
         run: |
           set -euo pipefail
-          qualified_client_id="$(az identity show \
-            --resource-group "$RESOURCE_GROUP" \
-            --name "$GATEWAY_IDENTITY_NAME" \
-            --query clientId -o tsv)"
-          test -n "$qualified_client_id"
-          echo "::add-mask::$qualified_client_id"
           core_base_url="https://${CORE_FQDN}"
           deployment="ets-live-gateway-${GITHUB_RUN_ID}"
           az deployment group create \
@@ -291,13 +430,31 @@ jobs:
           gateway_client_id="$(az deployment group show \
             --name "$deployment" --resource-group "$RESOURCE_GROUP" \
             --query properties.outputs.gatewayManagedIdentityClientId.value -o tsv)"
+          directory_client_id="$(az deployment group show \
+            --name "$deployment" --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.directoryManagedIdentityClientId.value -o tsv)"
+          purview_client_id="$(az deployment group show \
+            --name "$deployment" --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.purviewManagedIdentityClientId.value -o tsv)"
           test -n "$gateway_name"
           test -n "$gateway_client_id"
-          echo "::add-mask::$gateway_client_id"
-          if [ "${gateway_client_id,,}" != "${qualified_client_id,,}" ]; then
-            echo "Gateway deployment did not reuse the pre-qualified live managed identity." >&2
+          test -n "$directory_client_id"
+          test -n "$purview_client_id"
+          for value in "$gateway_client_id" "$directory_client_id" "$purview_client_id"; do
+            echo "::add-mask::$value"
+          done
+          test "${gateway_client_id,,}" = "${QUALIFIED_GATEWAY_CLIENT_ID,,}" || {
+            echo "Gateway deployment did not reuse the pre-qualified SharePoint/Core identity." >&2
             exit 1
-          fi
+          }
+          test "${directory_client_id,,}" = "${QUALIFIED_DIRECTORY_CLIENT_ID,,}" || {
+            echo "Gateway deployment did not reuse the pre-qualified directory identity." >&2
+            exit 1
+          }
+          test "${purview_client_id,,}" = "${QUALIFIED_PURVIEW_CLIENT_ID,,}" || {
+            echo "Gateway deployment did not reuse the pre-qualified Purview identity." >&2
+            exit 1
+          }
           echo "gateway_name=$gateway_name" >> "$GITHUB_OUTPUT"
 
       - name: Verify deployed runtime configuration without external access
@@ -306,6 +463,9 @@ jobs:
           CORE_NAME: ${{ steps.core.outputs.core_name }}
           GATEWAY_NAME: ${{ steps.gateway.outputs.gateway_name }}
           CORE_FQDN: ${{ steps.core.outputs.core_fqdn }}
+          QUALIFIED_GATEWAY_CLIENT_ID: ${{ steps.identity.outputs.gateway_client_id }}
+          QUALIFIED_DIRECTORY_CLIENT_ID: ${{ steps.identity.outputs.directory_client_id }}
+          QUALIFIED_PURVIEW_CLIENT_ID: ${{ steps.identity.outputs.purview_client_id }}
         run: |
           set -euo pipefail
           core_json="$RUNNER_TEMP/live-core.json"
@@ -374,9 +534,71 @@ jobs:
                   "ETS_GATEWAY_INSTANCE_ID": os.environ["CONNECTOR_INSTANCE_ID"],
                   "ETS_GATEWAY_SOURCE_ID": os.environ["SOURCE_ID"],
                   "ETS_GATEWAY_MICROSOFT_TENANT_ID": os.environ["MICROSOFT_TENANT_ID"],
+                  "ETS_GATEWAY_MICROSOFT_APPLICATION_ID": os.environ[
+                      "QUALIFIED_GATEWAY_CLIENT_ID"
+                  ],
+                  "ETS_GATEWAY_DIRECTORY_MANAGED_IDENTITY_CLIENT_ID": os.environ[
+                      "QUALIFIED_DIRECTORY_CLIENT_ID"
+                  ],
+                  "ETS_GATEWAY_PURVIEW_MANAGED_IDENTITY_CLIENT_ID": os.environ[
+                      "QUALIFIED_PURVIEW_CLIENT_ID"
+                  ],
                   "ETS_GATEWAY_SHAREPOINT_DRIVE_ID": os.environ["SHAREPOINT_DRIVE_ID"],
               },
           )
+
+          gateway_props = gateway.get("properties") or {}
+          gateway_config = gateway_props.get("configuration") or {}
+          assigned = (gateway.get("identity") or {}).get("userAssignedIdentities") or {}
+          if len(assigned) != 4:
+              raise SystemExit("Gateway must attach exactly four user-assigned identities")
+          client_by_resource = {
+              resource_id.casefold(): str((value or {}).get("clientId") or "").casefold()
+              for resource_id, value in assigned.items()
+          }
+          expected_runtime_clients = {
+              os.environ["QUALIFIED_GATEWAY_CLIENT_ID"].casefold(),
+              os.environ["QUALIFIED_DIRECTORY_CLIENT_ID"].casefold(),
+              os.environ["QUALIFIED_PURVIEW_CLIENT_ID"].casefold(),
+          }
+          if not expected_runtime_clients.issubset(set(client_by_resource.values())):
+              raise SystemExit("Gateway separated runtime identity assignment set changed")
+          identity_settings = gateway_config.get("identitySettings") or []
+          lifecycles = {
+              client_by_resource.get(str(item.get("identity") or "").casefold(), ""):
+              str(item.get("lifecycle") or "")
+              for item in identity_settings
+          }
+          if set(lifecycles) != set(client_by_resource.values()):
+              raise SystemExit("Gateway identity lifecycle set is incomplete")
+          for client_id in expected_runtime_clients:
+              if lifecycles.get(client_id) != "Main":
+                  raise SystemExit("Gateway runtime identity lifecycle must remain Main")
+          pull_clients = set(client_by_resource.values()) - expected_runtime_clients
+          if len(pull_clients) != 1 or lifecycles.get(next(iter(pull_clients))) != "None":
+              raise SystemExit("Gateway ACR pull identity lifecycle must remain None")
+          registries = gateway_config.get("registries") or []
+          if len(registries) != 1:
+              raise SystemExit("Gateway must expose exactly one ACR binding")
+          pull_resource = str(registries[0].get("identity") or "").casefold()
+          if client_by_resource.get(pull_resource) not in pull_clients:
+              raise SystemExit("Gateway ACR binding does not use the pull-only identity")
+
+          gateway_containers = (gateway_props.get("template") or {}).get("containers") or []
+          gateway_env_names = {
+              item.get("name") for item in gateway_containers[0].get("env") or []
+          }
+          forbidden_graph_env = {
+              "ETS_GATEWAY_GRAPH_NOTIFICATION_URL",
+              "ETS_GATEWAY_GRAPH_CLIENT_STATE",
+              "ETS_GATEWAY_GRAPH_SUBSCRIPTION_LIFETIME_SECONDS",
+              "ETS_GATEWAY_GRAPH_SUBSCRIPTION_RENEWAL_WINDOW_SECONDS",
+              "ETS_GATEWAY_MICROSOFT_HEALTH_POLICY_JSON",
+          }
+          if gateway_env_names & forbidden_graph_env:
+              raise SystemExit("Graph lifecycle configuration is present in the P0 deployment")
+          if gateway_config.get("secrets") not in (None, []):
+              raise SystemExit("Graph lifecycle secret state is present in the P0 deployment")
           PY
 
       - name: Retain sanitized deployment handoff
@@ -393,18 +615,25 @@ jobs:
           from pathlib import Path
 
           payload = {
-              "schema_version": "ets.live_core_gateway.deployment.v1",
+              "schema_version": "ets.live_core_gateway.deployment.v2",
               "orchestrator_source_sha": os.environ["GITHUB_SHA"],
               "q0_image_source_sha": os.environ["Q0_SOURCE_SHA"],
               "q0_image_digest": os.environ["Q0_IMAGE_DIGEST"],
+              "q0_workflow_run_id": int(os.environ["Q0_WORKFLOW_RUN_ID"]),
               "location": os.environ["LOCATION"],
               "resource_group": os.environ["RESOURCE_GROUP"],
               "core_container_app_name": os.environ["CORE_NAME"],
               "gateway_container_app_name": os.environ["GATEWAY_NAME"],
               "gateway_managed_identity_name": os.environ["GATEWAY_IDENTITY_NAME"],
+              "directory_managed_identity_name": os.environ["DIRECTORY_IDENTITY_NAME"],
+              "purview_managed_identity_name": os.environ["PURVIEW_IDENTITY_NAME"],
+              "q0_publication_evidence_verified": True,
               "immutable_image_verified": True,
               "internal_ingress_verified": True,
               "single_replica_verified": True,
+              "separated_microsoft_identities_verified": True,
+              "graph_lifecycle_configuration_present": False,
+              "graph_callback_ingress_external": False,
               "core_scope_map_configured": True,
               "azure_runtime_resources_deployed": True,
               "runtime_health_claimed": False,
@@ -442,13 +671,20 @@ jobs:
 
           - release image source: \`$Q0_SOURCE_SHA\`
           - release image digest: \`$Q0_IMAGE_DIGEST\`
+          - Q0 publication workflow run: \`$Q0_WORKFLOW_RUN_ID\`
           - Azure resource group: \`$RESOURCE_GROUP\`
           - Core Container App: \`$CORE_NAME\`
           - Gateway Container App: \`$GATEWAY_NAME\`
-          - Gateway managed identity: \`$GATEWAY_IDENTITY_NAME\`
+          - SharePoint/Core managed identity: \`$GATEWAY_IDENTITY_NAME\`
+          - directory managed identity: \`$DIRECTORY_IDENTITY_NAME\`
+          - Purview managed identity: \`$PURVIEW_IDENTITY_NAME\`
+          - Q0 publication evidence verified: **true**
           - immutable image verified: **true**
           - internal ingress verified: **true**
           - single-replica runtime verified: **true**
+          - separated Microsoft runtime identities verified: **true**
+          - Graph lifecycle configuration present: **false**
+          - Graph callback ingress external: **false**
           - Core app-to-ETS-scope map configured: **true**
           - Azure Core/Gateway runtime resources deployed: **true**
           - runtime health claimed: **false**
@@ -459,7 +695,7 @@ jobs:
           - customer identifiers retained in public evidence: **false**
           - reusable credentials retained: **false**
 
-          Next gate: run an internal same-environment qualification client that proves Gateway managed-identity producer-token acceptance and a negative-control denial before enabling the live SharePoint #390 source-to-proof gate.
+          Next gates: run the protected RC1B and RC1C read-only preflights with this exact source and image. Purview subscription mutation, candidate freeze, and soak start remain separate approvals.
           EOF
           )
           gh api \

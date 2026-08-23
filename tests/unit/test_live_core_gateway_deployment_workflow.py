@@ -11,6 +11,7 @@ def test_live_core_gateway_deployment_is_manual_and_least_privilege() -> None:
 
     for required in (
         "workflow_dispatch:",
+        "actions: read",
         "contents: read",
         "id-token: write",
         "issues: write",
@@ -33,25 +34,27 @@ def test_live_core_gateway_deployment_is_manual_and_least_privilege() -> None:
         assert prohibited not in text
 
 
-def test_live_core_gateway_deployment_preserves_authoritative_release_identity() -> None:
+def test_live_core_gateway_deployment_requires_exact_q0_release_identity() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
     for required in (
-        "Q0_SOURCE_SHA: 9a4c3a8aefc50a960bdd3ce34b28f86fd69f1535",
-        "Q0_IMAGE_DIGEST: sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63",
-        (
-            "CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:"
-            "e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63"
-        ),
-        'test "$CONTAINER_IMAGE" = "${ACR_NAME}.azurecr.io/ets/hosted-q1@${Q0_IMAGE_DIGEST}"',
+        "image_source_sha:",
+        "container_image:",
+        "q0_workflow_run_id:",
+        "Q0_SOURCE_SHA: ${{ inputs.image_source_sha }}",
+        "CONTAINER_IMAGE: ${{ inputs.container_image }}",
+        "Q0_WORKFLOW_RUN_ID: ${{ inputs.q0_workflow_run_id }}",
+        'test "$Q0_SOURCE_SHA" = "$GITHUB_SHA"',
+        'pattern = rf"{re.escape(registry)}/ets/hosted-q1@sha256:[0-9a-f]{{64}}"',
+        'echo "Q0_IMAGE_DIGEST=${CONTAINER_IMAGE##*@}" >> "$GITHUB_ENV"',
+        '"path": ".github/workflows/hosted-azure-q0-image.yml"',
+        '"conclusion": "success"',
+        '"vulnerability_gate": "PASS"',
+        '"registry_credentials_retained": False',
+        '"customer_identifiers_retained": False',
         'if container.get("image") != os.environ["CONTAINER_IMAGE"]:',
     ):
         assert required in text
-
-    superseded_digest = (
-        "sha256:1331cfa59fa78b3d63f8f6458ea3f2a130560b4ff9962eceb4666a79e30c4ce6"
-    )
-    assert superseded_digest not in text
 
 
 def test_live_core_gateway_deployment_requires_exact_protected_identity_scope_contract() -> None:
@@ -59,6 +62,8 @@ def test_live_core_gateway_deployment_requires_exact_protected_identity_scope_co
 
     for required in (
         "GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id",
+        "DIRECTORY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-dir-id",
+        "PURVIEW_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-pur-id",
         "ETS_LIVE_CORE_SCOPE",
         "ETS_LIVE_AUTH_AUDIENCE",
         "ETS_LIVE_AUTH_ISSUER",
@@ -73,7 +78,10 @@ def test_live_core_gateway_deployment_requires_exact_protected_identity_scope_co
         "app scope map key does not match the live Gateway client ID",
         "Gateway scope binding tenant does not match protected ETS tenant",
         "Gateway scope binding workspace does not match protected ETS workspace",
-        "Gateway deployment did not reuse the pre-qualified live managed identity",
+        "Gateway deployment did not reuse the pre-qualified SharePoint/Core identity.",
+        "Gateway deployment did not reuse the pre-qualified directory identity.",
+        "Gateway deployment did not reuse the pre-qualified Purview identity.",
+        "Microsoft runtime identity client IDs are not distinct",
     ):
         assert required in text
 
@@ -96,6 +104,11 @@ def test_live_core_gateway_deployment_uses_existing_bicep_runtime_contract() -> 
         '"ETS_AUTH_MODE": "production_jwks"',
         "ingress must remain internal",
         "must remain single replica",
+        "Gateway must attach exactly four user-assigned identities",
+        "Gateway runtime identity lifecycle must remain Main",
+        "Gateway ACR pull identity lifecycle must remain None",
+        "Graph lifecycle configuration is present in the P0 deployment",
+        "Graph lifecycle secret state is present in the P0 deployment",
     ):
         assert required in text
 
@@ -114,6 +127,11 @@ def test_live_core_gateway_deployment_retains_bounded_nonclaims() -> None:
 
     for required in (
         '"core_scope_map_configured": True',
+        '"schema_version": "ets.live_core_gateway.deployment.v2"',
+        '"q0_publication_evidence_verified": True',
+        '"separated_microsoft_identities_verified": True',
+        '"graph_lifecycle_configuration_present": False',
+        '"graph_callback_ingress_external": False',
         '"azure_runtime_resources_deployed": True',
         '"runtime_health_claimed": False',
         '"producer_token_proof_claimed": False',

@@ -15,6 +15,9 @@ def test_secret_bootstrap_requires_explicit_live_scope_and_sharepoint_drive() ->
         "[string]$EtsTenantId",
         "[string]$EtsWorkspaceId",
         "[string]$SharePointDriveId",
+        "[string]$ImageSourceSha = ''",
+        "[string]$ContainerImage = ''",
+        "[string]$Q0WorkflowRunId = ''",
         "[string]$Repository = 'ShannonBrayNC/ETS'",
         "[string]$EnvironmentName = 'ets-azure-q1'",
         "[string]$ResourceGroup = 'rg-ets-live-eastus'",
@@ -105,7 +108,13 @@ def test_secret_bootstrap_dispatch_is_explicit_and_post_secret_write() -> None:
     for required in (
         "[switch]$DispatchDeployment",
         "-DispatchDeployment requires -Apply.",
+        "-DispatchDeployment requires a canonical -ImageSourceSha.",
+        "-DispatchDeployment requires the exact private-ACR -ContainerImage digest.",
+        "-DispatchDeployment requires a canonical -Q0WorkflowRunId.",
         "--ref main",
+        '-f "image_source_sha=$ImageSourceSha"',
+        '-f "container_image=$ContainerImage"',
+        '-f "q0_workflow_run_id=$Q0WorkflowRunId"',
         "deploymentDispatched = $DeploymentDispatched",
     ):
         assert required in text

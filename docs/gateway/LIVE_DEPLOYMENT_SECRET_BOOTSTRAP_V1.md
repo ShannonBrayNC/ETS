@@ -10,7 +10,8 @@ It performs three bounded actions:
 1. run the governed Core/Gateway identity orchestration from #417;
 2. write the resulting Core authentication and ETS scope contract into the protected
    `ets-azure-q1` GitHub environment; and
-3. optionally dispatch the merged persistent Core/Gateway deployment workflow from #418.
+3. optionally dispatch the persistent Core/Gateway deployment with an exact successful Q0
+   publication handoff.
 
 The script does not grant GitHub Actions Microsoft Graph directory-administration authority. The
 Entra mutation remains an explicit operator action on the trusted workstation.
@@ -25,7 +26,9 @@ Use a trusted workstation with:
   `ShannonBrayNC/ETS`;
 - the intended ETS tenant identifier;
 - the intended ETS workspace identifier; and
-- the exact approved SharePoint drive identifier.
+- the exact approved SharePoint drive identifier; and
+- for deployment dispatch, the current approved `main` SHA, immutable private-ACR image, and
+  successful `hosted-azure-q0-image.yml` run ID.
 
 The script defaults to the already-qualified live resources:
 
@@ -95,15 +98,19 @@ To perform the identity apply, protected secret write, and dispatch as one expli
   -EtsTenantId '<ets-tenant-id>' `
   -EtsWorkspaceId '<ets-workspace-id>' `
   -SharePointDriveId '<sharepoint-drive-id>' `
+  -ImageSourceSha '<exact-current-main-sha>' `
+  -ContainerImage 'etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:<digest>' `
+  -Q0WorkflowRunId '<successful-q0-run-id>' `
   -Apply `
   -DispatchDeployment
 ```
 
 `-DispatchDeployment` is rejected unless `-Apply` is also supplied.
 
-The dispatch targets `live-core-gateway-deployment.yml` on `main`. The deployment workflow itself
-re-reads the live Gateway UAMI and fails closed unless the protected app-scope-map key matches that
-exact Azure client ID.
+The dispatch targets `live-core-gateway-deployment.yml` on `main` and passes the exact three-field
+Q0 handoff. The deployment workflow requires `image_source_sha == GITHUB_SHA`, verifies the named
+Q0 run and retained manifest/vulnerability evidence, re-reads all three separated Microsoft UAMIs,
+and fails closed unless the protected app-scope-map key matches the exact SharePoint/Core client ID.
 
 ## Secret and evidence boundary
 

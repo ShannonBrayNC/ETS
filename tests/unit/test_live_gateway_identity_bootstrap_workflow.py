@@ -6,19 +6,17 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "live-gateway-identity-bootstrap.yml"
 
 
-def test_live_gateway_identity_bootstrap_is_one_shot_and_least_privilege() -> None:
+def test_live_gateway_identity_bootstrap_is_manual_protected_and_least_privilege() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
     for required in (
-        "push:",
-        "- main",
-        "- .github/workflows/live-gateway-identity-bootstrap.yml",
+        "workflow_dispatch:",
         "contents: read",
         "id-token: write",
         "issues: write",
         "environment: ets-azure-q1",
         'test "$GITHUB_REF" = "refs/heads/main"',
-        'test "$GITHUB_EVENT_NAME" = "push"',
+        'test "$GITHUB_EVENT_NAME" = "workflow_dispatch"',
     ):
         assert required in text
 
@@ -52,17 +50,22 @@ def test_live_gateway_identity_bootstrap_uses_bounded_non_customer_seeds() -> No
     assert "sharepoint.com" not in text.lower()
 
 
-def test_live_gateway_identity_bootstrap_preserves_release_identity() -> None:
+def test_live_gateway_identity_bootstrap_precreates_three_distinct_runtime_identities() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
 
     for required in (
-        "Q0_SOURCE_SHA: 332d7db3a69acd826a2a000264e81a179894e278",
-        "Q0_IMAGE_DIGEST: sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c",
-        'echo "::add-mask::$identity_resource_id"',
-        'echo "::add-mask::$client_id"',
-        'echo "::add-mask::$principal_id"',
+        '"schema_version": "ets.live_gateway.identity_bootstrap.v2"',
+        "directoryManagedIdentityName.value",
+        "directoryManagedIdentityClientId.value",
+        "purviewManagedIdentityName.value",
+        "purviewManagedIdentityClientId.value",
+        "separated Microsoft identity {key} values are not distinct",
+        '"directory_identity_ready": True',
+        '"purview_identity_ready": True',
         '"gateway_client_id_retained": False',
         '"gateway_principal_id_retained": False',
+        '"directory_client_id_retained": False',
+        '"purview_client_id_retained": False',
         '"reusable_credential_retained": False',
     ):
         assert required in text
@@ -73,6 +76,8 @@ def test_live_gateway_identity_bootstrap_keeps_release_claims_false() -> None:
 
     for required in (
         '"core_producer_role_assigned": False',
+        '"directory_app_roles_assigned": False',
+        '"purview_app_roles_assigned": False',
         '"core_scope_map_configured": False',
         '"azure_runtime_deployed": False',
         '"m365_source_to_proof_claimed": False',
