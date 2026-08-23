@@ -12,6 +12,19 @@ protected live qualification; it is not a live tenant mutation or public-ingress
 
 ## Fixed subscription boundary
 
+### Live permission decision remains open
+
+Microsoft's current documentation lists `Files.Read.All` to create an application subscription for
+OneDrive for Business `driveItem` and `Files.ReadWrite.All` to list that subscription class. It does
+not list the Gateway's bounded `Sites.Selected` permission for either operation. The lifecycle code
+remains inactive behind its all-or-none configuration boundary, but it MUST NOT be represented as
+live-ready under the current permission profile.
+
+No repository change may silently grant `Files.Read.All`, `Files.ReadWrite.All`, or expose the
+callback. #539 requires a governed choice between a separately qualified subscription
+identity/ingress design and deferral of the webhook slice. The read-only decision gate is documented in
+[`MICROSOFT_P0_RC1C_LIVE_PREFLIGHT_V1.md`](./MICROSOFT_P0_RC1C_LIVE_PREFLIGHT_V1.md).
+
 The deployment supplies the approved SharePoint drive ID. The runtime derives the Graph resource as
 `drives/{percent-encoded-drive-id}/root`; an environment value cannot select a different resource.
 The subscription requests only the `updated` change type and uses basic notifications. Microsoft

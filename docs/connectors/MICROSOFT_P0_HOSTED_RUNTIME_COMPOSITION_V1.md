@@ -91,3 +91,9 @@ The first read-only #540 gate is defined by
 [`MICROSOFT_P0_RC1B_LIVE_PREFLIGHT_V1.md`](./MICROSOFT_P0_RC1B_LIVE_PREFLIGHT_V1.md). It proves the
 separated directory identity and durable users/groups polling posture without widening that
 preflight into an RC1B qualification, candidate-freeze, or soak claim.
+
+The first read-only #539 gate is defined by
+[`MICROSOFT_P0_RC1C_LIVE_PREFLIGHT_V1.md`](./MICROSOFT_P0_RC1C_LIVE_PREFLIGHT_V1.md). It proves the
+exact Purview identity/audience/role and `Audit.General` subscription-list boundary while keeping
+Graph callback ingress, lifecycle configuration, permission widening, and durable subscription
+state absent.
