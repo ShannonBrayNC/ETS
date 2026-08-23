@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 ARCHITECTURE = ROOT / "docs" / "architecture" / "EVIDENCE_STANDING_CONSEQUENCE_CUSTODY.md"
 VERIFIER_SPEC = ROOT / "docs" / "spec" / "ETS_VERIFIER_V1.md"
@@ -42,5 +41,8 @@ def test_replay_semantics_do_not_assume_a_probabilistic_regime() -> None:
     text = ARCHITECTURE.read_text(encoding="utf-8")
 
     assert "probabilistic,\ndeterministic, formally constrained" in text
-    assert "regenerating an identical model output is neither\nrequired nor generally sufficient" in text
+    assert (
+        "regenerating an identical model output is neither\nrequired nor generally sufficient"
+        in text
+    )
     assert "deterministic or formally\nconstrained systems" in text
