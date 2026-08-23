@@ -438,5 +438,7 @@ output keyVaultUri string = keyVault.properties.vaultUri
 output applicationInsightsName string = appInsights.name
 output storageAccountName string = storageAccount.name
 output evidenceTableResourceId string = evidenceTable.id
+output managedEnvironmentName string = managedEnvironment.name
+output managedEnvironmentResourceId string = managedEnvironment.id
 output containerAppName string = containerApp.name
 output internalIngressFqdn string = containerApp.properties.configuration.ingress.fqdn

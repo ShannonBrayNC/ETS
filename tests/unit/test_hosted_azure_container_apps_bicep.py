@@ -33,6 +33,8 @@ def test_hosted_bicep_deploys_internal_container_app_and_probes() -> None:
         "type: 'Readiness'",
         "minReplicas: 1",
         "maxReplicas: 1",
+        "output managedEnvironmentName string = managedEnvironment.name",
+        "output managedEnvironmentResourceId string = managedEnvironment.id",
     ]
     for term in required:
         assert term in text

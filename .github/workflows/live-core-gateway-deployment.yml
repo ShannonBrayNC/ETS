@@ -64,7 +64,7 @@ jobs:
       - name: Check out deployment source
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.image_source_sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Assert protected release boundary
@@ -364,26 +364,57 @@ jobs:
           core_fqdn="$(az deployment group show \
             --name "$deployment" --resource-group "$RESOURCE_GROUP" \
             --query properties.outputs.internalIngressFqdn.value -o tsv)"
+          managed_environment_name="$(az deployment group show \
+            --name "$deployment" --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.managedEnvironmentName.value -o tsv)"
+          managed_environment_resource_id="$(az deployment group show \
+            --name "$deployment" --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.managedEnvironmentResourceId.value -o tsv)"
           test -n "$core_name"
           test -n "$core_fqdn"
+          test -n "$managed_environment_name"
+          test -n "$managed_environment_resource_id"
+          echo "::add-mask::$managed_environment_resource_id"
           echo "core_name=$core_name" >> "$GITHUB_OUTPUT"
           echo "core_fqdn=$core_fqdn" >> "$GITHUB_OUTPUT"
+          echo "managed_environment_name=$managed_environment_name" >> "$GITHUB_OUTPUT"
+          echo "managed_environment_resource_id=$managed_environment_resource_id" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve exact shared Container Apps environment
+      - name: Verify exact Core Container Apps environment
         id: environment
         shell: bash
+        env:
+          MANAGED_ENVIRONMENT_NAME: ${{ steps.core.outputs.managed_environment_name }}
+          MANAGED_ENVIRONMENT_RESOURCE_ID: ${{ steps.core.outputs.managed_environment_resource_id }}
         run: |
           set -euo pipefail
-          env_list="$RUNNER_TEMP/live-managed-environments.txt"
-          az containerapp env list \
+          environment_json="$RUNNER_TEMP/live-core-managed-environment.json"
+          az containerapp env show \
             --resource-group "$RESOURCE_GROUP" \
-            --query '[].name' -o tsv > "$env_list"
-          mapfile -t managed_envs < <(grep -v '^$' "$env_list" || true)
-          if [ "${#managed_envs[@]}" -ne 1 ]; then
-            echo "Expected exactly one live Container Apps managed environment after Core deployment." >&2
-            exit 1
-          fi
-          echo "name=${managed_envs[0]}" >> "$GITHUB_OUTPUT"
+            --name "$MANAGED_ENVIRONMENT_NAME" \
+            -o json > "$environment_json"
+          python - "$environment_json" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected_name = os.environ["MANAGED_ENVIRONMENT_NAME"]
+          expected_resource_id = os.environ["MANAGED_ENVIRONMENT_RESOURCE_ID"]
+          expected_location = os.environ["LOCATION"]
+          if str(payload.get("name") or "").casefold() != expected_name.casefold():
+              raise SystemExit("Core managed environment name changed after deployment")
+          if str(payload.get("id") or "").casefold() != expected_resource_id.casefold():
+              raise SystemExit("Core managed environment resource ID changed after deployment")
+          if str(payload.get("location") or "").casefold() != expected_location.casefold():
+              raise SystemExit("Core managed environment is in an unexpected Azure region")
+          properties = payload.get("properties") or {}
+          if str(properties.get("provisioningState") or "").casefold() != "succeeded":
+              raise SystemExit("Core managed environment provisioning did not succeed")
+          PY
+          rm -f "$environment_json"
+          echo "name=$MANAGED_ENVIRONMENT_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Deploy persistent Microsoft Gateway
         id: gateway
@@ -463,6 +494,7 @@ jobs:
           CORE_NAME: ${{ steps.core.outputs.core_name }}
           GATEWAY_NAME: ${{ steps.gateway.outputs.gateway_name }}
           CORE_FQDN: ${{ steps.core.outputs.core_fqdn }}
+          MANAGED_ENVIRONMENT_RESOURCE_ID: ${{ steps.core.outputs.managed_environment_resource_id }}
           QUALIFIED_GATEWAY_CLIENT_ID: ${{ steps.identity.outputs.gateway_client_id }}
           QUALIFIED_DIRECTORY_CLIENT_ID: ${{ steps.identity.outputs.directory_client_id }}
           QUALIFIED_PURVIEW_CLIENT_ID: ${{ steps.identity.outputs.purview_client_id }}
@@ -485,6 +517,10 @@ jobs:
               if payload.get("name") != expected_name:
                   raise SystemExit(f"{expected_name} resource name mismatch")
               props = payload.get("properties") or {}
+              if str(props.get("environmentId") or "").casefold() != os.environ[
+                  "MANAGED_ENVIRONMENT_RESOURCE_ID"
+              ].casefold():
+                  raise SystemExit(f"{expected_name} does not use the exact Core managed environment")
               config = props.get("configuration") or {}
               ingress = config.get("ingress") or {}
               if ingress.get("external") is not False:
@@ -606,6 +642,7 @@ jobs:
         env:
           CORE_NAME: ${{ steps.core.outputs.core_name }}
           GATEWAY_NAME: ${{ steps.gateway.outputs.gateway_name }}
+          MANAGED_ENVIRONMENT_NAME: ${{ steps.environment.outputs.name }}
         run: |
           set -euo pipefail
           mkdir -p evidence/live-core-gateway-deployment
@@ -624,6 +661,7 @@ jobs:
               "resource_group": os.environ["RESOURCE_GROUP"],
               "core_container_app_name": os.environ["CORE_NAME"],
               "gateway_container_app_name": os.environ["GATEWAY_NAME"],
+              "managed_environment_name": os.environ["MANAGED_ENVIRONMENT_NAME"],
               "gateway_managed_identity_name": os.environ["GATEWAY_IDENTITY_NAME"],
               "directory_managed_identity_name": os.environ["DIRECTORY_IDENTITY_NAME"],
               "purview_managed_identity_name": os.environ["PURVIEW_IDENTITY_NAME"],

@@ -96,7 +96,11 @@ The Core profile remains:
 - managed identity for runtime data-plane access;
 - separate pull-only managed identity for ACR.
 
-The Core deployment creates the shared Container Apps managed environment. The workflow then resolves that environment from the live resource group and refuses to continue unless exactly one managed environment exists.
+The Core deployment creates or updates its deterministic shared Container Apps managed environment
+and returns that environment's exact name and resource ID. The workflow rereads that exact resource
+and requires its name, resource ID, region, and provisioning state to match before deploying the
+Gateway. Other governed Container Apps environments may coexist in the live resource group; they
+are neither selected nor mutated by this deployment.
 
 ## Gateway deployment
 
