@@ -44,6 +44,7 @@ def test_live_core_gateway_deployment_requires_exact_q0_release_identity() -> No
         "Q0_SOURCE_SHA: ${{ inputs.image_source_sha }}",
         "CONTAINER_IMAGE: ${{ inputs.container_image }}",
         "Q0_WORKFLOW_RUN_ID: ${{ inputs.q0_workflow_run_id }}",
+        "ref: ${{ github.sha }}",
         'test "$Q0_SOURCE_SHA" = "$GITHUB_SHA"',
         'pattern = rf"{re.escape(registry)}/ets/hosted-q1@sha256:[0-9a-f]{{64}}"',
         'echo "Q0_IMAGE_DIGEST=${CONTAINER_IMAGE##*@}" >> "$GITHUB_ENV"',
@@ -55,6 +56,8 @@ def test_live_core_gateway_deployment_requires_exact_q0_release_identity() -> No
         'if container.get("image") != os.environ["CONTAINER_IMAGE"]:',
     ):
         assert required in text
+
+    assert "ref: ${{ inputs.image_source_sha }}" not in text
 
 
 def test_live_core_gateway_deployment_requires_exact_protected_identity_scope_contract() -> None:
@@ -94,8 +97,13 @@ def test_live_core_gateway_deployment_uses_existing_bicep_runtime_contract() -> 
     for required in (
         "infra/azure/ets-hosted.bicep",
         "infra/azure/ets-gateway.bicep",
-        "az containerapp env list",
-        "Expected exactly one live Container Apps managed environment after Core deployment.",
+        "properties.outputs.managedEnvironmentName.value",
+        "properties.outputs.managedEnvironmentResourceId.value",
+        "az containerapp env show",
+        "Core managed environment name changed after deployment",
+        "Core managed environment resource ID changed after deployment",
+        "Core managed environment provisioning did not succeed",
+        "does not use the exact Core managed environment",
         'core_base_url="https://${CORE_FQDN}"',
         "authAppScopeMapJson=\"$AUTH_APP_SCOPE_MAP_JSON\"",
         "sharePointDriveId=\"$SHAREPOINT_DRIVE_ID\"",
@@ -113,6 +121,8 @@ def test_live_core_gateway_deployment_uses_existing_bicep_runtime_contract() -> 
         assert required in text
 
     for prohibited in (
+        "az containerapp env list",
+        "Expected exactly one live Container Apps managed environment after Core deployment.",
         "local_header",
         "local_unsigned",
         "in_memory",
@@ -127,6 +137,7 @@ def test_live_core_gateway_deployment_retains_bounded_nonclaims() -> None:
 
     for required in (
         '"core_scope_map_configured": True',
+        '"managed_environment_name": os.environ["MANAGED_ENVIRONMENT_NAME"]',
         '"schema_version": "ets.live_core_gateway.deployment.v2"',
         '"q0_publication_evidence_verified": True',
         '"separated_microsoft_identities_verified": True',
