@@ -266,10 +266,6 @@ jobs:
             esac
             sleep 3
           done
-          if [ "$status" != "Succeeded" ]; then
-            echo "::error::RC1B preflight execution ended with status ${status:-unknown}"
-            exit 1
-          fi
 
           replica=""
           for _ in $(seq 1 12); do
@@ -286,6 +282,7 @@ jobs:
           test -n "$replica"
 
           raw="$RUNNER_TEMP/microsoft-rc1b-preflight.log"
+          trap 'rm -f "$raw"' EXIT
           found=false
           for _ in $(seq 1 12); do
             az containerapp job logs show \
@@ -296,7 +293,8 @@ jobs:
               --container microsoft-rc1b-preflight \
               --format text \
               --only-show-errors > "$raw" 2>&1 || true
-            if grep -Eq 'ETS_M365_RC1B_PREFLIGHT_B64=[A-Za-z0-9_=-]+' "$raw"; then
+            if grep -Eq \
+              'ETS_M365_RC1B_PREFLIGHT(_FAILURE)?_B64=[A-Za-z0-9_=-]+' "$raw"; then
               found=true
               break
             fi
@@ -317,7 +315,79 @@ jobs:
           from pathlib import Path
 
           source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          failure_matches = re.findall(
+              r"ETS_M365_RC1B_PREFLIGHT_FAILURE_B64=([A-Za-z0-9_=-]+)", source
+          )
           matches = re.findall(r"ETS_M365_RC1B_PREFLIGHT_B64=([A-Za-z0-9_=-]+)", source)
+          if failure_matches:
+              if matches:
+                  raise SystemExit("RC1B preflight returned conflicting result markers")
+              payload = json.loads(
+                  base64.urlsafe_b64decode(failure_matches[-1]).decode("utf-8")
+              )
+              allowed = {
+                  "schema_version",
+                  "failure_code",
+                  "raw_directory_payload_retained",
+                  "customer_identifiers_retained",
+                  "reusable_credential_retained",
+                  "public_evidence_safe",
+                  "rc1b_live_qualified",
+                  "soak_clock_started",
+              }
+              if set(payload) != allowed:
+                  raise SystemExit("RC1B failure marker returned an unexpected public shape")
+              if payload.get("schema_version") != (
+                  "ets.live_microsoft.rc1b_preflight_runtime_failure.v1"
+              ):
+                  raise SystemExit("RC1B failure marker schema changed")
+              allowed_codes = {
+                  "probe_initialization_failed",
+                  "directory_identity_token_acquisition_failed",
+                  "users_delta_request_failed",
+                  "groups_delta_request_failed",
+                  "users_delta_validation_failed",
+                  "groups_delta_validation_failed",
+                  "directory_sharepoint_negative_control_request_failed",
+                  "directory_sharepoint_negative_control_failed",
+                  "directory_runtime_state_unstable",
+                  "directory_event_state_incomplete",
+                  "directory_core_sync_incomplete",
+                  "preflight_result_emission_failed",
+              }
+              if payload.get("failure_code") not in allowed_codes:
+                  raise SystemExit("RC1B failure marker code is not allow-listed")
+              required_false = (
+                  "raw_directory_payload_retained",
+                  "customer_identifiers_retained",
+                  "reusable_credential_retained",
+                  "rc1b_live_qualified",
+                  "soak_clock_started",
+              )
+              for key in required_false:
+                  if payload.get(key) is not False:
+                      raise SystemExit("RC1B failure marker boundary failed: " + key)
+              if payload.get("public_evidence_safe") is not True:
+                  raise SystemExit("RC1B failure marker is not public-safe")
+
+              manifest = dict(payload)
+              manifest.update(
+                  {
+                      "schema_version": "ets.live_microsoft.rc1b_preflight_failure.v2",
+                      "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+                      "source_sha": os.environ["GITHUB_SHA"],
+                      "preflight_passed": False,
+                      "rc1b_live_qualified": False,
+                      "soak_clock_started": False,
+                  }
+              )
+              out = Path("evidence/live-microsoft-rc1b-preflight/failure.json")
+              out.parent.mkdir(parents=True, exist_ok=True)
+              out.write_text(
+                  json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
           if not matches:
               raise SystemExit("RC1B preflight result marker was not found")
           payload = json.loads(base64.urlsafe_b64decode(matches[-1]).decode("utf-8"))
@@ -415,6 +485,26 @@ jobs:
           out.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
           PY
           rm -f "$raw"
+          if [ -f evidence/live-microsoft-rc1b-preflight/failure.json ]; then
+            failure_code="$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("evidence/live-microsoft-rc1b-preflight/failure.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print(payload["failure_code"])
+          PY
+            )"
+            echo "::error::RC1B preflight failed closed: $failure_code"
+            exit 1
+          fi
+          if [ "$status" != "Succeeded" ]; then
+            echo "::error::RC1B preflight execution ended with status ${status:-unknown}"
+            exit 1
+          fi
 
       - name: Record fail-closed preflight outcome
         if: failure()
@@ -425,18 +515,22 @@ jobs:
           import os
           from pathlib import Path
 
+          out = Path("evidence/live-microsoft-rc1b-preflight/failure.json")
+          if out.is_file():
+              raise SystemExit(0)
           payload = {
-              "schema_version": "ets.live_microsoft.rc1b_preflight_failure.v1",
+              "schema_version": "ets.live_microsoft.rc1b_preflight_failure.v2",
+              "failure_code": "bounded_failure_marker_unavailable",
               "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
               "source_sha": os.environ["GITHUB_SHA"],
               "preflight_passed": False,
               "rc1b_live_qualified": False,
+              "raw_directory_payload_retained": False,
               "customer_identifiers_retained": False,
               "reusable_credential_retained": False,
               "public_evidence_safe": True,
               "soak_clock_started": False,
           }
-          out = Path("evidence/live-microsoft-rc1b-preflight/failure.json")
           out.parent.mkdir(parents=True, exist_ok=True)
           out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
           PY

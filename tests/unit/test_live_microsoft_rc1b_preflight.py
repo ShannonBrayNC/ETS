@@ -1,4 +1,12 @@
+import ast
+import base64
+import json
+import sys
+import textwrap
 from pathlib import Path
+from types import ModuleType
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = (ROOT / ".github" / "workflows" / "live-microsoft-rc1b-preflight.yml").read_text(
@@ -13,6 +21,13 @@ DOC = (ROOT / "docs" / "connectors" / "MICROSOFT_P0_RC1B_LIVE_PREFLIGHT_V1.md").
 BICEP_WORKFLOW = (ROOT / ".github" / "workflows" / "hosted-azure-bicep.yml").read_text(
     encoding="utf-8"
 )
+
+
+def _probe_script() -> str:
+    marker = "var probeScript = '''"
+    start = BICEP.index(marker) + len(marker)
+    end = BICEP.index("\n'''", start)
+    return BICEP[start:end]
 
 
 def test_rc1b_preflight_is_manual_protected_and_exact_source_pinned() -> None:
@@ -102,6 +117,109 @@ def test_rc1b_evidence_is_sanitized_and_does_not_widen_claims() -> None:
     assert "No live preflight is performed merely by merging these assets." in DOC
     assert "Passing it is not completion of #540" in DOC
     assert "Microsoft source truth or universal tenant completeness" in DOC
+
+
+def test_rc1b_runtime_failure_is_classified_before_job_cleanup() -> None:
+    for term in (
+        'FAILURE_MARKER = "ETS_M365_RC1B_PREFLIGHT_FAILURE_B64="',
+        "sys.excepthook = emit_sanitized_failure",
+        '"schema_version": "ets.live_microsoft.rc1b_preflight_runtime_failure.v1"',
+        '"failure_code": FAILURE_CODE',
+        'FAILURE_CODE = "directory_identity_token_acquisition_failed"',
+        'FAILURE_CODE = "users_delta_request_failed"',
+        'FAILURE_CODE = "groups_delta_request_failed"',
+        'FAILURE_CODE = "directory_sharepoint_negative_control_failed"',
+        'FAILURE_CODE = "directory_runtime_state_unstable"',
+        'FAILURE_CODE = "directory_event_state_incomplete"',
+        'FAILURE_CODE = "directory_core_sync_incomplete"',
+    ):
+        assert term in BICEP
+
+    assert "ETS_M365_RC1B_PREFLIGHT(_FAILURE)?_B64" in WORKFLOW
+    assert "RC1B failure marker returned an unexpected public shape" in WORKFLOW
+    assert "RC1B failure marker code is not allow-listed" in WORKFLOW
+    assert '"failure_code": "bounded_failure_marker_unavailable"' in WORKFLOW
+    assert '"schema_version": "ets.live_microsoft.rc1b_preflight_failure.v2"' in WORKFLOW
+    assert "Both paths use the same sanitized" in DOC
+    assert "if out.is_file():" in WORKFLOW
+    assert WORKFLOW.index("az containerapp job logs show") < WORKFLOW.index(
+        'if [ "$status" != "Succeeded" ]'
+    )
+
+
+def test_rc1b_failure_marker_retains_no_raw_diagnostics() -> None:
+    for term in (
+        '"raw_directory_payload_retained": False',
+        '"customer_identifiers_retained": False',
+        '"reusable_credential_retained": False',
+        '"public_evidence_safe": True',
+        '"rc1b_live_qualified": False',
+        '"soak_clock_started": False',
+    ):
+        assert term in BICEP
+    assert "deletes the private raw log before uploading evidence" in DOC
+    assert "trap 'rm -f \"$raw\"' EXIT" in WORKFLOW
+    artifact_path = WORKFLOW.split("path: evidence/live-microsoft-rc1b-preflight/*.json", 1)
+    assert len(artifact_path) == 2
+    assert "microsoft-rc1b-preflight.log" not in artifact_path[1]
+
+
+def test_rc1b_embedded_probe_and_workflow_python_are_syntactically_valid() -> None:
+    ast.parse(_probe_script(), filename="ets-live-microsoft-rc1b-preflight.py")
+
+    remaining = WORKFLOW
+    parsed = 0
+    while "<<'PY'" in remaining:
+        _, remaining = remaining.split("<<'PY'", 1)
+        script, remaining = remaining.split("\n          PY", 1)
+        ast.parse(
+            textwrap.dedent(script).lstrip("\n"),
+            filename="live-microsoft-rc1b-preflight-inline.py",
+        )
+        parsed += 1
+    assert parsed >= 4
+
+
+def test_rc1b_failure_hook_emits_only_the_bounded_public_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    identity_module = ModuleType("azure.identity")
+    identity_module.ManagedIdentityCredential = object  # type: ignore[attr-defined]
+    azure_module = ModuleType("azure")
+    azure_module.identity = identity_module  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "azure", azure_module)
+    monkeypatch.setitem(sys.modules, "azure.identity", identity_module)
+    monkeypatch.setenv("ETS_RC1B_INSTANCE_ID", "m365-sharepoint-primary")
+    monkeypatch.setenv("ETS_RC1B_DIRECTORY_CLIENT_ID", "redacted-client-id")
+    monkeypatch.setenv("ETS_RC1B_SHAREPOINT_DRIVE_ID", "redacted-drive-id")
+    monkeypatch.setattr(sys, "excepthook", sys.excepthook)
+
+    initialization = _probe_script().split("\ndef request_json", 1)[0]
+    namespace: dict[str, object] = {}
+    exec(compile(initialization, "<rc1b-preflight-init>", "exec"), namespace)
+    namespace["FAILURE_CODE"] = "directory_runtime_state_unstable"
+    hook = namespace["emit_sanitized_failure"]
+    assert callable(hook)
+    hook(RuntimeError, RuntimeError("private diagnostic must not enter marker"), None)
+
+    output = capsys.readouterr().out.strip()
+    assert output.startswith("ETS_M365_RC1B_PREFLIGHT_FAILURE_B64=")
+    encoded = output.split("=", 1)[1]
+    payload = json.loads(base64.urlsafe_b64decode(encoded))
+    assert payload == {
+        "schema_version": "ets.live_microsoft.rc1b_preflight_runtime_failure.v1",
+        "failure_code": "directory_runtime_state_unstable",
+        "raw_directory_payload_retained": False,
+        "customer_identifiers_retained": False,
+        "reusable_credential_retained": False,
+        "public_evidence_safe": True,
+        "rc1b_live_qualified": False,
+        "soak_clock_started": False,
+    }
+    assert "private diagnostic" not in output
+    assert "redacted-client-id" not in output
+    assert "redacted-drive-id" not in output
 
 
 def test_hosted_bicep_gate_compiles_rc1b_preflight_template() -> None:
