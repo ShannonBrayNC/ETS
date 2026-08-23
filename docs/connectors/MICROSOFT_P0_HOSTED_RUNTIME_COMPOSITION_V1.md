@@ -86,3 +86,8 @@ The approved SharePoint-backed Microsoft Graph subscription lifecycle is compose
 [`MICROSOFT_P0_GRAPH_LIFECYCLE_COMPOSITION_V1.md`](./MICROSOFT_P0_GRAPH_LIFECYCLE_COMPOSITION_V1.md).
 Protected live qualification under #539 and #540 still requires an approved immutable image and
 explicit operator activation.
+
+The first read-only #540 gate is defined by
+[`MICROSOFT_P0_RC1B_LIVE_PREFLIGHT_V1.md`](./MICROSOFT_P0_RC1B_LIVE_PREFLIGHT_V1.md). It proves the
+separated directory identity and durable users/groups polling posture without widening that
+preflight into an RC1B qualification, candidate-freeze, or soak claim.
