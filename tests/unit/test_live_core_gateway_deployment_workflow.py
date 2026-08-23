@@ -1,9 +1,26 @@
 from __future__ import annotations
 
+import json
+import os
+import re
+import subprocess
+import sys
+import textwrap
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "live-core-gateway-deployment.yml"
+
+
+def _exact_environment_verifier() -> str:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    match = re.search(
+        r"python - \"\$environment_json\" <<'PY'\n(?P<script>.*?)\n\s+PY",
+        text,
+        re.DOTALL,
+    )
+    assert match is not None
+    return textwrap.dedent(match.group("script"))
 
 
 def test_live_core_gateway_deployment_is_manual_and_least_privilege() -> None:
@@ -102,6 +119,7 @@ def test_live_core_gateway_deployment_uses_existing_bicep_runtime_contract() -> 
         "az containerapp env show",
         "Core managed environment name changed after deployment",
         "Core managed environment resource ID changed after deployment",
+        "canonical_azure_location",
         "Core managed environment provisioning did not succeed",
         "does not use the exact Core managed environment",
         'core_base_url="https://${CORE_FQDN}"',
@@ -130,6 +148,69 @@ def test_live_core_gateway_deployment_uses_existing_bicep_runtime_contract() -> 
         "registry-username",
     ):
         assert prohibited not in text
+
+
+def test_exact_environment_verifier_accepts_azure_display_location(tmp_path: Path) -> None:
+    environment_id = (
+        "/subscriptions/sub/resourceGroups/rg-ets-live-eastus/providers/"
+        "Microsoft.App/managedEnvironments/ets-core-cae"
+    )
+    payload = {
+        "id": environment_id,
+        "location": "East US",
+        "name": "ets-core-cae",
+        "properties": {"provisioningState": "Succeeded"},
+    }
+    payload_path = tmp_path / "environment.json"
+    payload_path.write_text(json.dumps(payload), encoding="utf-8")
+    env = {
+        **os.environ,
+        "LOCATION": "eastus",
+        "MANAGED_ENVIRONMENT_NAME": "ets-core-cae",
+        "MANAGED_ENVIRONMENT_RESOURCE_ID": environment_id,
+    }
+
+    result = subprocess.run(
+        [sys.executable, "-c", _exact_environment_verifier(), str(payload_path)],
+        check=False,
+        capture_output=True,
+        env=env,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_exact_environment_verifier_rejects_different_region(tmp_path: Path) -> None:
+    environment_id = (
+        "/subscriptions/sub/resourceGroups/rg-ets-live-eastus/providers/"
+        "Microsoft.App/managedEnvironments/ets-core-cae"
+    )
+    payload = {
+        "id": environment_id,
+        "location": "West US",
+        "name": "ets-core-cae",
+        "properties": {"provisioningState": "Succeeded"},
+    }
+    payload_path = tmp_path / "environment.json"
+    payload_path.write_text(json.dumps(payload), encoding="utf-8")
+    env = {
+        **os.environ,
+        "LOCATION": "eastus",
+        "MANAGED_ENVIRONMENT_NAME": "ets-core-cae",
+        "MANAGED_ENVIRONMENT_RESOURCE_ID": environment_id,
+    }
+
+    result = subprocess.run(
+        [sys.executable, "-c", _exact_environment_verifier(), str(payload_path)],
+        check=False,
+        capture_output=True,
+        env=env,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "Core managed environment is in an unexpected Azure region" in result.stderr
 
 
 def test_live_core_gateway_deployment_retains_bounded_nonclaims() -> None:

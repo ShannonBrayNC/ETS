@@ -403,11 +403,21 @@ jobs:
           expected_name = os.environ["MANAGED_ENVIRONMENT_NAME"]
           expected_resource_id = os.environ["MANAGED_ENVIRONMENT_RESOURCE_ID"]
           expected_location = os.environ["LOCATION"]
+
+          def canonical_azure_location(value: object) -> str:
+              return "".join(
+                  character
+                  for character in str(value or "").casefold()
+                  if character.isalnum()
+              )
+
           if str(payload.get("name") or "").casefold() != expected_name.casefold():
               raise SystemExit("Core managed environment name changed after deployment")
           if str(payload.get("id") or "").casefold() != expected_resource_id.casefold():
               raise SystemExit("Core managed environment resource ID changed after deployment")
-          if str(payload.get("location") or "").casefold() != expected_location.casefold():
+          if canonical_azure_location(payload.get("location")) != canonical_azure_location(
+              expected_location
+          ):
               raise SystemExit("Core managed environment is in an unexpected Azure region")
           properties = payload.get("properties") or {}
           if str(properties.get("provisioningState") or "").casefold() != "succeeded":
