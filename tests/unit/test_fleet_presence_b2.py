@@ -86,7 +86,7 @@ def _enrollment(*, state: RegistrationState = RegistrationState.PENDING) -> Devi
         hardware_attested=False,
         registration_state=state,
         scope_binding=ScopeBinding(tenant_id="tenant-1", workspace_id="workspace-1"),
-        certificate_not_after_utc=NOW + timedelta(days=1),
+        certificate_not_after_utc=NOW + timedelta(days=3650),
         created_at_utc=NOW,
     )
 

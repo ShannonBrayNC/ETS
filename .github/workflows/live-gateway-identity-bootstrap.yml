@@ -1,11 +1,7 @@
 name: Live Gateway Identity Bootstrap
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/live-gateway-identity-bootstrap.yml
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,7 +14,7 @@ concurrency:
 
 jobs:
   bootstrap:
-    name: Pre-create persistent live Gateway managed identity
+    name: Pre-create separated live Microsoft managed identities
     runs-on: ubuntu-24.04
     environment: ets-azure-q1
     timeout-minutes: 20
@@ -28,9 +24,7 @@ jobs:
       RESOURCE_GROUP: rg-ets-live-eastus
       ENVIRONMENT_NAME: ets-live
       CONNECTOR_INSTANCE_ID: m365-sharepoint-primary
-      HANDOFF_ISSUE: '389'
-      Q0_SOURCE_SHA: 332d7db3a69acd826a2a000264e81a179894e278
-      Q0_IMAGE_DIGEST: sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c
+      HANDOFF_ISSUE: '537'
 
     steps:
       - name: Check out bootstrap source
@@ -38,12 +32,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Assert one-shot release boundary
+      - name: Assert protected identity boundary
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/main"
-          test "$GITHUB_EVENT_NAME" = "push"
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
           test -f infra/azure/ets-gateway-identity.bicep
           test -n "$RESOURCE_GROUP"
           test -n "$ENVIRONMENT_NAME"
@@ -117,7 +111,7 @@ jobs:
           fi
           echo "created=$created" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy deterministic Gateway identity
+      - name: Deploy deterministic separated Microsoft identities
         id: identity
         shell: bash
         run: |
@@ -150,47 +144,122 @@ jobs:
             --resource-group "$RESOURCE_GROUP" \
             --query properties.outputs.gatewayManagedIdentityPrincipalId.value -o tsv)"
 
+          directory_name="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.directoryManagedIdentityName.value -o tsv)"
+          directory_resource_id="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.directoryManagedIdentityResourceId.value -o tsv)"
+          directory_client_id="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.directoryManagedIdentityClientId.value -o tsv)"
+          directory_principal_id="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.directoryManagedIdentityPrincipalId.value -o tsv)"
+
+          purview_name="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.purviewManagedIdentityName.value -o tsv)"
+          purview_resource_id="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.purviewManagedIdentityResourceId.value -o tsv)"
+          purview_client_id="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.purviewManagedIdentityClientId.value -o tsv)"
+          purview_principal_id="$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.purviewManagedIdentityPrincipalId.value -o tsv)"
+
           test -n "$identity_name"
           test -n "$identity_resource_id"
           test -n "$client_id"
           test -n "$principal_id"
-          echo "::add-mask::$identity_resource_id"
-          echo "::add-mask::$client_id"
-          echo "::add-mask::$principal_id"
+          test -n "$directory_name"
+          test -n "$directory_resource_id"
+          test -n "$directory_client_id"
+          test -n "$directory_principal_id"
+          test -n "$purview_name"
+          test -n "$purview_resource_id"
+          test -n "$purview_client_id"
+          test -n "$purview_principal_id"
+          for value in \
+            "$identity_resource_id" "$client_id" "$principal_id" \
+            "$directory_resource_id" "$directory_client_id" "$directory_principal_id" \
+            "$purview_resource_id" "$purview_client_id" "$purview_principal_id"; do
+            echo "::add-mask::$value"
+          done
 
           identity_json="$RUNNER_TEMP/live-gateway-identity.json"
+          directory_json="$RUNNER_TEMP/live-directory-identity.json"
+          purview_json="$RUNNER_TEMP/live-purview-identity.json"
           az identity show \
             --resource-group "$RESOURCE_GROUP" \
             --name "$identity_name" \
             -o json > "$identity_json"
-          python - "$identity_json" "$identity_resource_id" "$client_id" "$principal_id" <<'PY'
+          az identity show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$directory_name" \
+            -o json > "$directory_json"
+          az identity show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$purview_name" \
+            -o json > "$purview_json"
+          python - \
+            "$identity_json" "$identity_resource_id" "$client_id" "$principal_id" \
+            "$directory_json" "$directory_resource_id" "$directory_client_id" "$directory_principal_id" \
+            "$purview_json" "$purview_resource_id" "$purview_client_id" "$purview_principal_id" <<'PY'
           import json
           import sys
           from pathlib import Path
 
-          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          expected_resource_id, expected_client_id, expected_principal_id = sys.argv[2:]
-          actual = {
-              "resource_id": str(payload.get("id") or ""),
-              "client_id": str(payload.get("clientId") or ""),
-              "principal_id": str(payload.get("principalId") or ""),
-          }
-          expected = {
-              "resource_id": expected_resource_id,
-              "client_id": expected_client_id,
-              "principal_id": expected_principal_id,
-          }
-          for key in expected:
-              if actual[key].casefold() != expected[key].casefold():
-                  raise SystemExit(f"Gateway identity {key} did not match deployment output")
+          profiles = ("Gateway", "directory", "Purview")
+          values = []
+          for index, profile in enumerate(profiles):
+              offset = 1 + index * 4
+              payload = json.loads(Path(sys.argv[offset]).read_text(encoding="utf-8"))
+              expected_resource_id, expected_client_id, expected_principal_id = sys.argv[
+                  offset + 1 : offset + 4
+              ]
+              actual = {
+                  "resource_id": str(payload.get("id") or ""),
+                  "client_id": str(payload.get("clientId") or ""),
+                  "principal_id": str(payload.get("principalId") or ""),
+              }
+              expected = {
+                  "resource_id": expected_resource_id,
+                  "client_id": expected_client_id,
+                  "principal_id": expected_principal_id,
+              }
+              for key in expected:
+                  if actual[key].casefold() != expected[key].casefold():
+                      raise SystemExit(
+                          f"{profile} identity {key} did not match deployment output"
+                      )
+              values.append(actual)
+
+          for key in ("resource_id", "client_id", "principal_id"):
+              if len({item[key].casefold() for item in values}) != len(values):
+                  raise SystemExit(f"separated Microsoft identity {key} values are not distinct")
           PY
 
           echo "name=$identity_name" >> "$GITHUB_OUTPUT"
+          echo "directory_name=$directory_name" >> "$GITHUB_OUTPUT"
+          echo "purview_name=$purview_name" >> "$GITHUB_OUTPUT"
 
       - name: Retain sanitized identity handoff
         shell: bash
         env:
           IDENTITY_NAME: ${{ steps.identity.outputs.name }}
+          DIRECTORY_IDENTITY_NAME: ${{ steps.identity.outputs.directory_name }}
+          PURVIEW_IDENTITY_NAME: ${{ steps.identity.outputs.purview_name }}
           RESOURCE_GROUP_CREATED: ${{ steps.group.outputs.created }}
         run: |
           set -euo pipefail
@@ -201,21 +270,29 @@ jobs:
           from pathlib import Path
 
           payload = {
-              "schema_version": "ets.live_gateway.identity_bootstrap.v1",
+              "schema_version": "ets.live_gateway.identity_bootstrap.v2",
               "orchestrator_source_sha": os.environ["GITHUB_SHA"],
-              "q0_image_source_sha": os.environ["Q0_SOURCE_SHA"],
-              "q0_image_digest": os.environ["Q0_IMAGE_DIGEST"],
               "location": os.environ["LOCATION"],
               "resource_group": os.environ["RESOURCE_GROUP"],
               "resource_group_created": os.environ["RESOURCE_GROUP_CREATED"].lower() == "true",
               "environment_name": os.environ["ENVIRONMENT_NAME"],
               "connector_instance_id": os.environ["CONNECTOR_INSTANCE_ID"],
               "gateway_managed_identity_name": os.environ["IDENTITY_NAME"],
+              "directory_managed_identity_name": os.environ["DIRECTORY_IDENTITY_NAME"],
+              "purview_managed_identity_name": os.environ["PURVIEW_IDENTITY_NAME"],
               "gateway_identity_ready": True,
+              "directory_identity_ready": True,
+              "purview_identity_ready": True,
               "gateway_client_id_retained": False,
               "gateway_principal_id_retained": False,
+              "directory_client_id_retained": False,
+              "directory_principal_id_retained": False,
+              "purview_client_id_retained": False,
+              "purview_principal_id_retained": False,
               "reusable_credential_retained": False,
               "core_producer_role_assigned": False,
+              "directory_app_roles_assigned": False,
+              "purview_app_roles_assigned": False,
               "core_scope_map_configured": False,
               "azure_runtime_deployed": False,
               "m365_source_to_proof_claimed": False,
@@ -240,26 +317,30 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           IDENTITY_NAME: ${{ steps.identity.outputs.name }}
+          DIRECTORY_IDENTITY_NAME: ${{ steps.identity.outputs.directory_name }}
+          PURVIEW_IDENTITY_NAME: ${{ steps.identity.outputs.purview_name }}
         run: |
           set -euo pipefail
           body=$(cat <<EOF
           ### Live Gateway identity bootstrap
 
-          - release image source: \`$Q0_SOURCE_SHA\`
-          - release image digest: \`$Q0_IMAGE_DIGEST\`
+          - exact bootstrap source: \`$GITHUB_SHA\`
           - Azure resource group: \`$RESOURCE_GROUP\`
-          - Gateway managed identity: \`$IDENTITY_NAME\`
+          - SharePoint/Core managed identity: \`$IDENTITY_NAME\`
+          - directory managed identity: \`$DIRECTORY_IDENTITY_NAME\`
+          - Purview managed identity: \`$PURVIEW_IDENTITY_NAME\`
           - deterministic environment seed: \`$ENVIRONMENT_NAME\`
           - deterministic connector seed: \`$CONNECTOR_INSTANCE_ID\`
-          - Gateway identity ready: **true**
+          - three separated runtime identities ready: **true**
           - client/principal IDs retained in public evidence: **false**
           - Core \`evidence_producer\` role assigned: **false**
+          - directory/Purview application roles assigned: **false**
           - Core app-to-ETS-scope map configured: **false**
           - Azure Core/Gateway runtime deployed: **false**
           - M365 source-to-proof claimed: **false**
           - 72-hour soak clock started: **false**
 
-          Next gate: use the governed #414 operator scripts in the target Microsoft tenant to validate/create the Core \`evidence_producer\` app role and assign it to this exact managed identity, then deploy Core/Gateway from the authoritative immutable image.
+          Next gate: run the Microsoft P0 role bootstrap in preview mode, review the exact directory/Purview assignment sets, apply only the approved roles, then deploy the exact Q0 image.
           EOF
           )
           gh api \

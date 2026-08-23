@@ -6,24 +6,29 @@ This gate deploys the persistent hosted ETS Core and Microsoft Gateway into the 
 
 It does not create or modify Entra application registrations, grant application roles, grant SharePoint access, prove a live Gateway producer token, complete #390, or start the 72-hour soak clock.
 
-The deployment-authoritative release identity remains:
-
-- source: `332d7db3a69acd826a2a000264e81a179894e278`
-- image: `etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:c83a8cb0729d7e00506e4b7b9f0d0e5a7c5bbe3829abad76113ba7fd1ee3424c`
-
-The earlier `3a8e4547...` image is superseded and must not be deployed.
+The deployment-authoritative release identity is supplied only through protected manual inputs and
+must be backed by one successful `hosted-azure-q0-image.yml` run on the same exact `main` SHA. The
+deployment workflow downloads that run's retained manifest and vulnerability gate before Azure
+mutation. It rejects a moved `main`, a mutable/tag-only image, a different repository, a failed or
+non-manual Q0 run, ambiguous evidence, or any fixable HIGH/CRITICAL finding.
 
 ## Preconditions
 
 The following gates must be complete before dispatch:
 
-1. the persistent Gateway UAMI exists in `rg-ets-live-eastus` as `ets-o23bf2d6oq44s-gw-id`;
+1. the protected manual identity bootstrap has created the distinct SharePoint/Core, directory,
+   and Purview UAMIs in `rg-ets-live-eastus`;
 2. the governed ETS Core API registration exists in the target Microsoft tenant;
 3. the stable Core `evidence_producer` application role exists;
 4. that exact live Gateway UAMI is assigned the Core `evidence_producer` role;
 5. the operator has selected explicit ETS tenant and workspace identifiers;
 6. the exact Gateway client ID is the only key in the Core app-to-ETS-scope map;
-7. the protected deployment environment contains the exact authentication and connector values described below.
+7. the directory identity has only `User.Read.All` and `Group.Read.All`, and the Purview identity
+   has only `ActivityFeed.Read`, after preview-first operator review;
+8. one successful Q0 run has retained the exact source, digest, SBOM, provenance, and passing
+   vulnerability evidence; and
+9. the protected deployment environment contains the exact authentication and connector values
+   described below.
 
 The recommended operator path is the merged `scripts/azure/provision-live-core-gateway-identity.ps1` orchestration. Run it without `-Apply` first, then with `-Apply` after validating the target tenant and ETS tenant/workspace values.
 
@@ -52,20 +57,27 @@ Do not put these exact values in a public issue comment or public artifact. They
 
 ## Fail-closed preflight
 
-`.github/workflows/live-core-gateway-deployment.yml` is manual-only and accepts no workflow inputs.
+Run `.github/workflows/live-core-gateway-deployment.yml` from `main` with:
 
-Before creating runtime resources it:
+- `image_source_sha`: the exact current `main` SHA used by the approved Q0 publication;
+- `container_image`: `etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:<digest>` from that run; and
+- `q0_workflow_run_id`: the successful `hosted-azure-q0-image.yml` run ID.
+
+The workflow is manual-only. Before creating runtime resources it:
 
 1. authenticates to Azure using workload identity federation;
 2. requires the active tenant and subscription to match the protected environment;
 3. requires the existing live resource group to remain in `eastus` with the governed ownership tags;
-4. re-reads `ets-o23bf2d6oq44s-gw-id` from Azure;
-5. requires the Core auth tenant and Microsoft connector tenant to equal the protected Azure tenant;
-6. requires the Core scope to equal `<audience>/.default`;
-7. requires the issuer and JWKS URL to be the exact tenant-specific v2 endpoints;
-8. parses `ETS_LIVE_AUTH_APP_SCOPE_MAP_JSON` and requires exactly one application/client key;
-9. requires that key to equal the re-read live Gateway client ID;
-10. requires the scope-map tenant/workspace binding to equal the separately protected ETS tenant/workspace values.
+4. requires the dispatch SHA to equal both current `main` and `image_source_sha`;
+5. verifies the exact successful Q0 run and retained Q0 manifest/vulnerability gate;
+6. re-reads the three deterministic runtime identities from Azure and requires distinct client and
+   principal IDs;
+7. requires the Core auth tenant and Microsoft connector tenant to equal the protected Azure tenant;
+8. requires the Core scope to equal `<audience>/.default`;
+9. requires the issuer and JWKS URL to be the exact tenant-specific v2 endpoints;
+10. parses `ETS_LIVE_AUTH_APP_SCOPE_MAP_JSON` and requires exactly one application/client key;
+11. requires that key to equal the re-read live SharePoint/Core Gateway client ID; and
+12. requires the scope-map tenant/workspace binding to equal the separately protected ETS tenant/workspace values.
 
 Any mismatch stops deployment.
 
@@ -101,7 +113,10 @@ It passes:
 - the same production JWKS contract;
 - the same server-owned Gateway app-to-ETS-scope map.
 
-After deployment it re-reads the live UAMI again and requires the Gateway Bicep output client ID to match that exact Azure identity. A newly created or substituted Gateway principal is therefore rejected.
+After deployment it requires the SharePoint/Core, directory, and Purview Bicep output client IDs to
+match the three pre-qualified Azure identities. A newly created or substituted runtime principal is
+therefore rejected. The ACR pull identity remains a fourth distinct identity with lifecycle `None`;
+the three runtime identities use lifecycle `Main`.
 
 ## Deployment verification
 
@@ -115,7 +130,11 @@ The workflow reads the resulting Container App resource definitions without expo
 - both contain the exact protected authentication scope map;
 - Gateway points to the exact Core internal FQDN;
 - Gateway uses the exact Core `.default` scope;
-- Gateway uses the selected ETS tenant/workspace and exact Microsoft connector scope.
+- Gateway uses the selected ETS tenant/workspace and exact Microsoft connector scope;
+- Gateway exposes the exact separated directory and Purview client IDs;
+- no Graph notification URL, clientState, lifecycle timing, or health-policy environment variable
+  is present; and
+- Graph callback ingress remains internal.
 
 This proves configuration convergence, not live request success.
 
@@ -124,12 +143,16 @@ This proves configuration convergence, not live request success.
 The successful workflow may publish only bounded release evidence such as:
 
 - release source SHA and image digest;
+- Q0 publication workflow run ID and successful evidence-verification result;
 - Azure resource group;
 - non-customer Core/Gateway resource names;
-- non-customer Gateway managed-identity name;
+- non-customer SharePoint/Core, directory, and Purview managed-identity names;
 - immutable image verified: true;
 - internal ingress verified: true;
 - single-replica configuration verified: true;
+- separated Microsoft identities verified: true;
+- Graph lifecycle configuration present: false;
+- Graph callback ingress external: false;
 - Core scope map configured: true;
 - Azure runtime resources deployed: true.
 
@@ -151,11 +174,14 @@ A successful deployment does **not** by itself prove:
 
 Those claims remain false until separately retained evidence exists.
 
-## Next gate
+## Next gates
 
-After this deployment succeeds, run a same-environment qualification client that proves both sides of the Core authorization boundary:
+After this deployment succeeds, run the protected RC1B and RC1C read-only preflights from the same
+unchanged `main` SHA and immutable image. RC1B proves the dedicated directory identity, bounded
+users/groups delta access, SharePoint negative control, and query-only durable state. RC1C proves
+the dedicated Purview audience/role, read-only `Audit.General` subscription listing, query-only
+runtime state, and the accepted Graph deferral boundary.
 
-1. the live Gateway UAMI obtains a token for the exact Core `.default` scope with the `evidence_producer` role and successfully submits a synthetic evidence event to Core; and
-2. a bounded authenticated control principal without `evidence.create` receives the expected denial.
-
-Only after that identity proof should the approved EchoMedia SharePoint `Sites.Selected` scope and #390 live source-to-proof qualification be enabled. The 72-hour soak clock begins only after the first retained #390 source-to-proof probe succeeds.
+Neither preflight completes the full live slice. Tombstone/replay/throttle/recovery exercises,
+Purview subscription mutation/recovery, candidate freeze, and the new 72-hour soak remain separate
+governed gates.

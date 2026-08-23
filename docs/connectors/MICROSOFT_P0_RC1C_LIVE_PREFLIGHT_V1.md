@@ -14,6 +14,9 @@ The preflight is manual, protected by the `ets-azure-q1` environment, pinned to 
 `main` source SHA and one already-deployed private-ACR digest, and implemented as an ephemeral
 Azure Container Apps Job. Merging the workflow does not execute it.
 
+The identity, Q0 publication, and private deployment prerequisites are ordered by
+[`MICROSOFT_P0_LIVE_RELEASE_SEQUENCE_V1.md`](./MICROSOFT_P0_LIVE_RELEASE_SEQUENCE_V1.md).
+
 ## Permission correction
 
 Microsoft's current Graph documentation lists `Files.Read.All` as the application permission for
