@@ -1,0 +1,496 @@
+name: Live Microsoft RC1B Read-Only Preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_source_sha:
+        description: Exact approved main SHA used to build the deployed immutable image
+        required: true
+        type: string
+      container_image:
+        description: Exact deployed private-ACR image as registry/repository@sha256:<digest>
+        required: true
+        type: string
+      connector_instance_id:
+        description: Deployment-authoritative base Microsoft connector instance ID
+        required: true
+        default: m365-sharepoint-primary
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+concurrency:
+  group: live-microsoft-rc1b-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Prove separated directory polling readiness
+    runs-on: ubuntu-24.04
+    environment: ets-azure-q1
+    timeout-minutes: 20
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      LOCATION: eastus
+      RESOURCE_GROUP: rg-ets-live-eastus
+      ACR_NAME: etsq1a352eb89
+      RESULT_ISSUE: '540'
+      IMAGE_SOURCE_SHA: ${{ inputs.image_source_sha }}
+      CONTAINER_IMAGE: ${{ inputs.container_image }}
+      CONNECTOR_INSTANCE_ID: ${{ inputs.connector_instance_id }}
+      JOB_NAME: ets-mrc1b-${{ github.run_id }}
+
+    steps:
+      - name: Check out exact preflight source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.image_source_sha }}
+          persist-credentials: false
+
+      - name: Assert protected immutable boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$IMAGE_SOURCE_SHA" = "$GITHUB_SHA"
+          test -f infra/azure/ets-live-microsoft-rc1b-preflight.bicep
+          test -n "$CONNECTOR_INSTANCE_ID"
+          test "${#CONNECTOR_INSTANCE_ID}" -le 128
+          python - <<'PY'
+          import os
+          import re
+
+          source = os.environ["IMAGE_SOURCE_SHA"]
+          image = os.environ["CONTAINER_IMAGE"]
+          registry = os.environ["ACR_NAME"] + ".azurecr.io"
+          if re.fullmatch(r"[0-9a-f]{40}", source) is None:
+              raise SystemExit("image_source_sha is not canonical")
+          pattern = rf"{re.escape(registry)}/[^@\s]+@sha256:[0-9a-f]{{64}}"
+          if re.fullmatch(pattern, image) is None:
+              raise SystemExit("container_image is outside the exact private-ACR digest boundary")
+          PY
+          mkdir -p evidence/live-microsoft-rc1b-preflight
+
+      - name: Azure login with workload identity
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Resolve exact private Gateway and separated identities
+        id: runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          apps_json="$RUNNER_TEMP/rc1b-apps.json"
+          resolved="$RUNNER_TEMP/rc1b-resolved.txt"
+          az containerapp list --resource-group "$RESOURCE_GROUP" -o json > "$apps_json"
+
+          python - "$apps_json" > "$resolved" <<'PY'
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          apps = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if not isinstance(apps, list):
+              raise SystemExit("live Container Apps listing was not an array")
+
+          expected_instance = os.environ["CONNECTOR_INSTANCE_ID"]
+          candidates = []
+          for app in apps:
+              props = app.get("properties") or {}
+              containers = (props.get("template") or {}).get("containers") or []
+              if len(containers) != 1:
+                  continue
+              env = {
+                  item.get("name"): item.get("value")
+                  for item in containers[0].get("env") or []
+                  if isinstance(item, dict) and "value" in item
+              }
+              if env.get("ETS_GATEWAY_INSTANCE_ID") == expected_instance:
+                  candidates.append((app, containers[0], env))
+          if len(candidates) != 1:
+              raise SystemExit("expected exactly one deployment-authoritative Microsoft Gateway")
+
+          app, container, env = candidates[0]
+          props = app.get("properties") or {}
+          configuration = props.get("configuration") or {}
+          ingress = configuration.get("ingress") or {}
+          if ingress.get("external") is not False:
+              raise SystemExit("live Microsoft Gateway ingress must remain internal")
+          scale = (props.get("template") or {}).get("scale") or {}
+          if scale.get("minReplicas") != 1 or scale.get("maxReplicas") != 1:
+              raise SystemExit("live Microsoft Gateway must remain single replica")
+          if container.get("name") != "ets-gateway":
+              raise SystemExit("live Microsoft Gateway container identity changed")
+          if container.get("image") != os.environ["CONTAINER_IMAGE"]:
+              raise SystemExit("live Microsoft Gateway image differs from the approved digest")
+
+          environment_id = str(props.get("environmentId") or "")
+          volumes = (props.get("template") or {}).get("volumes") or []
+          state_volumes = [item for item in volumes if item.get("name") == "gateway-state"]
+          if len(state_volumes) != 1:
+              raise SystemExit("live Microsoft Gateway state volume is unavailable")
+          storage_name = str(state_volumes[0].get("storageName") or "")
+
+          registries = configuration.get("registries") or []
+          if len(registries) != 1:
+              raise SystemExit("live Microsoft Gateway must expose exactly one ACR binding")
+          registry = registries[0]
+          expected_server = os.environ["ACR_NAME"] + ".azurecr.io"
+          if str(registry.get("server") or "").casefold() != expected_server.casefold():
+              raise SystemExit("live Microsoft Gateway registry server changed")
+          pull_identity = str(registry.get("identity") or "")
+
+          identity_names = (
+              "ETS_GATEWAY_MANAGED_IDENTITY_CLIENT_ID",
+              "ETS_GATEWAY_DIRECTORY_MANAGED_IDENTITY_CLIENT_ID",
+              "ETS_GATEWAY_PURVIEW_MANAGED_IDENTITY_CLIENT_ID",
+          )
+          client_ids = [str(env.get(name) or "").strip() for name in identity_names]
+          if any(not value for value in client_ids):
+              raise SystemExit("live Microsoft Gateway omitted a separated runtime identity")
+          if len({value.casefold() for value in client_ids}) != 3:
+              raise SystemExit("live Microsoft runtime identity client IDs are not distinct")
+          if env.get("ETS_GATEWAY_MICROSOFT_APPLICATION_ID", "").casefold() != client_ids[0].casefold():
+              raise SystemExit("SharePoint application ID differs from the SharePoint/Core UAMI")
+
+          assigned = (app.get("identity") or {}).get("userAssignedIdentities") or {}
+          if len(assigned) != 4:
+              raise SystemExit("live Microsoft Gateway must attach exactly four user-assigned identities")
+
+          def resource_id_for(client_id):
+              matches = [
+                  resource_id
+                  for resource_id, value in assigned.items()
+                  if str((value or {}).get("clientId") or "").casefold() == client_id.casefold()
+              ]
+              if len(matches) != 1:
+                  raise SystemExit("runtime client ID did not resolve to one attached Azure identity")
+              return matches[0]
+
+          sharepoint_identity = resource_id_for(client_ids[0])
+          directory_identity = resource_id_for(client_ids[1])
+          purview_identity = resource_id_for(client_ids[2])
+          exact_ids = {
+              sharepoint_identity.casefold(),
+              directory_identity.casefold(),
+              purview_identity.casefold(),
+              pull_identity.casefold(),
+          }
+          if len(exact_ids) != 4 or set(key.casefold() for key in assigned) != exact_ids:
+              raise SystemExit("live Microsoft identity assignment set contains drift")
+
+          drive_id = str(env.get("ETS_GATEWAY_SHAREPOINT_DRIVE_ID") or "")
+          if not environment_id or not storage_name or not pull_identity or not drive_id:
+              raise SystemExit("live Microsoft RC1B preflight prerequisites are incomplete")
+          if re.fullmatch(r"[A-Za-z0-9._-]{1,128}", expected_instance) is None:
+              raise SystemExit("connector instance ID is outside the qualified identifier profile")
+
+          print("environment_id=" + environment_id)
+          print("state_storage_name=" + storage_name)
+          print("pull_identity=" + pull_identity)
+          print("directory_identity=" + directory_identity)
+          print("directory_client_id=" + client_ids[1])
+          print("sharepoint_drive_id=" + drive_id)
+          PY
+
+          while IFS='=' read -r key value; do
+            test -n "$key"
+            test -n "$value"
+            echo "::add-mask::$value"
+            printf '%s=%s\n' "$key" "$value" >> "$GITHUB_OUTPUT"
+          done < "$resolved"
+          rm -f "$apps_json" "$resolved"
+
+      - name: Deploy and execute bounded read-only preflight
+        id: execute
+        shell: bash
+        env:
+          ENVIRONMENT_ID: ${{ steps.runtime.outputs.environment_id }}
+          STATE_STORAGE_NAME: ${{ steps.runtime.outputs.state_storage_name }}
+          PULL_IDENTITY: ${{ steps.runtime.outputs.pull_identity }}
+          DIRECTORY_IDENTITY: ${{ steps.runtime.outputs.directory_identity }}
+          DIRECTORY_CLIENT_ID: ${{ steps.runtime.outputs.directory_client_id }}
+          SHAREPOINT_DRIVE_ID: ${{ steps.runtime.outputs.sharepoint_drive_id }}
+        run: |
+          set -euo pipefail
+          test "${#JOB_NAME}" -le 32
+          az deployment group create \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/azure/ets-live-microsoft-rc1b-preflight.bicep \
+            --parameters \
+              location="$LOCATION" \
+              jobName="$JOB_NAME" \
+              managedEnvironmentResourceId="$ENVIRONMENT_ID" \
+              gatewayStateStorageName="$STATE_STORAGE_NAME" \
+              registryPullIdentityResourceId="$PULL_IDENTITY" \
+              directoryIdentityResourceId="$DIRECTORY_IDENTITY" \
+              directoryIdentityClientId="$DIRECTORY_CLIENT_ID" \
+              registryServer="${ACR_NAME}.azurecr.io" \
+              containerImage="$CONTAINER_IMAGE" \
+              connectorInstanceId="$CONNECTOR_INSTANCE_ID" \
+              sharePointDriveId="$SHAREPOINT_DRIVE_ID" \
+            --only-show-errors \
+            --output none
+
+          execution="$(az containerapp job start \
+            --name "$JOB_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query name -o tsv)"
+          test -n "$execution"
+
+          status=""
+          for _ in $(seq 1 100); do
+            status="$(az containerapp job execution show \
+              --name "$JOB_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --job-execution-name "$execution" \
+              --query properties.status -o tsv)"
+            case "$status" in
+              Succeeded|Failed|Canceled) break ;;
+            esac
+            sleep 3
+          done
+          if [ "$status" != "Succeeded" ]; then
+            echo "::error::RC1B preflight execution ended with status ${status:-unknown}"
+            exit 1
+          fi
+
+          replica=""
+          for _ in $(seq 1 12); do
+            replica="$(az containerapp job replica list \
+              --name "$JOB_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --execution "$execution" \
+              --query '[0].name' -o tsv 2>/dev/null || true)"
+            if [ -n "$replica" ]; then
+              break
+            fi
+            sleep 5
+          done
+          test -n "$replica"
+
+          raw="$RUNNER_TEMP/microsoft-rc1b-preflight.log"
+          found=false
+          for _ in $(seq 1 12); do
+            az containerapp job logs show \
+              --name "$JOB_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --execution "$execution" \
+              --replica "$replica" \
+              --container microsoft-rc1b-preflight \
+              --format text \
+              --only-show-errors > "$raw" 2>&1 || true
+            if grep -Eq 'ETS_M365_RC1B_PREFLIGHT_B64=[A-Za-z0-9_=-]+' "$raw"; then
+              found=true
+              break
+            fi
+            sleep 5
+          done
+          if [ "$found" != "true" ]; then
+            rm -f "$raw"
+            echo "::error::RC1B preflight result marker was unavailable"
+            exit 1
+          fi
+
+          python - "$raw" <<'PY'
+          import base64
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          matches = re.findall(r"ETS_M365_RC1B_PREFLIGHT_B64=([A-Za-z0-9_=-]+)", source)
+          if not matches:
+              raise SystemExit("RC1B preflight result marker was not found")
+          payload = json.loads(base64.urlsafe_b64decode(matches[-1]).decode("utf-8"))
+          allowed = {
+              "schema_version",
+              "directory_identity_token_acquired",
+              "users_delta_reachable",
+              "groups_delta_reachable",
+              "directory_sharepoint_access_denied",
+              "users_checkpoint_present",
+              "users_checkpoint_revision",
+              "users_checkpoint_kind",
+              "users_last_success_present",
+              "users_healthy_observation",
+              "users_gap_open",
+              "users_event_present",
+              "users_removed_event_present",
+              "users_core_synchronized",
+              "groups_checkpoint_present",
+              "groups_checkpoint_revision",
+              "groups_checkpoint_kind",
+              "groups_last_success_present",
+              "groups_healthy_observation",
+              "groups_gap_open",
+              "groups_event_present",
+              "groups_removed_event_present",
+              "groups_core_synchronized",
+              "raw_directory_payload_retained",
+              "customer_identifiers_retained",
+              "reusable_credential_retained",
+              "public_evidence_safe",
+              "rc1b_live_qualified",
+              "soak_clock_started",
+          }
+          if set(payload) != allowed:
+              raise SystemExit("RC1B preflight returned an unexpected public shape")
+          if payload.get("schema_version") != "ets.live_microsoft.rc1b_preflight.v1":
+              raise SystemExit("RC1B preflight schema changed")
+          required_true = (
+              "directory_identity_token_acquired",
+              "users_delta_reachable",
+              "groups_delta_reachable",
+              "directory_sharepoint_access_denied",
+              "users_checkpoint_present",
+              "users_last_success_present",
+              "users_healthy_observation",
+              "users_event_present",
+              "users_core_synchronized",
+              "groups_checkpoint_present",
+              "groups_last_success_present",
+              "groups_healthy_observation",
+              "groups_event_present",
+              "groups_core_synchronized",
+              "public_evidence_safe",
+          )
+          for key in required_true:
+              if payload.get(key) is not True:
+                  raise SystemExit("RC1B preflight predicate failed: " + key)
+          required_false = (
+              "users_gap_open",
+              "groups_gap_open",
+              "raw_directory_payload_retained",
+              "customer_identifiers_retained",
+              "reusable_credential_retained",
+              "rc1b_live_qualified",
+              "soak_clock_started",
+          )
+          for key in required_false:
+              if payload.get(key) is not False:
+                  raise SystemExit("RC1B preflight fail-closed boundary failed: " + key)
+          for prefix in ("users", "groups"):
+              revision = payload.get(prefix + "_checkpoint_revision")
+              if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+                  raise SystemExit("RC1B preflight checkpoint revision is invalid")
+              if payload.get(prefix + "_checkpoint_kind") != "delta":
+                  raise SystemExit("RC1B preflight checkpoint is not a terminal delta cursor")
+              removed = payload.get(prefix + "_removed_event_present")
+              if not isinstance(removed, bool):
+                  raise SystemExit("RC1B preflight removal observation flag is invalid")
+
+          image = os.environ["CONTAINER_IMAGE"]
+          manifest = dict(payload)
+          manifest.update(
+              {
+                  "schema_version": "ets.live_microsoft.rc1b_preflight_handoff.v1",
+                  "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+                  "source_sha": os.environ["GITHUB_SHA"],
+                  "image_digest": image.rsplit("@", 1)[1],
+                  "preflight_passed": True,
+                  "rc1b_live_qualified": False,
+                  "soak_clock_started": False,
+              }
+          )
+          out = Path("evidence/live-microsoft-rc1b-preflight/result.json")
+          out.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+          rm -f "$raw"
+
+      - name: Record fail-closed preflight outcome
+        if: failure()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schema_version": "ets.live_microsoft.rc1b_preflight_failure.v1",
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "source_sha": os.environ["GITHUB_SHA"],
+              "preflight_passed": False,
+              "rc1b_live_qualified": False,
+              "customer_identifiers_retained": False,
+              "reusable_credential_retained": False,
+              "public_evidence_safe": True,
+              "soak_clock_started": False,
+          }
+          out = Path("evidence/live-microsoft-rc1b-preflight/failure.json")
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload sanitized RC1B preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-microsoft-rc1b-preflight-${{ github.run_id }}
+          path: evidence/live-microsoft-rc1b-preflight/*.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish successful protected handoff
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - > "$RUNNER_TEMP/rc1b-preflight-comment.md" <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("evidence/live-microsoft-rc1b-preflight/result.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print("### Microsoft RC1B read-only live preflight")
+          print()
+          print(f"- workflow run: `{payload['workflow_run_id']}`")
+          print(f"- exact source: `{payload['source_sha']}`")
+          print(f"- immutable image digest: `{payload['image_digest']}`")
+          print("- directory UAMI token acquisition: **passed**")
+          print("- users/groups Graph delta reachability: **passed**")
+          print("- directory UAMI SharePoint-drive denial: **passed (403)**")
+          print("- users/groups terminal delta checkpoints: **present**")
+          print("- users/groups local commitment and Core synchronization: **passed**")
+          print("- customer identifiers retained in public evidence: **false**")
+          print("- reusable credentials retained: **false**")
+          print("- RC1B live-qualified: **false — tombstone/replay/throttle/recovery gates remain**")
+          print("- 72-hour soak clock started: **false**")
+          PY
+          gh issue comment "$RESULT_ISSUE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file "$RUNNER_TEMP/rc1b-preflight-comment.md"
+          rm -f "$RUNNER_TEMP/rc1b-preflight-comment.md"
+
+      - name: Remove ephemeral preflight job
+        if: always()
+        shell: bash
+        run: |
+          az containerapp job delete \
+            --name "$JOB_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --yes \
+            --only-show-errors >/dev/null 2>&1 || true
