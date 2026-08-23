@@ -425,14 +425,19 @@ jobs:
           manifest = dict(payload)
           manifest.update(
               {
-                  "schema_version": "ets.live_microsoft.rc1c_preflight_handoff.v1",
+                  "schema_version": "ets.live_microsoft.rc1c_preflight_handoff.v2",
                   "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
                   "source_sha": os.environ["GITHUB_SHA"],
                   "image_digest": image.rsplit("@", 1)[1],
                   "preflight_passed": True,
                   "graph_callback_ingress_external": False,
                   "graph_lifecycle_configuration_present": False,
-                  "graph_subscription_permission_decision_pending": True,
+                  "graph_subscription_scope_decision": "deferred_from_p0",
+                  "graph_subscription_scope_decision_record": "ADR-009",
+                  "graph_subscription_deferred_from_p0": True,
+                  "graph_future_delivery_profile": "azure_event_hubs_entra_rbac",
+                  "graph_permission_mutation_performed": False,
+                  "graph_subscription_operation_performed": False,
                   "rc1c_live_qualified": False,
                   "soak_clock_started": False,
               }
@@ -452,13 +457,18 @@ jobs:
           from pathlib import Path
 
           payload = {
-              "schema_version": "ets.live_microsoft.rc1c_preflight_failure.v1",
+              "schema_version": "ets.live_microsoft.rc1c_preflight_failure.v2",
               "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
               "source_sha": os.environ["GITHUB_SHA"],
               "preflight_passed": False,
               "graph_callback_ingress_external": False,
               "graph_lifecycle_configuration_present": False,
-              "graph_subscription_permission_decision_pending": True,
+              "graph_subscription_scope_decision": "deferred_from_p0",
+              "graph_subscription_scope_decision_record": "ADR-009",
+              "graph_subscription_deferred_from_p0": True,
+              "graph_future_delivery_profile": "azure_event_hubs_entra_rbac",
+              "graph_permission_mutation_performed": False,
+              "graph_subscription_operation_performed": False,
               "rc1c_live_qualified": False,
               "customer_identifiers_retained": False,
               "reusable_credential_retained": False,
@@ -506,7 +516,10 @@ jobs:
           print("- Purview webhook configured: **false**")
           print("- Graph callback ingress external: **false**")
           print("- Graph lifecycle configuration/durable subscription: **absent**")
-          print("- Graph drive subscription permission decision: **pending**")
+          print("- Graph drive subscriptions in P0: **deferred by approved ADR-009**")
+          print("- Preferred future delivery candidate: **Entra-RBAC Azure Event Hubs**")
+          print("- Graph permission mutation performed: **false**")
+          print("- Graph subscription operation performed: **false**")
           print("- customer identifiers retained in public evidence: **false**")
           print("- reusable credentials retained: **false**")
           print("- RC1C live-qualified: **false**")

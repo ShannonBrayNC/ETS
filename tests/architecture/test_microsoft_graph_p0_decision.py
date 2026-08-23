@@ -11,16 +11,16 @@ RC1C_WORKFLOW = Path(".github/workflows/live-microsoft-rc1c-preflight.yml")
 RC1C_JOB = Path("infra/azure/ets-live-microsoft-rc1c-preflight.bicep")
 
 
-def test_graph_drive_subscription_decision_is_proposed_and_cannot_change_governance() -> None:
+def test_graph_drive_subscription_decision_is_accepted_and_governance_is_reconciled() -> None:
     decision = ADR.read_text(encoding="utf-8")
     pre_soak = PRE_SOAK.read_text(encoding="utf-8")
-    assert "Status: Proposed for independent approval" in decision
-    assert "Acceptance of this ADR requires the project owner and independent reviewer" in decision
-    assert "existing issue exit criteria" in decision
-    assert "remain authoritative" in decision
-    assert "pre-soak gate remains blocked" in pre_soak
-    assert "repository documentation alone cannot change" in pre_soak
-    assert "candidate scope" in pre_soak
+    assert "Status: Accepted" in decision
+    assert "Accepted through: #552" in decision
+    assert "LanternProtocol supplied the" in decision
+    assert "independent approval" in decision
+    assert "issue contracts were reconciled" in pre_soak
+    assert "pre-soak gate" in pre_soak
+    assert "remains blocked" in pre_soak
 
 
 def test_decision_records_current_permissions_and_private_delivery_option() -> None:
@@ -66,7 +66,13 @@ def test_graph_lifecycle_and_public_ingress_remain_disabled_by_default() -> None
         "Graph lifecycle configuration is present before permission and ingress approval"
         in workflow
     )
-    assert '"graph_subscription_permission_decision_pending": True' in workflow
+    assert "graph_subscription_permission_decision_pending" not in workflow
+    assert '"graph_subscription_scope_decision": "deferred_from_p0"' in workflow
+    assert '"graph_subscription_scope_decision_record": "ADR-009"' in workflow
+    assert '"graph_subscription_deferred_from_p0": True' in workflow
+    assert '"graph_future_delivery_profile": "azure_event_hubs_entra_rbac"' in workflow
+    assert '"graph_permission_mutation_performed": False' in workflow
+    assert '"graph_subscription_operation_performed": False' in workflow
     assert '"graph_callback_ingress_external": False' in workflow
     assert "durable Graph subscription state exists before callback authorization" in job
 

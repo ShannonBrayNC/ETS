@@ -248,7 +248,12 @@ def test_rc1c_evidence_is_sanitized_and_does_not_widen_claims() -> None:
     for key in (
         "graph_callback_ingress_external",
         "graph_lifecycle_configuration_present",
-        "graph_subscription_permission_decision_pending",
+        "graph_subscription_deferred_from_p0",
+        "graph_future_delivery_profile",
+        "graph_permission_mutation_performed",
+        "graph_subscription_operation_performed",
+        "graph_subscription_scope_decision",
+        "graph_subscription_scope_decision_record",
         "rc1c_live_qualified",
         "soak_clock_started",
     ):
@@ -257,6 +262,12 @@ def test_rc1c_evidence_is_sanitized_and_does_not_widen_claims() -> None:
     assert "Merging the workflow does not execute it." in DOC
     assert "Files.Read.All" in DOC
     assert "Sites.Selected" in DOC
+    assert "graph_subscription_permission_decision_pending" not in WORKFLOW
+    assert "graph_subscription_scope_decision=deferred_from_p0" in DOC
+    assert "graph_subscription_scope_decision_record=ADR-009" in DOC
+    assert "graph_subscription_deferred_from_p0=true" in DOC
+    assert "ets.live_microsoft.rc1c_preflight_handoff.v2" in WORKFLOW
+    assert "ets.live_microsoft.rc1c_preflight_failure.v2" in WORKFLOW
     assert "MUST NOT be represented as live-ready" in " ".join(GRAPH_DOC.split())
 
 

@@ -1,18 +1,19 @@
 # Microsoft P0 Graph lifecycle composition v1
 
 Parent: #543
-Live qualification: #539
+P0 disposition: deferred by ADR-009 / #552
 
 ## Purpose
 
 The hosted Gateway now composes the existing Microsoft Graph subscription client, durable
 subscription-state store, bounded webhook ingress, resource-notification committer, and Microsoft
-operational posture for the one approved SharePoint-backed drive. This is runtime wiring for later
-protected live qualification; it is not a live tenant mutation or public-ingress authorization.
+operational posture for the one approved SharePoint-backed drive. This is retained runtime wiring
+for a separately governed post-P0 capability; it is not a live tenant mutation, public-ingress
+authorization, or part of the P0 release candidate.
 
 ## Fixed subscription boundary
 
-### P0 decision remains open
+### Approved P0 deferral
 
 Microsoft's current documentation lists `Files.Read.All` to create an application subscription for
 OneDrive for Business `driveItem` and `Files.ReadWrite.All` to list that subscription class. It does
@@ -25,9 +26,9 @@ callback. Microsoft also supports Graph notification delivery through Azure Even
 RBAC, which avoids a public webhook but does not reduce the drive subscription permission. It adds a
 new sender/consumer/checkpoint boundary that is not composed in the current candidate.
 
-ADR-009 proposes retaining the bounded delta-polling path for P0, qualifying Purview independently,
-and deferring Graph subscriptions. The proposal does not change #539 or the pre-soak gate until it is
-approved and the governed issues are updated:
+ADR-009 was approved through #552. P0 retains the bounded delta-polling path, qualifies Purview
+independently, and defers Graph subscriptions. The governed #537, #539, and #541 issue contracts now
+encode that boundary:
 
 - [`ADR-009-microsoft-graph-drive-subscription-p0.md`](../adr/ADR-009-microsoft-graph-drive-subscription-p0.md)
 - [`MICROSOFT_P0_RC1C_LIVE_PREFLIGHT_V1.md`](./MICROSOFT_P0_RC1C_LIVE_PREFLIGHT_V1.md)
@@ -74,7 +75,8 @@ token do not.
 
 Replacement never clears possible loss. A removed or expired subscription is therefore not treated
 as continuous observation merely because creation of a new subscription succeeds. Gap closure still
-requires the governed SharePoint delta reconciliation path in #539.
+requires a future governed SharePoint delta reconciliation path; #539 no longer qualifies Graph
+drive subscription lifecycle.
 
 ## Webhook and evidence boundary
 
@@ -104,9 +106,9 @@ Container Apps `secretRef`. It is not an output, regular environment value, SQLi
 or evidence attribute. Partial lifecycle configuration and a renewal window greater than or equal to
 the lifetime fail before runtime activation.
 
-The checked-in hosted template deliberately retains `external: false`. Enabling public or protected
-Microsoft callback ingress, supplying these activation values, and exercising creation/validation/
-renewal remain explicit #539 operator actions against an approved immutable image.
+The checked-in hosted template deliberately retains `external: false`. Supplying these activation
+values or exercising creation/validation/renewal is outside #539 and requires a new post-P0 decision,
+dedicated permission review, delivery design, implementation slice, and exact-source qualification.
 
 ## Evidence and nonclaims
 

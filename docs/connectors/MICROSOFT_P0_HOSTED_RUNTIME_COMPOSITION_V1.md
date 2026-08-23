@@ -96,4 +96,5 @@ The first read-only #539 gate is defined by
 [`MICROSOFT_P0_RC1C_LIVE_PREFLIGHT_V1.md`](./MICROSOFT_P0_RC1C_LIVE_PREFLIGHT_V1.md). It proves the
 exact Purview identity/audience/role and `Audit.General` subscription-list boundary while keeping
 Graph callback ingress, lifecycle configuration, permission widening, and durable subscription
-state absent.
+state absent. ADR-009, approved through #552, makes that absence the P0 Graph deferral boundary;
+Graph drive subscriptions remain a separately governed post-P0 capability.
