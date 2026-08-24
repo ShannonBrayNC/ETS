@@ -110,6 +110,13 @@ deletes the private raw log before uploading evidence. If no valid marker is ava
 workflow retains only `bounded_failure_marker_unavailable`. Both paths use the same sanitized
 `ets.live_microsoft.rc1b_preflight_failure.v2` evidence shape.
 
+The directory runtime boundary classifies only bounded posture. It distinguishes unavailable
+state, an open collection gap, a pending retry/degraded observation, an invalid checkpoint,
+incomplete checkpoint initialization, another unhealthy observation, and an active collection.
+The ordering prioritizes completeness risk before retry and initialization posture. It never
+retains the affected collection family, checkpoint or retry counts, revisions, cursor values,
+timestamps, lease values, identifiers, payloads, or error text.
+
 The Core synchronization boundary classifies only bounded queue posture. It distinguishes an
 unavailable queue, terminal failure, retryable failure, pending/in-flight backlog, invalid state,
 and absence of a synchronized users/groups observation. Matching uses the exact minimized

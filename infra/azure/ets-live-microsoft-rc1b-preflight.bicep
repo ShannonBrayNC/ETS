@@ -224,6 +224,41 @@ def runtime_is_stable(snapshot):
     )
 
 
+def runtime_failure_code(snapshot):
+    if any(item["gap_open"] for item in snapshot.values()):
+        return "directory_runtime_collection_gap"
+    if any(
+        item["retry_count"] > 0
+        or item["observation_state"] == "degraded_observation"
+        for item in snapshot.values()
+    ):
+        return "directory_runtime_retry_pending"
+    if any(
+        item["checkpoint_present"]
+        and item["checkpoint_kind"] not in {"delta", "page"}
+        for item in snapshot.values()
+    ):
+        return "directory_runtime_checkpoint_invalid"
+    if any(
+        not item["checkpoint_present"]
+        or item["checkpoint_revision"] < 1
+        or item["checkpoint_kind"] == "page"
+        or not item["last_success_present"]
+        for item in snapshot.values()
+    ):
+        return "directory_runtime_initialization_incomplete"
+    if any(
+        item["observation_state"] != "healthy_observation"
+        for item in snapshot.values()
+    ):
+        return "directory_runtime_observation_unhealthy"
+    if any(item["lease_active"] for item in snapshot.values()):
+        return "directory_runtime_collection_active"
+    if not runtime_is_stable(snapshot):
+        return "directory_runtime_state_unstable"
+    return None
+
+
 def core_sync_failure_code(snapshot):
     if any(item["terminal_failure"] for item in snapshot.values()):
         return "directory_core_sync_terminal_failure"
@@ -274,14 +309,20 @@ FAILURE_CODE = "directory_sharepoint_negative_control_failed"
 if drive_status != 403:
     raise RuntimeError("directory identity was not denied access to the SharePoint drive")
 
-FAILURE_CODE = "directory_runtime_state_unstable"
+FAILURE_CODE = "directory_runtime_state_unavailable"
 runtime = None
 for _ in range(20):
     runtime = read_runtime_rows()
     if runtime_is_stable(runtime):
         break
     time.sleep(3)
-if runtime is None or not runtime_is_stable(runtime):
+failure_code = (
+    "directory_runtime_state_unavailable"
+    if runtime is None
+    else runtime_failure_code(runtime)
+)
+if failure_code is not None:
+    FAILURE_CODE = failure_code
     raise RuntimeError("live Entra connector runtimes did not reach stable delta state")
 
 FAILURE_CODE = "directory_event_state_incomplete"

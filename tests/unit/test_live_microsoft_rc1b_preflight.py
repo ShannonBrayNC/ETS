@@ -143,7 +143,14 @@ def test_rc1b_runtime_failure_is_classified_before_job_cleanup() -> None:
         'FAILURE_CODE = "users_delta_request_failed"',
         'FAILURE_CODE = "groups_delta_request_failed"',
         'FAILURE_CODE = "directory_sharepoint_negative_control_failed"',
-        'FAILURE_CODE = "directory_runtime_state_unstable"',
+        'FAILURE_CODE = "directory_runtime_state_unavailable"',
+        'return "directory_runtime_collection_gap"',
+        'return "directory_runtime_retry_pending"',
+        'return "directory_runtime_checkpoint_invalid"',
+        'return "directory_runtime_initialization_incomplete"',
+        'return "directory_runtime_observation_unhealthy"',
+        'return "directory_runtime_collection_active"',
+        'return "directory_runtime_state_unstable"',
         'FAILURE_CODE = "directory_event_state_incomplete"',
         'FAILURE_CODE = "directory_core_sync_state_unavailable"',
         'return "directory_core_sync_terminal_failure"',
@@ -164,6 +171,64 @@ def test_rc1b_runtime_failure_is_classified_before_job_cleanup() -> None:
     assert WORKFLOW.index("az containerapp job logs show") < WORKFLOW.index(
         'if [ "$status" != "Succeeded" ]'
     )
+
+
+def test_rc1b_runtime_failure_classification_is_ordered_and_bounded() -> None:
+    namespace = {"runtime_is_stable": _probe_function("runtime_is_stable")}
+    tree = ast.parse(_probe_script(), filename="ets-live-microsoft-rc1b-preflight.py")
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "runtime_failure_code"
+    )
+    module = ast.Module(body=[function], type_ignores=[])
+    exec(compile(ast.fix_missing_locations(module), "<runtime-failure-code>", "exec"), namespace)
+    classify = namespace["runtime_failure_code"]
+    assert callable(classify)
+
+    def snapshot(**overrides: object) -> dict[str, dict[str, object]]:
+        baseline: dict[str, object] = {
+            "checkpoint_present": True,
+            "checkpoint_revision": 1,
+            "checkpoint_kind": "delta",
+            "retry_count": 0,
+            "last_success_present": True,
+            "observation_state": "healthy_observation",
+            "gap_open": False,
+            "lease_active": False,
+        }
+        return {"users": {**baseline, **overrides}, "groups": dict(baseline)}
+
+    assert classify(snapshot()) is None
+    assert classify(snapshot(lease_active=True)) == "directory_runtime_collection_active"
+    assert classify(snapshot(observation_state="unknown")) == (
+        "directory_runtime_observation_unhealthy"
+    )
+    assert classify(snapshot(checkpoint_present=False, checkpoint_kind="none")) == (
+        "directory_runtime_initialization_incomplete"
+    )
+    assert classify(snapshot(checkpoint_revision=0)) == (
+        "directory_runtime_initialization_incomplete"
+    )
+    assert classify(snapshot(checkpoint_kind="page")) == (
+        "directory_runtime_initialization_incomplete"
+    )
+    assert classify(snapshot(checkpoint_kind="invalid")) == (
+        "directory_runtime_checkpoint_invalid"
+    )
+    assert classify(snapshot(retry_count=1)) == "directory_runtime_retry_pending"
+    assert classify(snapshot(observation_state="degraded_observation")) == (
+        "directory_runtime_retry_pending"
+    )
+    assert classify(snapshot(gap_open=True)) == "directory_runtime_collection_gap"
+    assert classify(
+        snapshot(
+            gap_open=True,
+            retry_count=1,
+            checkpoint_kind="invalid",
+            lease_active=True,
+        )
+    ) == "directory_runtime_collection_gap"
 
 
 def test_rc1b_core_sync_failure_classification_is_ordered_and_bounded() -> None:
