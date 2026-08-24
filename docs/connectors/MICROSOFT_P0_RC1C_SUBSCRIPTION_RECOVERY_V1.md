@@ -10,6 +10,10 @@ the P0 polling connector. It starts the exact `Audit.General` subscription witho
 proves bounded content-list reachability, stops the subscription, and starts it again to prove
 recovery. The final required state is `enabled`.
 
+After the live lifecycle succeeds, the exact deployed image also executes a deterministic polling
+fault matrix with synthetic descriptors and isolated temporary SQLite state. That matrix exercises
+the shipped adapter and Gateway runtime policy without reading or mutating the live Gateway state.
+
 The workflow is manual, protected by `ets-azure-q1`, and pinned to one exact `main` source SHA and
 one already-deployed private-ACR digest. Merging the workflow does not execute it. Dispatch also
 requires the exact confirmation string `START_STOP_RESTART_AUDIT_GENERAL`.
@@ -75,8 +79,25 @@ Credential-bearing redirects fail closed. List, start, and content operations re
 The stop operation accepts HTTP 200 or an empty HTTP 204; every other successful status fails with
 an operation-specific code. Responses are limited to 2 MiB, subscriptions to sixteen, and content
 descriptors to 5,000. HTTP 429 and bounded server failures receive at most two retries, with
-`Retry-After` capped at eight seconds for this controlled gate. This records only retry counts; it
-does not claim the separate throttling-injection matrix.
+`Retry-After` capped at eight seconds for this controlled gate.
+
+## Polling and fault matrix
+
+After the final live state is observed as `enabled`, the job imports the qualification module from
+the exact immutable release image. With only synthetic non-customer fixtures and an isolated
+temporary runtime database it must prove:
+
+- initial bounded-window collection, exact next-page cursor replay, content retrieval, and
+  deterministic minimized canonicalization;
+- HTTP 429 `Retry-After` preservation and checkpoint withholding on throttling;
+- gap opening without watermark movement, continued gap state on an intermediate page, and gap
+  reconciliation only after the final committed page;
+- checkpoint withholding after partial evidence loss and fail-closed stale-revision handling; and
+- restart-safe recovery of the isolated durable checkpoint and gap state.
+
+Every predicate must pass or the protected lifecycle run fails closed as
+`polling_fault_matrix_failed`. The matrix returns booleans only. It does not retain its synthetic
+record, content descriptor, tenant/application identifiers, cursor, credential, or temporary state.
 
 ## Evidence and nonclaims
 
@@ -91,9 +112,8 @@ A successful gate fixes:
 - `purview_webhook_configured=false`;
 - `graph_permission_mutation_performed=false`;
 - `graph_subscription_operation_performed=false`;
-- `rc1c_live_qualified=false`; and
+- `rc1c_live_qualified=true`; and
 - `soak_clock_started=false`.
 
-Passing this gate is not completion of #539. Audit cursor progression, content retrieval and
-canonicalization, replay/idempotency, throttling/backoff, gap recovery, and evidence-loss behavior
-remain separate protected qualification steps before candidate freeze and the 72-hour soak.
+Passing this exact-source gate completes the bounded RC1C live slice in #539. It does not qualify
+RC1B, reconcile or freeze the combined Microsoft P0 candidate, or start the 72-hour soak.

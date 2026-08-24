@@ -15,15 +15,15 @@ WORKFLOW = (
 BICEP = (
     ROOT / "infra" / "azure" / "ets-live-microsoft-rc1c-subscription-recovery.bicep"
 ).read_text(encoding="utf-8")
-DOC = (
-    ROOT / "docs" / "connectors" / "MICROSOFT_P0_RC1C_SUBSCRIPTION_RECOVERY_V1.md"
-).read_text(encoding="utf-8")
-SEQUENCE = (
-    ROOT / "docs" / "connectors" / "MICROSOFT_P0_LIVE_RELEASE_SEQUENCE_V1.md"
-).read_text(encoding="utf-8")
-PRE_SOAK = (
-    ROOT / "docs" / "connectors" / "MICROSOFT_P0_PRE_SOAK_GATE_V1.md"
-).read_text(encoding="utf-8")
+DOC = (ROOT / "docs" / "connectors" / "MICROSOFT_P0_RC1C_SUBSCRIPTION_RECOVERY_V1.md").read_text(
+    encoding="utf-8"
+)
+SEQUENCE = (ROOT / "docs" / "connectors" / "MICROSOFT_P0_LIVE_RELEASE_SEQUENCE_V1.md").read_text(
+    encoding="utf-8"
+)
+PRE_SOAK = (ROOT / "docs" / "connectors" / "MICROSOFT_P0_PRE_SOAK_GATE_V1.md").read_text(
+    encoding="utf-8"
+)
 BICEP_WORKFLOW = (ROOT / ".github" / "workflows" / "hosted-azure-bicep.yml").read_text(
     encoding="utf-8"
 )
@@ -223,7 +223,11 @@ def test_embedded_recovery_executes_absent_start_stop_restart_fixture(
     assert payload["subscription_stopped_state"] == "absent"
     assert payload["subscription_final_state"] == "enabled"
     assert payload["qualification_pass"] is True
-    assert payload["rc1c_live_qualified"] is False
+    assert payload["rc1c_live_qualified"] is True
+    assert payload["cursor_replay_verified"] is True
+    assert payload["throttle_checkpoint_withheld"] is True
+    assert payload["evidence_loss_checkpoint_withheld"] is True
+    assert payload["restart_state_recovered"] is True
     assert payload["soak_clock_started"] is False
     assert [request.method for request in opener.requests] == [
         "GET",
@@ -288,9 +292,7 @@ def test_embedded_recovery_resumes_from_verified_enabled_state(
         "POST",
         "GET",
     ]
-    assert sum(
-        "/subscriptions/start?" in request.full_url for request in opener.requests
-    ) == 1
+    assert sum("/subscriptions/start?" in request.full_url for request in opener.requests) == 1
 
 
 def test_embedded_recovery_polls_final_state_without_duplicate_start(
@@ -329,9 +331,7 @@ def test_embedded_recovery_polls_final_state_without_duplicate_start(
     payload = json.loads(base64.urlsafe_b64decode(output.split("=", 1)[1]))
     assert payload["subscription_final_state"] == "enabled"
     assert payload["qualification_pass"] is True
-    assert sum(
-        "/subscriptions/start?" in request.full_url for request in opener.requests
-    ) == 1
+    assert sum("/subscriptions/start?" in request.full_url for request in opener.requests) == 1
 
 
 def test_embedded_recovery_names_unexpected_status_operation(
@@ -355,10 +355,7 @@ def test_embedded_recovery_names_unexpected_status_operation(
     output = capsys.readouterr().out.strip()
     assert output.startswith("ETS_M365_RC1C_SUBSCRIPTION_RECOVERY_FAILURE_B64=")
     payload = json.loads(base64.urlsafe_b64decode(output.split("=", 1)[1]))
-    assert (
-        payload["failure_code"]
-        == "purview_subscriptions_list_unexpected_http_status"
-    )
+    assert payload["failure_code"] == "purview_subscriptions_list_unexpected_http_status"
     assert payload["mutation_attempted"] is False
     assert payload["subscription_final_state"] == "unknown"
 
@@ -407,13 +404,13 @@ def test_rc1c_subscription_recovery_allows_documented_cooldown_duration() -> Non
     assert "replicaTimeout: 1500" in BICEP
 
 
-def test_rc1c_subscription_recovery_evidence_is_sanitized_and_nonfinal() -> None:
+def test_rc1c_subscription_recovery_evidence_is_sanitized_and_slice_final() -> None:
     for term in (
         '"raw_purview_payload_retained": False',
         '"customer_identifiers_retained": False',
         '"reusable_credential_retained": False',
         '"graph_operation_performed": False',
-        '"rc1c_live_qualified": False',
+        '"rc1c_live_qualified": True',
         '"soak_clock_started": False',
         '"purview_subscription_mutation_performed": True',
         '"graph_permission_mutation_performed": False',
@@ -421,7 +418,10 @@ def test_rc1c_subscription_recovery_evidence_is_sanitized_and_nonfinal() -> None
     ):
         assert term in BICEP or term in WORKFLOW
     assert "Merging the workflow does not execute it." in DOC
-    assert "Passing this gate is not completion of #539" in DOC
+    assert "completes the bounded RC1C live slice in #539" in DOC
+    assert "polling_fault_matrix_failed" in WORKFLOW
+    assert "run_rc1c_polling_fault_matrix" in BICEP
+    assert "synthetic non-customer fixtures" in DOC
     assert "start/stop/restart" in SEQUENCE
     assert "start/stop/restart" in PRE_SOAK
 

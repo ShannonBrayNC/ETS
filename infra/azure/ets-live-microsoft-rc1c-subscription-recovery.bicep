@@ -51,6 +51,9 @@ from urllib.parse import urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from azure.identity import ManagedIdentityCredential
+from ets.qualification.microsoft_rc1c_polling_matrix import (
+    run_rc1c_polling_fault_matrix,
+)
 
 MANAGEMENT_ROOT = "https://manage.office.com"
 MANAGEMENT_SCOPE = MANAGEMENT_ROOT + "/.default"
@@ -329,10 +332,15 @@ try:
         raise QualificationFailure("recovery_start_not_observed_enabled")
     recovery_restored = True
 
+    try:
+        fault_matrix = run_rc1c_polling_fault_matrix()
+    except Exception as exc:
+        raise QualificationFailure("polling_fault_matrix_failed") from exc
+
     emit(
         SUCCESS_MARKER,
         {
-            "schema_version": "ets.live_microsoft.rc1c_subscription_recovery.v1",
+            "schema_version": "ets.live_microsoft.rc1c_subscription_recovery.v2",
             "subscription_initial_state": initial_state,
             "initial_start_verified": True,
             "content_listing_reachable": True,
@@ -348,8 +356,9 @@ try:
             "customer_identifiers_retained": False,
             "reusable_credential_retained": False,
             "public_evidence_safe": True,
+            **fault_matrix,
             "qualification_pass": True,
-            "rc1c_live_qualified": False,
+            "rc1c_live_qualified": True,
             "soak_clock_started": False,
         },
     )

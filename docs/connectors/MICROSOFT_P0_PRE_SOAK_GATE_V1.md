@@ -44,10 +44,11 @@ The first Purview mutation gate is the protected
 [`MICROSOFT_P0_RC1C_SUBSCRIPTION_RECOVERY_V1.md`](./MICROSOFT_P0_RC1C_SUBSCRIPTION_RECOVERY_V1.md)
 start/stop/restart exercise. A first attempt must begin from an absent `Audit.General`
 subscription. A protected retry may begin enabled only when the selected prior protected failure artifact proves mutation and fail-closed
-restoration completed with the final state enabled. The gate still
-performs an idempotent start, bounded content listing, stop, and restart, and must finish enabled
-without a webhook. Passing it does not replace the remaining cursor, content,
-replay/idempotency, throttle, gap-recovery, or evidence-loss gates.
+restoration completed with the final state enabled. The gate still performs an idempotent start,
+bounded content listing, stop, and restart, and must finish enabled without a webhook. It then runs
+the shipped RC1C polling fault matrix with synthetic non-customer fixtures and isolated temporary
+state. Passing completes the bounded RC1C slice but does not replace RC1B, shared Gateway recovery,
+candidate reconciliation, or freeze.
 
 ## Soak behavior
 

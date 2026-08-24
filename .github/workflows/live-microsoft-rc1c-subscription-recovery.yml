@@ -561,6 +561,7 @@ jobs:
                   "stop_not_observed",
                   "recovery_start_not_observed_enabled",
                   "recovery_restore_failed",
+                  "polling_fault_matrix_failed",
                   "unexpected_failure",
               }:
                   raise SystemExit("RC1C recovery failure code is outside the allowlist")
@@ -618,6 +619,19 @@ jobs:
               "customer_identifiers_retained",
               "reusable_credential_retained",
               "public_evidence_safe",
+              "cursor_replay_verified",
+              "bounded_overlap_verified",
+              "content_retrieval_verified",
+              "canonicalization_deterministic",
+              "throttle_retry_after_verified",
+              "throttle_checkpoint_withheld",
+              "gap_open_preserves_checkpoint",
+              "intermediate_page_keeps_gap_open",
+              "final_page_reconciles_gap",
+              "evidence_loss_checkpoint_withheld",
+              "revision_conflict_fail_closed",
+              "restart_state_recovered",
+              "fault_matrix_public_safe",
               "qualification_pass",
               "rc1c_live_qualified",
               "soak_clock_started",
@@ -625,7 +639,7 @@ jobs:
           if set(payload) != allowed:
               raise SystemExit("RC1C recovery returned an unexpected public shape")
           if payload.get("schema_version") != (
-              "ets.live_microsoft.rc1c_subscription_recovery.v1"
+              "ets.live_microsoft.rc1c_subscription_recovery.v2"
           ):
               raise SystemExit("RC1C recovery schema changed")
           if payload.get("subscription_initial_state") not in {"absent", "enabled"}:
@@ -640,7 +654,21 @@ jobs:
               "stop_verified",
               "recovery_start_verified",
               "public_evidence_safe",
+              "cursor_replay_verified",
+              "bounded_overlap_verified",
+              "content_retrieval_verified",
+              "canonicalization_deterministic",
+              "throttle_retry_after_verified",
+              "throttle_checkpoint_withheld",
+              "gap_open_preserves_checkpoint",
+              "intermediate_page_keeps_gap_open",
+              "final_page_reconciles_gap",
+              "evidence_loss_checkpoint_withheld",
+              "revision_conflict_fail_closed",
+              "restart_state_recovered",
+              "fault_matrix_public_safe",
               "qualification_pass",
+              "rc1c_live_qualified",
           )
           required_false = (
               "purview_webhook_configured",
@@ -648,7 +676,6 @@ jobs:
               "raw_purview_payload_retained",
               "customer_identifiers_retained",
               "reusable_credential_retained",
-              "rc1c_live_qualified",
               "soak_clock_started",
           )
           if any(payload.get(key) is not True for key in required_true):
@@ -663,14 +690,14 @@ jobs:
           manifest = dict(payload)
           manifest.update(
               {
-                  "schema_version": "ets.live_microsoft.rc1c_subscription_recovery_handoff.v1",
+                  "schema_version": "ets.live_microsoft.rc1c_subscription_recovery_handoff.v2",
                   "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
                   "source_sha": os.environ["GITHUB_SHA"],
                   "image_digest": os.environ["CONTAINER_IMAGE"].rsplit("@", 1)[1],
                   "purview_subscription_mutation_performed": True,
                   "graph_permission_mutation_performed": False,
                   "graph_subscription_operation_performed": False,
-                  "rc1c_live_qualified": False,
+                  "rc1c_live_qualified": True,
                   "soak_clock_started": False,
               }
           )
@@ -763,7 +790,8 @@ jobs:
           print("- Graph operation performed: **false**")
           print("- customer identifiers retained: **false**")
           print("- reusable credentials retained: **false**")
-          print("- RC1C live-qualified: **false**")
+          print("- bounded polling/fault matrix: **passed**")
+          print("- RC1C live-qualified: **true**")
           print("- 72-hour soak clock started: **false**")
           PY
           gh issue comment "$RESULT_ISSUE" \
