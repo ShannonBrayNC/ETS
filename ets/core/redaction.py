@@ -8,8 +8,10 @@ from ets.core.models import EvidenceEvent
 
 REDACTION_MARKER = "[REDACTED]"
 SUPPORTED_REDACTION_PROFILES = {"none", "basic_pii", "strict"}
-LEGACY_PASSTHROUGH_REDACTION_BINDINGS = {
-    ("microsoft.sharepoint.onedrive_delta", "microsoft_sharepoint_metadata_v1")
+CONNECTOR_PASSTHROUGH_REDACTION_BINDINGS = {
+    ("microsoft.sharepoint.onedrive_delta", "microsoft_sharepoint_metadata_v1"),
+    ("microsoft.entra.directory_delta", "microsoft_entra_directory_metadata_v1"),
+    ("microsoft.purview.activity", "microsoft_purview_common_schema_v1"),
 }
 BASIC_PII_KEYS = {
     "access_token",
@@ -26,11 +28,12 @@ BASIC_PII_KEYS = {
 
 def apply_redaction_profile(event: EvidenceEvent, default_profile: str = "none") -> EvidenceEvent:
     profile = event.redaction_profile or default_profile
-    if (event.source_system, profile) in LEGACY_PASSTHROUGH_REDACTION_BINDINGS:
-        # Connector captures historically stamped their already-applied metadata
+    if (event.source_system, profile) in CONNECTOR_PASSTHROUGH_REDACTION_BINDINGS:
+        # Gateway connector captures stamp their already-applied, server-owned metadata
         # minimization profile into EvidenceEvent.redaction_profile. Preserve those
-        # immutable event bytes exactly so Core can ingest/replay previously committed
-        # SharePoint evidence without reinterpreting or rehashing it.
+        # immutable event bytes exactly so Core can ingest/replay committed connector
+        # evidence without reinterpreting or rehashing it. The explicit source/profile
+        # binding prevents an untrusted source from selecting a pass-through profile.
         return event
     if profile not in SUPPORTED_REDACTION_PROFILES:
         raise ValueError(f"unsupported redaction profile: {profile}")
