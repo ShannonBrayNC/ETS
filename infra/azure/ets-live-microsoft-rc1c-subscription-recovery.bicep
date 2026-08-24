@@ -36,6 +36,11 @@ param containerImage string
 @maxLength(36)
 param microsoftTenantId string
 
+@description('Prior protected failure run proving restoration to enabled, or 0 for a first attempt.')
+@minLength(1)
+@maxLength(20)
+param restoredFailureWorkflowRunId string = '0'
+
 var recoveryScript = '''
 import base64
 import json
@@ -57,6 +62,9 @@ SUCCESS_MARKER = "ETS_M365_RC1C_SUBSCRIPTION_RECOVERY_B64="
 FAILURE_MARKER = "ETS_M365_RC1C_SUBSCRIPTION_RECOVERY_FAILURE_B64="
 PURVIEW_CLIENT_ID = os.environ["ETS_RC1C_PURVIEW_CLIENT_ID"]
 MICROSOFT_TENANT_ID = os.environ["ETS_RC1C_MICROSOFT_TENANT_ID"]
+RESTORED_FAILURE_WORKFLOW_RUN_ID = os.environ[
+    "ETS_RC1C_RESTORED_FAILURE_WORKFLOW_RUN_ID"
+]
 
 
 class QualificationFailure(RuntimeError):
@@ -102,7 +110,15 @@ opener = build_opener(RejectRedirects())
 api_retry_count = 0
 
 
-def request(method, operation, token, *, content_type=False, expect_json=True):
+def request(
+    method,
+    operation,
+    token,
+    *,
+    content_type=False,
+    expect_json=True,
+    expected_statuses=(200,),
+):
     global api_retry_count
     query = {"PublisherIdentifier": MICROSOFT_TENANT_ID}
     if content_type:
@@ -153,8 +169,11 @@ def request(method, operation, token, *, content_type=False, expect_json=True):
                 time.sleep(1)
                 continue
             raise QualificationFailure("purview_transport_failure") from exc
-        if status != 200:
-            raise QualificationFailure("purview_unexpected_http_status")
+        if status not in expected_statuses:
+            operation_code = operation.replace("/", "_")
+            raise QualificationFailure(
+                "purview_" + operation_code + "_unexpected_http_status"
+            )
         if len(body) > MAXIMUM_RESPONSE_BYTES:
             raise QualificationFailure("purview_response_too_large")
         if not expect_json:
@@ -212,6 +231,7 @@ def stop_subscription(token):
         token,
         content_type=True,
         expect_json=False,
+        expected_statuses=(200, 204),
     )
 
 
@@ -250,8 +270,12 @@ try:
         raise QualificationFailure("token_permission_mismatch")
 
     initial_state = list_audit_general(access_token)
-    if initial_state != "absent":
-        raise QualificationFailure("initial_subscription_not_absent")
+    if initial_state not in {"absent", "enabled"}:
+        raise QualificationFailure("initial_subscription_not_recoverable")
+    if initial_state == "enabled" and RESTORED_FAILURE_WORKFLOW_RUN_ID == "0":
+        raise QualificationFailure("enabled_resume_evidence_missing")
+    if initial_state == "absent" and RESTORED_FAILURE_WORKFLOW_RUN_ID != "0":
+        raise QualificationFailure("restored_failure_state_not_enabled")
 
     mutated = True
     start_subscription(access_token)
@@ -398,6 +422,10 @@ resource recoveryJob 'Microsoft.App/jobs@2025-01-01' = {
             {
               name: 'ETS_RC1C_MICROSOFT_TENANT_ID'
               secretRef: 'microsoft-tenant-id'
+            }
+            {
+              name: 'ETS_RC1C_RESTORED_FAILURE_WORKFLOW_RUN_ID'
+              value: restoredFailureWorkflowRunId
             }
           ]
           probes: []

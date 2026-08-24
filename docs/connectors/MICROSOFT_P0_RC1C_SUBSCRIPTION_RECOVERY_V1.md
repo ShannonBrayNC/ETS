@@ -18,10 +18,16 @@ The exact-source prerequisite order is defined by
 [`MICROSOFT_P0_LIVE_RELEASE_SEQUENCE_V1.md`](./MICROSOFT_P0_LIVE_RELEASE_SEQUENCE_V1.md).
 
 Microsoft documents that a stopped subscription cannot list or retrieve available content and that
-content produced between stop and restart cannot be recovered through the subscription. For that
+content produced between stop and restart cannot be recovered through the subscription. A first
+attempt requires the pre-mutation state to be `absent`. A protected retry may begin `enabled` only after the operator supplies
+`restored_failure_workflow_run_id` and the workflow downloads that prior protected artifact before
+Azure login. Its sanitized evidence must prove `mutation_attempted=true`,
+`recovery_attempted=true`, `recovery_restored=true`, and
+`subscription_final_state=enabled`. This avoids an extra stop-only cleanup interval. For that
 reason this gate:
 
-- requires the pre-mutation state to be exactly `absent`;
+- requires `absent` on a first attempt or the verified `enabled` recovery-resume state;
+- performs an idempotent start before content reachability in either state;
 - keeps the stop interval bounded to the one job execution;
 - attempts a fail-closed restart if any post-start assertion fails; and
 - treats failure to restore `enabled` as `recovery_restore_failed`.
@@ -49,16 +55,18 @@ identity. It mounts no Gateway state volume. Its managed-identity token must hav
 The job performs only these Office 365 Management Activity operations for `Audit.General`, always
 with the deployment-authoritative publisher identifier and without a webhook:
 
-1. list subscriptions and require `absent`;
-2. start and require `enabled` with `webhook=null`;
+1. list subscriptions and require `absent` or the verified restored `enabled` state;
+2. start (idempotently when already enabled) and require `enabled` with `webhook=null`;
 3. list available content once, retaining only a bounded descriptor count;
 4. stop and require `absent` or `disabled`; and
 5. start again and require the final state `enabled` with `webhook=null`.
 
-Credential-bearing redirects fail closed. Responses are limited to 2 MiB, subscriptions to sixteen,
-and content descriptors to 5,000. HTTP 429 and bounded server failures receive at most two retries,
-with `Retry-After` capped at eight seconds for this controlled gate. This records only retry counts;
-it does not claim the separate throttling-injection matrix.
+Credential-bearing redirects fail closed. List, start, and content operations require HTTP 200.
+The stop operation accepts HTTP 200 or an empty HTTP 204; every other successful status fails with
+an operation-specific code. Responses are limited to 2 MiB, subscriptions to sixteen, and content
+descriptors to 5,000. HTTP 429 and bounded server failures receive at most two retries, with
+`Retry-After` capped at eight seconds for this controlled gate. This records only retry counts; it
+does not claim the separate throttling-injection matrix.
 
 ## Evidence and nonclaims
 

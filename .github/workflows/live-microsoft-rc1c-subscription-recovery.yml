@@ -16,12 +16,18 @@ on:
         required: true
         default: m365-sharepoint-primary
         type: string
+      restored_failure_workflow_run_id:
+        description: Prior failed recovery run proving restored enabled state, or 0 for a first attempt
+        required: true
+        default: '0'
+        type: string
       mutation_confirmation:
         description: Type START_STOP_RESTART_AUDIT_GENERAL to authorize the bounded mutation
         required: true
         type: string
 
 permissions:
+  actions: read
   contents: read
   id-token: write
   issues: write
@@ -45,6 +51,7 @@ jobs:
       IMAGE_SOURCE_SHA: ${{ inputs.image_source_sha }}
       CONTAINER_IMAGE: ${{ inputs.container_image }}
       CONNECTOR_INSTANCE_ID: ${{ inputs.connector_instance_id }}
+      RESTORED_FAILURE_WORKFLOW_RUN_ID: ${{ inputs.restored_failure_workflow_run_id }}
       MUTATION_CONFIRMATION: ${{ inputs.mutation_confirmation }}
       JOB_NAME: ets-mrc1c-rec-${{ github.run_id }}
 
@@ -79,8 +86,69 @@ jobs:
           pattern = rf"{re.escape(registry)}/[^@\s]+@sha256:[0-9a-f]{{64}}"
           if re.fullmatch(pattern, image) is None:
               raise SystemExit("container_image is outside the exact private-ACR digest boundary")
+          restored_run = os.environ["RESTORED_FAILURE_WORKFLOW_RUN_ID"]
+          if re.fullmatch(r"(?:0|[1-9][0-9]{0,19})", restored_run) is None:
+              raise SystemExit("restored failure workflow run ID is not canonical")
           PY
           mkdir -p evidence/live-microsoft-rc1c-subscription-recovery
+
+      - name: Download restored failure evidence
+        if: ${{ inputs.restored_failure_workflow_run_id != '0' }}
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: live-microsoft-rc1c-subscription-recovery-${{ inputs.restored_failure_workflow_run_id }}
+          path: evidence/prior-rc1c-recovery
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.restored_failure_workflow_run_id }}
+
+      - name: Validate restored failure evidence
+        if: ${{ inputs.restored_failure_workflow_run_id != '0' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          candidates = list(Path("evidence/prior-rc1c-recovery").rglob("failure.json"))
+          if len(candidates) != 1:
+              raise SystemExit("expected exactly one prior RC1C recovery failure manifest")
+          payload = json.loads(candidates[0].read_text(encoding="utf-8"))
+          if payload.get("workflow_run_id") != int(
+              os.environ["RESTORED_FAILURE_WORKFLOW_RUN_ID"]
+          ):
+              raise SystemExit("prior RC1C recovery workflow run ID changed")
+          if payload.get("schema_version") != (
+              "ets.live_microsoft.rc1c_subscription_recovery_failure.v1"
+          ):
+              raise SystemExit("prior RC1C recovery failure schema changed")
+          if payload.get("failure_code") != "purview_unexpected_http_status":
+              raise SystemExit("prior RC1C recovery failure is outside the approved resume")
+          required_true = (
+              "mutation_attempted",
+              "recovery_attempted",
+              "recovery_restored",
+              "public_evidence_safe",
+          )
+          if any(payload.get(key) is not True for key in required_true):
+              raise SystemExit("prior RC1C recovery restoration evidence is incomplete")
+          if payload.get("subscription_final_state") != "enabled":
+              raise SystemExit("prior RC1C recovery did not restore enabled state")
+          required_false = (
+              "purview_webhook_configured",
+              "graph_operation_performed",
+              "raw_purview_payload_retained",
+              "customer_identifiers_retained",
+              "reusable_credential_retained",
+              "qualification_pass",
+              "rc1c_live_qualified",
+              "soak_clock_started",
+          )
+          if any(payload.get(key) is not False for key in required_false):
+              raise SystemExit("prior RC1C recovery failure evidence is unsafe")
+          PY
+          rm -rf evidence/prior-rc1c-recovery
 
       - name: Azure login with workload identity
         uses: azure/login@v3.0.0
@@ -256,6 +324,7 @@ jobs:
               registryServer="${ACR_NAME}.azurecr.io" \
               containerImage="$CONTAINER_IMAGE" \
               microsoftTenantId="$MICROSOFT_TENANT_ID" \
+              restoredFailureWorkflowRunId="$RESTORED_FAILURE_WORKFLOW_RUN_ID" \
             --only-show-errors \
             --output none
 
@@ -372,6 +441,10 @@ jobs:
                   "purview_terminal_http_failure",
                   "purview_transport_failure",
                   "purview_unexpected_http_status",
+                  "purview_subscriptions_list_unexpected_http_status",
+                  "purview_subscriptions_start_unexpected_http_status",
+                  "purview_subscriptions_stop_unexpected_http_status",
+                  "purview_subscriptions_content_unexpected_http_status",
                   "purview_response_too_large",
                   "purview_stop_response_not_empty",
                   "purview_response_not_json",
@@ -395,6 +468,9 @@ jobs:
                   "token_application_mismatch",
                   "token_permission_mismatch",
                   "initial_subscription_not_absent",
+                  "initial_subscription_not_recoverable",
+                  "enabled_resume_evidence_missing",
+                  "restored_failure_state_not_enabled",
                   "initial_start_not_observed_enabled",
                   "stop_not_observed",
                   "recovery_start_not_observed_enabled",
@@ -466,8 +542,8 @@ jobs:
               "ets.live_microsoft.rc1c_subscription_recovery.v1"
           ):
               raise SystemExit("RC1C recovery schema changed")
-          if payload.get("subscription_initial_state") != "absent":
-              raise SystemExit("RC1C recovery initial state was not absent")
+          if payload.get("subscription_initial_state") not in {"absent", "enabled"}:
+              raise SystemExit("RC1C recovery initial state is not resumable")
           if payload.get("subscription_stopped_state") not in {"absent", "disabled"}:
               raise SystemExit("RC1C recovery stop state is invalid")
           if payload.get("subscription_final_state") != "enabled":
@@ -577,7 +653,15 @@ jobs:
           print(f"- workflow run: `{payload['workflow_run_id']}`")
           print(f"- exact source: `{payload['source_sha']}`")
           print(f"- immutable image digest: `{payload['image_digest']}`")
-          print("- initial subscription state: **absent**")
+          print(
+              "- initial subscription state: "
+              f"**{payload['subscription_initial_state']}**"
+          )
+          if int(os.environ["RESTORED_FAILURE_WORKFLOW_RUN_ID"]) > 0:
+              print(
+                  "- restored failure workflow run: "
+                  f"**{os.environ['RESTORED_FAILURE_WORKFLOW_RUN_ID']}**"
+              )
           print("- initial start observed enabled: **true**")
           print("- bounded content listing reachable: **true**")
           print(f"- content descriptors observed: **{payload['content_descriptors_observed']}**")
