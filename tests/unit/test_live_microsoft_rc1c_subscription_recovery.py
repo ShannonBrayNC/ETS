@@ -109,14 +109,19 @@ def _install_fixture_modules(
     monkeypatch.setattr("time.sleep", lambda _: None)
     monkeypatch.setenv("ETS_RC1C_PURVIEW_CLIENT_ID", "22222222-2222-2222-2222-222222222222")
     monkeypatch.setenv("ETS_RC1C_MICROSOFT_TENANT_ID", "11111111-1111-1111-1111-111111111111")
+    monkeypatch.setenv("ETS_RC1C_RESTORED_FAILURE_WORKFLOW_RUN_ID", "0")
 
 
 def test_rc1c_subscription_recovery_is_manual_protected_and_confirmation_gated() -> None:
     assert "workflow_dispatch:" in WORKFLOW
     assert "schedule:" not in WORKFLOW
     assert "environment: ets-azure-q1" in WORKFLOW
+    assert "actions: read" in WORKFLOW
     assert "id-token: write" in WORKFLOW
     assert "issues: write" in WORKFLOW
+    assert "restored_failure_workflow_run_id:" in WORKFLOW
+    assert "actions/download-artifact@v8.0.1" in WORKFLOW
+    assert "prior RC1C recovery restoration evidence is incomplete" in WORKFLOW
     assert 'test "$GITHUB_REF" = "refs/heads/main"' in WORKFLOW
     assert 'test "$IMAGE_SOURCE_SHA" = "$GITHUB_SHA"' in WORKFLOW
     assert 'test "$MUTATION_CONFIRMATION" = "START_STOP_RESTART_AUDIT_GENERAL"' in WORKFLOW
@@ -160,6 +165,8 @@ def test_rc1c_subscription_recovery_is_exact_audit_general_polling_only() -> Non
         'failure_code = "recovery_restore_failed"',
         '"webhook_configuration_present"',
         '"start_created_webhook"',
+        '"enabled_resume_evidence_missing"',
+        '"restored_failure_state_not_enabled"',
         "MAXIMUM_RESPONSE_BYTES = 2 * 1024 * 1024",
         "MAXIMUM_CONTENT_DESCRIPTORS = 5000",
     ):
@@ -245,6 +252,10 @@ def test_embedded_recovery_resumes_from_verified_enabled_state(
             "22222222-2222-2222-2222-222222222222",
         ),
         opener=opener,
+    )
+    monkeypatch.setenv(
+        "ETS_RC1C_RESTORED_FAILURE_WORKFLOW_RUN_ID",
+        "32772712932",
     )
 
     exec(compile(_recovery_script(), "<rc1c-subscription-recovery>", "exec"), {})
