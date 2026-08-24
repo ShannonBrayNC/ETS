@@ -17,19 +17,27 @@ requires the exact confirmation string `START_STOP_RESTART_AUDIT_GENERAL`.
 The exact-source prerequisite order is defined by
 [`MICROSOFT_P0_LIVE_RELEASE_SEQUENCE_V1.md`](./MICROSOFT_P0_LIVE_RELEASE_SEQUENCE_V1.md).
 
-Microsoft documents that a stopped subscription cannot list or retrieve available content and that
-content produced between stop and restart cannot be recovered through the subscription. A first
-attempt requires the pre-mutation state to be `absent`. A protected retry may begin `enabled` only after the operator supplies
-`restored_failure_workflow_run_id` and the workflow downloads that prior protected artifact before
-Azure login. Its sanitized evidence must prove `mutation_attempted=true`,
-`recovery_attempted=true`, `recovery_restored=true`, and
-`subscription_final_state=enabled`. This avoids an extra stop-only cleanup interval. For that
-reason this gate:
+Microsoft documents that a stopped subscription cannot list or retrieve available content, that
+content produced between stop and restart cannot be recovered through the subscription, and that
+start requests require a fifteen-minute waiting period between calls. A first attempt requires the
+pre-mutation state to be `absent`. A protected retry may begin `enabled` only after the operator
+supplies both the prior protected failure run and a later, exact-source RC1C read-only preflight
+run. The prior failure must prove a bounded mutation and recovery attempt. It may either prove the
+subscription was restored `enabled`, or record the narrow `recovery_restore_failed`/`unknown`
+outcome. The later preflight must independently prove the current live state is `enabled` without a
+webhook, using the exact deployed source and image digest. Both artifacts are downloaded and
+validated before Azure login. This avoids relying on stale state evidence or adding a stop-only
+cleanup interval. For that reason this gate:
 
-- requires `absent` on a first attempt or the verified `enabled` recovery-resume state;
-- performs an idempotent start before content reachability in either state;
+- requires `absent` on a first attempt or the fresh, post-failure verified `enabled` resume state;
+- starts before content reachability only when the initial state is `absent`;
+- waits the documented fifteen minutes before the recovery start when a first attempt had to start
+  an absent subscription;
+- skips the redundant initial start for an evidence-gated `enabled` resume;
 - keeps the stop interval bounded to the one job execution;
-- attempts a fail-closed restart if any post-start assertion fails; and
+- observes start and stop state transitions with bounded polling;
+- avoids issuing a duplicate recovery start inside Microsoft's cooldown window;
+- attempts a fail-closed restart if an assertion fails before a recovery start was attempted; and
 - treats failure to restore `enabled` as `recovery_restore_failed`.
 
 Reference:
@@ -56,10 +64,12 @@ The job performs only these Office 365 Management Activity operations for `Audit
 with the deployment-authoritative publisher identifier and without a webhook:
 
 1. list subscriptions and require `absent` or the verified restored `enabled` state;
-2. start (idempotently when already enabled) and require `enabled` with `webhook=null`;
+2. if initially `absent`, start and require `enabled` with `webhook=null`; otherwise retain the
+   evidence-gated `enabled` state without another start request;
 3. list available content once, retaining only a bounded descriptor count;
-4. stop and require `absent` or `disabled`; and
-5. start again and require the final state `enabled` with `webhook=null`.
+4. for a first attempt only, wait the documented fifteen-minute start-request cooldown;
+5. stop and require `absent` or `disabled`; and
+6. start once and require the final state `enabled` with `webhook=null`.
 
 Credential-bearing redirects fail closed. List, start, and content operations require HTTP 200.
 The stop operation accepts HTTP 200 or an empty HTTP 204; every other successful status fails with
