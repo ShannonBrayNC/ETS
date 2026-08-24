@@ -102,7 +102,15 @@ opener = build_opener(RejectRedirects())
 api_retry_count = 0
 
 
-def request(method, operation, token, *, content_type=False, expect_json=True):
+def request(
+    method,
+    operation,
+    token,
+    *,
+    content_type=False,
+    expect_json=True,
+    expected_statuses=(200,),
+):
     global api_retry_count
     query = {"PublisherIdentifier": MICROSOFT_TENANT_ID}
     if content_type:
@@ -153,8 +161,11 @@ def request(method, operation, token, *, content_type=False, expect_json=True):
                 time.sleep(1)
                 continue
             raise QualificationFailure("purview_transport_failure") from exc
-        if status != 200:
-            raise QualificationFailure("purview_unexpected_http_status")
+        if status not in expected_statuses:
+            operation_code = operation.replace("/", "_")
+            raise QualificationFailure(
+                "purview_" + operation_code + "_unexpected_http_status"
+            )
         if len(body) > MAXIMUM_RESPONSE_BYTES:
             raise QualificationFailure("purview_response_too_large")
         if not expect_json:
@@ -212,6 +223,7 @@ def stop_subscription(token):
         token,
         content_type=True,
         expect_json=False,
+        expected_statuses=(200, 204),
     )
 
 
@@ -250,8 +262,8 @@ try:
         raise QualificationFailure("token_permission_mismatch")
 
     initial_state = list_audit_general(access_token)
-    if initial_state != "absent":
-        raise QualificationFailure("initial_subscription_not_absent")
+    if initial_state not in {"absent", "enabled"}:
+        raise QualificationFailure("initial_subscription_not_recoverable")
 
     mutated = True
     start_subscription(access_token)
