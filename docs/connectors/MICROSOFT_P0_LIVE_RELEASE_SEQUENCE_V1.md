@@ -88,8 +88,8 @@ image, and connector instance. The protected input must include the exact confir
 `START_STOP_RESTART_AUDIT_GENERAL`.
 
 This start/stop/restart gate requires `Audit.General` to be `absent` on a first attempt. A
-protected retry may begin `enabled` only after the prior exact-source failure artifact proves that
-mutation and fail-closed restoration completed with the final state enabled. The workflow performs
+protected retry may begin `enabled` only after the selected prior protected failure artifact proves that mutation and fail-closed
+restoration completed with the final state enabled. The workflow performs
 an idempotent start without a webhook, proves content-list reachability, stops it, and restarts it.
 It must finish `enabled`; any failure after mutation triggers a bounded restoration attempt. The
 exact contract is documented in
