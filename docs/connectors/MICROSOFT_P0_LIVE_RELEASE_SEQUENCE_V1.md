@@ -91,12 +91,14 @@ This start/stop/restart gate requires `Audit.General` to be `absent` on a first 
 protected retry may begin `enabled` only after the selected prior protected failure artifact proves that mutation and fail-closed
 restoration completed with the final state enabled. The workflow performs
 an idempotent start without a webhook, proves content-list reachability, stops it, and restarts it.
-It must finish `enabled`; any failure after mutation triggers a bounded restoration attempt. The
+The same exact release image then runs the isolated RC1C polling fault matrix against synthetic
+fixtures and temporary durable state. It must finish `enabled`; any failure after mutation triggers
+a bounded restoration attempt. The
 exact contract is documented in
 [`MICROSOFT_P0_RC1C_SUBSCRIPTION_RECOVERY_V1.md`](./MICROSOFT_P0_RC1C_SUBSCRIPTION_RECOVERY_V1.md).
 
-Passing this gate still fixes `rc1c_live_qualified=false` and `soak_clock_started=false`. Cursor,
-content, replay, throttling, gap, and fail-closed evidence matrices remain before freeze.
+Passing this gate fixes `rc1c_live_qualified=true` and `soak_clock_started=false`. RC1B and the
+shared candidate reconciliation, freeze, and pre-soak recovery gates still remain.
 
 ## Stop conditions
 
