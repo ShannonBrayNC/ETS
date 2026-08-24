@@ -224,6 +224,20 @@ def runtime_is_stable(snapshot):
     )
 
 
+def core_sync_failure_code(snapshot):
+    if any(item["terminal_failure"] for item in snapshot.values()):
+        return "directory_core_sync_terminal_failure"
+    if any(item["retryable_failure"] for item in snapshot.values()):
+        return "directory_core_sync_retryable_failure"
+    if any(item["pending"] or item["in_flight"] for item in snapshot.values()):
+        return "directory_core_sync_backlog"
+    if any(item["invalid"] for item in snapshot.values()):
+        return "directory_core_sync_state_invalid"
+    if not all(item["synchronized"] for item in snapshot.values()):
+        return "directory_core_sync_observation_absent"
+    return None
+
+
 FAILURE_CODE = "directory_identity_token_acquisition_failed"
 credential = ManagedIdentityCredential(client_id=DIRECTORY_CLIENT_ID)
 try:
@@ -306,28 +320,55 @@ with connect_ro("gateway-events.db") as connection:
 if not event_state["users"]["observed"] or not event_state["groups"]["observed"]:
     raise RuntimeError("live Entra connectors have not committed both collection families")
 
-FAILURE_CODE = "directory_core_sync_incomplete"
+FAILURE_CODE = "directory_core_sync_state_unavailable"
 queue_state = {
-    "users": {"synchronized": False, "clean": True},
-    "groups": {"synchronized": False, "clean": True},
+    "users": {
+        "pending": False,
+        "in_flight": False,
+        "synchronized": False,
+        "retryable_failure": False,
+        "terminal_failure": False,
+        "invalid": False,
+    },
+    "groups": {
+        "pending": False,
+        "in_flight": False,
+        "synchronized": False,
+        "retryable_failure": False,
+        "terminal_failure": False,
+        "invalid": False,
+    },
 }
 with connect_ro("gateway-sync.db") as connection:
     rows = connection.execute("SELECT payload_json, state FROM sync_queue").fetchall()
     for row in rows:
-        raw = str(row["payload_json"])
+        try:
+            payload = json.loads(str(row["payload_json"]))
+        except json.JSONDecodeError:
+            continue
+        capture = payload.get("capture") if isinstance(payload, dict) else None
+        source_id = capture.get("source_id") if isinstance(capture, dict) else None
         state = str(row["state"])
-        if USERS_INSTANCE_ID in raw:
+        if source_id == USERS_INSTANCE_ID:
             label = "users"
-        elif GROUPS_INSTANCE_ID in raw:
+        elif source_id == GROUPS_INSTANCE_ID:
             label = "groups"
         else:
             continue
-        if state == "synchronized":
-            queue_state[label]["synchronized"] = True
-        elif state in {"pending", "in_flight", "retryable_failure", "terminal_failure"}:
-            queue_state[label]["clean"] = False
+        if state in {
+            "pending",
+            "in_flight",
+            "synchronized",
+            "retryable_failure",
+            "terminal_failure",
+        }:
+            queue_state[label][state] = True
+        else:
+            queue_state[label]["invalid"] = True
 
-if not all(item["synchronized"] and item["clean"] for item in queue_state.values()):
+failure_code = core_sync_failure_code(queue_state)
+if failure_code is not None:
+    FAILURE_CODE = failure_code
     raise RuntimeError("live Entra Core synchronization is incomplete or unhealthy")
 
 FAILURE_CODE = "preflight_result_emission_failed"

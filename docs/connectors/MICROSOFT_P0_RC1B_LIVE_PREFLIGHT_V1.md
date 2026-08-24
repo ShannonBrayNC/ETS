@@ -110,4 +110,10 @@ deletes the private raw log before uploading evidence. If no valid marker is ava
 workflow retains only `bounded_failure_marker_unavailable`. Both paths use the same sanitized
 `ets.live_microsoft.rc1b_preflight_failure.v2` evidence shape.
 
+The Core synchronization boundary classifies only bounded queue posture. It distinguishes an
+unavailable queue, terminal failure, retryable failure, pending/in-flight backlog, invalid state,
+and absence of a synchronized users/groups observation. Matching uses the exact minimized
+`capture.source_id`; counts, event identifiers, payloads, acknowledgements, timestamps, and error
+text are never copied into public evidence.
+
 No live preflight is performed merely by merging these assets.
