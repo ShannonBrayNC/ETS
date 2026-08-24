@@ -1,0 +1,607 @@
+name: Live Microsoft RC1C Subscription Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_source_sha:
+        description: Exact approved main SHA used by the deployed immutable image
+        required: true
+        type: string
+      container_image:
+        description: Exact deployed private-ACR image as registry/repository@sha256:<digest>
+        required: true
+        type: string
+      connector_instance_id:
+        description: Deployment-authoritative base Microsoft connector instance ID
+        required: true
+        default: m365-sharepoint-primary
+        type: string
+      mutation_confirmation:
+        description: Type START_STOP_RESTART_AUDIT_GENERAL to authorize the bounded mutation
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+concurrency:
+  group: live-microsoft-rc1c-subscription-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    name: Prove bounded Audit.General subscription recovery
+    runs-on: ubuntu-24.04
+    environment: ets-azure-q1
+    timeout-minutes: 20
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      LOCATION: eastus
+      RESOURCE_GROUP: rg-ets-live-eastus
+      ACR_NAME: etsq1a352eb89
+      RESULT_ISSUE: '539'
+      IMAGE_SOURCE_SHA: ${{ inputs.image_source_sha }}
+      CONTAINER_IMAGE: ${{ inputs.container_image }}
+      CONNECTOR_INSTANCE_ID: ${{ inputs.connector_instance_id }}
+      MUTATION_CONFIRMATION: ${{ inputs.mutation_confirmation }}
+      JOB_NAME: ets-mrc1c-rec-${{ github.run_id }}
+
+    steps:
+      - name: Check out exact recovery source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.image_source_sha }}
+          persist-credentials: false
+
+      - name: Assert protected immutable mutation boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$IMAGE_SOURCE_SHA" = "$GITHUB_SHA"
+          test "$MUTATION_CONFIRMATION" = "START_STOP_RESTART_AUDIT_GENERAL"
+          test -f infra/azure/ets-live-microsoft-rc1c-subscription-recovery.bicep
+          test -n "$CONNECTOR_INSTANCE_ID"
+          test "${#CONNECTOR_INSTANCE_ID}" -le 128
+          python - <<'PY'
+          import os
+          import re
+
+          source = os.environ["IMAGE_SOURCE_SHA"]
+          image = os.environ["CONTAINER_IMAGE"]
+          registry = os.environ["ACR_NAME"] + ".azurecr.io"
+          if re.fullmatch(r"[0-9a-f]{40}", source) is None:
+              raise SystemExit("image_source_sha is not canonical")
+          pattern = rf"{re.escape(registry)}/[^@\s]+@sha256:[0-9a-f]{{64}}"
+          if re.fullmatch(pattern, image) is None:
+              raise SystemExit("container_image is outside the exact private-ACR digest boundary")
+          PY
+          mkdir -p evidence/live-microsoft-rc1c-subscription-recovery
+
+      - name: Azure login with workload identity
+        uses: azure/login@v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Resolve exact private Gateway and Purview identity
+        id: runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          apps_json="$RUNNER_TEMP/rc1c-recovery-apps.json"
+          resolved="$RUNNER_TEMP/rc1c-recovery-resolved.txt"
+          az containerapp list --resource-group "$RESOURCE_GROUP" -o json > "$apps_json"
+
+          python - "$apps_json" > "$resolved" <<'PY'
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          apps = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if not isinstance(apps, list):
+              raise SystemExit("live Container Apps listing was not an array")
+
+          expected_instance = os.environ["CONNECTOR_INSTANCE_ID"]
+          candidates = []
+          for app in apps:
+              props = app.get("properties") or {}
+              containers = (props.get("template") or {}).get("containers") or []
+              if len(containers) != 1:
+                  continue
+              env_items = containers[0].get("env") or []
+              env = {
+                  item.get("name"): item.get("value")
+                  for item in env_items
+                  if isinstance(item, dict) and "value" in item
+              }
+              if env.get("ETS_GATEWAY_INSTANCE_ID") == expected_instance:
+                  candidates.append((app, containers[0], env_items, env))
+          if len(candidates) != 1:
+              raise SystemExit("expected exactly one deployment-authoritative Microsoft Gateway")
+
+          app, container, env_items, env = candidates[0]
+          props = app.get("properties") or {}
+          configuration = props.get("configuration") or {}
+          ingress = configuration.get("ingress") or {}
+          if ingress.get("external") is not False:
+              raise SystemExit("live Microsoft Gateway ingress must remain internal")
+          scale = (props.get("template") or {}).get("scale") or {}
+          if scale.get("minReplicas") != 1 or scale.get("maxReplicas") != 1:
+              raise SystemExit("live Microsoft Gateway must remain single replica")
+          if container.get("name") != "ets-gateway":
+              raise SystemExit("live Microsoft Gateway container identity changed")
+          if container.get("image") != os.environ["CONTAINER_IMAGE"]:
+              raise SystemExit("live Microsoft Gateway image differs from the approved digest")
+
+          graph_names = {
+              "ETS_GATEWAY_GRAPH_NOTIFICATION_URL",
+              "ETS_GATEWAY_GRAPH_CLIENT_STATE",
+              "ETS_GATEWAY_GRAPH_SUBSCRIPTION_LIFETIME_SECONDS",
+              "ETS_GATEWAY_GRAPH_SUBSCRIPTION_RENEWAL_WINDOW_SECONDS",
+              "ETS_GATEWAY_MICROSOFT_HEALTH_POLICY_JSON",
+          }
+          if any(item.get("name") in graph_names for item in env_items if isinstance(item, dict)):
+              raise SystemExit("Graph lifecycle configuration is present inside the P0 deferral")
+
+          environment_id = str(props.get("environmentId") or "")
+          registries = configuration.get("registries") or []
+          if len(registries) != 1:
+              raise SystemExit("live Microsoft Gateway must expose exactly one ACR binding")
+          registry = registries[0]
+          expected_server = os.environ["ACR_NAME"] + ".azurecr.io"
+          if str(registry.get("server") or "").casefold() != expected_server.casefold():
+              raise SystemExit("live Microsoft Gateway registry server changed")
+          pull_identity = str(registry.get("identity") or "")
+
+          identity_names = (
+              "ETS_GATEWAY_MANAGED_IDENTITY_CLIENT_ID",
+              "ETS_GATEWAY_DIRECTORY_MANAGED_IDENTITY_CLIENT_ID",
+              "ETS_GATEWAY_PURVIEW_MANAGED_IDENTITY_CLIENT_ID",
+          )
+          client_ids = [str(env.get(name) or "").strip() for name in identity_names]
+          if any(not value for value in client_ids):
+              raise SystemExit("live Microsoft Gateway omitted a separated runtime identity")
+          if len({value.casefold() for value in client_ids}) != 3:
+              raise SystemExit("live Microsoft runtime identity client IDs are not distinct")
+
+          assigned = (app.get("identity") or {}).get("userAssignedIdentities") or {}
+          if len(assigned) != 4:
+              raise SystemExit("live Microsoft Gateway must attach exactly four user-assigned identities")
+
+          def resource_id_for(client_id):
+              matches = [
+                  resource_id
+                  for resource_id, value in assigned.items()
+                  if str((value or {}).get("clientId") or "").casefold() == client_id.casefold()
+              ]
+              if len(matches) != 1:
+                  raise SystemExit("runtime client ID did not resolve to one attached Azure identity")
+              return matches[0]
+
+          sharepoint_identity = resource_id_for(client_ids[0])
+          directory_identity = resource_id_for(client_ids[1])
+          purview_identity = resource_id_for(client_ids[2])
+          exact_ids = {
+              sharepoint_identity.casefold(),
+              directory_identity.casefold(),
+              purview_identity.casefold(),
+              pull_identity.casefold(),
+          }
+          if len(exact_ids) != 4 or set(key.casefold() for key in assigned) != exact_ids:
+              raise SystemExit("live Microsoft identity assignment set contains drift")
+
+          microsoft_tenant_id = str(env.get("ETS_GATEWAY_MICROSOFT_TENANT_ID") or "")
+          if re.fullmatch(
+              r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+              r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+              microsoft_tenant_id,
+          ) is None:
+              raise SystemExit("live Microsoft tenant ID is not canonical")
+          if not environment_id or not pull_identity:
+              raise SystemExit("live Microsoft RC1C recovery prerequisites are incomplete")
+          if re.fullmatch(r"[A-Za-z0-9._-]{1,128}", expected_instance) is None:
+              raise SystemExit("connector instance ID is outside the qualified identifier profile")
+
+          print("environment_id=" + environment_id)
+          print("pull_identity=" + pull_identity)
+          print("purview_identity=" + purview_identity)
+          print("purview_client_id=" + client_ids[2])
+          print("microsoft_tenant_id=" + microsoft_tenant_id)
+          PY
+
+          while IFS='=' read -r key value; do
+            test -n "$key"
+            test -n "$value"
+            echo "::add-mask::$value"
+            printf '%s=%s\n' "$key" "$value" >> "$GITHUB_OUTPUT"
+          done < "$resolved"
+          rm -f "$apps_json" "$resolved"
+
+      - name: Execute bounded start stop restart recovery
+        id: execute
+        shell: bash
+        env:
+          ENVIRONMENT_ID: ${{ steps.runtime.outputs.environment_id }}
+          PULL_IDENTITY: ${{ steps.runtime.outputs.pull_identity }}
+          PURVIEW_IDENTITY: ${{ steps.runtime.outputs.purview_identity }}
+          PURVIEW_CLIENT_ID: ${{ steps.runtime.outputs.purview_client_id }}
+          MICROSOFT_TENANT_ID: ${{ steps.runtime.outputs.microsoft_tenant_id }}
+        run: |
+          set -euo pipefail
+          test "${#JOB_NAME}" -le 32
+          az deployment group create \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/azure/ets-live-microsoft-rc1c-subscription-recovery.bicep \
+            --parameters \
+              location="$LOCATION" \
+              jobName="$JOB_NAME" \
+              managedEnvironmentResourceId="$ENVIRONMENT_ID" \
+              registryPullIdentityResourceId="$PULL_IDENTITY" \
+              purviewIdentityResourceId="$PURVIEW_IDENTITY" \
+              purviewIdentityClientId="$PURVIEW_CLIENT_ID" \
+              registryServer="${ACR_NAME}.azurecr.io" \
+              containerImage="$CONTAINER_IMAGE" \
+              microsoftTenantId="$MICROSOFT_TENANT_ID" \
+            --only-show-errors \
+            --output none
+
+          execution="$(az containerapp job start \
+            --name "$JOB_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query name -o tsv)"
+          test -n "$execution"
+
+          status=""
+          for _ in $(seq 1 100); do
+            status="$(az containerapp job execution show \
+              --name "$JOB_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --job-execution-name "$execution" \
+              --query properties.status -o tsv)"
+            case "$status" in
+              Succeeded|Failed|Canceled) break ;;
+            esac
+            sleep 3
+          done
+
+          replica=""
+          for _ in $(seq 1 12); do
+            replica="$(az containerapp job replica list \
+              --name "$JOB_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --execution "$execution" \
+              --query '[0].name' -o tsv 2>/dev/null || true)"
+            if [ -n "$replica" ]; then
+              break
+            fi
+            sleep 5
+          done
+          test -n "$replica"
+
+          raw="$RUNNER_TEMP/microsoft-rc1c-subscription-recovery.log"
+          trap 'rm -f "$raw"' EXIT
+          found=false
+          for _ in $(seq 1 12); do
+            az containerapp job logs show \
+              --name "$JOB_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --execution "$execution" \
+              --replica "$replica" \
+              --container microsoft-rc1c-subscription-recovery \
+              --format text \
+              --only-show-errors > "$raw" 2>&1 || true
+            if grep -Eq \
+              'ETS_M365_RC1C_SUBSCRIPTION_RECOVERY(_FAILURE)?_B64=[A-Za-z0-9_=-]+' "$raw"; then
+              found=true
+              break
+            fi
+            sleep 5
+          done
+          if [ "$found" != "true" ]; then
+            echo "::error::RC1C subscription recovery result marker was unavailable"
+            exit 1
+          fi
+
+          export EXECUTION_STATUS="$status"
+          python - "$raw" <<'PY'
+          import base64
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          source = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          success = re.findall(
+              r"ETS_M365_RC1C_SUBSCRIPTION_RECOVERY_B64=([A-Za-z0-9_=-]+)", source
+          )
+          failure = re.findall(
+              r"ETS_M365_RC1C_SUBSCRIPTION_RECOVERY_FAILURE_B64=([A-Za-z0-9_=-]+)",
+              source,
+          )
+          if bool(success) == bool(failure):
+              raise SystemExit("RC1C recovery returned conflicting or missing result markers")
+
+          if failure:
+              payload = json.loads(base64.urlsafe_b64decode(failure[-1]).decode("utf-8"))
+              allowed = {
+                  "schema_version",
+                  "failure_code",
+                  "mutation_attempted",
+                  "recovery_attempted",
+                  "recovery_restored",
+                  "subscription_final_state",
+                  "purview_webhook_configured",
+                  "graph_operation_performed",
+                  "raw_purview_payload_retained",
+                  "customer_identifiers_retained",
+                  "reusable_credential_retained",
+                  "public_evidence_safe",
+                  "qualification_pass",
+                  "rc1c_live_qualified",
+                  "soak_clock_started",
+              }
+              if set(payload) != allowed:
+                  raise SystemExit("RC1C recovery failure returned an unexpected public shape")
+              if payload.get("schema_version") != (
+                  "ets.live_microsoft.rc1c_subscription_recovery_failure.v1"
+              ):
+                  raise SystemExit("RC1C recovery failure schema changed")
+              if payload.get("failure_code") not in {
+                  "credential_redirect_rejected",
+                  "token_not_jwt",
+                  "token_claims_invalid",
+                  "purview_authentication_failure",
+                  "purview_authorization_failure",
+                  "purview_throttle_exhausted",
+                  "purview_retryable_failure_exhausted",
+                  "purview_terminal_http_failure",
+                  "purview_transport_failure",
+                  "purview_unexpected_http_status",
+                  "purview_response_too_large",
+                  "purview_stop_response_not_empty",
+                  "purview_response_not_json",
+                  "purview_response_invalid_json",
+                  "purview_retry_bound_exhausted",
+                  "subscription_list_shape_invalid",
+                  "subscription_item_shape_invalid",
+                  "subscription_content_type_invalid",
+                  "out_of_profile_subscription_present",
+                  "subscription_status_invalid",
+                  "webhook_configuration_present",
+                  "start_response_shape_invalid",
+                  "start_response_not_enabled",
+                  "start_created_webhook",
+                  "content_list_shape_invalid",
+                  "content_descriptor_shape_invalid",
+                  "content_descriptor_type_invalid",
+                  "token_empty",
+                  "token_audience_mismatch",
+                  "token_tenant_mismatch",
+                  "token_application_mismatch",
+                  "token_permission_mismatch",
+                  "initial_subscription_not_absent",
+                  "initial_start_not_observed_enabled",
+                  "stop_not_observed",
+                  "recovery_start_not_observed_enabled",
+                  "recovery_restore_failed",
+                  "unexpected_failure",
+              }:
+                  raise SystemExit("RC1C recovery failure code is outside the allowlist")
+              for key in (
+                  "mutation_attempted",
+                  "recovery_attempted",
+                  "recovery_restored",
+                  "purview_webhook_configured",
+                  "graph_operation_performed",
+                  "raw_purview_payload_retained",
+                  "customer_identifiers_retained",
+                  "reusable_credential_retained",
+                  "public_evidence_safe",
+                  "qualification_pass",
+                  "rc1c_live_qualified",
+                  "soak_clock_started",
+              ):
+                  if not isinstance(payload.get(key), bool):
+                      raise SystemExit("RC1C recovery failure boolean is invalid: " + key)
+              if payload.get("subscription_final_state") not in {
+                  "unknown", "absent", "disabled", "enabled"
+              }:
+                  raise SystemExit("RC1C recovery failure final state is invalid")
+              if payload["qualification_pass"] is not False:
+                  raise SystemExit("RC1C recovery failure claimed a pass")
+              manifest = dict(payload)
+              manifest.update(
+                  {
+                      "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+                      "source_sha": os.environ["GITHUB_SHA"],
+                      "image_digest": os.environ["CONTAINER_IMAGE"].rsplit("@", 1)[1],
+                  }
+              )
+              out = Path("evidence/live-microsoft-rc1c-subscription-recovery/failure.json")
+              out.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+              raise SystemExit("RC1C subscription recovery failed closed: " + payload["failure_code"])
+
+          payload = json.loads(base64.urlsafe_b64decode(success[-1]).decode("utf-8"))
+          if os.environ.get("EXECUTION_STATUS") != "Succeeded":
+              raise SystemExit("RC1C recovery emitted success from a failed execution")
+          allowed = {
+              "schema_version",
+              "subscription_initial_state",
+              "initial_start_verified",
+              "content_listing_reachable",
+              "content_descriptors_observed",
+              "stop_verified",
+              "subscription_stopped_state",
+              "recovery_start_verified",
+              "subscription_final_state",
+              "purview_webhook_configured",
+              "api_retry_count",
+              "graph_operation_performed",
+              "raw_purview_payload_retained",
+              "customer_identifiers_retained",
+              "reusable_credential_retained",
+              "public_evidence_safe",
+              "qualification_pass",
+              "rc1c_live_qualified",
+              "soak_clock_started",
+          }
+          if set(payload) != allowed:
+              raise SystemExit("RC1C recovery returned an unexpected public shape")
+          if payload.get("schema_version") != (
+              "ets.live_microsoft.rc1c_subscription_recovery.v1"
+          ):
+              raise SystemExit("RC1C recovery schema changed")
+          if payload.get("subscription_initial_state") != "absent":
+              raise SystemExit("RC1C recovery initial state was not absent")
+          if payload.get("subscription_stopped_state") not in {"absent", "disabled"}:
+              raise SystemExit("RC1C recovery stop state is invalid")
+          if payload.get("subscription_final_state") != "enabled":
+              raise SystemExit("RC1C recovery did not finish enabled")
+          required_true = (
+              "initial_start_verified",
+              "content_listing_reachable",
+              "stop_verified",
+              "recovery_start_verified",
+              "public_evidence_safe",
+              "qualification_pass",
+          )
+          required_false = (
+              "purview_webhook_configured",
+              "graph_operation_performed",
+              "raw_purview_payload_retained",
+              "customer_identifiers_retained",
+              "reusable_credential_retained",
+              "rc1c_live_qualified",
+              "soak_clock_started",
+          )
+          if any(payload.get(key) is not True for key in required_true):
+              raise SystemExit("RC1C recovery required pass predicate failed")
+          if any(payload.get(key) is not False for key in required_false):
+              raise SystemExit("RC1C recovery fail-closed predicate failed")
+          for key in ("content_descriptors_observed", "api_retry_count"):
+              value = payload.get(key)
+              if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                  raise SystemExit("RC1C recovery counter is invalid: " + key)
+
+          manifest = dict(payload)
+          manifest.update(
+              {
+                  "schema_version": "ets.live_microsoft.rc1c_subscription_recovery_handoff.v1",
+                  "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+                  "source_sha": os.environ["GITHUB_SHA"],
+                  "image_digest": os.environ["CONTAINER_IMAGE"].rsplit("@", 1)[1],
+                  "purview_subscription_mutation_performed": True,
+                  "graph_permission_mutation_performed": False,
+                  "graph_subscription_operation_performed": False,
+                  "rc1c_live_qualified": False,
+                  "soak_clock_started": False,
+              }
+          )
+          out = Path("evidence/live-microsoft-rc1c-subscription-recovery/result.json")
+          out.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+          PY
+
+          rm -f "$raw"
+
+      - name: Record fail-closed recovery outcome if missing
+        if: failure()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          directory = Path("evidence/live-microsoft-rc1c-subscription-recovery")
+          directory.mkdir(parents=True, exist_ok=True)
+          if any(directory.glob("*.json")):
+              raise SystemExit(0)
+          payload = {
+              "schema_version": "ets.live_microsoft.rc1c_subscription_recovery_failure.v1",
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "source_sha": os.environ["GITHUB_SHA"],
+              "failure_code": "workflow_boundary_failure",
+              "mutation_state_known": False,
+              "public_evidence_safe": True,
+              "customer_identifiers_retained": False,
+              "reusable_credential_retained": False,
+              "rc1c_live_qualified": False,
+              "soak_clock_started": False,
+          }
+          (directory / "failure.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Upload sanitized RC1C subscription recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-microsoft-rc1c-subscription-recovery-${{ github.run_id }}
+          path: evidence/live-microsoft-rc1c-subscription-recovery/*.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish successful protected handoff
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - > "$RUNNER_TEMP/rc1c-subscription-recovery-comment.md" <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("evidence/live-microsoft-rc1c-subscription-recovery/result.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print("### Microsoft RC1C Audit.General subscription recovery")
+          print()
+          print(f"- workflow run: `{payload['workflow_run_id']}`")
+          print(f"- exact source: `{payload['source_sha']}`")
+          print(f"- immutable image digest: `{payload['image_digest']}`")
+          print("- initial subscription state: **absent**")
+          print("- initial start observed enabled: **true**")
+          print("- bounded content listing reachable: **true**")
+          print(f"- content descriptors observed: **{payload['content_descriptors_observed']}**")
+          print(f"- stop observed state: **{payload['subscription_stopped_state']}**")
+          print("- recovery start observed enabled: **true**")
+          print("- final subscription state: **enabled**")
+          print("- webhook configured: **false**")
+          print("- Graph operation performed: **false**")
+          print("- customer identifiers retained: **false**")
+          print("- reusable credentials retained: **false**")
+          print("- RC1C live-qualified: **false**")
+          print("- 72-hour soak clock started: **false**")
+          PY
+          gh issue comment "$RESULT_ISSUE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file "$RUNNER_TEMP/rc1c-subscription-recovery-comment.md"
+          rm -f "$RUNNER_TEMP/rc1c-subscription-recovery-comment.md"
+
+      - name: Remove ephemeral recovery job
+        if: always()
+        shell: bash
+        run: |
+          az containerapp job delete \
+            --name "$JOB_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --yes \
+            --only-show-errors >/dev/null 2>&1 || true
