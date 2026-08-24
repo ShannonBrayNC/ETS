@@ -40,6 +40,12 @@ Any source, image, configuration, or identity mutation after freeze requires a f
 Approved decision record:
 [`ADR-009-microsoft-graph-drive-subscription-p0.md`](../adr/ADR-009-microsoft-graph-drive-subscription-p0.md).
 
+The first Purview mutation gate is the protected
+[`MICROSOFT_P0_RC1C_SUBSCRIPTION_RECOVERY_V1.md`](./MICROSOFT_P0_RC1C_SUBSCRIPTION_RECOVERY_V1.md)
+start/stop/restart exercise. It must begin from an absent `Audit.General` subscription and finish
+enabled without a webhook. Passing it does not replace the remaining cursor, content,
+replay/idempotency, throttle, gap-recovery, or evidence-loss gates.
+
 ## Soak behavior
 
 The soak exercises non-destructive canaries only. Each observation retains exact-source identity,

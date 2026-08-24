@@ -80,6 +80,22 @@ evidence. A passing preflight still fixes `rc1b_live_qualified=false` or
 `rc1c_live_qualified=false` because the broader tombstone/replay/throttle/recovery and Purview
 mutation/recovery matrices remain separate gates.
 
+## 6. Prove the bounded Purview subscription recovery
+
+After both read-only preflights pass on the unchanged candidate, review and manually dispatch
+`.github/workflows/live-microsoft-rc1c-subscription-recovery.yml` with the same exact source,
+image, and connector instance. The protected input must include the exact confirmation
+`START_STOP_RESTART_AUDIT_GENERAL`.
+
+This start/stop/restart gate requires the observed `Audit.General` state to be `absent`, starts it
+without a webhook, proves content-list reachability, stops it, and restarts it. It must finish
+`enabled`; any failure after mutation triggers a bounded restoration attempt. The exact contract
+is documented in
+[`MICROSOFT_P0_RC1C_SUBSCRIPTION_RECOVERY_V1.md`](./MICROSOFT_P0_RC1C_SUBSCRIPTION_RECOVERY_V1.md).
+
+Passing this gate still fixes `rc1c_live_qualified=false` and `soak_clock_started=false`. Cursor,
+content, replay, throttling, gap, and fail-closed evidence matrices remain before freeze.
+
 ## Stop conditions
 
 Stop without advancing if `main` moves, the image or Q0 evidence differs, any identity/permission
