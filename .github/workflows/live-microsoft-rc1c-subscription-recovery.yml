@@ -372,6 +372,10 @@ jobs:
                   "purview_terminal_http_failure",
                   "purview_transport_failure",
                   "purview_unexpected_http_status",
+                  "purview_subscriptions_list_unexpected_http_status",
+                  "purview_subscriptions_start_unexpected_http_status",
+                  "purview_subscriptions_stop_unexpected_http_status",
+                  "purview_subscriptions_content_unexpected_http_status",
                   "purview_response_too_large",
                   "purview_stop_response_not_empty",
                   "purview_response_not_json",
@@ -395,6 +399,7 @@ jobs:
                   "token_application_mismatch",
                   "token_permission_mismatch",
                   "initial_subscription_not_absent",
+                  "initial_subscription_not_recoverable",
                   "initial_start_not_observed_enabled",
                   "stop_not_observed",
                   "recovery_start_not_observed_enabled",
@@ -466,8 +471,8 @@ jobs:
               "ets.live_microsoft.rc1c_subscription_recovery.v1"
           ):
               raise SystemExit("RC1C recovery schema changed")
-          if payload.get("subscription_initial_state") != "absent":
-              raise SystemExit("RC1C recovery initial state was not absent")
+          if payload.get("subscription_initial_state") not in {"absent", "enabled"}:
+              raise SystemExit("RC1C recovery initial state is not resumable")
           if payload.get("subscription_stopped_state") not in {"absent", "disabled"}:
               raise SystemExit("RC1C recovery stop state is invalid")
           if payload.get("subscription_final_state") != "enabled":
@@ -577,7 +582,10 @@ jobs:
           print(f"- workflow run: `{payload['workflow_run_id']}`")
           print(f"- exact source: `{payload['source_sha']}`")
           print(f"- immutable image digest: `{payload['image_digest']}`")
-          print("- initial subscription state: **absent**")
+          print(
+              "- initial subscription state: "
+              f"**{payload['subscription_initial_state']}**"
+          )
           print("- initial start observed enabled: **true**")
           print("- bounded content listing reachable: **true**")
           print(f"- content descriptors observed: **{payload['content_descriptors_observed']}**")
