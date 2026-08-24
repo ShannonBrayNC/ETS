@@ -133,7 +133,9 @@ def validate_event(event, event_hash):
     if event.get("redaction_profile") != "microsoft_entra_directory_metadata_v1":
         return False
     try:
-        validated = EvidenceEvent.model_validate(event)
+        validated = EvidenceEvent.model_validate_json(
+            json.dumps(event, separators=(",", ":"), sort_keys=True)
+        )
     except ValueError:
         return False
     return canonical_sha256(validated.hashable_payload()) == event_hash

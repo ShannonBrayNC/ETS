@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
 from pathlib import Path
+
+from ets.core.canonical_json import canonical_sha256
+from ets.core.models import EvidenceEvent
 
 ROOT = Path(__file__).resolve().parents[2]
 REPLAY_WORKFLOW = (
@@ -23,6 +28,32 @@ RECOVERY_BICEP = (
 ).read_text(encoding="utf-8")
 
 
+def test_strict_stored_event_json_revalidates_without_hash_drift() -> None:
+    event = EvidenceEvent(
+        event_id="evt-entra-terminal",
+        tenant_id="tenant",
+        workspace_id="workspace",
+        evidence_id="evidence",
+        event_type="microsoft.entra.directory.observed",
+        subject_ref=None,
+        content_hash="a" * 64,
+        content_hash_alg="sha256",
+        metadata={},
+        created_at_utc=datetime(2026, 8, 24, tzinfo=UTC),
+        source_system="microsoft.entra.directory_delta",
+        redaction_profile="microsoft_entra_directory_metadata_v1",
+    )
+    stored = event.model_dump(mode="json")
+
+    validated = EvidenceEvent.model_validate_json(
+        json.dumps(stored, separators=(",", ":"), sort_keys=True)
+    )
+
+    assert canonical_sha256(validated.hashable_payload()) == canonical_sha256(
+        event.hashable_payload()
+    )
+
+
 def test_both_phases_are_manual_protected_and_exact_source_bound() -> None:
     for workflow in (REPLAY_WORKFLOW, RECOVERY_WORKFLOW):
         assert "workflow_dispatch:" in workflow
@@ -43,7 +74,8 @@ def test_replay_validates_exact_entra_events_before_core_mutation() -> None:
     assert "WHERE state = 'terminal_failure'" in REPLAY_BICEP
     assert '"microsoft.entra.directory_delta"' in REPLAY_BICEP
     assert '"microsoft_entra_directory_metadata_v1"' in REPLAY_BICEP
-    assert "EvidenceEvent.model_validate(event)" in REPLAY_BICEP
+    assert "EvidenceEvent.model_validate_json(" in REPLAY_BICEP
+    assert "EvidenceEvent.model_validate(event)" not in REPLAY_BICEP
     assert "canonical_sha256(validated.hashable_payload())" in REPLAY_BICEP
     assert 'request_json(opener, token, "POST", "/api/v1/events", body)' in REPLAY_BICEP
     assert '"/api/v1/events/" + quote(event_id, safe="")' in REPLAY_BICEP
@@ -61,7 +93,8 @@ def test_recovery_only_mutates_queue_after_exact_core_reconciliation() -> None:
     assert verify < mutate
     assert '"microsoft.entra.directory_delta"' in RECOVERY_BICEP
     assert '"microsoft_entra_directory_metadata_v1"' in RECOVERY_BICEP
-    assert "EvidenceEvent.model_validate(event)" in RECOVERY_BICEP
+    assert "EvidenceEvent.model_validate_json(" in RECOVERY_BICEP
+    assert "EvidenceEvent.model_validate(event)" not in RECOVERY_BICEP
     assert "canonical_sha256(validated.hashable_payload())" in RECOVERY_BICEP
     assert '"/api/v1/events/" + quote(event_id, safe="")' in RECOVERY_BICEP
     assert 'method="GET"' in RECOVERY_BICEP
