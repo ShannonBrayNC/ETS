@@ -36,6 +36,11 @@ param containerImage string
 @maxLength(36)
 param microsoftTenantId string
 
+@description('Prior protected failure run proving restoration to enabled, or 0 for a first attempt.')
+@minLength(1)
+@maxLength(20)
+param restoredFailureWorkflowRunId string = '0'
+
 var recoveryScript = '''
 import base64
 import json
@@ -57,6 +62,9 @@ SUCCESS_MARKER = "ETS_M365_RC1C_SUBSCRIPTION_RECOVERY_B64="
 FAILURE_MARKER = "ETS_M365_RC1C_SUBSCRIPTION_RECOVERY_FAILURE_B64="
 PURVIEW_CLIENT_ID = os.environ["ETS_RC1C_PURVIEW_CLIENT_ID"]
 MICROSOFT_TENANT_ID = os.environ["ETS_RC1C_MICROSOFT_TENANT_ID"]
+RESTORED_FAILURE_WORKFLOW_RUN_ID = os.environ[
+    "ETS_RC1C_RESTORED_FAILURE_WORKFLOW_RUN_ID"
+]
 
 
 class QualificationFailure(RuntimeError):
@@ -264,6 +272,10 @@ try:
     initial_state = list_audit_general(access_token)
     if initial_state not in {"absent", "enabled"}:
         raise QualificationFailure("initial_subscription_not_recoverable")
+    if initial_state == "enabled" and RESTORED_FAILURE_WORKFLOW_RUN_ID == "0":
+        raise QualificationFailure("enabled_resume_evidence_missing")
+    if initial_state == "absent" and RESTORED_FAILURE_WORKFLOW_RUN_ID != "0":
+        raise QualificationFailure("restored_failure_state_not_enabled")
 
     mutated = True
     start_subscription(access_token)
@@ -410,6 +422,10 @@ resource recoveryJob 'Microsoft.App/jobs@2025-01-01' = {
             {
               name: 'ETS_RC1C_MICROSOFT_TENANT_ID'
               secretRef: 'microsoft-tenant-id'
+            }
+            {
+              name: 'ETS_RC1C_RESTORED_FAILURE_WORKFLOW_RUN_ID'
+              value: restoredFailureWorkflowRunId
             }
           ]
           probes: []
