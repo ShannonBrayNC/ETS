@@ -48,8 +48,14 @@ def _token(tenant_id: str, client_id: str) -> str:
 
 
 class FixtureResponse:
-    def __init__(self, payload: object | None, *, empty: bool = False) -> None:
-        self.status = 200
+    def __init__(
+        self,
+        payload: object | None,
+        *,
+        empty: bool = False,
+        status: int = 200,
+    ) -> None:
+        self.status = status
         self.headers = Message()
         self.headers["Content-Type"] = "application/json"
         self._body = b"" if empty else json.dumps(payload).encode("utf-8")
@@ -149,7 +155,7 @@ def test_rc1c_subscription_recovery_is_exact_audit_general_polling_only() -> Non
         '"subscriptions/stop"',
         '"subscriptions/list"',
         '"subscriptions/content"',
-        'initial_state != "absent"',
+        'initial_state not in {"absent", "enabled"}',
         'final_state != "enabled"',
         'failure_code = "recovery_restore_failed"',
         '"webhook_configuration_present"',
@@ -173,7 +179,7 @@ def test_embedded_recovery_executes_absent_start_stop_restart_fixture(
             FixtureResponse(enabled),
             FixtureResponse([enabled]),
             FixtureResponse([]),
-            FixtureResponse(None, empty=True),
+            FixtureResponse(None, empty=True, status=204),
             FixtureResponse([]),
             FixtureResponse(enabled),
             FixtureResponse([enabled]),
@@ -213,6 +219,74 @@ def test_embedded_recovery_executes_absent_start_stop_restart_fixture(
     assert all(request.data is None for request in opener.requests)
     assert all("PublisherIdentifier=" in request.full_url for request in opener.requests)
     assert all("webhook" not in request.full_url.casefold() for request in opener.requests)
+
+
+def test_embedded_recovery_resumes_from_verified_enabled_state(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    enabled = {"contentType": "Audit.General", "status": "enabled", "webhook": None}
+    opener = FixtureOpener(
+        [
+            FixtureResponse([enabled]),
+            FixtureResponse(enabled),
+            FixtureResponse([enabled]),
+            FixtureResponse([]),
+            FixtureResponse(None, empty=True, status=204),
+            FixtureResponse([]),
+            FixtureResponse(enabled),
+            FixtureResponse([enabled]),
+        ]
+    )
+    _install_fixture_modules(
+        monkeypatch,
+        token=_token(
+            "11111111-1111-1111-1111-111111111111",
+            "22222222-2222-2222-2222-222222222222",
+        ),
+        opener=opener,
+    )
+
+    exec(compile(_recovery_script(), "<rc1c-subscription-recovery>", "exec"), {})
+
+    output = capsys.readouterr().out.strip()
+    assert output.startswith("ETS_M365_RC1C_SUBSCRIPTION_RECOVERY_B64=")
+    payload = json.loads(base64.urlsafe_b64decode(output.split("=", 1)[1]))
+    assert payload["subscription_initial_state"] == "enabled"
+    assert payload["initial_start_verified"] is True
+    assert payload["content_listing_reachable"] is True
+    assert payload["stop_verified"] is True
+    assert payload["subscription_final_state"] == "enabled"
+    assert payload["qualification_pass"] is True
+
+
+def test_embedded_recovery_names_unexpected_status_operation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    opener = FixtureOpener([FixtureResponse([], status=202)])
+    _install_fixture_modules(
+        monkeypatch,
+        token=_token(
+            "11111111-1111-1111-1111-111111111111",
+            "22222222-2222-2222-2222-222222222222",
+        ),
+        opener=opener,
+    )
+
+    with pytest.raises(SystemExit) as raised:
+        exec(compile(_recovery_script(), "<rc1c-subscription-recovery>", "exec"), {})
+
+    assert raised.value.code == 1
+    output = capsys.readouterr().out.strip()
+    assert output.startswith("ETS_M365_RC1C_SUBSCRIPTION_RECOVERY_FAILURE_B64=")
+    payload = json.loads(base64.urlsafe_b64decode(output.split("=", 1)[1]))
+    assert (
+        payload["failure_code"]
+        == "purview_subscriptions_list_unexpected_http_status"
+    )
+    assert payload["mutation_attempted"] is False
+    assert payload["subscription_final_state"] == "unknown"
 
 
 def test_embedded_recovery_restores_enabled_after_post_start_failure(
