@@ -352,7 +352,12 @@ jobs:
                   "directory_sharepoint_negative_control_failed",
                   "directory_runtime_state_unstable",
                   "directory_event_state_incomplete",
-                  "directory_core_sync_incomplete",
+                  "directory_core_sync_state_unavailable",
+                  "directory_core_sync_terminal_failure",
+                  "directory_core_sync_retryable_failure",
+                  "directory_core_sync_backlog",
+                  "directory_core_sync_state_invalid",
+                  "directory_core_sync_observation_absent",
                   "preflight_result_emission_failed",
               }
               if payload.get("failure_code") not in allowed_codes:

@@ -30,6 +30,17 @@ def _probe_script() -> str:
     return BICEP[start:end]
 
 
+def _probe_function(name: str) -> object:
+    tree = ast.parse(_probe_script(), filename="ets-live-microsoft-rc1b-preflight.py")
+    function = next(
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name
+    )
+    module = ast.Module(body=[function], type_ignores=[])
+    namespace: dict[str, object] = {}
+    exec(compile(ast.fix_missing_locations(module), "<rc1b-probe-function>", "exec"), namespace)
+    return namespace[name]
+
+
 def test_rc1b_preflight_is_manual_protected_and_exact_source_pinned() -> None:
     assert "workflow_dispatch:" in WORKFLOW
     assert "schedule:" not in WORKFLOW
@@ -90,7 +101,10 @@ def test_rc1b_preflight_requires_stable_durable_state_and_core_sync() -> None:
         'not item["lease_active"]',
         'event_state["users"]["observed"]',
         'event_state["groups"]["observed"]',
-        'item["synchronized"] and item["clean"]',
+        'source_id = capture.get("source_id")',
+        'source_id == USERS_INSTANCE_ID',
+        'source_id == GROUPS_INSTANCE_ID',
+        'failure_code = core_sync_failure_code(queue_state)',
     ):
         assert term in BICEP
 
@@ -131,7 +145,12 @@ def test_rc1b_runtime_failure_is_classified_before_job_cleanup() -> None:
         'FAILURE_CODE = "directory_sharepoint_negative_control_failed"',
         'FAILURE_CODE = "directory_runtime_state_unstable"',
         'FAILURE_CODE = "directory_event_state_incomplete"',
-        'FAILURE_CODE = "directory_core_sync_incomplete"',
+        'FAILURE_CODE = "directory_core_sync_state_unavailable"',
+        'return "directory_core_sync_terminal_failure"',
+        'return "directory_core_sync_retryable_failure"',
+        'return "directory_core_sync_backlog"',
+        'return "directory_core_sync_state_invalid"',
+        'return "directory_core_sync_observation_absent"',
     ):
         assert term in BICEP
 
@@ -145,6 +164,33 @@ def test_rc1b_runtime_failure_is_classified_before_job_cleanup() -> None:
     assert WORKFLOW.index("az containerapp job logs show") < WORKFLOW.index(
         'if [ "$status" != "Succeeded" ]'
     )
+
+
+def test_rc1b_core_sync_failure_classification_is_ordered_and_bounded() -> None:
+    classify = _probe_function("core_sync_failure_code")
+    assert callable(classify)
+
+    def snapshot(**overrides: bool) -> dict[str, dict[str, bool]]:
+        baseline = {
+            "pending": False,
+            "in_flight": False,
+            "synchronized": True,
+            "retryable_failure": False,
+            "terminal_failure": False,
+            "invalid": False,
+        }
+        return {"users": {**baseline, **overrides}, "groups": dict(baseline)}
+
+    assert classify(snapshot()) is None
+    assert classify(snapshot(synchronized=False)) == "directory_core_sync_observation_absent"
+    assert classify(snapshot(invalid=True)) == "directory_core_sync_state_invalid"
+    assert classify(snapshot(pending=True)) == "directory_core_sync_backlog"
+    assert classify(snapshot(in_flight=True)) == "directory_core_sync_backlog"
+    assert classify(snapshot(retryable_failure=True)) == "directory_core_sync_retryable_failure"
+    assert classify(snapshot(terminal_failure=True)) == "directory_core_sync_terminal_failure"
+    assert classify(
+        snapshot(terminal_failure=True, retryable_failure=True, pending=True, invalid=True)
+    ) == "directory_core_sync_terminal_failure"
 
 
 def test_rc1b_failure_marker_retains_no_raw_diagnostics() -> None:
