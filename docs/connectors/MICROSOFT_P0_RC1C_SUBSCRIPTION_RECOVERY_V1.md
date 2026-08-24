@@ -19,9 +19,10 @@ The exact-source prerequisite order is defined by
 
 Microsoft documents that a stopped subscription cannot list or retrieve available content and that
 content produced between stop and restart cannot be recovered through the subscription. A first
-attempt requires the pre-mutation state to be `absent`. A protected retry may begin `enabled`
-only after sanitized evidence from the prior exact-source attempt proves
-`mutation_attempted=true`, `recovery_attempted=true`, `recovery_restored=true`, and
+attempt requires the pre-mutation state to be `absent`. A protected retry may begin `enabled` only after the operator supplies
+`restored_failure_workflow_run_id` and the workflow downloads that prior protected artifact before
+Azure login. Its sanitized evidence must prove `mutation_attempted=true`,
+`recovery_attempted=true`, `recovery_restored=true`, and
 `subscription_final_state=enabled`. This avoids an extra stop-only cleanup interval. For that
 reason this gate:
 
