@@ -17,7 +17,12 @@ on:
         default: m365-sharepoint-primary
         type: string
       restored_failure_workflow_run_id:
-        description: Prior failed recovery run proving restored enabled state, or 0 for a first attempt
+        description: Prior failed recovery run in the protected resume chain, or 0 for a first attempt
+        required: true
+        default: '0'
+        type: string
+      enabled_state_preflight_workflow_run_id:
+        description: Post-failure RC1C read-only preflight proving enabled state, or 0 for a first attempt
         required: true
         default: '0'
         type: string
@@ -41,7 +46,7 @@ jobs:
     name: Prove bounded Audit.General subscription recovery
     runs-on: ubuntu-24.04
     environment: ets-azure-q1
-    timeout-minutes: 20
+    timeout-minutes: 35
     env:
       AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
       LOCATION: eastus
@@ -52,6 +57,7 @@ jobs:
       CONTAINER_IMAGE: ${{ inputs.container_image }}
       CONNECTOR_INSTANCE_ID: ${{ inputs.connector_instance_id }}
       RESTORED_FAILURE_WORKFLOW_RUN_ID: ${{ inputs.restored_failure_workflow_run_id }}
+      ENABLED_STATE_PREFLIGHT_WORKFLOW_RUN_ID: ${{ inputs.enabled_state_preflight_workflow_run_id }}
       MUTATION_CONFIRMATION: ${{ inputs.mutation_confirmation }}
       JOB_NAME: ets-mrc1c-rec-${{ github.run_id }}
 
@@ -89,6 +95,15 @@ jobs:
           restored_run = os.environ["RESTORED_FAILURE_WORKFLOW_RUN_ID"]
           if re.fullmatch(r"(?:0|[1-9][0-9]{0,19})", restored_run) is None:
               raise SystemExit("restored failure workflow run ID is not canonical")
+          preflight_run = os.environ["ENABLED_STATE_PREFLIGHT_WORKFLOW_RUN_ID"]
+          if re.fullmatch(r"(?:0|[1-9][0-9]{0,19})", preflight_run) is None:
+              raise SystemExit("enabled-state preflight workflow run ID is not canonical")
+          if (restored_run == "0") != (preflight_run == "0"):
+              raise SystemExit("enabled resume requires both failure and preflight evidence")
+          if restored_run != "0":
+              current_run = int(os.environ["GITHUB_RUN_ID"])
+              if not int(restored_run) < int(preflight_run) < current_run:
+                  raise SystemExit("enabled resume evidence order is invalid")
           PY
           mkdir -p evidence/live-microsoft-rc1c-subscription-recovery
 
@@ -123,18 +138,29 @@ jobs:
               "ets.live_microsoft.rc1c_subscription_recovery_failure.v1"
           ):
               raise SystemExit("prior RC1C recovery failure schema changed")
-          if payload.get("failure_code") != "purview_unexpected_http_status":
+          failure_code = payload.get("failure_code")
+          if failure_code not in {
+              "purview_unexpected_http_status",
+              "recovery_restore_failed",
+          }:
               raise SystemExit("prior RC1C recovery failure is outside the approved resume")
           required_true = (
               "mutation_attempted",
               "recovery_attempted",
-              "recovery_restored",
               "public_evidence_safe",
           )
           if any(payload.get(key) is not True for key in required_true):
               raise SystemExit("prior RC1C recovery restoration evidence is incomplete")
-          if payload.get("subscription_final_state") != "enabled":
-              raise SystemExit("prior RC1C recovery did not restore enabled state")
+          if failure_code == "purview_unexpected_http_status":
+              if payload.get("recovery_restored") is not True:
+                  raise SystemExit("prior RC1C recovery restoration evidence is incomplete")
+              if payload.get("subscription_final_state") != "enabled":
+                  raise SystemExit("prior RC1C recovery did not restore enabled state")
+          else:
+              if payload.get("recovery_restored") is not False:
+                  raise SystemExit("uncertain RC1C recovery evidence is invalid")
+              if payload.get("subscription_final_state") != "unknown":
+                  raise SystemExit("uncertain RC1C recovery final state is invalid")
           required_false = (
               "purview_webhook_configured",
               "graph_operation_performed",
@@ -149,6 +175,66 @@ jobs:
               raise SystemExit("prior RC1C recovery failure evidence is unsafe")
           PY
           rm -rf evidence/prior-rc1c-recovery
+
+      - name: Download post-failure enabled-state preflight evidence
+        if: ${{ inputs.enabled_state_preflight_workflow_run_id != '0' }}
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: live-microsoft-rc1c-preflight-${{ inputs.enabled_state_preflight_workflow_run_id }}
+          path: evidence/enabled-state-rc1c-preflight
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.enabled_state_preflight_workflow_run_id }}
+
+      - name: Validate post-failure enabled-state preflight evidence
+        if: ${{ inputs.enabled_state_preflight_workflow_run_id != '0' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          candidates = list(Path("evidence/enabled-state-rc1c-preflight").rglob("result.json"))
+          if len(candidates) != 1:
+              raise SystemExit("expected exactly one post-failure RC1C preflight manifest")
+          payload = json.loads(candidates[0].read_text(encoding="utf-8"))
+          if payload.get("workflow_run_id") != int(
+              os.environ["ENABLED_STATE_PREFLIGHT_WORKFLOW_RUN_ID"]
+          ):
+              raise SystemExit("post-failure RC1C preflight workflow run ID changed")
+          if payload.get("schema_version") != "ets.live_microsoft.rc1c_preflight_handoff.v2":
+              raise SystemExit("post-failure RC1C preflight schema changed")
+          if payload.get("source_sha") != os.environ["GITHUB_SHA"]:
+              raise SystemExit("post-failure RC1C preflight source is not exact")
+          image_digest = os.environ["CONTAINER_IMAGE"].rsplit("@", 1)[1]
+          if payload.get("image_digest") != image_digest:
+              raise SystemExit("post-failure RC1C preflight image digest is not exact")
+          required_true = (
+              "preflight_passed",
+              "purview_subscriptions_list_reachable",
+              "purview_subscription_present",
+              "public_evidence_safe",
+          )
+          if any(payload.get(key) is not True for key in required_true):
+              raise SystemExit("post-failure RC1C enabled-state evidence is incomplete")
+          if payload.get("purview_subscription_status") != "enabled":
+              raise SystemExit("post-failure RC1C subscription state is not enabled")
+          required_false = (
+              "purview_webhook_configured",
+              "graph_durable_subscription_present",
+              "graph_permission_mutation_performed",
+              "graph_subscription_operation_performed",
+              "raw_purview_payload_retained",
+              "customer_identifiers_retained",
+              "reusable_credential_retained",
+              "rc1c_live_qualified",
+              "soak_clock_started",
+          )
+          if any(payload.get(key) is not False for key in required_false):
+              raise SystemExit("post-failure RC1C enabled-state evidence is unsafe")
+          PY
+          rm -rf evidence/enabled-state-rc1c-preflight
 
       - name: Azure login with workload identity
         uses: azure/login@v3.0.0
@@ -335,7 +421,7 @@ jobs:
           test -n "$execution"
 
           status=""
-          for _ in $(seq 1 100); do
+          for _ in $(seq 1 600); do
             status="$(az containerapp job execution show \
               --name "$JOB_NAME" \
               --resource-group "$RESOURCE_GROUP" \
@@ -641,6 +727,7 @@ jobs:
         run: |
           python - > "$RUNNER_TEMP/rc1c-subscription-recovery-comment.md" <<'PY'
           import json
+          import os
           from pathlib import Path
 
           payload = json.loads(
@@ -659,8 +746,12 @@ jobs:
           )
           if int(os.environ["RESTORED_FAILURE_WORKFLOW_RUN_ID"]) > 0:
               print(
-                  "- restored failure workflow run: "
+                  "- prior failure workflow run: "
                   f"**{os.environ['RESTORED_FAILURE_WORKFLOW_RUN_ID']}**"
+              )
+              print(
+                  "- post-failure enabled-state preflight workflow run: "
+                  f"**{os.environ['ENABLED_STATE_PREFLIGHT_WORKFLOW_RUN_ID']}**"
               )
           print("- initial start observed enabled: **true**")
           print("- bounded content listing reachable: **true**")

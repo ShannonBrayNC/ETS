@@ -58,6 +58,9 @@ CONTENT_TYPE = "Audit.General"
 MAXIMUM_RESPONSE_BYTES = 2 * 1024 * 1024
 MAXIMUM_SUBSCRIPTIONS = 16
 MAXIMUM_CONTENT_DESCRIPTORS = 5000
+STATE_OBSERVATION_ATTEMPTS = 12
+STATE_OBSERVATION_DELAY_SECONDS = 5
+START_REQUEST_COOLDOWN_SECONDS = 15 * 60
 SUCCESS_MARKER = "ETS_M365_RC1C_SUBSCRIPTION_RECOVERY_B64="
 FAILURE_MARKER = "ETS_M365_RC1C_SUBSCRIPTION_RECOVERY_FAILURE_B64="
 PURVIEW_CLIENT_ID = os.environ["ETS_RC1C_PURVIEW_CLIENT_ID"]
@@ -108,6 +111,7 @@ def retry_after_seconds(headers):
 
 opener = build_opener(RejectRedirects())
 api_retry_count = 0
+last_start_attempt_monotonic = None
 
 
 def request(
@@ -215,6 +219,8 @@ def list_audit_general(token):
 
 
 def start_subscription(token):
+    global last_start_attempt_monotonic
+    last_start_attempt_monotonic = time.monotonic()
     payload = request("POST", "subscriptions/start", token, content_type=True)
     if not isinstance(payload, dict) or set(payload) - {"contentType", "status", "webhook"}:
         raise QualificationFailure("start_response_shape_invalid")
@@ -245,6 +251,26 @@ def list_content_count(token):
         if item.get("contentType") != CONTENT_TYPE:
             raise QualificationFailure("content_descriptor_type_invalid")
     return len(payload)
+
+
+def observe_subscription_state(token, acceptable_states):
+    observed = "unknown"
+    for attempt in range(STATE_OBSERVATION_ATTEMPTS):
+        observed = list_audit_general(token)
+        if observed in acceptable_states:
+            return observed
+        if attempt + 1 < STATE_OBSERVATION_ATTEMPTS:
+            time.sleep(STATE_OBSERVATION_DELAY_SECONDS)
+    return observed
+
+
+def wait_for_start_request_cooldown():
+    if last_start_attempt_monotonic is None:
+        return
+    elapsed = time.monotonic() - last_start_attempt_monotonic
+    remaining = START_REQUEST_COOLDOWN_SECONDS - elapsed
+    if remaining > 0:
+        time.sleep(remaining)
 
 
 mutated = False
@@ -278,19 +304,27 @@ try:
         raise QualificationFailure("restored_failure_state_not_enabled")
 
     mutated = True
-    start_subscription(access_token)
-    if list_audit_general(access_token) != "enabled":
-        raise QualificationFailure("initial_start_not_observed_enabled")
+    if initial_state == "absent":
+        start_subscription(access_token)
+        if observe_subscription_state(access_token, {"enabled"}) != "enabled":
+            raise QualificationFailure("initial_start_not_observed_enabled")
     content_count = list_content_count(access_token)
 
+    # Microsoft requires fifteen minutes between start requests. A first attempt
+    # starts an absent subscription above, so wait out that documented window
+    # before the stop/restart proof. An evidence-gated enabled resume skips the
+    # redundant initial start and therefore does not need this delay.
+    if initial_state == "absent":
+        wait_for_start_request_cooldown()
+
     stop_subscription(access_token)
-    stopped_state = list_audit_general(access_token)
+    stopped_state = observe_subscription_state(access_token, {"absent", "disabled"})
     if stopped_state not in {"absent", "disabled"}:
         raise QualificationFailure("stop_not_observed")
 
     recovery_attempted = True
     start_subscription(access_token)
-    final_state = list_audit_general(access_token)
+    final_state = observe_subscription_state(access_token, {"enabled"})
     if final_state != "enabled":
         raise QualificationFailure("recovery_start_not_observed_enabled")
     recovery_restored = True
@@ -327,8 +361,15 @@ finally:
     if failure_code is not None and mutated and access_token:
         recovery_attempted = True
         try:
-            start_subscription(access_token)
-            final_state = list_audit_general(access_token)
+            final_state = observe_subscription_state(access_token, {"enabled"})
+            if final_state != "enabled":
+                if (
+                    last_start_attempt_monotonic is None
+                    or time.monotonic() - last_start_attempt_monotonic
+                    >= START_REQUEST_COOLDOWN_SECONDS
+                ):
+                    start_subscription(access_token)
+                final_state = observe_subscription_state(access_token, {"enabled"})
             recovery_restored = final_state == "enabled"
         except Exception:
             recovery_restored = False
@@ -380,7 +421,7 @@ resource recoveryJob 'Microsoft.App/jobs@2025-01-01' = {
         replicaCompletionCount: 1
       }
       replicaRetryLimit: 0
-      replicaTimeout: 360
+      replicaTimeout: 1500
       identitySettings: [
         {
           identity: registryPullIdentityResourceId
