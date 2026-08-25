@@ -8,6 +8,8 @@ Release gate: #541
 
 RC1D reconciles the retained Microsoft P0 qualification evidence into one exact-source, immutable-image handoff that is eligible for candidate freeze. It does not itself freeze a candidate and it does not start the 72-hour soak.
 
+Graph drive subscriptions remain deferred under ADR-009. RC1D must not configure, operate, or represent them as qualified, and no public Gateway callback or broader Graph file permission is part of this candidate.
+
 The protected workflow is `.github/workflows/live-microsoft-rc1d-pre-soak-reconciliation.yml`.
 
 ## Required exact-source evidence
@@ -35,7 +37,7 @@ RC1D rejects any candidate when:
 - the Gateway durable-state probe is not at a healthy terminal delta checkpoint;
 - the Gateway marker has pending, in-flight, retryable, or terminal relay state;
 - the protected Gateway recovery did not mutate only the intended Gateway queue/runtime state and finish healthy;
-- Graph drive subscription configuration/operation, a public callback, broader Graph file permission claim, reusable credential retention, or customer-identifier retention is represented; or
+- Graph drive subscriptions are configured or operated, a public callback is present, a broader Graph file permission is claimed, a reusable credential is retained, or a customer identifier is retained; or
 - any selected evidence claims the soak clock already started.
 
 ## Successful handoff
