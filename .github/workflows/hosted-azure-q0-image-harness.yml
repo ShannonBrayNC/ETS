@@ -58,7 +58,11 @@ jobs:
           grep -q 'adminUserEnabled' "$workflow"
           grep -q 'authentication-as-arm show' "$workflow"
           grep -q 'get-access-token' "$workflow"
-          grep -q 'https://containerregistry.azure.net/.default' "$workflow"
+          grep -q -- '--resource https://management.azure.com/' "$workflow"
+          if grep -q 'https://containerregistry.azure.net/.default' "$workflow"; then
+            echo 'Q0 direct ACR OAuth exchange must use the qualified ARM audience when authentication-as-arm is enabled.' >&2
+            exit 1
+          fi
           grep -q 'python scripts/acr_oauth_docker_login.py' "$workflow"
           grep -q 'unset ACR_AAD_ACCESS_TOKEN ACR_TENANT_ID' "$workflow"
           grep -q '/oauth2/exchange' "$oauth"
@@ -80,6 +84,7 @@ jobs:
           grep -q '@$IMAGE_DIGEST' "$workflow"
           grep -q 'HIGH,CRITICAL' "$workflow"
           grep -q 'Enforce vulnerability gate' "$workflow"
+          grep -q 'Q0 vulnerability scan/gate did not complete' "$workflow"
           grep -q 'registry_credentials_retained' "$workflow"
           grep -q 'NOT EXECUTED' "$docs"
 
