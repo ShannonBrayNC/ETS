@@ -6,7 +6,7 @@ Live slices: #540 (RC1B), #539 (RC1C), and #541 (RC1D)
 
 ## Purpose
 
-This sequence binds the separated Microsoft runtime, immutable image publication, private Azure deployment, protected RC1B/RC1C qualification, and RC1D pre-soak reconciliation to one exact approved `main` SHA. It does not authorize public ingress. Candidate freeze and soak start occur only after a passing RC1D reconciliation.
+This sequence binds the separated Microsoft runtime, immutable image publication, private Azure deployment, protected RC1B/RC1C qualification, and RC1D pre-soak reconciliation to one exact approved `main` SHA. It does not authorize public ingress. RC1D does not freeze a candidate; candidate freeze and soak start occur only after a passing RC1D reconciliation.
 
 ## 1. Pre-create the separated identities
 
