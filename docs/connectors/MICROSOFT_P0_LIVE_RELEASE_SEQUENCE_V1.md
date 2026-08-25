@@ -56,11 +56,11 @@ Run both workflows from the unchanged `main` SHA with the same `image_source_sha
 
 Each workflow creates and removes only an ephemeral Azure Container Apps job and retains sanitized evidence. RC1B may set `rc1b_live_qualified=true` only when its live proof and all synthetic cursor/tombstone/replay/throttle/expired-cursor/evidence-loss predicates pass. RC1C read-only preflight remains a prerequisite to the protected subscription recovery gate.
 
-## 6. Prove bounded Purview subscription recovery and polling recovery
+## 6. Prove bounded Purview subscription mutation, start/stop/restart, and polling recovery
 
 After both read-only preflights pass on the unchanged candidate, review and manually dispatch `.github/workflows/live-microsoft-rc1c-subscription-recovery.yml` with the same exact source, image, and connector instance. The protected input must include the exact confirmation `START_STOP_RESTART_AUDIT_GENERAL`.
 
-The gate performs an idempotent `Audit.General` start, bounded content listing, stop, and restart without a webhook. A protected retry may begin enabled only when retained prior failure and later read-only preflight evidence prove the exact guarded resume state. The same release image then runs the isolated RC1C polling fault matrix against synthetic fixtures and temporary durable state. It must finish enabled; any failure after mutation triggers bounded restoration.
+The protected Purview subscription mutation exercise performs an idempotent `Audit.General` start/stop/restart sequence with bounded content listing and no webhook. A protected retry may begin enabled only when retained prior failure and later read-only preflight evidence prove the exact guarded resume state. The same release image then runs the isolated RC1C polling fault matrix against synthetic fixtures and temporary durable state. It must finish enabled; any failure after mutation triggers bounded restoration.
 
 Passing fixes `rc1c_live_qualified=true` and `soak_clock_started=false`.
 
@@ -85,7 +85,7 @@ A successful run emits `ets.live_microsoft.rc1d_pre_soak_candidate.v1` with `pre
 
 Only after RC1D passes may the exact source/image pair named by its retained artifact be frozen. Any source, image, identity, permission, configuration, or out-of-contract state mutation after freeze invalidates the candidate and requires a new Q0 and RC1D reconciliation.
 
-Start a new governed 72-hour attempt only from that frozen candidate. The soak uses non-destructive canaries only. The invalidated #479 attempt is never resumed or counted.
+Start a new governed 72-hour attempt only from that frozen candidate. The soak uses non-destructive canaries only. Do not reuse the invalidated #479 attempt; it is never resumed or counted.
 
 ## Stop conditions
 
