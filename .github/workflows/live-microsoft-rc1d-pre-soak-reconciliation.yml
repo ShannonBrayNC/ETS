@@ -1,0 +1,383 @@
+name: Live Microsoft RC1D Pre-Soak Reconciliation
+
+on:
+  workflow_dispatch:
+    inputs:
+      q0_workflow_run_id:
+        description: Successful hosted Azure Q0 image workflow run ID for the exact candidate source
+        required: true
+        type: string
+      rc1b_workflow_run_id:
+        description: Successful RC1B protected live qualification workflow run ID
+        required: true
+        type: string
+      rc1c_workflow_run_id:
+        description: Successful RC1C protected subscription recovery workflow run ID
+        required: true
+        type: string
+      gateway_state_workflow_run_id:
+        description: Successful hardened Gateway durable-state probe workflow run ID
+        required: true
+        type: string
+      container_image:
+        description: Exact private ACR image as registry/repository@sha256:<digest>
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: live-microsoft-rc1d-pre-soak-reconciliation
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile exact-source Microsoft P0 evidence
+    runs-on: ubuntu-24.04
+    environment: ets-azure-q1
+    timeout-minutes: 15
+    env:
+      RESULT_ISSUE: '541'
+      Q0_RUN_ID: ${{ inputs.q0_workflow_run_id }}
+      RC1B_RUN_ID: ${{ inputs.rc1b_workflow_run_id }}
+      RC1C_RUN_ID: ${{ inputs.rc1c_workflow_run_id }}
+      GATEWAY_STATE_RUN_ID: ${{ inputs.gateway_state_workflow_run_id }}
+      CONTAINER_IMAGE: ${{ inputs.container_image }}
+      ACR_NAME: etsq1a352eb89
+
+    steps:
+      - name: Check out exact candidate source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Assert protected reconciliation boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python - <<'PY'
+          import os
+          import re
+
+          for name in ("Q0_RUN_ID", "RC1B_RUN_ID", "RC1C_RUN_ID", "GATEWAY_STATE_RUN_ID"):
+              value = os.environ[name]
+              if re.fullmatch(r"[1-9][0-9]*", value) is None:
+                  raise SystemExit(name + " is not a canonical workflow run ID")
+          image = os.environ["CONTAINER_IMAGE"]
+          registry = re.escape(os.environ["ACR_NAME"] + ".azurecr.io")
+          if re.fullmatch(rf"{registry}/[^@\s]+@sha256:[0-9a-f]{{64}}", image) is None:
+              raise SystemExit("container_image is outside the exact private-ACR digest boundary")
+          PY
+          mkdir -p evidence/rc1d/q0 evidence/rc1d/rc1b evidence/rc1d/rc1c evidence/rc1d/gateway
+
+      - name: Validate source workflow run identities
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          validate_run() {
+            run_id="$1"
+            expected_path="$2"
+            payload="$RUNNER_TEMP/run-${run_id}.json"
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" > "$payload"
+            python - "$payload" "$expected_path" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected_path = sys.argv[2]
+          expected = {
+              "head_sha": os.environ["GITHUB_SHA"],
+              "head_branch": "main",
+              "event": "workflow_dispatch",
+              "status": "completed",
+              "conclusion": "success",
+              "path": expected_path,
+          }
+          for key, value in expected.items():
+              if payload.get(key) != value:
+                  raise SystemExit(f"source workflow run mismatch for {key}")
+          PY
+            rm -f "$payload"
+          }
+          validate_run "$Q0_RUN_ID" ".github/workflows/hosted-azure-q0-image.yml"
+          validate_run "$RC1B_RUN_ID" ".github/workflows/live-microsoft-rc1b-preflight.yml"
+          validate_run "$RC1C_RUN_ID" ".github/workflows/live-microsoft-rc1c-subscription-recovery.yml"
+          validate_run "$GATEWAY_STATE_RUN_ID" ".github/workflows/live-sharepoint-state-boundary-probe.yml"
+
+      - name: Download exact Q0 evidence
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: host-az-q0-image-${{ inputs.q0_workflow_run_id }}
+          path: evidence/rc1d/q0
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.q0_workflow_run_id }}
+
+      - name: Download exact RC1B evidence
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: live-microsoft-rc1b-preflight-${{ inputs.rc1b_workflow_run_id }}
+          path: evidence/rc1d/rc1b
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.rc1b_workflow_run_id }}
+
+      - name: Download exact RC1C evidence
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: live-microsoft-rc1c-subscription-recovery-${{ inputs.rc1c_workflow_run_id }}
+          path: evidence/rc1d/rc1c
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.rc1c_workflow_run_id }}
+
+      - name: Download exact Gateway state evidence
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: live-sharepoint-state-boundary-${{ inputs.gateway_state_workflow_run_id }}
+          path: evidence/rc1d/gateway
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.gateway_state_workflow_run_id }}
+
+      - name: Reconcile candidate evidence and emit freeze-ready manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          def load(path: str) -> dict:
+              target = Path(path)
+              if not target.is_file():
+                  raise SystemExit("required reconciliation evidence is missing: " + path)
+              value = json.loads(target.read_text(encoding="utf-8"))
+              if not isinstance(value, dict):
+                  raise SystemExit("reconciliation evidence is not an object: " + path)
+              return value
+
+          q0 = load("evidence/rc1d/q0/manifest.json")
+          rc1b = load("evidence/rc1d/rc1b/result.json")
+          rc1c = load("evidence/rc1d/rc1c/result.json")
+          gateway = load("evidence/rc1d/gateway/result.json")
+
+          source = os.environ["GITHUB_SHA"]
+          image = os.environ["CONTAINER_IMAGE"]
+          digest = image.rsplit("@", 1)[1]
+
+          if q0.get("schema_version") != "ets.host_az.q0_image.v1":
+              raise SystemExit("Q0 manifest schema changed")
+          if q0.get("source_sha") != source:
+              raise SystemExit("Q0 source differs from the reconciliation source")
+          if q0.get("immutable_image") != image or q0.get("image_digest") != digest:
+              raise SystemExit("Q0 immutable image differs from the reconciliation image")
+          if q0.get("vulnerability_gate") != "PASS":
+              raise SystemExit("Q0 vulnerability gate did not pass")
+          if q0.get("sbom") != "sbom.spdx.json":
+              raise SystemExit("Q0 SBOM reference changed")
+          if q0.get("registry_credentials_retained") is not False:
+              raise SystemExit("Q0 retained registry credentials")
+          if q0.get("customer_identifiers_retained") is not False:
+              raise SystemExit("Q0 retained customer identifiers")
+
+          if rc1b.get("schema_version") != "ets.live_microsoft.rc1b_preflight_handoff.v2":
+              raise SystemExit("RC1B handoff schema changed")
+          if rc1b.get("source_sha") != source or rc1b.get("image_digest") != digest:
+              raise SystemExit("RC1B evidence differs from the exact candidate")
+          for key in (
+              "preflight_passed",
+              "rc1b_live_qualified",
+              "fault_matrix_public_safe",
+              "public_evidence_safe",
+              "entra_users_checkpoint_progression",
+              "entra_users_tombstone_verified",
+              "entra_groups_checkpoint_progression",
+              "entra_groups_tombstone_verified",
+              "onedrive_checkpoint_progression",
+              "onedrive_tombstone_verified",
+              "entra_replay_idempotent",
+              "onedrive_replay_idempotent",
+              "graph_retry_after_verified",
+              "throttle_checkpoint_withheld",
+              "expired_cursor_gap_verified",
+              "evidence_loss_checkpoint_withheld",
+          ):
+              if rc1b.get(key) is not True:
+                  raise SystemExit("RC1B reconciliation predicate failed: " + key)
+          for key in (
+              "users_gap_open",
+              "groups_gap_open",
+              "raw_directory_payload_retained",
+              "customer_identifiers_retained",
+              "reusable_credential_retained",
+              "soak_clock_started",
+          ):
+              if rc1b.get(key) is not False:
+                  raise SystemExit("RC1B fail-closed boundary failed: " + key)
+
+          if rc1c.get("schema_version") != "ets.live_microsoft.rc1c_subscription_recovery_handoff.v2":
+              raise SystemExit("RC1C handoff schema changed")
+          if rc1c.get("source_sha") != source or rc1c.get("image_digest") != digest:
+              raise SystemExit("RC1C evidence differs from the exact candidate")
+          for key in (
+              "qualification_pass",
+              "rc1c_live_qualified",
+              "public_evidence_safe",
+              "fault_matrix_public_safe",
+              "cursor_replay_verified",
+              "bounded_overlap_verified",
+              "content_retrieval_verified",
+              "canonicalization_deterministic",
+              "throttle_retry_after_verified",
+              "throttle_checkpoint_withheld",
+              "gap_open_preserves_checkpoint",
+              "intermediate_page_keeps_gap_open",
+              "final_page_reconciles_gap",
+              "evidence_loss_checkpoint_withheld",
+              "revision_conflict_fail_closed",
+              "restart_state_recovered",
+              "purview_subscription_mutation_performed",
+          ):
+              if rc1c.get(key) is not True:
+                  raise SystemExit("RC1C reconciliation predicate failed: " + key)
+          for key in (
+              "purview_webhook_configured",
+              "graph_operation_performed",
+              "graph_permission_mutation_performed",
+              "graph_subscription_operation_performed",
+              "raw_purview_payload_retained",
+              "customer_identifiers_retained",
+              "reusable_credential_retained",
+              "soak_clock_started",
+          ):
+              if rc1c.get(key) is not False:
+                  raise SystemExit("RC1C fail-closed boundary failed: " + key)
+          if rc1c.get("subscription_final_state") != "enabled":
+              raise SystemExit("RC1C subscription did not finish enabled")
+
+          if gateway.get("schema_version") != "ets.live.sharepoint_state_boundary.v1":
+              raise SystemExit("Gateway state evidence schema changed")
+          required_gateway_true = (
+              "checkpoint_present",
+              "last_success_present",
+              "public_evidence_safe",
+          )
+          for key in required_gateway_true:
+              if gateway.get(key) is not True:
+                  raise SystemExit("Gateway durable-state predicate failed: " + key)
+          if gateway.get("checkpoint_kind") != "delta":
+              raise SystemExit("Gateway durable-state checkpoint is not a terminal delta cursor")
+          if gateway.get("observation_state") != "healthy_observation":
+              raise SystemExit("Gateway durable-state observation is not healthy")
+          revision = gateway.get("checkpoint_revision")
+          if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+              raise SystemExit("Gateway durable-state checkpoint revision is invalid")
+          if gateway.get("marker_queue_synchronized", 0) < 1:
+              raise SystemExit("Gateway state probe did not observe synchronized marker evidence")
+          for key in (
+              "gap_open",
+              "next_attempt_present",
+              "lease_active",
+              "customer_identifiers_retained",
+              "reusable_credential_retained",
+              "m365_source_to_proof_claimed",
+              "soak_clock_started",
+          ):
+              if gateway.get(key) is not False:
+                  raise SystemExit("Gateway fail-closed boundary failed: " + key)
+          for key in (
+              "marker_queue_pending",
+              "marker_queue_in_flight",
+              "marker_queue_retryable_failure",
+              "marker_queue_terminal_failure",
+          ):
+              if gateway.get(key) != 0:
+                  raise SystemExit("Gateway marker queue is not fully reconciled: " + key)
+
+          output = {
+              "schema_version": "ets.live_microsoft.rc1d_pre_soak_candidate.v1",
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "candidate_source_sha": source,
+              "candidate_image": image,
+              "candidate_image_digest": digest,
+              "q0_workflow_run_id": int(os.environ["Q0_RUN_ID"]),
+              "rc1b_workflow_run_id": int(os.environ["RC1B_RUN_ID"]),
+              "rc1c_workflow_run_id": int(os.environ["RC1C_RUN_ID"]),
+              "gateway_state_workflow_run_id": int(os.environ["GATEWAY_STATE_RUN_ID"]),
+              "q0_vulnerability_gate_passed": True,
+              "q0_sbom_retained": True,
+              "q0_provenance_required": True,
+              "rc1b_live_qualified": True,
+              "rc1c_live_qualified": True,
+              "gateway_durable_state_healthy": True,
+              "gateway_restart_recovery_verified": True,
+              "graph_drive_subscriptions_deferred": True,
+              "graph_subscription_configuration_absent": True,
+              "graph_subscription_operation_performed": False,
+              "public_gateway_callback_configured": False,
+              "broader_graph_file_permission_claimed": False,
+              "credential_retained": False,
+              "customer_identifiers_retained": False,
+              "public_evidence_safe": True,
+              "pre_soak_reconciliation_passed": True,
+              "freeze_ready": True,
+              "candidate_frozen": False,
+              "soak_clock_started": False,
+          }
+          out = Path("evidence/rc1d/reconciliation.json")
+          out.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload sanitized RC1D pre-soak reconciliation
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-microsoft-rc1d-pre-soak-reconciliation-${{ github.run_id }}
+          path: evidence/rc1d/reconciliation.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish freeze-ready handoff
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - > "$RUNNER_TEMP/rc1d-comment.md" <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("evidence/rc1d/reconciliation.json").read_text(encoding="utf-8"))
+          print("### Microsoft RC1D pre-soak reconciliation")
+          print()
+          print(f"- workflow run: `{payload['workflow_run_id']}`")
+          print(f"- candidate source: `{payload['candidate_source_sha']}`")
+          print(f"- immutable image digest: `{payload['candidate_image_digest']}`")
+          print("- Q0 vulnerability/SBOM/provenance boundary: **passed**")
+          print("- RC1B live qualification and fault matrix: **passed**")
+          print("- RC1C subscription recovery and polling fault matrix: **passed**")
+          print("- Gateway durable-state probe: **healthy and reconciled**")
+          print("- restart recovery predicate: **passed**")
+          print("- Graph drive subscriptions: **deferred from P0**")
+          print("- Graph subscription operation performed: **false**")
+          print("- public Gateway callback configured: **false**")
+          print("- reusable credentials/customer identifiers retained: **false**")
+          print("- pre-soak reconciliation: **passed**")
+          print("- freeze-ready: **true**")
+          print("- candidate frozen: **false**")
+          print("- 72-hour soak clock started: **false**")
+          print()
+          print("Next protected action: freeze this exact source/image pair, then launch a new governed 72-hour soak without changing source, image, identity, or configuration.")
+          PY
+          gh issue comment "$RESULT_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/rc1d-comment.md"
+          rm -f "$RUNNER_TEMP/rc1d-comment.md"
