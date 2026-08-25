@@ -138,7 +138,7 @@ jobs:
           set -euo pipefail
           export ACR_TENANT_ID="$(az account show --query tenantId -o tsv)"
           export ACR_AAD_ACCESS_TOKEN="$(az account get-access-token \
-            --scope https://containerregistry.azure.net/.default \
+            --resource https://management.azure.com/ \
             --query accessToken -o tsv)"
           python scripts/acr_oauth_docker_login.py
           unset ACR_AAD_ACCESS_TOKEN ACR_TENANT_ID
@@ -312,7 +312,12 @@ jobs:
         shell: bash
         env:
           VULNERABILITY_GATE: ${{ steps.gate.outputs.vulnerability_gate }}
+          GATE_OUTCOME: ${{ steps.gate.outcome }}
         run: |
+          if [ "$GATE_OUTCOME" != "success" ]; then
+            echo "Q0 vulnerability scan/gate did not complete; inspect the first failed step above." >&2
+            exit 1
+          fi
           if [ "$VULNERABILITY_GATE" != "PASS" ]; then
             echo "Q0 image contains fixable HIGH/CRITICAL vulnerability findings." >&2
             exit 1
