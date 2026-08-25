@@ -83,6 +83,9 @@ def emit_sanitized_failure(exception_type, exception, traceback):
 sys.excepthook = emit_sanitized_failure
 
 from azure.identity import ManagedIdentityCredential
+from ets.qualification.microsoft_rc1b_polling_matrix import (
+    run_rc1b_directory_drive_fault_matrix,
+)
 
 STATE_DIR = Path("/mnt/gateway-state")
 BASE_INSTANCE_ID = os.environ["ETS_RC1B_INSTANCE_ID"]
@@ -412,9 +415,15 @@ if failure_code is not None:
     FAILURE_CODE = failure_code
     raise RuntimeError("live Entra Core synchronization is incomplete or unhealthy")
 
+FAILURE_CODE = "directory_drive_fault_matrix_failed"
+try:
+    fault_matrix = run_rc1b_directory_drive_fault_matrix()
+except Exception as exc:
+    raise RuntimeError("RC1B directory/drive fault matrix failed") from exc
+
 FAILURE_CODE = "preflight_result_emission_failed"
 result = {
-    "schema_version": "ets.live_microsoft.rc1b_preflight.v1",
+    "schema_version": "ets.live_microsoft.rc1b_preflight.v2",
     "directory_identity_token_acquired": True,
     "users_delta_reachable": True,
     "groups_delta_reachable": True,
@@ -441,7 +450,8 @@ result = {
     "customer_identifiers_retained": False,
     "reusable_credential_retained": False,
     "public_evidence_safe": True,
-    "rc1b_live_qualified": False,
+    **fault_matrix,
+    "rc1b_live_qualified": True,
     "soak_clock_started": False,
 }
 raw = json.dumps(result, separators=(",", ":"), sort_keys=True).encode("utf-8")

@@ -40,6 +40,14 @@ Any source, image, configuration, or identity mutation after freeze requires a f
 Approved decision record:
 [`ADR-009-microsoft-graph-drive-subscription-p0.md`](../adr/ADR-009-microsoft-graph-drive-subscription-p0.md).
 
+The protected RC1B gate combines a live read-only directory identity, delta reachability, durable
+checkpoint, local commitment, and Core synchronization proof with an isolated directory/drive
+fault matrix inside the exact release image. The matrix uses synthetic non-customer fixtures and
+temporary state to prove users/groups/OneDrive cursor progression, tombstones, replay
+idempotency, `Retry-After`, expired-cursor gap detection, and checkpoint withholding under
+throttle or evidence loss. Passing sets `rc1b_live_qualified=true` without claiming Microsoft
+source truth, freezing the candidate, or starting soak.
+
 The first Purview mutation gate is the protected
 [`MICROSOFT_P0_RC1C_SUBSCRIPTION_RECOVERY_V1.md`](./MICROSOFT_P0_RC1C_SUBSCRIPTION_RECOVERY_V1.md)
 start/stop/restart exercise. A first attempt must begin from an absent `Audit.General`
@@ -48,7 +56,9 @@ restoration completed with the final state enabled. The gate still performs an i
 bounded content listing, stop, and restart, and must finish enabled without a webhook. It then runs
 the shipped RC1C polling fault matrix with synthetic non-customer fixtures and isolated temporary
 state. Passing completes the bounded RC1C slice but does not replace RC1B, shared Gateway recovery,
-candidate reconciliation, or freeze.
+candidate reconciliation, or freeze. After both RC1B and RC1C are live-qualified for the
+same source and image, the shared evidence reconciliation, remaining recovery proof, and candidate
+freeze still must complete before soak.
 
 ## Soak behavior
 

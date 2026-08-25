@@ -115,7 +115,7 @@ def test_rc1b_evidence_is_sanitized_and_does_not_widen_claims() -> None:
         '"customer_identifiers_retained": False',
         '"reusable_credential_retained": False',
         '"public_evidence_safe": True',
-        '"rc1b_live_qualified": False',
+        '"rc1b_live_qualified": True',
         '"soak_clock_started": False',
     ):
         assert term in BICEP
@@ -127,10 +127,37 @@ def test_rc1b_evidence_is_sanitized_and_does_not_widen_claims() -> None:
         "soak_clock_started",
     ):
         assert f'"{key}"' in WORKFLOW
-    assert "tombstone/replay/throttle/recovery gates remain" in WORKFLOW
+    assert "RC1B live-qualified: **true**" in WORKFLOW
+    assert "candidate reconciliation/freeze and 72-hour soak: **not started**" in WORKFLOW
     assert "No live preflight is performed merely by merging these assets." in DOC
     assert "Passing it is not completion of #540" in DOC
     assert "Microsoft source truth or universal tenant completeness" in DOC
+
+
+def test_rc1b_fault_matrix_is_required_for_live_qualification() -> None:
+    predicates = (
+        "entra_users_checkpoint_progression",
+        "entra_users_tombstone_verified",
+        "entra_groups_checkpoint_progression",
+        "entra_groups_tombstone_verified",
+        "onedrive_checkpoint_progression",
+        "onedrive_tombstone_verified",
+        "entra_replay_idempotent",
+        "onedrive_replay_idempotent",
+        "graph_retry_after_verified",
+        "throttle_checkpoint_withheld",
+        "expired_cursor_gap_verified",
+        "evidence_loss_checkpoint_withheld",
+        "fault_matrix_public_safe",
+    )
+    assert "run_rc1b_directory_drive_fault_matrix" in BICEP
+    assert 'FAILURE_CODE = "directory_drive_fault_matrix_failed"' in BICEP
+    assert '"schema_version": "ets.live_microsoft.rc1b_preflight.v2"' in BICEP
+    assert "ets.live_microsoft.rc1b_preflight_handoff.v2" in WORKFLOW
+    for predicate in predicates:
+        assert f'"{predicate}"' in WORKFLOW
+    assert "synthetic non-customer fixtures" in DOC
+    assert "does not call Microsoft Graph" in DOC
 
 
 def test_rc1b_runtime_failure_is_classified_before_job_cleanup() -> None:
@@ -158,6 +185,7 @@ def test_rc1b_runtime_failure_is_classified_before_job_cleanup() -> None:
         'return "directory_core_sync_backlog"',
         'return "directory_core_sync_state_invalid"',
         'return "directory_core_sync_observation_absent"',
+        'FAILURE_CODE = "directory_drive_fault_matrix_failed"',
     ):
         assert term in BICEP
 

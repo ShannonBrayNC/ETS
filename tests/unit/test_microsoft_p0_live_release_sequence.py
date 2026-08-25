@@ -37,6 +37,8 @@ def test_microsoft_p0_live_sequence_preserves_least_privilege_and_nonclaims() ->
         "ActivityFeed.Read",
         "Graph lifecycle configuration",
         "Purview subscription mutation",
+        "rc1b_live_qualified=true",
+        "rc1c_live_qualified=true",
         "freeze a candidate",
         "72-hour soak",
         "Do not reuse",
@@ -46,3 +48,17 @@ def test_microsoft_p0_live_sequence_preserves_least_privilege_and_nonclaims() ->
 
     for doc in (RC1B, RC1C, RC1C_RECOVERY, PRE_SOAK):
         assert "MICROSOFT_P0_LIVE_RELEASE_SEQUENCE_V1.md" in doc.read_text(encoding="utf-8")
+
+
+def test_pre_soak_gate_keeps_rc1b_matrix_and_freeze_boundaries_explicit() -> None:
+    text = PRE_SOAK.read_text(encoding="utf-8")
+
+    for required in (
+        "synthetic non-customer fixtures",
+        "users/groups/OneDrive cursor progression",
+        "rc1b_live_qualified=true",
+        "does not replace RC1B",
+        "same source and image",
+        "candidate freeze",
+    ):
+        assert required in text

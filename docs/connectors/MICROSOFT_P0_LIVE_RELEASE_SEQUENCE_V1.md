@@ -70,15 +70,18 @@ Run both workflows from the unchanged `main` SHA with the same `image_source_sha
 
 1. `.github/workflows/live-microsoft-rc1b-preflight.yml` for the dedicated directory identity,
    bounded users/groups delta reachability, SharePoint negative control, and query-only durable
-   state;
+   state, followed inside the exact image by the isolated users/groups/OneDrive polling fault
+   matrix;
 2. `.github/workflows/live-microsoft-rc1c-preflight.yml` for the dedicated Purview identity,
    exact Office 365 Management audience/role, read-only `Audit.General` subscription listing,
    query-only runtime state, and the accepted Graph deferral boundary.
 
 Each workflow creates and removes only an ephemeral Azure Container Apps job and retains sanitized
-evidence. A passing preflight still fixes `rc1b_live_qualified=false` or
-`rc1c_live_qualified=false` because the broader tombstone/replay/throttle/recovery and Purview
-mutation/recovery matrices remain separate gates.
+evidence. The RC1B workflow may set `rc1b_live_qualified=true` only when both its live read-only
+proof and every synthetic non-customer cursor, tombstone, replay, throttle, expired-cursor, and
+evidence-loss predicate pass. The RC1C read-only workflow still fixes
+`rc1c_live_qualified=false`; its protected Purview mutation/recovery matrix remains the next gate.
+Neither workflow freezes the candidate or starts soak.
 
 ## 6. Prove the bounded Purview subscription recovery
 
@@ -97,8 +100,9 @@ a bounded restoration attempt. The
 exact contract is documented in
 [`MICROSOFT_P0_RC1C_SUBSCRIPTION_RECOVERY_V1.md`](./MICROSOFT_P0_RC1C_SUBSCRIPTION_RECOVERY_V1.md).
 
-Passing this gate fixes `rc1c_live_qualified=true` and `soak_clock_started=false`. RC1B and the
-shared candidate reconciliation, freeze, and pre-soak recovery gates still remain.
+Passing this gate fixes `rc1c_live_qualified=true` and `soak_clock_started=false`. When the RC1B
+handoff is also true for the same source and image, shared evidence reconciliation, candidate
+freeze, and the remaining pre-soak recovery gates still remain.
 
 ## Stop conditions
 

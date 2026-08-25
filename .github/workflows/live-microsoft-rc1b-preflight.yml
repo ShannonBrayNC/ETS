@@ -365,6 +365,7 @@ jobs:
                   "directory_core_sync_backlog",
                   "directory_core_sync_state_invalid",
                   "directory_core_sync_observation_absent",
+                  "directory_drive_fault_matrix_failed",
                   "preflight_result_emission_failed",
               }
               if payload.get("failure_code") not in allowed_codes:
@@ -427,6 +428,19 @@ jobs:
               "groups_event_present",
               "groups_removed_event_present",
               "groups_core_synchronized",
+              "entra_users_checkpoint_progression",
+              "entra_users_tombstone_verified",
+              "entra_groups_checkpoint_progression",
+              "entra_groups_tombstone_verified",
+              "onedrive_checkpoint_progression",
+              "onedrive_tombstone_verified",
+              "entra_replay_idempotent",
+              "onedrive_replay_idempotent",
+              "graph_retry_after_verified",
+              "throttle_checkpoint_withheld",
+              "expired_cursor_gap_verified",
+              "evidence_loss_checkpoint_withheld",
+              "fault_matrix_public_safe",
               "raw_directory_payload_retained",
               "customer_identifiers_retained",
               "reusable_credential_retained",
@@ -436,7 +450,7 @@ jobs:
           }
           if set(payload) != allowed:
               raise SystemExit("RC1B preflight returned an unexpected public shape")
-          if payload.get("schema_version") != "ets.live_microsoft.rc1b_preflight.v1":
+          if payload.get("schema_version") != "ets.live_microsoft.rc1b_preflight.v2":
               raise SystemExit("RC1B preflight schema changed")
           required_true = (
               "directory_identity_token_acquired",
@@ -453,7 +467,21 @@ jobs:
               "groups_healthy_observation",
               "groups_event_present",
               "groups_core_synchronized",
+              "entra_users_checkpoint_progression",
+              "entra_users_tombstone_verified",
+              "entra_groups_checkpoint_progression",
+              "entra_groups_tombstone_verified",
+              "onedrive_checkpoint_progression",
+              "onedrive_tombstone_verified",
+              "entra_replay_idempotent",
+              "onedrive_replay_idempotent",
+              "graph_retry_after_verified",
+              "throttle_checkpoint_withheld",
+              "expired_cursor_gap_verified",
+              "evidence_loss_checkpoint_withheld",
+              "fault_matrix_public_safe",
               "public_evidence_safe",
+              "rc1b_live_qualified",
           )
           for key in required_true:
               if payload.get(key) is not True:
@@ -464,7 +492,6 @@ jobs:
               "raw_directory_payload_retained",
               "customer_identifiers_retained",
               "reusable_credential_retained",
-              "rc1b_live_qualified",
               "soak_clock_started",
           )
           for key in required_false:
@@ -484,12 +511,12 @@ jobs:
           manifest = dict(payload)
           manifest.update(
               {
-                  "schema_version": "ets.live_microsoft.rc1b_preflight_handoff.v1",
+                  "schema_version": "ets.live_microsoft.rc1b_preflight_handoff.v2",
                   "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
                   "source_sha": os.environ["GITHUB_SHA"],
                   "image_digest": image.rsplit("@", 1)[1],
                   "preflight_passed": True,
-                  "rc1b_live_qualified": False,
+                  "rc1b_live_qualified": True,
                   "soak_clock_started": False,
               }
           )
@@ -581,9 +608,12 @@ jobs:
           print("- directory UAMI SharePoint-drive denial: **passed (403)**")
           print("- users/groups terminal delta checkpoints: **present**")
           print("- users/groups local commitment and Core synchronization: **passed**")
+          print("- isolated users/groups/OneDrive cursor and tombstone matrix: **passed**")
+          print("- replay, Retry-After, expired-cursor, and evidence-loss matrix: **passed**")
           print("- customer identifiers retained in public evidence: **false**")
           print("- reusable credentials retained: **false**")
-          print("- RC1B live-qualified: **false — tombstone/replay/throttle/recovery gates remain**")
+          print("- RC1B live-qualified: **true**")
+          print("- candidate reconciliation/freeze and 72-hour soak: **not started**")
           print("- 72-hour soak clock started: **false**")
           PY
           gh issue comment "$RESULT_ISSUE" \
