@@ -8,7 +8,9 @@ This protected workflow is the first live gate after the separated Microsoft ide
 runtime composition in #543. It proves that the deployed private Gateway is using one exact
 immutable image, that the dedicated directory identity can reach only the bounded Entra users and
 groups delta surfaces, and that both deployment-owned Entra connector instances have reached a
-healthy durable delta checkpoint and synchronized committed observations to Core.
+healthy durable delta checkpoint and synchronized committed observations to Core. After that live
+read-only proof passes, the same exact image must pass an isolated directory/drive polling fault
+matrix before the workflow may set `rc1b_live_qualified=true`.
 
 The preflight is deliberately read-only against Microsoft Graph. It creates and removes only an
 ephemeral Azure Container Apps job. Passing it is not completion of #540, candidate freeze, or soak
@@ -80,28 +82,31 @@ Only public-safe booleans, checkpoint revisions, and the cursor kind are retaine
 IDs, names, tenant IDs, drive IDs, identity IDs, source payloads, access tokens, and reusable
 credentials are not written to the retained artifact or issue comment.
 
-## Remaining #540 gates
+## Isolated directory/drive fault matrix
 
 A successful preflight establishes identity separation, live delta reachability, initial terminal
 checkpoint progression, local commitment, Core synchronization, and a clean operational posture.
-It does not establish:
+The same ephemeral job then exercises the shipped Entra users/groups and SharePoint/OneDrive delta
+adapters, HTTP retry policy, and Gateway commit path with synthetic non-customer fixtures and
+isolated temporary state. Every bounded predicate must pass:
 
-- controlled user or group tombstone/deletion observation;
-- repeated-page and restart replay/idempotency under a governed canary;
-- throttling/backoff behavior against the protected live deployment;
-- invalid/expired cursor reconciliation and gap closure;
-- complete OneDrive revision/recovery evidence for the new candidate;
-- Microsoft source truth or universal tenant completeness; or
-- eligibility for the #541 candidate freeze and 72-hour soak.
+- users, groups, and OneDrive cursor progression and tombstone normalization;
+- Entra and OneDrive replay idempotency through the Gateway commit boundary;
+- both Microsoft clients honoring an HTTP `Retry-After` response;
+- checkpoint withholding under throttling and partial/evidence-loss commit failure; and
+- expired-cursor gap detection that retains the last durable checkpoint.
 
-Those remaining scenarios require explicit protected operator approval and must complete before
-#540 can close. Destructive or fault scenarios occur before candidate freeze. The soak itself uses
-only non-destructive canaries.
+The matrix does not call Microsoft Graph, mutate the live tenant, or write the live Gateway
+database. It qualifies the exact shipped adapter/runtime behavior; it does not establish
+Microsoft source truth or universal tenant completeness. A passing protected handoff sets
+`rc1b_live_qualified=true` and `soak_clock_started=false`. #540 closure, shared candidate evidence
+reconciliation, the #541 candidate freeze, and 72-hour soak entry remain separate gates.
 
 ## Evidence boundary
 
 On success the workflow uploads one sanitized JSON handoff and comments on #540 with the exact
-source SHA, immutable image digest, and boolean outcomes. On failure it retains a fail-closed
+source SHA, immutable image digest, live read-only outcomes, all isolated matrix predicates, and
+`rc1b_live_qualified=true`. On failure it retains a fail-closed
 artifact that sets `preflight_passed=false`, `rc1b_live_qualified=false`, and
 `soak_clock_started=false` without copying raw job logs into public evidence. An in-container
 exception hook emits only an allow-listed `failure_code`; the workflow retrieves that marker even
