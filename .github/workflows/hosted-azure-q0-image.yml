@@ -82,18 +82,40 @@ jobs:
           PY
 
           active_subscription="$(az account show --query id -o tsv)"
-          registry_id="$(az acr show \
+          registry_json="$RUNNER_TEMP/q0-registry.json"
+          az acr show \
             --name "$ACR_NAME" \
             --resource-group "$ACR_RESOURCE_GROUP" \
-            --query id -o tsv)"
-          registry_server="$(az acr show \
-            --name "$ACR_NAME" \
-            --resource-group "$ACR_RESOURCE_GROUP" \
-            --query loginServer -o tsv)"
-          admin_enabled="$(az acr show \
-            --name "$ACR_NAME" \
-            --resource-group "$ACR_RESOURCE_GROUP" \
-            --query adminUserEnabled -o tsv | tr '[:upper:]' '[:lower:]')"
+            --query '{id:id,loginServer:loginServer,adminUserEnabled:adminUserEnabled,publicNetworkAccess:publicNetworkAccess,networkDefaultAction:networkRuleSet.defaultAction,roleAssignmentMode:roleAssignmentMode}' \
+            -o json > "$registry_json"
+
+          readarray -t registry_values < <(python - "$registry_json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          for key in (
+              "id",
+              "loginServer",
+              "adminUserEnabled",
+              "publicNetworkAccess",
+              "networkDefaultAction",
+              "roleAssignmentMode",
+          ):
+              value = payload.get(key)
+              if isinstance(value, bool):
+                  value = str(value).lower()
+              print("" if value is None else str(value))
+          PY
+          )
+          registry_id="${registry_values[0]}"
+          registry_server="${registry_values[1]}"
+          admin_enabled="${registry_values[2],,}"
+          public_network_access="${registry_values[3]:-unknown}"
+          network_default_action="${registry_values[4]:-unknown}"
+          role_assignment_mode="${registry_values[5]:-unknown}"
+
           registry_subscription="$(printf '%s' "$registry_id" | cut -d/ -f3)"
           if [ "${registry_subscription,,}" != "${active_subscription,,}" ]; then
             echo "Q0 ACR must be in the active Azure subscription." >&2
@@ -108,7 +130,11 @@ jobs:
             --resource-group "$ACR_RESOURCE_GROUP" \
             --query status -o tsv | tr '[:upper:]' '[:lower:]')"
           if [ "$arm_status" != "enabled" ]; then
-            echo "Q0 ACR must allow ARM-audience authentication." >&2
+            echo "Q0 ACR must allow ARM-audience authentication for the downstream managed-identity pull boundary." >&2
+            exit 1
+          fi
+          if [ "${public_network_access,,}" = "disabled" ]; then
+            echo "Q0 ACR public network access is disabled; a GitHub-hosted runner cannot reach the registry data plane without a private runner/network path." >&2
             exit 1
           fi
 
@@ -118,6 +144,7 @@ jobs:
           echo "registry_server=$registry_server" >> "$GITHUB_OUTPUT"
           echo "subject_name=$subject_name" >> "$GITHUB_OUTPUT"
           echo "tag_ref=$tag_ref" >> "$GITHUB_OUTPUT"
+          echo "role_assignment_mode=$role_assignment_mode" >> "$GITHUB_OUTPUT"
 
           cat > evidence/host-az-q0-image/registry.txt <<EOF
           registry_name=$ACR_NAME
@@ -126,21 +153,106 @@ jobs:
           image_repository=$IMAGE_REPOSITORY
           acr_admin_user_enabled=false
           arm_audience_authentication=true
+          public_network_access=$public_network_access
+          network_default_action=$network_default_action
+          role_assignment_mode=$role_assignment_mode
           registry_credentials_retained=false
           docker_authentication=direct_acr_oauth_exchange
           EOF
 
-      - name: Authenticate Docker through ACR OAuth exchange
+      - name: Probe ACR data-plane reachability
+        id: data_plane
         shell: bash
         env:
           REGISTRY_SERVER: ${{ steps.registry.outputs.registry_server }}
         run: |
           set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          server = os.environ["REGISTRY_SERVER"].strip()
+          request = urllib.request.Request(
+              f"https://{server}/v2/",
+              headers={"User-Agent": "ets-q0-data-plane-probe/1"},
+              method="GET",
+          )
+          classification = "unknown"
+          status = 0
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  status = int(response.status)
+                  classification = "reachable"
+          except urllib.error.HTTPError as exc:
+              status = int(exc.code)
+              body = exc.read().decode("utf-8", errors="replace").lower()
+              if status == 401:
+                  classification = "reachable_auth_required"
+              elif status == 403 and any(
+                  marker in body
+                  for marker in ("not allowed access", "firewall", "network rule", "client with ip")
+              ):
+                  classification = "network_denied"
+              elif status == 403:
+                  classification = "preauth_forbidden"
+              else:
+                  classification = f"http_{status}"
+          except urllib.error.URLError:
+              classification = "transport_error"
+
+          evidence = {
+              "schema_version": "ets.host_az.q0_acr_data_plane_probe.v1",
+              "source_sha": os.environ["GITHUB_SHA"],
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "http_status": status,
+              "classification": classification,
+              "customer_identifiers_retained": False,
+              "reusable_credential_retained": False,
+          }
+          Path("evidence/host-az-q0-image/data-plane-probe.json").write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(f"ACR data-plane probe: {classification} (HTTP {status})")
+          if classification == "network_denied":
+              raise SystemExit(
+                  "ACR data plane denied the GitHub-hosted runner before authentication; "
+                  "review publicNetworkAccess/network rules or use an approved private runner path"
+              )
+          if classification not in {"reachable", "reachable_auth_required"}:
+              raise SystemExit(
+                  "ACR data-plane reachability is not in the qualified pre-authentication state"
+              )
+          PY
+
+      - name: Authenticate Docker through ACR OAuth exchange
+        shell: bash
+        env:
+          REGISTRY_SERVER: ${{ steps.registry.outputs.registry_server }}
+          ROLE_ASSIGNMENT_MODE: ${{ steps.registry.outputs.role_assignment_mode }}
+        run: |
+          set -euo pipefail
           export ACR_TENANT_ID="$(az account show --query tenantId -o tsv)"
           export ACR_AAD_ACCESS_TOKEN="$(az account get-access-token \
-            --resource https://management.azure.com/ \
+            --scope https://containerregistry.azure.net/.default \
             --query accessToken -o tsv)"
-          python scripts/acr_oauth_docker_login.py
+          expected_role="mode-appropriate repository writer"
+          case "$ROLE_ASSIGNMENT_MODE" in
+            AbacRepositoryPermissions|rbac-abac)
+              expected_role="Container Registry Repository Writer"
+              ;;
+            LegacyRegistryPermissions|rbac)
+              expected_role="AcrPush"
+              ;;
+          esac
+          if ! python scripts/acr_oauth_docker_login.py; then
+            unset ACR_AAD_ACCESS_TOKEN ACR_TENANT_ID
+            echo "::error::ACR OAuth exchange failed after data-plane reachability passed. Verify #374 grants this GitHub OIDC publisher the $expected_role role for ets/hosted-q1 (or its approved repository prefix), and allow Azure RBAC propagation before retrying." >&2
+            exit 1
+          fi
           unset ACR_AAD_ACCESS_TOKEN ACR_TENANT_ID
 
       - name: Set up Docker Buildx

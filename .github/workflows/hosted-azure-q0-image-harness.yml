@@ -57,12 +57,21 @@ jobs:
           grep -q 'azure/login@v3.0.0' "$workflow"
           grep -q 'adminUserEnabled' "$workflow"
           grep -q 'authentication-as-arm show' "$workflow"
+          grep -q 'publicNetworkAccess' "$workflow"
+          grep -q 'networkRuleSet.defaultAction' "$workflow"
+          grep -q 'roleAssignmentMode' "$workflow"
+          grep -q 'Probe ACR data-plane reachability' "$workflow"
+          grep -q 'https://.*\/v2\/' "$workflow"
+          grep -q 'reachable_auth_required' "$workflow"
+          grep -q 'network_denied' "$workflow"
           grep -q 'get-access-token' "$workflow"
-          grep -q -- '--resource https://management.azure.com/' "$workflow"
-          if grep -q 'https://containerregistry.azure.net/.default' "$workflow"; then
-            echo 'Q0 direct ACR OAuth exchange must use the qualified ARM audience when authentication-as-arm is enabled.' >&2
+          grep -q 'https://containerregistry.azure.net/.default' "$workflow"
+          if grep -q -- '--resource https://management.azure.com/' "$workflow"; then
+            echo 'Q0 direct ACR OAuth exchange must use the least-privilege ACR audience, not an ARM token.' >&2
             exit 1
           fi
+          grep -q 'Container Registry Repository Writer' "$workflow"
+          grep -q 'AcrPush' "$workflow"
           grep -q 'python scripts/acr_oauth_docker_login.py' "$workflow"
           grep -q 'unset ACR_AAD_ACCESS_TOKEN ACR_TENANT_ID' "$workflow"
           grep -q '/oauth2/exchange' "$oauth"
