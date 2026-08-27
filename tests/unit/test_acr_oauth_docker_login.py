@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
+import io
 import json
 import subprocess
+import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Mapping
@@ -9,7 +12,11 @@ from typing import Any
 
 import pytest
 
-from scripts.acr_oauth_docker_login import docker_login, exchange_refresh_token
+from scripts.acr_oauth_docker_login import (
+    docker_login,
+    exchange_refresh_token,
+    verify_authenticated_publisher_rbac,
+)
 
 
 class _FakeResponse:
@@ -24,6 +31,14 @@ class _FakeResponse:
 
     def read(self) -> bytes:
         return self._payload
+
+
+def _jwt(payload: Mapping[str, object]) -> str:
+    def encode(value: Mapping[str, object]) -> str:
+        raw = json.dumps(value, separators=(",", ":")).encode("utf-8")
+        return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+    return f"{encode({'alg': 'none'})}.{encode(payload)}.signature"
 
 
 def test_exchange_refresh_token_posts_only_to_expected_acr_oauth_endpoint() -> None:
@@ -94,6 +109,108 @@ def test_exchange_refresh_token_fails_closed_when_exchange_returns_no_usable_tok
             tenant_id="tenant-test",
             aad_access_token="a" * 64,
             urlopen=_urlopen,
+        )
+
+
+def test_exchange_refresh_token_surfaces_only_sanitized_acr_error_code() -> None:
+    secret_marker = "do-not-log-this-response-message"
+
+    def _urlopen(request: urllib.request.Request, *, timeout: int) -> _FakeResponse:
+        del timeout
+        body = json.dumps(
+            {"errors": [{"code": "DENIED", "message": secret_marker}]}
+        ).encode("utf-8")
+        raise urllib.error.HTTPError(
+            request.full_url,
+            403,
+            "Forbidden",
+            hdrs=None,
+            fp=io.BytesIO(body),
+        )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        exchange_refresh_token(
+            registry_server="example.azurecr.io",
+            tenant_id="tenant-test",
+            aad_access_token="sensitive-token-value",
+            urlopen=_urlopen,
+        )
+
+    message = str(exc_info.value)
+    assert "HTTP 403" in message
+    assert "code=DENIED" in message
+    assert secret_marker not in message
+    assert "sensitive-token-value" not in message
+
+
+def test_verify_authenticated_publisher_rbac_binds_token_oid_to_direct_acrpush() -> None:
+    registry_id = (
+        "/subscriptions/sub/resourceGroups/rg/providers/"
+        "Microsoft.ContainerRegistry/registries/example"
+    )
+    principal_id = "11111111-2222-3333-4444-555555555555"
+    token = _jwt({"oid": principal_id, "tid": "tenant-test"})
+    calls: list[list[str]] = []
+
+    def _runner(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        assert kwargs["text"] is True
+        assert kwargs["check"] is True
+        if args[:3] == ["az", "acr", "show"]:
+            stdout = registry_id
+        elif args[:4] == ["az", "role", "assignment", "list"]:
+            assert "--assignee-object-id" in args
+            assert args[args.index("--assignee-object-id") + 1] == principal_id
+            stdout = json.dumps(
+                [
+                    {
+                        "scope": registry_id,
+                        "principalType": "ServicePrincipal",
+                        "roleDefinitionName": "AcrPush",
+                        "roleDefinitionId": (
+                            "/subscriptions/sub/providers/Microsoft.Authorization/roleDefinitions/"
+                            "8311e382-0749-4cb8-b61a-304f252e45ec"
+                        ),
+                    }
+                ]
+            )
+        else:
+            raise AssertionError(args)
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout=stdout, stderr="")
+
+    evidence = verify_authenticated_publisher_rbac(
+        registry_server="example.azurecr.io",
+        aad_access_token=token,
+        role_assignment_mode="LegacyRegistryPermissions",
+        runner=_runner,
+    )
+
+    assert evidence["expected_writer_role"] == "AcrPush"
+    assert evidence["authenticated_writer_role_verified"] is True
+    assert evidence["direct_registry_scope_verified"] is True
+    assert principal_id not in json.dumps(evidence)
+    assert len(calls) == 2
+
+
+def test_verify_authenticated_publisher_rbac_fails_if_actual_oid_lacks_writer_role() -> None:
+    registry_id = (
+        "/subscriptions/sub/resourceGroups/rg/providers/"
+        "Microsoft.ContainerRegistry/registries/example"
+    )
+    principal_id = "11111111-2222-3333-4444-555555555555"
+    token = _jwt({"oid": principal_id, "tid": "tenant-test"})
+
+    def _runner(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        del kwargs
+        stdout = registry_id if args[:3] == ["az", "acr", "show"] else "[]"
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout=stdout, stderr="")
+
+    with pytest.raises(RuntimeError, match="Authenticated GitHub OIDC principal"):
+        verify_authenticated_publisher_rbac(
+            registry_server="example.azurecr.io",
+            aad_access_token=token,
+            role_assignment_mode="LegacyRegistryPermissions",
+            runner=_runner,
         )
 
 
