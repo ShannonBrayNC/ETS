@@ -34,15 +34,15 @@ function Get-DirectRegistryAssignments {
     $arguments = @(
         'role', 'assignment', 'list',
         '--scope', $RegistryResourceId,
-        '--include-inherited', 'false',
         '--all',
+        '--fill-principal-name', 'false',
         '--output', 'json'
     )
     if (-not [string]::IsNullOrWhiteSpace($PrincipalObjectId)) {
-        $arguments += @('--assignee', $PrincipalObjectId)
+        $arguments += @('--assignee-object-id', $PrincipalObjectId)
     }
 
-    $json = az @arguments
+    $json = & az @arguments
     if ($LASTEXITCODE -ne 0) {
         throw 'Unable to enumerate Azure role assignments at the approved ACR scope.'
     }
