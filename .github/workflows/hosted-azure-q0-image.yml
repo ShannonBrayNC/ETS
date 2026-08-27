@@ -145,6 +145,8 @@ jobs:
           echo "subject_name=$subject_name" >> "$GITHUB_OUTPUT"
           echo "tag_ref=$tag_ref" >> "$GITHUB_OUTPUT"
           echo "role_assignment_mode=$role_assignment_mode" >> "$GITHUB_OUTPUT"
+          echo "public_network_access=$public_network_access" >> "$GITHUB_OUTPUT"
+          echo "network_default_action=$network_default_action" >> "$GITHUB_OUTPUT"
 
           cat > evidence/host-az-q0-image/registry.txt <<EOF
           registry_name=$ACR_NAME
@@ -165,6 +167,8 @@ jobs:
         shell: bash
         env:
           REGISTRY_SERVER: ${{ steps.registry.outputs.registry_server }}
+          PUBLIC_NETWORK_ACCESS: ${{ steps.registry.outputs.public_network_access }}
+          NETWORK_DEFAULT_ACTION: ${{ steps.registry.outputs.network_default_action }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -175,6 +179,8 @@ jobs:
           from pathlib import Path
 
           server = os.environ["REGISTRY_SERVER"].strip()
+          public_network_access = os.environ["PUBLIC_NETWORK_ACCESS"].strip().lower()
+          network_default_action = os.environ["NETWORK_DEFAULT_ACTION"].strip().lower()
           request = urllib.request.Request(
               f"https://{server}/v2/",
               headers={"User-Agent": "ets-q0-data-plane-probe/1"},
@@ -196,6 +202,12 @@ jobs:
                   for marker in ("not allowed access", "firewall", "network rule", "client with ip")
               ):
                   classification = "network_denied"
+              elif (
+                  status == 403
+                  and public_network_access == "enabled"
+                  and network_default_action == "allow"
+              ):
+                  classification = "reachable_preauth_forbidden"
               elif status == 403:
                   classification = "preauth_forbidden"
               else:
@@ -222,7 +234,11 @@ jobs:
                   "ACR data plane denied the GitHub-hosted runner before authentication; "
                   "review publicNetworkAccess/network rules or use an approved private runner path"
               )
-          if classification not in {"reachable", "reachable_auth_required"}:
+          if classification not in {
+              "reachable",
+              "reachable_auth_required",
+              "reachable_preauth_forbidden",
+          }:
               raise SystemExit(
                   "ACR data-plane reachability is not in the qualified pre-authentication state"
               )
