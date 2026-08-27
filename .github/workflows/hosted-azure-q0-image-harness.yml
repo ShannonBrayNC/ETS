@@ -8,6 +8,7 @@ on:
       - "docs/operations/HOST_AZ_Q0_IMAGE_PUBLICATION.md"
       - "Dockerfile"
       - "scripts/acr_oauth_docker_login.py"
+      - "scripts/azure/grant-q0-acr-publisher-role.ps1"
       - "scripts/qualify_hosted_azure_live.py"
       - "tests/unit/test_acr_oauth_docker_login.py"
   workflow_dispatch:
@@ -44,6 +45,7 @@ jobs:
           set -euo pipefail
           workflow=.github/workflows/hosted-azure-q0-image.yml
           oauth=scripts/acr_oauth_docker_login.py
+          bootstrap=scripts/azure/grant-q0-acr-publisher-role.ps1
           docs=docs/operations/HOST_AZ_Q0_IMAGE_PUBLICATION.md
 
           grep -q 'workflow_dispatch:' "$workflow"
@@ -96,6 +98,23 @@ jobs:
           grep -q 'Q0 vulnerability scan/gate did not complete' "$workflow"
           grep -q 'registry_credentials_retained' "$workflow"
           grep -q 'NOT EXECUTED' "$docs"
+
+          grep -q "8311e382-0749-4cb8-b61a-304f252e45ec" "$bootstrap"
+          grep -q "69b07be0-09bf-439a-b9a6-e73de851bd59" "$bootstrap"
+          grep -q 'LegacyRegistryPermissions' "$bootstrap"
+          grep -q 'Resolve-PublisherFromReaderBoundary' "$bootstrap"
+          grep -q 'publisher_reader_boundary=exact_direct_assignment' "$bootstrap"
+          grep -q -- '--assignee-object-id' "$bootstrap"
+          grep -q -- '--assignee-principal-type ServicePrincipal' "$bootstrap"
+          grep -q 'if (-not $Apply)' "$bootstrap"
+          if grep -Eq -- '--include-inherited[[:space:]]+false' "$bootstrap"; then
+            echo 'Q0 publisher bootstrap must rely on the direct-assignment default, not pass a false value to the include-inherited switch.' >&2
+            exit 1
+          fi
+          if grep -Eq 'Owner|Contributor' "$bootstrap"; then
+            echo 'Q0 publisher bootstrap must not grant broad Azure administrative roles.' >&2
+            exit 1
+          fi
 
           if grep -q 'az acr login' "$workflow"; then
             echo 'Q0 must not require the broad ACR control-plane role used by az acr login.' >&2
