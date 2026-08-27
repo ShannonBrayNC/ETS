@@ -15,6 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $acrPushRoleId = '8311e382-0749-4cb8-b61a-304f252e45ec'
+$acrConfigurationReaderRoleId = '69b07be0-09bf-439a-b9a6-e73de851bd59'
 
 function Assert-Command {
     param([Parameter(Mandatory = $true)][string]$Name)
@@ -26,46 +27,126 @@ function Assert-Command {
 
 function Get-DirectRegistryAssignments {
     param(
-        [Parameter(Mandatory = $true)][string]$PrincipalObjectId,
-        [Parameter(Mandatory = $true)][string]$RegistryResourceId
+        [Parameter(Mandatory = $true)][string]$RegistryResourceId,
+        [string]$PrincipalObjectId
     )
 
-    $json = az role assignment list `
-        --assignee $PrincipalObjectId `
-        --scope $RegistryResourceId `
-        --include-inherited false `
-        --all `
-        --output json
+    $arguments = @(
+        'role', 'assignment', 'list',
+        '--scope', $RegistryResourceId,
+        '--include-inherited', 'false',
+        '--all',
+        '--output', 'json'
+    )
+    if (-not [string]::IsNullOrWhiteSpace($PrincipalObjectId)) {
+        $arguments += @('--assignee', $PrincipalObjectId)
+    }
+
+    $json = az @arguments
     if ($LASTEXITCODE -ne 0) {
-        throw 'Unable to enumerate Azure role assignments for the Q0 publisher.'
+        throw 'Unable to enumerate Azure role assignments at the approved ACR scope.'
     }
     return @($json | ConvertFrom-Json)
+}
+
+function Get-RoleAssignmentsByDefinition {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$Assignments,
+        [Parameter(Mandatory = $true)][string]$RoleDefinitionId,
+        [Parameter(Mandatory = $true)][string]$RoleDefinitionName
+    )
+
+    return @($Assignments | Where-Object {
+        $definition = [string]$_.roleDefinitionId
+        $leaf = if ($definition) {
+            ($definition.TrimEnd('/') -split '/')[-1]
+        }
+        else {
+            ''
+        }
+        $leaf -ieq $RoleDefinitionId -or
+            [string]$_.roleDefinitionName -ieq $RoleDefinitionName
+    })
 }
 
 function Get-AcrPushAssignments {
     param([Parameter(Mandatory = $true)][object[]]$Assignments)
 
-    return @($Assignments | Where-Object {
-        $roleDefinitionId = [string]$_.roleDefinitionId
-        $roleDefinitionLeaf = if ($roleDefinitionId) {
-            ($roleDefinitionId.TrimEnd('/') -split '/')[-1]
-        }
-        else {
-            ''
-        }
-        $roleDefinitionLeaf -ieq $acrPushRoleId -or
-            [string]$_.roleDefinitionName -ieq 'AcrPush'
+    return @(Get-RoleAssignmentsByDefinition `
+        -Assignments $Assignments `
+        -RoleDefinitionId $acrPushRoleId `
+        -RoleDefinitionName 'AcrPush')
+}
+
+function Resolve-PublisherFromReaderBoundary {
+    param([Parameter(Mandatory = $true)][string]$RegistryResourceId)
+
+    $assignments = @(Get-DirectRegistryAssignments -RegistryResourceId $RegistryResourceId)
+    $readerAssignments = @(Get-RoleAssignmentsByDefinition `
+        -Assignments $assignments `
+        -RoleDefinitionId $acrConfigurationReaderRoleId `
+        -RoleDefinitionName 'Container Registry Configuration Reader and Data Access Configuration Reader')
+
+    $servicePrincipalReaders = @($readerAssignments | Where-Object {
+        [string]$_.principalType -ieq 'ServicePrincipal' -and
+        -not [string]::IsNullOrWhiteSpace([string]$_.principalId)
     })
+
+    if ($servicePrincipalReaders.Count -eq 0) {
+        throw (
+            'PublisherClientId is not set and no direct service-principal assignment of the ' +
+            'bounded ACR configuration-reader role exists at the approved registry scope. ' +
+            'Pass -PublisherClientId explicitly or first establish the #374 read-only ' +
+            'publisher boundary.'
+        )
+    }
+    if ($servicePrincipalReaders.Count -gt 1) {
+        throw (
+            'PublisherClientId is not set and multiple service principals hold the bounded ' +
+            'ACR configuration-reader role at the approved registry scope. Refusing ' +
+            'ambiguous publisher discovery; pass -PublisherClientId explicitly.'
+        )
+    }
+
+    $principalObjectId = [string]$servicePrincipalReaders[0].principalId
+    $servicePrincipal = az ad sp show `
+        --id $principalObjectId `
+        --query '{id:id,appId:appId,displayName:displayName}' `
+        --output json | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or -not $servicePrincipal.id -or -not $servicePrincipal.appId) {
+        throw 'Unable to resolve the discovered Q0 publisher service principal.'
+    }
+    if ([string]$servicePrincipal.id -ine $principalObjectId) {
+        throw 'Discovered Q0 publisher service-principal object id changed during resolution.'
+    }
+
+    Write-Host 'PublisherClientId was not provided; discovered the Q0 publisher from the exact direct ACR configuration-reader assignment.'
+    return $servicePrincipal
+}
+
+function Assert-PublisherReaderBoundary {
+    param(
+        [Parameter(Mandatory = $true)][string]$PrincipalObjectId,
+        [Parameter(Mandatory = $true)][string]$RegistryResourceId
+    )
+
+    $assignments = @(Get-DirectRegistryAssignments `
+        -RegistryResourceId $RegistryResourceId `
+        -PrincipalObjectId $PrincipalObjectId)
+    $readerAssignments = @(Get-RoleAssignmentsByDefinition `
+        -Assignments $assignments `
+        -RoleDefinitionId $acrConfigurationReaderRoleId `
+        -RoleDefinitionName 'Container Registry Configuration Reader and Data Access Configuration Reader')
+    if ($readerAssignments.Count -ne 1) {
+        throw (
+            'Q0 publisher must have exactly one direct Container Registry Configuration Reader ' +
+            'and Data Access Configuration Reader assignment at the approved ACR scope before ' +
+            'the bounded AcrPush grant is applied.'
+        )
+    }
 }
 
 Assert-Command -Name 'az'
-
-if ([string]::IsNullOrWhiteSpace($PublisherClientId)) {
-    throw (
-        'PublisherClientId is required. Pass -PublisherClientId explicitly or set ' +
-        'AZURE_CLIENT_ID in the authorized operator shell.'
-    )
-}
 
 $account = az account show --output json | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0 -or -not $account.id -or -not $account.tenantId) {
@@ -98,20 +179,30 @@ if ($registrySubscriptionId -ine [string]$account.id) {
     throw 'The selected ACR is not in the active Azure subscription.'
 }
 
-$publisher = az ad sp show `
-    --id $PublisherClientId `
-    --query '{id:id,appId:appId,displayName:displayName}' `
-    --output json | ConvertFrom-Json
-if ($LASTEXITCODE -ne 0 -or -not $publisher.id -or -not $publisher.appId) {
-    throw 'Unable to resolve the GitHub OIDC publisher service principal from PublisherClientId.'
+if ([string]::IsNullOrWhiteSpace($PublisherClientId)) {
+    $publisher = Resolve-PublisherFromReaderBoundary -RegistryResourceId ([string]$registry.id)
+    $PublisherClientId = [string]$publisher.appId
 }
-if ([string]$publisher.appId -ine $PublisherClientId) {
-    throw 'Resolved service-principal appId does not match PublisherClientId.'
+else {
+    $publisher = az ad sp show `
+        --id $PublisherClientId `
+        --query '{id:id,appId:appId,displayName:displayName}' `
+        --output json | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or -not $publisher.id -or -not $publisher.appId) {
+        throw 'Unable to resolve the GitHub OIDC publisher service principal from PublisherClientId.'
+    }
+    if ([string]$publisher.appId -ine $PublisherClientId) {
+        throw 'Resolved service-principal appId does not match PublisherClientId.'
+    }
 }
 
-$assignments = @(Get-DirectRegistryAssignments `
+Assert-PublisherReaderBoundary `
     -PrincipalObjectId ([string]$publisher.id) `
-    -RegistryResourceId ([string]$registry.id))
+    -RegistryResourceId ([string]$registry.id)
+
+$assignments = @(Get-DirectRegistryAssignments `
+    -RegistryResourceId ([string]$registry.id) `
+    -PrincipalObjectId ([string]$publisher.id))
 $acrPushAssignments = @(Get-AcrPushAssignments -Assignments $assignments)
 if ($acrPushAssignments.Count -gt 1) {
     throw 'Q0 publisher has duplicate AcrPush assignments at the approved ACR scope.'
@@ -122,6 +213,7 @@ Write-Host "  active_subscription=$($account.id)"
 Write-Host "  registry=$($registry.loginServer)"
 Write-Host '  role_assignment_mode=LegacyRegistryPermissions'
 Write-Host "  publisher_app_id=$($publisher.appId)"
+Write-Host '  publisher_reader_boundary=exact_direct_assignment'
 Write-Host "  target_role=AcrPush ($acrPushRoleId)"
 Write-Host '  target_scope=approved ACR resource only'
 Write-Host '  registry_admin_user=false'
@@ -148,8 +240,8 @@ if ($LASTEXITCODE -ne 0) {
 
 for ($attempt = 1; $attempt -le 10; $attempt++) {
     $assignments = @(Get-DirectRegistryAssignments `
-        -PrincipalObjectId ([string]$publisher.id) `
-        -RegistryResourceId ([string]$registry.id))
+        -RegistryResourceId ([string]$registry.id) `
+        -PrincipalObjectId ([string]$publisher.id))
     $acrPushAssignments = @(Get-AcrPushAssignments -Assignments $assignments)
     if ($acrPushAssignments.Count -eq 1) {
         Write-Host 'AcrPush assignment is present at the approved ACR scope.'
