@@ -34,7 +34,6 @@ function Get-DirectRegistryAssignments {
     $arguments = @(
         'role', 'assignment', 'list',
         '--scope', $RegistryResourceId,
-        '--all',
         '--fill-principal-name', 'false',
         '--output', 'json'
     )
