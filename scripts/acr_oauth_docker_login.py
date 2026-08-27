@@ -85,7 +85,10 @@ def verify_authenticated_publisher_rbac(
     if not token:
         raise ValueError("aad_access_token is required")
     if not server.endswith(".azurecr.io") or not server.removesuffix(".azurecr.io"):
-        raise RuntimeError("Q0 publisher RBAC verification requires an Azure public-cloud ACR login server")
+        raise RuntimeError(
+            "Q0 publisher RBAC verification requires an Azure public-cloud "
+            "ACR login server"
+        )
 
     payload = _decode_jwt_payload(token)
     principal_object_id = str(payload.get("oid") or "").strip()
@@ -99,7 +102,9 @@ def verify_authenticated_publisher_rbac(
         runner=runner,
     )
     if not registry_id.startswith("/subscriptions/"):
-        raise RuntimeError("Unable to resolve the approved ACR resource id for publisher verification")
+        raise RuntimeError(
+            "Unable to resolve the approved ACR resource id for publisher verification"
+        )
 
     assignments_json = _run_text(
         [
@@ -148,7 +153,10 @@ def verify_authenticated_publisher_rbac(
             == "container registry repository writer"
         ]
     else:
-        raise RuntimeError(f"Unsupported ACR role-assignment mode for Q0 publisher verification: {mode}")
+        raise RuntimeError(
+            "Unsupported ACR role-assignment mode for Q0 publisher verification: "
+            f"{mode}"
+        )
 
     if len(matching) != 1:
         raise RuntimeError(
@@ -225,7 +233,8 @@ def exchange_refresh_token(
     except urllib.error.HTTPError as exc:
         error_code = _oauth_error_code(exc.read())
         raise RuntimeError(
-            f"ACR OAuth exchange rejected the authenticated token (HTTP {exc.code}, code={error_code})"
+            "ACR OAuth exchange rejected the authenticated token "
+            f"(HTTP {exc.code}, code={error_code})"
         ) from None
     if not isinstance(decoded, dict):
         raise RuntimeError("ACR OAuth exchange returned a non-object response")
