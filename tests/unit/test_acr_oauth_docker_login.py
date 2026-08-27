@@ -144,7 +144,10 @@ def test_exchange_refresh_token_surfaces_only_sanitized_acr_error_code() -> None
 
 
 def test_verify_authenticated_publisher_rbac_binds_token_oid_to_direct_acrpush() -> None:
-    registry_id = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.ContainerRegistry/registries/example"
+    registry_id = (
+        "/subscriptions/sub/resourceGroups/rg/providers/"
+        "Microsoft.ContainerRegistry/registries/example"
+    )
     principal_id = "11111111-2222-3333-4444-555555555555"
     token = _jwt({"oid": principal_id, "tid": "tenant-test"})
     calls: list[list[str]] = []
@@ -190,7 +193,10 @@ def test_verify_authenticated_publisher_rbac_binds_token_oid_to_direct_acrpush()
 
 
 def test_verify_authenticated_publisher_rbac_fails_if_actual_oid_lacks_writer_role() -> None:
-    registry_id = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.ContainerRegistry/registries/example"
+    registry_id = (
+        "/subscriptions/sub/resourceGroups/rg/providers/"
+        "Microsoft.ContainerRegistry/registries/example"
+    )
     principal_id = "11111111-2222-3333-4444-555555555555"
     token = _jwt({"oid": principal_id, "tid": "tenant-test"})
 
