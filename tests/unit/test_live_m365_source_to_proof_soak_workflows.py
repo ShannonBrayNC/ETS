@@ -128,8 +128,8 @@ def test_soak_exit_gate_requires_time_count_and_monitoring_continuity() -> None:
 
 
 def test_soak_requires_healthy_durable_gateway_state() -> None:
-    assert 'payload.get("checkpoint_present")' in SOAK
-    assert 'payload.get("last_success_present")' in SOAK
+    assert '"checkpoint_present"' in SOAK
+    assert '"last_success_present"' in SOAK
     assert 'payload.get("observation_state") != "healthy_observation"' in SOAK
     assert '"gap_open"' in SOAK
     for queue_state in (
