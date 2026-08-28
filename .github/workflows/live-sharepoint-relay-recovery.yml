@@ -3,6 +3,18 @@ name: Live SharePoint Relay Recovery
 on:
   workflow_dispatch:
     inputs:
+      image_source_sha:
+        description: Exact candidate source SHA that produced the deployed immutable image
+        required: true
+        type: string
+      container_image:
+        description: Exact private ACR image as registry/repository@sha256:<digest>
+        required: true
+        type: string
+      fault_stage_workflow_run_id:
+        description: Successful bounded SharePoint relay fault-stage workflow run ID
+        required: true
+        type: string
       marker:
         description: Synthetic qualification marker already present in /sites/ETS Documents
         required: true
@@ -10,6 +22,7 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
   id-token: write
 
@@ -30,6 +43,9 @@ jobs:
       GATEWAY_APP: ets-o23bf2d6oq44s-gw
       GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id
       ACR_NAME: etsq1a352eb89
+      IMAGE_SOURCE_SHA: ${{ inputs.image_source_sha }}
+      CONTAINER_IMAGE: ${{ inputs.container_image }}
+      FAULT_STAGE_RUN_ID: ${{ inputs.fault_stage_workflow_run_id }}
 
     steps:
       - name: Check out recovery source
@@ -43,8 +59,101 @@ jobs:
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/main"
           test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$IMAGE_SOURCE_SHA" = "$GITHUB_SHA"
           test -f infra/azure/ets-live-sharepoint-relay-recovery.bicep
           test -n "${{ inputs.marker }}"
+          python - <<'PY'
+          import os
+          import re
+
+          if re.fullmatch(r"[0-9a-f]{40}", os.environ["IMAGE_SOURCE_SHA"]) is None:
+              raise SystemExit("image_source_sha is not a canonical commit SHA")
+          if re.fullmatch(r"[1-9][0-9]*", os.environ["FAULT_STAGE_RUN_ID"]) is None:
+              raise SystemExit("fault_stage_workflow_run_id is not canonical")
+          image = os.environ["CONTAINER_IMAGE"]
+          registry = re.escape(os.environ["ACR_NAME"] + ".azurecr.io")
+          if re.fullmatch(rf"{registry}/[^@\s]+@sha256:[0-9a-f]{{64}}", image) is None:
+              raise SystemExit("container_image is outside the exact private-ACR digest boundary")
+          PY
+
+      - name: Validate exact bounded fault-stage workflow run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          payload="$RUNNER_TEMP/fault-stage-run.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FAULT_STAGE_RUN_ID" > "$payload"
+          python - "$payload" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected = {
+              "head_sha": os.environ["GITHUB_SHA"],
+              "head_branch": "main",
+              "event": "workflow_dispatch",
+              "status": "completed",
+              "conclusion": "success",
+              "path": ".github/workflows/live-sharepoint-relay-fault-stage.yml",
+          }
+          for key, value in expected.items():
+              if payload.get(key) != value:
+                  raise SystemExit(f"fault-stage workflow mismatch for {key}")
+          PY
+          rm -f "$payload"
+
+      - name: Download exact bounded fault-stage evidence
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: live-sharepoint-relay-fault-stage-${{ inputs.fault_stage_workflow_run_id }}
+          path: evidence/relay-recovery/fault-stage
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.fault_stage_workflow_run_id }}
+
+      - name: Validate exact bounded fault-stage evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("evidence/relay-recovery/fault-stage/result.json")
+          if not path.is_file():
+              raise SystemExit("bounded relay fault-stage evidence is missing")
+          payload = json.loads(path.read_text(encoding="utf-8"))
+          if payload.get("schema_version") != "ets.live_sharepoint.relay_fault_stage.v1":
+              raise SystemExit("bounded relay fault-stage schema changed")
+          if payload.get("workflow_run_id") != int(os.environ["FAULT_STAGE_RUN_ID"]):
+              raise SystemExit("fault-stage artifact run identity changed")
+          if payload.get("source_sha") != os.environ["GITHUB_SHA"]:
+              raise SystemExit("fault-stage source differs from recovery source")
+          digest = os.environ["CONTAINER_IMAGE"].rsplit("@", 1)[1]
+          if payload.get("image_digest") != digest:
+              raise SystemExit("fault-stage image differs from recovery image")
+          for key in (
+              "stage_pass", "queue_state_mutated", "connector_runtime_mutated",
+              "gap_open_after", "observation_collection_gap_after", "public_evidence_safe",
+          ):
+              if payload.get(key) is not True:
+                  raise SystemExit("fault-stage predicate failed: " + key)
+          for key in (
+              "lease_active_after", "core_state_mutated", "customer_identifiers_retained",
+              "event_identifiers_retained", "event_hashes_retained", "core_payload_retained",
+              "reusable_credential_retained", "m365_source_to_proof_claimed", "soak_clock_started",
+          ):
+              if payload.get(key) is not False:
+                  raise SystemExit("fault-stage fail-closed boundary failed: " + key)
+          if payload.get("terminal_total_after") != 1 or payload.get("marker_terminal_after") != 1:
+              raise SystemExit("fault-stage did not isolate exactly one synthetic marker terminal row")
+          if payload.get("retryable_after") != 0 or payload.get("core_present_match") != 1:
+              raise SystemExit("fault-stage recovery prerequisites are incomplete")
+          PY
 
       - name: Azure login with workload identity
         uses: azure/login@v3.0.0
@@ -104,6 +213,7 @@ jobs:
           resolved="$RUNNER_TEMP/sharepoint-recovery-resolved.txt"
           python - "$gateway_json" > "$resolved" <<'PY'
           import json
+          import os
           import sys
           from pathlib import Path
 
@@ -116,6 +226,8 @@ jobs:
           container = containers[0]
           environment_id = str(props.get("environmentId") or "")
           image = str(container.get("image") or "")
+          if image != os.environ["CONTAINER_IMAGE"]:
+              raise SystemExit("live Gateway image differs from the exact recovery candidate")
           registries = (props.get("configuration") or {}).get("registries") or []
           if len(registries) != 1:
               raise SystemExit("live Gateway must expose exactly one registry binding")
@@ -149,11 +261,12 @@ jobs:
           }
           if set(env) != required:
               raise SystemExit("live Gateway recovery settings are incomplete")
-          if not environment_id or not image or not pull_identity or not storage_name:
+          if env["ETS_GATEWAY_INSTANCE_ID"] != "m365-sharepoint-primary":
+              raise SystemExit("live Gateway connector instance changed")
+          if not environment_id or not pull_identity or not storage_name:
               raise SystemExit("live Gateway recovery prerequisites are incomplete")
 
           print("ENVIRONMENT_ID=" + environment_id)
-          print("IMAGE=" + image)
           print("PULL_IDENTITY=" + pull_identity)
           print("STATE_STORAGE_NAME=" + storage_name)
           print("CORE_BASE_URL=" + env["ETS_GATEWAY_CORE_BASE_URL"])
@@ -169,11 +282,8 @@ jobs:
             printf -v "$key" '%s' "$value"
           done < "$resolved"
           rm -f "$gateway_json" "$resolved"
-
-          case "$IMAGE" in
-            "${ACR_NAME}.azurecr.io/ets/hosted-q1@sha256:"*) ;;
-            *) echo "::error::live Gateway image is outside the approved immutable ACR boundary"; exit 1 ;;
-          esac
+          echo "::add-mask::$TENANT_ID"
+          echo "::add-mask::$WORKSPACE_ID"
 
           az deployment group create \
             --resource-group "$RESOURCE_GROUP" \
@@ -187,7 +297,7 @@ jobs:
               runtimeIdentityClientId="$runtime_client_id" \
               registryPullIdentityResourceId="$PULL_IDENTITY" \
               registryServer="${ACR_NAME}.azurecr.io" \
-              containerImage="$IMAGE" \
+              containerImage="$CONTAINER_IMAGE" \
               coreBaseUrl="$CORE_BASE_URL" \
               coreScope="$CORE_SCOPE" \
               tenantId="$TENANT_ID" \
@@ -216,26 +326,41 @@ jobs:
             sleep 3
           done
 
-          replica="$(az containerapp job replica list \
-            --name "$job_name" \
-            --resource-group "$RESOURCE_GROUP" \
-            --execution "$execution" \
-            --query '[0].name' -o tsv)"
+          replica=""
+          for _ in $(seq 1 12); do
+            replica="$(az containerapp job replica list \
+              --name "$job_name" \
+              --resource-group "$RESOURCE_GROUP" \
+              --execution "$execution" \
+              --query '[0].name' -o tsv 2>/dev/null || true)"
+            [ -n "$replica" ] && break
+            sleep 5
+          done
           test -n "$replica"
 
           raw="$RUNNER_TEMP/sharepoint-relay-recovery.log"
-          az containerapp job logs show \
-            --name "$job_name" \
-            --resource-group "$RESOURCE_GROUP" \
-            --execution "$execution" \
-            --replica "$replica" \
-            --container sharepoint-relay-recovery \
-            --format text \
-            --only-show-errors > "$raw" 2>&1 || true
+          marker_found=false
+          for _ in $(seq 1 12); do
+            az containerapp job logs show \
+              --name "$job_name" \
+              --resource-group "$RESOURCE_GROUP" \
+              --execution "$execution" \
+              --replica "$replica" \
+              --container sharepoint-relay-recovery \
+              --format text \
+              --only-show-errors > "$raw" 2>&1 || true
+            if grep -Eq 'ETS_SP_RELAY_RECOVERY_B64=[A-Za-z0-9_=-]+' "$raw"; then
+              marker_found=true
+              break
+            fi
+            sleep 5
+          done
+          test "$marker_found" = "true"
 
           python - "$raw" <<'PY'
           import base64
           import json
+          import os
           import re
           import sys
           from pathlib import Path
@@ -289,47 +414,53 @@ jobs:
           if payload["schema_version"] != "ets.live_sharepoint.relay_recovery.v1":
               raise SystemExit("bounded relay recovery schema changed")
           for key in count_keys:
-              if not isinstance(payload[key], int) or payload[key] < 0:
+              if not isinstance(payload[key], int) or isinstance(payload[key], bool) or payload[key] < 0:
                   raise SystemExit("bounded relay recovery count was invalid")
           for key in flag_keys:
               if not isinstance(payload[key], bool):
                   raise SystemExit("bounded relay recovery flag was invalid")
+          if payload["terminal_total_before"] != 1 or payload["terminal_marker_count"] != 1:
+              raise SystemExit("relay recovery is outside the single staged marker boundary")
+          if payload["core_present_match"] != 1 or payload["queue_reconciled"] != 1 or payload["marker_reconciled"] != 1:
+              raise SystemExit("relay recovery did not reconcile exactly the staged marker")
+          if payload["queue_terminal_after"] != 0 or payload["queue_retryable_after"] != 0:
+              raise SystemExit("relay recovery left failed relay rows")
+          if payload["gap_open_before"] is not True or payload["gap_open_after"] is not False:
+              raise SystemExit("relay recovery did not close the staged collection gap")
+          if payload["observation_healthy_after"] is not True or payload["upstream_healthy_after"] is not True:
+              raise SystemExit("relay recovery did not restore healthy state")
+          if payload["recovery_pass"] is not True:
+              raise SystemExit("live SharePoint relay recovery failed")
           if payload["public_evidence_safe"] is not True:
               raise SystemExit("relay recovery evidence is not public safe")
-          if payload["queue_state_mutated"] is not True:
-              raise SystemExit("relay recovery did not declare queue mutation")
-          if payload["connector_runtime_mutated"] is not True:
-              raise SystemExit("relay recovery did not declare connector runtime mutation")
+          if payload["queue_state_mutated"] is not True or payload["connector_runtime_mutated"] is not True:
+              raise SystemExit("relay recovery did not declare required bounded mutation")
           if payload["core_state_mutated"] is not False:
               raise SystemExit("relay recovery unexpectedly declared Core mutation")
           for key in (
-              "customer_identifiers_retained",
-              "event_identifiers_retained",
-              "event_hashes_retained",
-              "core_payload_retained",
-              "reusable_credential_retained",
-              "m365_source_to_proof_claimed",
-              "soak_clock_started",
+              "customer_identifiers_retained", "event_identifiers_retained",
+              "event_hashes_retained", "core_payload_retained", "reusable_credential_retained",
+              "m365_source_to_proof_claimed", "soak_clock_started",
           ):
               if payload[key] is not False:
                   raise SystemExit("relay recovery violated non-retention or claim boundary")
 
+          payload.update({
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "source_sha": os.environ["GITHUB_SHA"],
+              "image_digest": os.environ["CONTAINER_IMAGE"].rsplit("@", 1)[1],
+              "fault_stage_workflow_run_id": int(os.environ["FAULT_STAGE_RUN_ID"]),
+          })
           out = Path("evidence/live-sharepoint-relay-recovery/result.json")
           out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
           for key in sorted(count_keys):
               print(key + "=" + str(payload[key]))
           for key in (
-              "checkpoint_present_after",
-              "last_success_present_after",
-              "gap_open_before",
-              "gap_open_after",
-              "observation_healthy_after",
-              "upstream_healthy_after",
-              "recovery_pass",
+              "checkpoint_present_after", "last_success_present_after",
+              "gap_open_before", "gap_open_after", "observation_healthy_after",
+              "upstream_healthy_after", "recovery_pass",
           ):
               print(key + "=" + str(payload[key]).lower())
-          if payload["recovery_pass"] is not True:
-              raise SystemExit("live SharePoint relay recovery failed")
           PY
 
           test "$status" = "Succeeded"
