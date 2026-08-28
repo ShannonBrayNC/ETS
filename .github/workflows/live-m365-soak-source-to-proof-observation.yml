@@ -2,6 +2,20 @@ name: Live M365 Soak Source to Proof Observation
 
 on:
   workflow_dispatch:
+    inputs:
+      image_source_sha:
+        description: Exact frozen main SHA from the passing RC1D candidate
+        required: true
+        type: string
+      container_image:
+        description: Exact frozen private-ACR image as registry/repository@sha256:<digest>
+        required: true
+        type: string
+      marker:
+        description: Synthetic SharePoint qualification marker retained for the soak
+        required: true
+        default: post458-release-sync-20260820
+        type: string
 
 permissions:
   contents: read
@@ -23,20 +37,20 @@ jobs:
       RESOURCE_GROUP: rg-ets-live-eastus
       GATEWAY_IDENTITY_NAME: ets-o23bf2d6oq44s-gw-id
       ACR_NAME: etsq1a352eb89
-      CONTAINER_IMAGE: etsq1a352eb89.azurecr.io/ets/hosted-q1@sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63
-      Q0_SOURCE_SHA: 9a4c3a8aefc50a960bdd3ce34b28f86fd69f1535
-      Q0_IMAGE_DIGEST: sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63
-      HANDOFF_ISSUE: '479'
-      SOURCE_TO_PROOF_ISSUE: '479'
+      IMAGE_SOURCE_SHA: ${{ inputs.image_source_sha }}
+      CONTAINER_IMAGE: ${{ inputs.container_image }}
+      HANDOFF_ISSUE: '541'
+      SOURCE_TO_PROOF_ISSUE: '541'
       CORE_SCOPE: ${{ secrets.ETS_LIVE_CORE_SCOPE }}
       SHAREPOINT_DRIVE_ID: ${{ secrets.ETS_LIVE_SHAREPOINT_DRIVE_ID }}
-      QUALIFICATION_MARKER: post458-release-sync-20260820
+      QUALIFICATION_MARKER: ${{ inputs.marker }}
       EXPECTED_OBSERVATIONS: '2'
 
     steps:
       - name: Check out exact observation source
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.image_source_sha }}
           persist-credentials: false
 
       - name: Assert frozen soak boundary
@@ -45,17 +59,31 @@ jobs:
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/main"
           test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$IMAGE_SOURCE_SHA" = "$GITHUB_SHA"
           test -f scripts/azure/run-live-sharepoint-source-to-proof.sh
           test -f scripts/azure/run-live-sharepoint-source-to-proof-diagnostic.sh
-          test "$CONTAINER_IMAGE" = "${ACR_NAME}.azurecr.io/ets/hosted-q1@${Q0_IMAGE_DIGEST}"
-          test "$Q0_SOURCE_SHA" = "9a4c3a8aefc50a960bdd3ce34b28f86fd69f1535"
-          test "$Q0_IMAGE_DIGEST" = "sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63"
-          test "$QUALIFICATION_MARKER" = "post458-release-sync-20260820"
           test "$EXPECTED_OBSERVATIONS" = "2"
+          test -n "$QUALIFICATION_MARKER"
+          test "${#QUALIFICATION_MARKER}" -le 128
           test -n "$CORE_SCOPE"
           test -n "$SHAREPOINT_DRIVE_ID"
           echo "::add-mask::$CORE_SCOPE"
           echo "::add-mask::$SHAREPOINT_DRIVE_ID"
+          python - <<'PY'
+          import os
+          import re
+
+          source = os.environ["IMAGE_SOURCE_SHA"]
+          image = os.environ["CONTAINER_IMAGE"]
+          registry = re.escape(os.environ["ACR_NAME"] + ".azurecr.io")
+          if re.fullmatch(r"[0-9a-f]{40}", source) is None:
+              raise SystemExit("frozen source SHA is not canonical")
+          if re.fullmatch(rf"{registry}/[^@\s]+@sha256:[0-9a-f]{{64}}", image) is None:
+              raise SystemExit("frozen image is outside the exact private-ACR digest boundary")
+          PY
+          printf 'Q0_SOURCE_SHA=%s\n' "$IMAGE_SOURCE_SHA" >> "$GITHUB_ENV"
+          printf 'Q0_IMAGE_DIGEST=%s\n' "${CONTAINER_IMAGE##*@}" >> "$GITHUB_ENV"
 
       - name: Azure login with workload identity
         uses: azure/login@v3.0.0
@@ -100,17 +128,21 @@ jobs:
 
           handoff_path = Path("evidence/live-sharepoint-source-to-proof/handoff.json")
           handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
-          expected_source = "9a4c3a8aefc50a960bdd3ce34b28f86fd69f1535"
-          expected_digest = "sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63"
+          expected_source = os.environ["IMAGE_SOURCE_SHA"]
+          expected_digest = os.environ["Q0_IMAGE_DIGEST"]
+          marker = os.environ["QUALIFICATION_MARKER"]
+          expected_observations = int(os.environ["EXPECTED_OBSERVATIONS"])
           if handoff.get("release_source_sha") != expected_source:
               raise SystemExit("soak observation release source drifted")
           if handoff.get("release_image_digest") != expected_digest:
               raise SystemExit("soak observation release image drifted")
-          if handoff.get("marker") != "post458-release-sync-20260820":
+          if handoff.get("marker") != marker:
               raise SystemExit("soak observation marker drifted")
-          if handoff.get("expected_observations") != 2:
+          if handoff.get("expected_observations") != expected_observations:
               raise SystemExit("soak observation revision expectation drifted")
-          if not isinstance(handoff.get("core_observation_count"), int) or handoff["core_observation_count"] < 2:
+          if not isinstance(handoff.get("core_observation_count"), int) or handoff[
+              "core_observation_count"
+          ] < expected_observations:
               raise SystemExit("soak observation lost revision history")
           for key in (
               "gateway_health_verified",
@@ -139,12 +171,12 @@ jobs:
                   raise SystemExit(f"soak observation fail-closed boundary failed: {key}")
 
           observation = {
-              "schema_version": "ets.live_m365_soak.source_to_proof_observation.v1",
+              "schema_version": "ets.live_m365_soak.source_to_proof_observation.v2",
               "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
               "release_source_sha": expected_source,
               "release_image_digest": expected_digest,
-              "marker": "post458-release-sync-20260820",
-              "expected_observations": 2,
+              "marker": marker,
+              "expected_observations": expected_observations,
               "core_observation_count": handoff["core_observation_count"],
               "source_to_proof_verified": True,
               "revision_evidence_verified": True,
