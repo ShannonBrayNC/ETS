@@ -96,7 +96,7 @@ The coordinator downloads the exact RC1D artifact and derives the frozen source/
 
 Hourly observations are non-destructive and cover the complete P0 family: parameterized SharePoint source-to-proof, RC1B Entra/OneDrive read-only qualification, RC1C Purview read-only qualification with `Audit.General` still enabled, and Gateway durable state. The coordinator never runs Purview subscription mutation/recovery after freeze. It requires at least 72 elapsed hours and 72 successful governed observations, with no monitoring gap over 110 minutes.
 
-See [`MICROSOFT_P0_RC1D_SOAK_V1.md`](./MICROSOFT_P0_RC1D_SOAK_V1.md) for the freeze, invalidation, privacy, and completion contract. The invalidated #479 attempt is never resumed or counted.
+See [`MICROSOFT_P0_RC1D_SOAK_V1.md`](./MICROSOFT_P0_RC1D_SOAK_V1.md) for the freeze, invalidation, privacy, and completion contract. **Do not reuse #479**; that invalidated attempt is historical only and is never resumed or counted.
 
 ## Stop conditions
 
