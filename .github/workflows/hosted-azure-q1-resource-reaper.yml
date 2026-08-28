@@ -1,0 +1,151 @@
+name: Hosted Azure Q1 Resource Reaper
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report eligible stale HOST-AZ-Q1 resource groups without deleting them
+        required: true
+        default: true
+        type: boolean
+      max_age_hours:
+        description: Minimum resource-group age before deletion eligibility
+        required: true
+        default: 24
+        type: number
+  schedule:
+    - cron: '17 * * * *'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: hosted-azure-q1-resource-reaper
+  cancel-in-progress: false
+
+jobs:
+  reap:
+    name: Reap stale synthetic HOST-AZ-Q1 resource groups
+    runs-on: ubuntu-latest
+    environment: ets-azure-q1
+    timeout-minutes: 20
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+
+    steps:
+      - name: Azure login with workload identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Identify and remove stale synthetic Q1 groups
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_DRY_RUN: ${{ inputs.dry_run }}
+          MANUAL_MAX_AGE_HOURS: ${{ inputs.max_age_hours }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            dry_run="${MANUAL_DRY_RUN:-true}"
+            max_age_hours="${MANUAL_MAX_AGE_HOURS:-24}"
+          else
+            dry_run="false"
+            max_age_hours="24"
+          fi
+
+          groups_json="$(az group list \
+            --tag etsQualification=HOST-AZ-Q1 \
+            --query '[].{name:name,tags:tags}' \
+            -o json)"
+
+          export GROUPS_JSON="$groups_json"
+          export DRY_RUN="$dry_run"
+          export MAX_AGE_HOURS="$max_age_hours"
+
+          python - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import re
+          import subprocess
+
+          groups = json.loads(os.environ["GROUPS_JSON"])
+          dry_run = os.environ["DRY_RUN"].lower() == "true"
+          max_age_hours = float(os.environ["MAX_AGE_HOURS"])
+          now = dt.datetime.now(dt.timezone.utc)
+
+          name_pattern = re.compile(r"^rg-ets-q1-live-(\d{12}|\d{14})$")
+          protected_names = {
+              "rg-ets-q1-eastus",
+              "rg-ets-live-eastus",
+              "rg-ets-live-eastus2",
+          }
+
+          eligible = []
+          skipped = []
+
+          for item in groups:
+              name = str(item.get("name") or "")
+              tags = item.get("tags") or {}
+
+              if name in protected_names:
+                  skipped.append((name, "protected-name"))
+                  continue
+
+              match = name_pattern.fullmatch(name)
+              if match is None:
+                  skipped.append((name, "name-not-q1-ephemeral"))
+                  continue
+
+              if str(tags.get("etsQualification") or "") != "HOST-AZ-Q1":
+                  skipped.append((name, "qualification-tag-mismatch"))
+                  continue
+
+              if str(tags.get("syntheticOnly") or "").lower() != "true":
+                  skipped.append((name, "syntheticOnly-not-true"))
+                  continue
+
+              stamp = match.group(1)
+              fmt = "%Y%m%d%H%M%S" if len(stamp) == 14 else "%Y%m%d%H%M"
+              created = dt.datetime.strptime(stamp, fmt).replace(tzinfo=dt.timezone.utc)
+              age_hours = (now - created).total_seconds() / 3600
+
+              if age_hours < max_age_hours:
+                  skipped.append((name, f"age={age_hours:.2f}h<limit"))
+                  continue
+
+              eligible.append((name, age_hours))
+
+          print(f"dry_run={str(dry_run).lower()}")
+          print(f"max_age_hours={max_age_hours:g}")
+          print(f"eligible_count={len(eligible)}")
+
+          for name, age_hours in sorted(eligible):
+              print(f"eligible {name} age_hours={age_hours:.2f}")
+              if not dry_run:
+                  subprocess.run(
+                      ["az", "group", "delete", "--name", name, "--yes", "--no-wait"],
+                      check=True,
+                  )
+
+          for name, reason in sorted(skipped):
+              print(f"skip {name} reason={reason}")
+          PY
+
+      - name: Verify protected resource groups still exist
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for group in rg-ets-q1-eastus rg-ets-live-eastus2; do
+            exists="$(az group exists --name "$group" -o tsv)"
+            if [ "$exists" != "true" ]; then
+              echo "Protected group missing after reaper execution: $group" >&2
+              exit 1
+            fi
+          done
