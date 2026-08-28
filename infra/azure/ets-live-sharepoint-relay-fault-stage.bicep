@@ -66,7 +66,7 @@ import os
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.error import HTTPError, URLError
+from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
@@ -198,7 +198,8 @@ with connect("gateway-sync.db", readonly=True) as connection:
         raise RuntimeError("Gateway relay queue must be fully healthy before fault staging")
     synchronized = connection.execute(
         """
-        SELECT id, idempotency_key, event_id, event_hash, tenant_id, workspace_id
+        SELECT id, idempotency_key, event_id, event_hash, tenant_id, workspace_id,
+               acknowledgement_hash, synchronized_at_utc
         FROM sync_queue
         WHERE state = 'synchronized'
         ORDER BY id DESC
@@ -254,13 +255,21 @@ now = utc_now()
 with connect("gateway-sync.db") as connection:
     connection.execute("BEGIN IMMEDIATE")
     current = connection.execute(
-        "SELECT state, event_id, event_hash, tenant_id, workspace_id FROM sync_queue WHERE id = ?",
+        """
+        SELECT state, event_id, event_hash, tenant_id, workspace_id,
+               acknowledgement_hash, synchronized_at_utc
+        FROM sync_queue WHERE id = ?
+        """,
         (int(target["id"]),),
     ).fetchone()
     if current is None or str(current["state"]) != "synchronized":
         raise RuntimeError("synthetic marker queue row changed before bounded staging")
     if str(current["event_id"]) != event_id or str(current["event_hash"]) != str(target["event_hash"]):
         raise RuntimeError("synthetic marker queue identity changed before bounded staging")
+    if current["acknowledgement_hash"] != target["acknowledgement_hash"]:
+        raise RuntimeError("synthetic marker acknowledgement changed before bounded staging")
+    if current["synchronized_at_utc"] != target["synchronized_at_utc"]:
+        raise RuntimeError("synthetic marker synchronization time changed before bounded staging")
     cursor = connection.execute(
         """
         UPDATE sync_queue
@@ -311,19 +320,27 @@ try:
             raise RuntimeError("connector lease became active during bounded fault staging")
         connection.commit()
 except Exception:
-    # Fail closed but compensate the queue mutation if the runtime gap could not be staged.
+    # Restore the exact prior synchronized row if runtime gap staging cannot complete.
     with connect("gateway-sync.db") as connection:
         connection.execute("BEGIN IMMEDIATE")
-        connection.execute(
+        cursor = connection.execute(
             """
             UPDATE sync_queue
-            SET state = 'synchronized', last_error = NULL, updated_at_utc = ?,
-                synchronized_at_utc = COALESCE(synchronized_at_utc, ?)
+            SET state = 'synchronized', acknowledgement_hash = ?,
+                synchronized_at_utc = ?, last_error = NULL, updated_at_utc = ?
             WHERE id = ? AND state = 'terminal_failure'
               AND last_error = 'ETS_RC1D_SYNTHETIC_RELAY_FAULT'
             """,
-            (utc_now(), now, int(target["id"])),
+            (
+                target["acknowledgement_hash"],
+                target["synchronized_at_utc"],
+                utc_now(),
+                int(target["id"]),
+            ),
         )
+        if cursor.rowcount != 1:
+            connection.rollback()
+            raise RuntimeError("fault-stage compensation could not restore the exact synchronized marker row")
         connection.commit()
     raise
 
@@ -385,7 +402,7 @@ resource stageJob 'Microsoft.App/jobs@2025-01-01' = {
       identitySettings: [
         {
           identity: runtimeIdentityResourceId
-          lifecycle: 'None'
+          lifecycle: 'Main'
         }
         {
           identity: registryPullIdentityResourceId
