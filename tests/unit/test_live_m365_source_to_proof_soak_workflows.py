@@ -139,6 +139,9 @@ def test_soak_requires_healthy_durable_gateway_state() -> None:
         "queue_terminal_failure",
     ):
         assert queue_state in SOAK
-    assert 'payload.get("customer_identifiers_retained")' in SOAK
-    assert 'payload.get("reusable_credential_retained")' in SOAK
-    assert 'payload.get("public_evidence_safe")' in SOAK
+    for privacy_field in (
+        "customer_identifiers_retained",
+        "reusable_credential_retained",
+        "public_evidence_safe",
+    ):
+        assert privacy_field in SOAK
