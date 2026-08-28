@@ -1,10 +1,23 @@
-name: Live M365 Source to Proof 72 Hour Soak
+name: Live Microsoft P0 RC1D 72 Hour Soak
 
 on:
   workflow_dispatch:
     inputs:
+      rc1d_workflow_run_id:
+        description: Successful freeze-ready RC1D pre-soak reconciliation workflow run ID
+        required: true
+        type: string
+      start_confirmation:
+        description: Exact confirmation START_72_HOUR_MICROSOFT_P0_SOAK
+        required: true
+        type: string
+      marker:
+        description: Synthetic SharePoint qualification marker retained for the frozen attempt
+        required: true
+        default: post458-release-sync-20260820
+        type: string
       restart_active:
-        description: Explicitly invalidate an active attempt and begin a new one
+        description: Explicitly invalidate an active attempt and begin a new RC1D-bound attempt
         required: false
         default: false
         type: boolean
@@ -17,29 +30,32 @@ permissions:
   issues: write
 
 concurrency:
-  group: live-m365-source-to-proof-soak
+  group: live-microsoft-p0-rc1d-soak
   cancel-in-progress: false
 
 jobs:
   observe:
-    name: Govern frozen M365 source-to-proof soak
+    name: Govern frozen Microsoft P0 candidate
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     env:
-      SOAK_ISSUE: '479'
+      SOAK_ISSUE: '541'
+      RC1D_WORKFLOW: live-microsoft-rc1d-pre-soak-reconciliation.yml
       SOURCE_WORKFLOW: live-m365-soak-source-to-proof-observation.yml
+      RC1B_WORKFLOW: live-microsoft-rc1b-preflight.yml
+      RC1C_WORKFLOW: live-microsoft-rc1c-preflight.yml
       STATE_WORKFLOW: live-sharepoint-state-boundary-probe.yml
-      RELEASE_SOURCE_SHA: 9a4c3a8aefc50a960bdd3ce34b28f86fd69f1535
-      RELEASE_IMAGE_DIGEST: sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63
-      QUALIFICATION_MARKER: post458-release-sync-20260820
-      EXPECTED_OBSERVATIONS: '2'
+      CONNECTOR_INSTANCE_ID: m365-sharepoint-primary
       MIN_SOAK_HOURS: '72'
       MIN_SUCCESSFUL_OBSERVATIONS: '72'
       MAX_GAP_MINUTES: '110'
+      RC1D_RUN_ID: ${{ inputs.rc1d_workflow_run_id }}
+      START_CONFIRMATION: ${{ inputs.start_confirmation }}
+      REQUESTED_MARKER: ${{ inputs.marker }}
       RESTART_ACTIVE: ${{ inputs.restart_active }}
 
     steps:
-      - name: Run governed soak observation
+      - name: Run governed RC1D-bound soak observation
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -66,27 +82,24 @@ jobs:
           current_run_id = int(os.environ["GITHUB_RUN_ID"])
           current_sha = os.environ["GITHUB_SHA"]
           issue_number = int(os.environ["SOAK_ISSUE"])
+          rc1d_workflow = os.environ["RC1D_WORKFLOW"]
           source_workflow = os.environ["SOURCE_WORKFLOW"]
+          rc1b_workflow = os.environ["RC1B_WORKFLOW"]
+          rc1c_workflow = os.environ["RC1C_WORKFLOW"]
           state_workflow = os.environ["STATE_WORKFLOW"]
-          expected_source = os.environ["RELEASE_SOURCE_SHA"]
-          expected_digest = os.environ["RELEASE_IMAGE_DIGEST"]
-          marker = os.environ["QUALIFICATION_MARKER"]
-          expected_observations = int(os.environ["EXPECTED_OBSERVATIONS"])
+          connector_instance = os.environ["CONNECTOR_INSTANCE_ID"]
           min_hours = int(os.environ["MIN_SOAK_HOURS"])
           min_observations = int(os.environ["MIN_SUCCESSFUL_OBSERVATIONS"])
           max_gap_minutes = int(os.environ["MAX_GAP_MINUTES"])
+          requested_rc1d = os.environ.get("RC1D_RUN_ID", "").strip()
+          start_confirmation = os.environ.get("START_CONFIRMATION", "").strip()
+          requested_marker = os.environ.get("REQUESTED_MARKER", "").strip()
           restart_active = os.environ.get("RESTART_ACTIVE", "").casefold() == "true"
           evidence_dir = Path("evidence/live-m365-source-to-proof-soak")
-          state_marker = "ETS_M365_SOAK_STATE_B64="
+          state_marker = "ETS_MICROSOFT_P0_SOAK_STATE_B64="
 
           if event_name not in {"workflow_dispatch", "schedule"}:
               raise RuntimeError("soak workflow used an unsupported trigger")
-          if not re.fullmatch(r"[0-9a-f]{40}", expected_source):
-              raise RuntimeError("frozen release source is not canonical")
-          if not re.fullmatch(r"sha256:[0-9a-f]{64}", expected_digest):
-              raise RuntimeError("frozen release digest is not canonical")
-          if expected_observations != 2:
-              raise RuntimeError("soak must preserve the qualified two-revision boundary")
           if min_hours != 72 or min_observations != 72:
               raise RuntimeError("soak exit gate drifted from 72-hour/72-observation minimums")
           if max_gap_minutes != 110:
@@ -147,7 +160,7 @@ jobs:
                   )
               except (ValueError, json.JSONDecodeError):
                   return None
-              if payload.get("schema_version") != "ets.live_m365_soak.state.v1":
+              if payload.get("schema_version") != "ets.live_microsoft.p0_soak.state.v1":
                   return None
               return payload
 
@@ -186,9 +199,8 @@ jobs:
                   "GET",
                   f"{api_base}/actions/workflows/live-m365-source-to-proof-soak.yml/runs?{query}",
               )
-              runs = listing.get("workflow_runs", [])
               started = parse_time(started_at)
-              for run in runs:
+              for run in listing.get("workflow_runs", []):
                   run_id = run.get("id")
                   if run_id == current_run_id:
                       continue
@@ -218,7 +230,7 @@ jobs:
                   raise RuntimeError(f"{workflow} dispatch returned non-canonical run URL")
               return {"id": run_id, "url": run_url}
 
-          def wait_for_success(run: dict, label: str, timeout_minutes: int) -> dict:
+          def wait_for_success(run: dict, label: str, expected_source: str, timeout_minutes: int):
               deadline = time.monotonic() + timeout_minutes * 60
               while time.monotonic() < deadline:
                   payload = api_json("GET", run["url"])
@@ -228,8 +240,8 @@ jobs:
                       raise RuntimeError(f"{label} was not workflow_dispatch")
                   if payload.get("head_branch") != "main":
                       raise RuntimeError(f"{label} was not pinned to main")
-                  if payload.get("head_sha") != current_sha:
-                      raise RuntimeError(f"{label} orchestration source drifted from coordinator")
+                  if payload.get("head_sha") != expected_source:
+                      raise RuntimeError(f"{label} source drifted from frozen candidate")
                   if payload.get("status") == "completed":
                       if payload.get("conclusion") != "success":
                           raise RuntimeError(
@@ -260,7 +272,6 @@ jobs:
                   f"{api_base}/actions/artifacts/"
               ):
                   raise RuntimeError("artifact archive URL was not canonical")
-
               opener = build_opener(NoRedirect)
               try:
                   opener.open(Request(archive_url, headers=headers), timeout=30.0)
@@ -272,7 +283,6 @@ jobs:
                   signed_url = exc.headers.get("Location")
               else:
                   raise RuntimeError("artifact endpoint did not return a signed redirect")
-
               if not isinstance(signed_url, str):
                   raise RuntimeError("artifact redirect omitted signed URL")
               parsed = urlparse(signed_url)
@@ -280,8 +290,7 @@ jobs:
                   raise RuntimeError("artifact redirect was not HTTPS")
               if parsed.hostname == "api.github.com":
                   raise RuntimeError("artifact redirect did not leave GitHub API origin")
-
-              chunks = []
+              chunks: list[bytes] = []
               copied = 0
               with urlopen(signed_url, timeout=60.0) as response:
                   while True:
@@ -292,7 +301,6 @@ jobs:
                       if copied > 16 * 1024 * 1024:
                           raise RuntimeError("soak artifact exceeded 16 MiB bound")
                       chunks.append(chunk)
-
               with zipfile.ZipFile(io.BytesIO(b"".join(chunks))) as archive:
                   candidates = [
                       candidate
@@ -303,24 +311,96 @@ jobs:
                       raise RuntimeError(
                           f"artifact did not contain exactly one {json_basename}"
                       )
-                  return json.loads(archive.read(candidates[0]).decode("utf-8"))
+                  payload = json.loads(archive.read(candidates[0]).decode("utf-8"))
+              if not isinstance(payload, dict):
+                  raise RuntimeError("artifact JSON was not an object")
+              return payload
 
-          def validate_source_observation(payload: dict) -> None:
+          def resolve_rc1d_candidate(run_id_text: str) -> dict:
+              if re.fullmatch(r"[1-9][0-9]*", run_id_text) is None:
+                  raise RuntimeError("RC1D workflow run ID is not canonical")
+              run_id = int(run_id_text)
+              run = api_json("GET", f"{api_base}/actions/runs/{run_id}")
+              expected = {
+                  "head_sha": current_sha,
+                  "head_branch": "main",
+                  "event": "workflow_dispatch",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "path": f".github/workflows/{rc1d_workflow}",
+              }
+              for key, value in expected.items():
+                  if run.get(key) != value:
+                      raise RuntimeError(f"RC1D workflow run mismatch for {key}")
+              payload = download_artifact(
+                  run_id,
+                  f"live-microsoft-rc1d-pre-soak-reconciliation-{run_id}",
+                  "reconciliation.json",
+              )
+              if payload.get("schema_version") != "ets.live_microsoft.rc1d_pre_soak_candidate.v1":
+                  raise RuntimeError("RC1D freeze-ready artifact schema drifted")
+              for key in (
+                  "q0_vulnerability_gate_passed",
+                  "q0_sbom_retained",
+                  "q0_provenance_required",
+                  "rc1b_live_qualified",
+                  "rc1c_live_qualified",
+                  "gateway_durable_state_healthy",
+                  "gateway_recovery_verified",
+                  "graph_drive_subscriptions_deferred",
+                  "graph_subscription_configuration_absent",
+                  "public_evidence_safe",
+                  "pre_soak_reconciliation_passed",
+                  "freeze_ready",
+              ):
+                  if payload.get(key) is not True:
+                      raise RuntimeError(f"RC1D freeze predicate failed: {key}")
+              for key in (
+                  "graph_subscription_operation_performed",
+                  "public_gateway_callback_configured",
+                  "broader_graph_file_permission_claimed",
+                  "credential_retained",
+                  "customer_identifiers_retained",
+                  "candidate_frozen",
+                  "soak_clock_started",
+              ):
+                  if payload.get(key) is not False:
+                      raise RuntimeError(f"RC1D fail-closed predicate failed: {key}")
+              source = payload.get("candidate_source_sha")
+              image = payload.get("candidate_image")
+              digest = payload.get("candidate_image_digest")
+              if source != current_sha or re.fullmatch(r"[0-9a-f]{40}", str(source)) is None:
+                  raise RuntimeError("RC1D candidate source differs from coordinator source")
+              if re.fullmatch(
+                  r"etsq1a352eb89\.azurecr\.io/[^@\s]+@sha256:[0-9a-f]{64}",
+                  str(image),
+              ) is None:
+                  raise RuntimeError("RC1D candidate image is outside the private-ACR boundary")
+              if digest != str(image).rsplit("@", 1)[1]:
+                  raise RuntimeError("RC1D candidate image digest is inconsistent")
+              return {
+                  "rc1d_workflow_run_id": run_id,
+                  "release_source_sha": str(source),
+                  "release_image": str(image),
+                  "release_image_digest": str(digest),
+              }
+
+          def validate_source_observation(payload: dict, source: str, digest: str, marker: str) -> None:
               if payload.get("schema_version") != (
-                  "ets.live_m365_soak.source_to_proof_observation.v1"
+                  "ets.live_m365_soak.source_to_proof_observation.v2"
               ):
                   raise RuntimeError("source-to-proof soak artifact schema drifted")
-              if payload.get("release_source_sha") != expected_source:
+              if payload.get("release_source_sha") != source:
                   raise RuntimeError("source-to-proof soak source drifted")
-              if payload.get("release_image_digest") != expected_digest:
+              if payload.get("release_image_digest") != digest:
                   raise RuntimeError("source-to-proof soak image drifted")
               if payload.get("marker") != marker:
                   raise RuntimeError("source-to-proof soak marker drifted")
-              if payload.get("expected_observations") != expected_observations:
+              if payload.get("expected_observations") != 2:
                   raise RuntimeError("source-to-proof soak revision expectation drifted")
               if not isinstance(payload.get("core_observation_count"), int) or payload[
                   "core_observation_count"
-              ] < expected_observations:
+              ] < 2:
                   raise RuntimeError("source-to-proof soak lost revision observations")
               for key in (
                   "source_to_proof_verified",
@@ -340,23 +420,90 @@ jobs:
                   "soak_clock_started",
               ):
                   if payload.get(key) is not False:
-                      raise RuntimeError(
-                          f"source-to-proof soak fail-closed predicate failed: {key}"
-                      )
+                      raise RuntimeError(f"source-to-proof soak boundary failed: {key}")
+
+          def validate_rc1b(payload: dict, source: str, digest: str) -> None:
+              if payload.get("schema_version") != "ets.live_microsoft.rc1b_preflight_handoff.v2":
+                  raise RuntimeError("RC1B soak canary schema drifted")
+              if payload.get("source_sha") != source or payload.get("image_digest") != digest:
+                  raise RuntimeError("RC1B soak canary candidate drifted")
+              for key in (
+                  "preflight_passed",
+                  "rc1b_live_qualified",
+                  "users_healthy_observation",
+                  "groups_healthy_observation",
+                  "public_evidence_safe",
+              ):
+                  if payload.get(key) is not True:
+                      raise RuntimeError(f"RC1B soak canary predicate failed: {key}")
+              for key in (
+                  "users_gap_open",
+                  "groups_gap_open",
+                  "raw_directory_payload_retained",
+                  "customer_identifiers_retained",
+                  "reusable_credential_retained",
+                  "soak_clock_started",
+              ):
+                  if payload.get(key) is not False:
+                      raise RuntimeError(f"RC1B soak canary boundary failed: {key}")
+
+          def validate_rc1c(payload: dict, source: str, digest: str) -> None:
+              if payload.get("schema_version") != "ets.live_microsoft.rc1c_preflight_handoff.v2":
+                  raise RuntimeError("RC1C soak canary schema drifted")
+              if payload.get("source_sha") != source or payload.get("image_digest") != digest:
+                  raise RuntimeError("RC1C soak canary candidate drifted")
+              for key in (
+                  "preflight_passed",
+                  "purview_identity_token_acquired",
+                  "purview_token_roles_exact",
+                  "purview_subscriptions_list_reachable",
+                  "purview_subscription_present",
+                  "purview_checkpoint_present",
+                  "purview_last_success_present",
+                  "purview_healthy_observation",
+                  "public_evidence_safe",
+                  "graph_subscription_deferred_from_p0",
+              ):
+                  if payload.get(key) is not True:
+                      raise RuntimeError(f"RC1C soak canary predicate failed: {key}")
+              if payload.get("purview_subscription_status") != "enabled":
+                  raise RuntimeError("Purview Audit.General subscription is not enabled")
+              for key in (
+                  "purview_webhook_configured",
+                  "purview_gap_open",
+                  "purview_lease_active",
+                  "graph_durable_subscription_present",
+                  "graph_callback_ingress_external",
+                  "graph_lifecycle_configuration_present",
+                  "graph_permission_mutation_performed",
+                  "graph_subscription_operation_performed",
+                  "raw_purview_payload_retained",
+                  "customer_identifiers_retained",
+                  "reusable_credential_retained",
+                  "rc1c_live_qualified",
+                  "soak_clock_started",
+              ):
+                  if payload.get(key) is not False:
+                      raise RuntimeError(f"RC1C soak canary boundary failed: {key}")
 
           def validate_state(payload: dict) -> None:
               if payload.get("schema_version") != "ets.live_sharepoint.state_probe.v1":
                   raise RuntimeError("Gateway state probe schema drifted")
-              if payload.get("checkpoint_present") is not True:
-                  raise RuntimeError("Gateway checkpoint disappeared during soak")
-              if payload.get("last_success_present") is not True:
-                  raise RuntimeError("Gateway last-success state disappeared during soak")
+              for key in ("checkpoint_present", "last_success_present", "public_evidence_safe"):
+                  if payload.get(key) is not True:
+                      raise RuntimeError(f"Gateway state predicate failed: {key}")
               if payload.get("observation_state") != "healthy_observation":
                   raise RuntimeError("Gateway observation state is not healthy")
-              if payload.get("gap_open") is not False:
-                  raise RuntimeError("Gateway collection gap reopened during soak")
-              if payload.get("lease_active") is not False:
-                  raise RuntimeError("Gateway state probe observed an active collection lease")
+              for key in (
+                  "gap_open",
+                  "lease_active",
+                  "customer_identifiers_retained",
+                  "reusable_credential_retained",
+                  "m365_source_to_proof_claimed",
+                  "soak_clock_started",
+              ):
+                  if payload.get(key) is not False:
+                      raise RuntimeError(f"Gateway state boundary failed: {key}")
               for key in (
                   "queue_pending",
                   "queue_in_flight",
@@ -365,24 +512,6 @@ jobs:
               ):
                   if payload.get(key) != 0:
                       raise RuntimeError(f"Gateway relay queue is not clean: {key}")
-              if not isinstance(payload.get("queue_synchronized"), int) or payload[
-                  "queue_synchronized"
-              ] < 4:
-                  raise RuntimeError("Gateway synchronized relay count regressed")
-              if not isinstance(payload.get("sharepoint_local_event_count"), int) or payload[
-                  "sharepoint_local_event_count"
-              ] < 4:
-                  raise RuntimeError("Gateway durable SharePoint event count regressed")
-              if payload.get("customer_identifiers_retained") is not False:
-                  raise RuntimeError("Gateway state artifact retained customer identifiers")
-              if payload.get("reusable_credential_retained") is not False:
-                  raise RuntimeError("Gateway state artifact retained reusable credentials")
-              if payload.get("public_evidence_safe") is not True:
-                  raise RuntimeError("Gateway state artifact is not public-safe")
-              if payload.get("m365_source_to_proof_claimed") is not False:
-                  raise RuntimeError("state probe improperly made source-to-proof claim")
-              if payload.get("soak_clock_started") is not False:
-                  raise RuntimeError("child state probe improperly started soak clock")
 
           latest = latest_state()
           new_attempt = event_name == "workflow_dispatch"
@@ -391,7 +520,7 @@ jobs:
               latest is None or latest.get("status") != "active"
           ):
               skipped = {
-                  "schema_version": "ets.live_m365_soak.observation.v1",
+                  "schema_version": "ets.live_microsoft.p0_soak.observation.v1",
                   "workflow_run_id": current_run_id,
                   "status": "skipped_no_active_attempt",
                   "customer_identifiers_retained": False,
@@ -402,26 +531,15 @@ jobs:
                   json.dumps(skipped, indent=2, sort_keys=True) + "\n",
                   encoding="utf-8",
               )
-              print("No active M365 soak attempt; scheduled observation skipped.")
+              print("No active Microsoft P0 soak attempt; scheduled observation skipped.")
               raise SystemExit(0)
+
+          if new_attempt and start_confirmation != "START_72_HOUR_MICROSOFT_P0_SOAK":
+              raise RuntimeError("manual soak start confirmation did not match")
 
           if new_attempt and latest is not None and latest.get("status") == "active":
               if not restart_active:
-                  skipped = {
-                      "schema_version": "ets.live_m365_soak.observation.v1",
-                      "workflow_run_id": current_run_id,
-                      "status": "skipped_active_attempt_exists",
-                      "attempt_id": latest.get("attempt_id"),
-                      "customer_identifiers_retained": False,
-                      "reusable_credential_retained": False,
-                      "public_evidence_safe": True,
-                  }
-                  (evidence_dir / "observation.json").write_text(
-                      json.dumps(skipped, indent=2, sort_keys=True) + "\n",
-                      encoding="utf-8",
-                  )
-                  print("An active M365 soak attempt already exists; no restart requested.")
-                  raise SystemExit(0)
+                  raise RuntimeError("an active Microsoft P0 soak already exists")
               invalidated = dict(latest)
               invalidated.update(
                   {
@@ -432,20 +550,53 @@ jobs:
               )
               post_state(
                   invalidated,
-                  "M365 72-hour soak invalidated",
+                  "Microsoft P0 72-hour soak invalidated",
                   [
                       f"- attempt: `{invalidated['attempt_id']}`",
                       "- reason: `manual_restart`",
-                      "- a new attempt was explicitly requested",
+                      "- replacement attempt requires a fresh validated RC1D handoff",
                   ],
               )
 
           if new_attempt:
+              candidate = resolve_rc1d_candidate(requested_rc1d)
+              marker = requested_marker
+              if not marker or len(marker) > 128:
+                  raise RuntimeError("soak marker is outside the bounded contract")
               prior = None
-              attempt_id = f"m365-soak-{current_run_id}"
+              attempt_id = f"microsoft-p0-soak-{current_run_id}"
+              attempt_started_at = utc_now()
           else:
               prior = latest
               attempt_id = str(prior["attempt_id"])
+              candidate = {
+                  "rc1d_workflow_run_id": int(prior["rc1d_workflow_run_id"]),
+                  "release_source_sha": str(prior["release_source_sha"]),
+                  "release_image": str(prior["release_image"]),
+                  "release_image_digest": str(prior["release_image_digest"]),
+              }
+              marker = str(prior["marker"])
+              attempt_started_at = parse_time(str(prior["started_at"]))
+              if current_sha != candidate["release_source_sha"]:
+                  invalidated = dict(prior)
+                  invalidated.update(
+                      {
+                          "status": "invalidated",
+                          "invalidated_at": iso(utc_now()),
+                          "failure_class": "source_drift_after_freeze",
+                      }
+                  )
+                  post_state(
+                      invalidated,
+                      "Microsoft P0 72-hour soak invalidated",
+                      [
+                          f"- attempt: `{attempt_id}`",
+                          "- reason: `source_drift_after_freeze`",
+                          f"- frozen source: `{candidate['release_source_sha']}`",
+                          f"- current main: `{current_sha}`",
+                      ],
+                  )
+                  raise RuntimeError("main moved after Microsoft P0 candidate freeze")
               failed_run = prior_failed_coordinator_run(str(prior["started_at"]))
               if failed_run is not None:
                   invalidated = dict(prior)
@@ -459,7 +610,7 @@ jobs:
                   )
                   post_state(
                       invalidated,
-                      "M365 72-hour soak invalidated",
+                      "Microsoft P0 72-hour soak invalidated",
                       [
                           f"- attempt: `{attempt_id}`",
                           f"- failed coordinator run: `{failed_run}`",
@@ -467,7 +618,6 @@ jobs:
                       ],
                   )
                   raise RuntimeError("prior governed soak observation failed")
-
               last_success = parse_time(str(prior["last_success_at"]))
               gap_minutes = (utc_now() - last_success).total_seconds() / 60.0
               if gap_minutes > max_gap_minutes:
@@ -482,7 +632,7 @@ jobs:
                   )
                   post_state(
                       invalidated,
-                      "M365 72-hour soak invalidated",
+                      "Microsoft P0 72-hour soak invalidated",
                       [
                           f"- attempt: `{attempt_id}`",
                           f"- observed monitoring gap: **{gap_minutes:.1f} minutes**",
@@ -491,95 +641,146 @@ jobs:
                   )
                   raise RuntimeError("governed soak monitoring gap was exceeded")
 
+          source = candidate["release_source_sha"]
+          image = candidate["release_image"]
+          digest = candidate["release_image_digest"]
+          if current_sha != source:
+              raise RuntimeError("coordinator source differs from the frozen candidate")
+
           try:
-              source_run = dispatch(source_workflow)
-              wait_for_success(source_run, "M365 source-to-proof observation", 35)
+              source_run = dispatch(
+                  source_workflow,
+                  {"image_source_sha": source, "container_image": image, "marker": marker},
+              )
+              rc1b_run = dispatch(
+                  rc1b_workflow,
+                  {
+                      "image_source_sha": source,
+                      "container_image": image,
+                      "connector_instance_id": connector_instance,
+                  },
+              )
+              rc1c_run = dispatch(
+                  rc1c_workflow,
+                  {
+                      "image_source_sha": source,
+                      "container_image": image,
+                      "connector_instance_id": connector_instance,
+                  },
+              )
+              state_run = dispatch(state_workflow, {"marker": marker})
+
+              wait_for_success(source_run, "M365 source-to-proof observation", source, 40)
+              wait_for_success(rc1b_run, "RC1B read-only soak canary", source, 35)
+              wait_for_success(rc1c_run, "RC1C read-only soak canary", source, 30)
+              wait_for_success(state_run, "Gateway durable-state observation", source, 25)
+
               source_payload = download_artifact(
                   source_run["id"],
                   f"live-m365-soak-source-to-proof-{source_run['id']}",
                   "observation.json",
               )
-              validate_source_observation(source_payload)
-
-              state_run = dispatch(state_workflow, {"marker": marker})
-              wait_for_success(state_run, "Gateway durable-state observation", 20)
+              rc1b_payload = download_artifact(
+                  rc1b_run["id"],
+                  f"live-microsoft-rc1b-preflight-{rc1b_run['id']}",
+                  "result.json",
+              )
+              rc1c_payload = download_artifact(
+                  rc1c_run["id"],
+                  f"live-microsoft-rc1c-preflight-{rc1c_run['id']}",
+                  "result.json",
+              )
               state_payload = download_artifact(
                   state_run["id"],
                   f"live-sharepoint-state-boundary-{state_run['id']}",
                   "result.json",
               )
+              validate_source_observation(source_payload, source, digest, marker)
+              validate_rc1b(rc1b_payload, source, digest)
+              validate_rc1c(rc1c_payload, source, digest)
               validate_state(state_payload)
 
               completed_at = utc_now()
-              if prior is None:
-                  started_at = completed_at
-                  success_count = 1
-              else:
-                  started_at = parse_time(str(prior["started_at"]))
-                  success_count = int(prior["success_count"]) + 1
-              elapsed_hours = (completed_at - started_at).total_seconds() / 3600.0
+              success_count = 1 if prior is None else int(prior["success_count"]) + 1
+              elapsed_hours = (completed_at - attempt_started_at).total_seconds() / 3600.0
               passed = elapsed_hours >= min_hours and success_count >= min_observations
               status = "passed" if passed else "active"
-
               state = {
-                  "schema_version": "ets.live_m365_soak.state.v1",
+                  "schema_version": "ets.live_microsoft.p0_soak.state.v1",
                   "attempt_id": attempt_id,
                   "status": status,
-                  "started_at": iso(started_at),
+                  "rc1d_workflow_run_id": candidate["rc1d_workflow_run_id"],
+                  "started_at": iso(attempt_started_at),
                   "last_success_at": iso(completed_at),
                   "success_count": success_count,
                   "elapsed_hours": round(elapsed_hours, 6),
                   "min_soak_hours": min_hours,
                   "min_successful_observations": min_observations,
                   "max_gap_minutes": max_gap_minutes,
-                  "release_source_sha": expected_source,
-                  "release_image_digest": expected_digest,
+                  "release_source_sha": source,
+                  "release_image": image,
+                  "release_image_digest": digest,
                   "marker": marker,
-                  "expected_observations": expected_observations,
+                  "candidate_frozen": True,
                   "last_source_workflow_run_id": source_run["id"],
+                  "last_rc1b_workflow_run_id": rc1b_run["id"],
+                  "last_rc1c_workflow_run_id": rc1c_run["id"],
                   "last_state_workflow_run_id": state_run["id"],
                   "source_to_proof_verified": True,
+                  "rc1b_canary_verified": True,
+                  "rc1c_canary_verified": True,
                   "gateway_state_healthy": True,
+                  "graph_drive_subscriptions_deferred": True,
+                  "graph_subscription_operation_performed": False,
+                  "public_gateway_callback_configured": False,
                   "customer_identifiers_retained": False,
                   "reusable_credential_retained": False,
                   "public_evidence_safe": True,
                   "soak_clock_started": True,
               }
               title = (
-                  "M365 72-hour soak passed"
+                  "Microsoft P0 72-hour soak passed"
                   if passed
-                  else "M365 72-hour soak observation passed"
+                  else "Microsoft P0 72-hour soak observation passed"
               )
               post_state(
                   state,
                   title,
                   [
                       f"- attempt: `{attempt_id}`",
+                      f"- RC1D handoff: `{candidate['rc1d_workflow_run_id']}`",
                       f"- successful observations: **{success_count} / {min_observations} minimum**",
                       f"- elapsed: **{elapsed_hours:.2f} / {min_hours} hours minimum**",
-                      f"- source-to-proof run: `{source_run['id']}`",
+                      f"- frozen source: `{source}`",
+                      f"- frozen digest: `{digest}`",
+                      f"- SharePoint source-to-proof run: `{source_run['id']}`",
+                      f"- RC1B Entra/OneDrive canary run: `{rc1b_run['id']}`",
+                      f"- RC1C Purview read-only canary run: `{rc1c_run['id']}`",
                       f"- Gateway state run: `{state_run['id']}`",
-                      f"- frozen source: `{expected_source}`",
-                      f"- frozen digest: `{expected_digest}`",
-                      "- source-to-proof + revision + proof + duplicate + delta + scope-denial predicates: **verified**",
-                      "- Gateway checkpoint/health/gap/queue predicates: **verified**",
+                      "- Graph drive subscriptions/public callback: **absent and deferred**",
+                      "- customer identifiers/reusable credentials retained: **false**",
                   ],
               )
 
               observation = {
-                  "schema_version": "ets.live_m365_soak.observation.v1",
+                  "schema_version": "ets.live_microsoft.p0_soak.observation.v1",
                   "workflow_run_id": current_run_id,
                   "attempt_id": attempt_id,
                   "status": status,
+                  "rc1d_workflow_run_id": candidate["rc1d_workflow_run_id"],
                   "started_at": state["started_at"],
                   "observed_at": state["last_success_at"],
                   "success_count": success_count,
                   "elapsed_hours": state["elapsed_hours"],
-                  "release_source_sha": expected_source,
-                  "release_image_digest": expected_digest,
+                  "release_source_sha": source,
+                  "release_image_digest": digest,
                   "source_workflow_run_id": source_run["id"],
+                  "rc1b_workflow_run_id": rc1b_run["id"],
+                  "rc1c_workflow_run_id": rc1c_run["id"],
                   "state_workflow_run_id": state_run["id"],
                   "source_to_proof_verified": True,
+                  "rc1b_canary_verified": True,
+                  "rc1c_canary_verified": True,
                   "gateway_state_healthy": True,
                   "customer_identifiers_retained": False,
                   "reusable_credential_retained": False,
@@ -598,38 +799,32 @@ jobs:
                       {"state": "closed", "state_reason": "completed"},
                   )
                   print(
-                      f"M365 soak {attempt_id} passed after {elapsed_hours:.2f} hours "
+                      f"Microsoft P0 soak {attempt_id} passed after {elapsed_hours:.2f} hours "
                       f"and {success_count} successful observations."
                   )
               else:
                   print(
-                      f"M365 soak {attempt_id}: observation {success_count} passed; "
+                      f"Microsoft P0 soak {attempt_id}: observation {success_count} passed; "
                       f"{elapsed_hours:.2f} hours elapsed."
                   )
           except Exception as exc:
               failed_at = utc_now()
-              if prior is None:
-                  started_for_failure = failed_at
-                  success_count = 0
-              else:
-                  started_for_failure = parse_time(str(prior["started_at"]))
-                  success_count = int(prior["success_count"])
+              success_count = 0 if prior is None else int(prior["success_count"])
               failure = {
-                  "schema_version": "ets.live_m365_soak.state.v1",
+                  "schema_version": "ets.live_microsoft.p0_soak.state.v1",
                   "attempt_id": attempt_id,
                   "status": "invalidated",
-                  "started_at": iso(started_for_failure),
-                  "last_success_at": (
-                      None if prior is None else str(prior.get("last_success_at"))
-                  ),
+                  "rc1d_workflow_run_id": candidate["rc1d_workflow_run_id"],
+                  "started_at": iso(attempt_started_at),
+                  "last_success_at": None if prior is None else str(prior.get("last_success_at")),
                   "success_count": success_count,
                   "invalidated_at": iso(failed_at),
                   "failure_class": "governed_observation_failed",
                   "failure_summary": str(exc)[:240],
-                  "release_source_sha": expected_source,
-                  "release_image_digest": expected_digest,
+                  "release_source_sha": source,
+                  "release_image_digest": digest,
                   "marker": marker,
-                  "expected_observations": expected_observations,
+                  "candidate_frozen": prior is not None,
                   "customer_identifiers_retained": False,
                   "reusable_credential_retained": False,
                   "public_evidence_safe": True,
@@ -638,19 +833,19 @@ jobs:
               try:
                   post_state(
                       failure,
-                      "M365 72-hour soak invalidated",
+                      "Microsoft P0 72-hour soak invalidated",
                       [
                           f"- attempt: `{attempt_id}`",
                           "- reason: `governed_observation_failed`",
                           f"- bounded summary: `{failure['failure_summary']}`",
-                          "- a new attempt requires explicit manual workflow dispatch",
+                          "- a new attempt requires explicit RC1D-bound manual dispatch",
                       ],
                   )
               finally:
                   (evidence_dir / "observation.json").write_text(
                       json.dumps(
                           {
-                              "schema_version": "ets.live_m365_soak.observation.v1",
+                              "schema_version": "ets.live_microsoft.p0_soak.observation.v1",
                               "workflow_run_id": current_run_id,
                               "attempt_id": attempt_id,
                               "status": "invalidated",
