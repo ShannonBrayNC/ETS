@@ -75,11 +75,13 @@ def checkpoint_kind(raw):
     if not isinstance(cursor, str) or not cursor:
         return "missing_cursor"
     lowered = cursor.casefold()
-    if "$deltatoken=" in lowered or "%24deltatoken=" in lowered:
-        return "delta"
     if "$skiptoken=" in lowered or "%24skiptoken=" in lowered:
         return "page"
-    return "other"
+    # This state belongs to the dedicated SharePoint/OneDrive delta collector. Graph
+    # is allowed to return an opaque terminal delta cursor, so a valid non-page
+    # cursor is a durable delta checkpoint even when it does not expose a literal
+    # $deltatoken query parameter.
+    return "delta"
 
 
 with connect_ro("connector-runtime.db") as connection:
@@ -95,8 +97,9 @@ with connect_ro("connector-runtime.db") as connection:
     if runtime is None:
         raise RuntimeError("live connector runtime row is unavailable")
 
+marker_event_ids = set()
 with connect_ro("gateway-events.db") as connection:
-    rows = connection.execute("SELECT event_json FROM events").fetchall()
+    rows = connection.execute("SELECT event_id, event_json FROM events").fetchall()
     local_event_count = len(rows)
     sharepoint_local_count = 0
     marker_local_count = 0
@@ -118,6 +121,7 @@ with connect_ro("gateway-events.db") as connection:
         source_metadata = committed.get("metadata") if isinstance(committed, dict) else None
         if isinstance(source_metadata, dict) and source_metadata.get("name") == file_name:
             marker_local_count += 1
+            marker_event_ids.add(str(row["event_id"]))
 
 with connect_ro("gateway-sync.db") as connection:
     states = {
@@ -129,13 +133,13 @@ with connect_ro("gateway-sync.db") as connection:
     }
     marker_states = dict(states)
     queue_rows = connection.execute(
-        "SELECT payload_json, state FROM sync_queue"
+        "SELECT event_id, state FROM sync_queue"
     ).fetchall()
     for row in queue_rows:
         state = str(row["state"])
         if state in states:
             states[state] += 1
-            if marker in str(row["payload_json"]):
+            if str(row["event_id"]) in marker_event_ids:
                 marker_states[state] += 1
 
 result = {
