@@ -64,20 +64,49 @@ The protected Purview subscription mutation exercise performs an idempotent `Aud
 
 Passing fixes `rc1c_live_qualified=true` and `soak_clock_started=false`.
 
-## 7. Prove shared Gateway durable-state and recovery state
+## 7. Prove the complete Gateway baseline, fault, recovery, and post-recovery chain
 
-Before reconciliation, run the hardened protected Gateway evidence paths from the same unchanged `main` SHA and deployed image:
+All four runs below must execute from the same unchanged `main` SHA and exact deployed image. Fault injection is pre-soak only.
 
-1. `.github/workflows/live-sharepoint-state-boundary-probe.yml` must retain a healthy terminal delta checkpoint and synchronized synthetic marker with no open gap or failed marker queue state;
-2. `.github/workflows/live-sharepoint-relay-recovery.yml` must prove the bounded relay/gap recovery path, finish healthy, leave no terminal or retryable relay rows, reconcile the marker, and retain no customer identifiers, reusable credentials, event identifiers/hashes, or Core payload.
+### 7.1 Healthy baseline state
 
-These runs are evidence inputs to RC1D; they do not freeze the candidate or start soak.
+Dispatch `.github/workflows/live-sharepoint-state-boundary-probe.yml` with the bounded synthetic marker. A successful run is directly RC1D-consumable and must prove:
+
+- checkpoint present at revision >= 1;
+- terminal SharePoint/OneDrive delta checkpoint, including an opaque Graph delta cursor when Graph does not expose a literal `$deltatoken`;
+- retry count zero, no scheduled retry, healthy observation, closed gap, and inactive lease;
+- the marker exists in immutable local Gateway evidence and has at least one synchronized queue row correlated by `event_id`; and
+- global and marker pending/in-flight/retryable/terminal queue counts are all zero.
+
+### 7.2 Bounded synthetic relay fault stage
+
+Review the baseline artifact, then dispatch `.github/workflows/live-sharepoint-relay-fault-stage.yml` with:
+
+- the exact candidate `image_source_sha`;
+- the exact immutable `container_image`;
+- `baseline_state_workflow_run_id=<successful 7.1 run>`;
+- the same bounded synthetic `marker`; and
+- `mutation_confirmation=STAGE_BOUNDED_SHAREPOINT_RELAY_FAULT`.
+
+The stage refuses to mutate unless the baseline is healthy and RC1D-consumable, the live Gateway is running the exact candidate image, the marker queue row is synchronized, and that exact immutable local event has a matching immutable Core copy. It then stages exactly one synthetic marker terminal relay row and latches `collection_gap`. It does not mutate Core and retains no customer/event identifiers, event hashes, Core payload, or reusable credential in public evidence.
+
+### 7.3 Exact-stage relay/gap recovery
+
+Dispatch `.github/workflows/live-sharepoint-relay-recovery.yml` with the exact source/image, the same marker, and `fault_stage_workflow_run_id=<successful 7.2 run>`.
+
+Recovery refuses historical or unrelated failure evidence. The supplied stage run must be successful, exact-source, exact-image, and must prove exactly one staged marker terminal row with an open collection gap. The recovery engine independently revalidates immutable local/Core equality before queue reconciliation. It must reconcile the marker, close the gap, restore healthy observation/upstream state, and leave terminal/retryable relay counts at zero.
+
+### 7.4 Post-recovery healthy state
+
+Run `.github/workflows/live-sharepoint-state-boundary-probe.yml` again with the same marker. This run must independently reproduce every healthy-state predicate from 7.1 after recovery. Its run ID, not the baseline run ID, is supplied as `gateway_state_workflow_run_id` to RC1D.
+
+The four-run order is mandatory: baseline state → fault stage → recovery → post-recovery state. None of these runs freezes the candidate or starts the soak clock.
 
 ## 8. Reconcile RC1D and prepare the freeze-ready candidate
 
-Dispatch `.github/workflows/live-microsoft-rc1d-pre-soak-reconciliation.yml` with the exact Q0, RC1B, RC1C, Gateway state, and Gateway recovery workflow run IDs plus the exact immutable image.
+Dispatch `.github/workflows/live-microsoft-rc1d-pre-soak-reconciliation.yml` with the exact Q0, RC1B, RC1C, Gateway fault-stage, Gateway recovery, and post-recovery Gateway state workflow run IDs plus the exact immutable image.
 
-The gate verifies every selected run is a completed successful manual run from `main` at the reconciliation SHA and downloads only the exact retained artifacts from those runs. It fails closed on source/image drift, schema drift, incomplete supply-chain evidence, failed RC1B/RC1C predicates, unhealthy Gateway state, incomplete Gateway recovery, Graph-deferral violations, credential/customer-identifier retention, or an already-started soak clock.
+The gate verifies every selected run is a completed successful manual run from `main` at the reconciliation SHA and downloads only the exact retained artifacts from those runs. It also follows the fault-stage artifact back to its healthy baseline run and requires strict baseline → stage → recovery → post-state ordering. It fails closed on source/image drift, schema drift, incomplete supply-chain evidence, failed RC1B/RC1C predicates, an unhealthy baseline or post-recovery Gateway state, an unbounded/unverified fault stage, incomplete Gateway recovery, Graph-deferral violations, credential/customer-identifier retention, or an already-started soak clock.
 
 A successful run emits `ets.live_microsoft.rc1d_pre_soak_candidate.v1` with `pre_soak_reconciliation_passed=true`, `freeze_ready=true`, `candidate_frozen=false`, and `soak_clock_started=false`. See [`MICROSOFT_P0_RC1D_PRE_SOAK_RECONCILIATION_V1.md`](./MICROSOFT_P0_RC1D_PRE_SOAK_RECONCILIATION_V1.md).
 
@@ -94,10 +123,10 @@ Dispatch `.github/workflows/live-m365-source-to-proof-soak.yml` from that unchan
 
 The coordinator downloads the exact RC1D artifact and derives the frozen source/image from it; arbitrary workflow input cannot choose a different release candidate. The first successful governed observation records the freeze and starts the clock in #541.
 
-Hourly observations are non-destructive and cover the complete P0 family: parameterized SharePoint source-to-proof, RC1B Entra/OneDrive read-only qualification, RC1C Purview read-only qualification with `Audit.General` still enabled, and Gateway durable state. The coordinator never runs Purview subscription mutation/recovery after freeze. It requires at least 72 elapsed hours and 72 successful governed observations, with no monitoring gap over 110 minutes.
+Hourly observations are non-destructive and cover the complete P0 family: parameterized SharePoint source-to-proof, RC1B Entra/OneDrive read-only qualification, RC1C Purview read-only qualification with `Audit.General` still enabled, and Gateway durable state. The coordinator never runs Purview subscription mutation/recovery or Gateway fault staging/recovery after freeze. It requires at least 72 elapsed hours and 72 successful governed observations, with no monitoring gap over 110 minutes.
 
 See [`MICROSOFT_P0_RC1D_SOAK_V1.md`](./MICROSOFT_P0_RC1D_SOAK_V1.md) for the freeze, invalidation, privacy, and completion contract. **Do not reuse #479**; that invalidated attempt is historical only and is never resumed or counted.
 
 ## Stop conditions
 
-Stop without advancing if `main` moves, the image or Q0 evidence differs, any identity/permission set drifts, the Gateway is public or outside its qualified replica posture, Graph lifecycle state/configuration appears, a protected gate fails, recovery evidence is incomplete, or public evidence would retain a credential or customer identifier.
+Stop without advancing if `main` moves, the image or Q0 evidence differs, any identity/permission set drifts, the Gateway is public or outside its qualified replica posture, Graph lifecycle state/configuration appears, a protected gate fails, the Gateway baseline/fault/recovery/post-state chain is incomplete or out of order, recovery evidence is incomplete, or public evidence would retain a credential or customer identifier.
