@@ -85,7 +85,18 @@ A successful run emits `ets.live_microsoft.rc1d_pre_soak_candidate.v1` with `pre
 
 Only after RC1D passes may the exact source/image pair named by its retained artifact be frozen. Any source, image, identity, permission, configuration, or out-of-contract state mutation after freeze invalidates the candidate and requires a new Q0 and RC1D reconciliation.
 
-Start a new governed 72-hour attempt only from that frozen candidate. The soak uses non-destructive canaries only. Do not reuse the invalidated #479 attempt; it is never resumed or counted.
+Dispatch `.github/workflows/live-m365-source-to-proof-soak.yml` from that unchanged `main` SHA with:
+
+- `rc1d_workflow_run_id=<successful RC1D run>`;
+- `start_confirmation=START_72_HOUR_MICROSOFT_P0_SOAK`;
+- the bounded synthetic `marker`; and
+- `restart_active=false` for a normal new attempt.
+
+The coordinator downloads the exact RC1D artifact and derives the frozen source/image from it; arbitrary workflow input cannot choose a different release candidate. The first successful governed observation records the freeze and starts the clock in #541.
+
+Hourly observations are non-destructive and cover the complete P0 family: parameterized SharePoint source-to-proof, RC1B Entra/OneDrive read-only qualification, RC1C Purview read-only qualification with `Audit.General` still enabled, and Gateway durable state. The coordinator never runs Purview subscription mutation/recovery after freeze. It requires at least 72 elapsed hours and 72 successful governed observations, with no monitoring gap over 110 minutes.
+
+See [`MICROSOFT_P0_RC1D_SOAK_V1.md`](./MICROSOFT_P0_RC1D_SOAK_V1.md) for the freeze, invalidation, privacy, and completion contract. The invalidated #479 attempt is never resumed or counted.
 
 ## Stop conditions
 
