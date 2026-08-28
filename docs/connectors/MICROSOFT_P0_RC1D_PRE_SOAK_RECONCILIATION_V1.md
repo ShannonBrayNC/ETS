@@ -19,24 +19,40 @@ Every selected workflow run must be a completed successful `workflow_dispatch` r
 1. the hosted Azure Q0 image publication manifest, SPDX SBOM reference, vulnerability gate, and immutable private-ACR digest;
 2. the RC1B protected handoff with `rc1b_live_qualified=true` and the users/groups/OneDrive cursor, tombstone, replay, throttling, expired-cursor, and evidence-loss matrix passing;
 3. the RC1C protected `Audit.General` recovery handoff with `rc1c_live_qualified=true`, final subscription state `enabled`, and the polling/restart/fault matrix passing;
-4. the hardened Gateway durable-state probe with a healthy terminal delta checkpoint and synchronized synthetic marker; and
-5. the protected Gateway relay/gap recovery with recovery passing, healthy post-recovery state, no terminal/retryable relay rows, and the synthetic marker reconciled.
+4. a bounded Gateway relay fault-stage artifact that itself binds to a successful healthy Gateway baseline state probe, proves the synchronized synthetic marker already has an immutable Core copy, and stages exactly one marker terminal row plus `collection_gap` without mutating Core;
+5. the exact-stage Gateway relay/gap recovery artifact, bound to item 4, proving exactly that staged marker was verified and reconciled, the collection gap closed, and healthy state restored; and
+6. a fresh post-recovery Gateway durable-state probe proving a healthy terminal delta checkpoint, synchronized synthetic marker, closed gap, zero retry state, and no failed relay rows.
 
-The Q0 manifest, RC1B handoff, RC1C handoff, Gateway state run metadata, and Gateway recovery run metadata must all bind to the same exact source. Q0, RC1B, and RC1C must bind to the exact same `registry/repository@sha256:<digest>` image.
+The mandatory Gateway ordering is baseline state → fault stage → recovery → post-recovery state. The baseline run ID is retained by the fault-stage artifact; the stage, recovery, and post-state run IDs are explicit RC1D inputs.
+
+The Q0 manifest, RC1B handoff, RC1C handoff, Gateway fault stage, Gateway recovery, and post-recovery Gateway state run metadata must all bind to the same exact source. Q0, RC1B, RC1C, fault-stage, and recovery evidence bind to the exact same `registry/repository@sha256:<digest>` image.
+
+## Gateway state semantics
+
+A successful protected Gateway state probe is directly RC1D-consumable. It must fail closed unless all of these are true:
+
+- a checkpoint exists with revision >= 1 and last-success state present;
+- the checkpoint is the terminal delta checkpoint for the dedicated SharePoint/OneDrive delta collector; Graph may represent that cursor opaquely rather than exposing a literal `$deltatoken` string;
+- retry count is zero, no next attempt is scheduled, observation is `healthy_observation`, `gap_open=false`, and no lease is active;
+- the bounded marker exists in immutable local evidence and a synchronized queue row is correlated to it by immutable `event_id`; and
+- pending, in-flight, retryable, and terminal counts are zero globally and for the marker.
+
+This keeps the standalone probe and RC1D contract identical: a green state probe cannot later be rejected by RC1D for a stricter interpretation of the same retained fields.
 
 ## Fail-closed boundaries
 
 RC1D rejects any candidate when:
 
 - a selected workflow run is not successful, manual, on `main`, at the exact candidate SHA, or from the expected workflow file;
+- the Gateway baseline → fault stage → recovery → post-state run order is invalid;
 - any retained artifact is missing or has an unexpected schema;
 - Q0 did not pass the fixable HIGH/CRITICAL vulnerability policy or does not retain the expected SPDX SBOM reference;
 - RC1B or RC1C is not live-qualified;
 - a required replay, cursor, tombstone, throttle, gap, evidence-loss, revision-conflict, or restart predicate is false;
 - the Purview subscription does not finish enabled;
-- the Gateway durable-state probe is not at a healthy terminal delta checkpoint;
-- the Gateway marker has pending, in-flight, retryable, or terminal relay state;
-- the protected Gateway recovery did not mutate only the intended Gateway queue/runtime state and finish healthy;
+- the Gateway baseline or post-recovery state is not at a healthy terminal delta checkpoint with synchronized marker evidence;
+- the fault stage did not begin from a healthy queue, did not prove the immutable Core marker copy, staged more or less than one marker terminal row, introduced retryable state, retained sensitive identifiers, or mutated Core;
+- the recovery artifact is not bound to the supplied exact fault-stage run, does not recover exactly one marker, leaves terminal/retryable rows, fails to close the gap, or fails to restore healthy observation/upstream state;
 - Graph drive subscriptions are configured or operated, a public callback is present, a broader Graph file permission is claimed, a reusable credential is retained, or a customer identifier is retained; or
 - any selected evidence claims the soak clock already started.
 
@@ -45,10 +61,12 @@ RC1D rejects any candidate when:
 A passing run emits `ets.live_microsoft.rc1d_pre_soak_candidate.v1` with:
 
 - exact candidate source SHA and immutable image digest;
-- all source workflow run IDs;
+- all Q0, RC1B, RC1C, Gateway baseline, fault-stage, recovery, and post-state workflow run IDs;
 - Q0 supply-chain gate status;
 - RC1B and RC1C live-qualified status;
-- Gateway durable-state and recovery status;
+- `gateway_fault_stage_verified=true`;
+- `gateway_recovery_verified=true`;
+- `gateway_durable_state_healthy=true` for the post-recovery state;
 - the ADR-009 Graph deferral boundary;
 - credential/customer-identifier retention false;
 - `pre_soak_reconciliation_passed=true`;
@@ -60,6 +78,6 @@ A passing run emits `ets.live_microsoft.rc1d_pre_soak_candidate.v1` with:
 
 ## Next action
 
-After a passing RC1D reconciliation, freeze only the exact source/image pair named by that artifact. Any source, image, identity, permission, configuration, Gateway state mutation outside the governed freeze procedure, or other candidate change requires a new Q0 publication and a new RC1D reconciliation.
+After a passing RC1D reconciliation, freeze only the exact source/image pair named by that artifact. Fault injection and recovery are complete before freeze and must not run during the soak. Any source, image, identity, permission, configuration, Gateway state mutation outside the governed freeze procedure, or other candidate change requires a new Q0 publication and a new RC1D reconciliation.
 
 Only after the freeze record is retained may the new governed 72-hour soak begin. The invalidated #479 attempt is never resumed or counted.

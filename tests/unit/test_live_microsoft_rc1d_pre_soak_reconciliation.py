@@ -25,32 +25,35 @@ def test_rc1d_reconciliation_is_manual_protected_and_exact_source_bound() -> Non
     assert "cancel-in-progress: false" in WORKFLOW
 
 
-def test_rc1d_requires_all_five_release_evidence_families() -> None:
+def test_rc1d_requires_all_six_release_evidence_families() -> None:
     for name in (
         "q0_workflow_run_id:",
         "rc1b_workflow_run_id:",
         "rc1c_workflow_run_id:",
-        "gateway_state_workflow_run_id:",
+        "gateway_fault_stage_workflow_run_id:",
         "gateway_recovery_workflow_run_id:",
+        "gateway_state_workflow_run_id:",
     ):
         assert name in WORKFLOW
     for workflow in (
         ".github/workflows/hosted-azure-q0-image.yml",
         ".github/workflows/live-microsoft-rc1b-preflight.yml",
         ".github/workflows/live-microsoft-rc1c-subscription-recovery.yml",
-        ".github/workflows/live-sharepoint-state-boundary-probe.yml",
+        ".github/workflows/live-sharepoint-relay-fault-stage.yml",
         ".github/workflows/live-sharepoint-relay-recovery.yml",
+        ".github/workflows/live-sharepoint-state-boundary-probe.yml",
     ):
         assert workflow in WORKFLOW
     for artifact in (
         "host-az-q0-image-",
         "live-microsoft-rc1b-preflight-",
         "live-microsoft-rc1c-subscription-recovery-",
-        "live-sharepoint-state-boundary-",
+        "live-sharepoint-relay-fault-stage-",
         "live-sharepoint-relay-recovery-",
+        "live-sharepoint-state-boundary-",
     ):
         assert artifact in WORKFLOW
-    assert WORKFLOW.count("actions/download-artifact@v8.0.1") == 5
+    assert WORKFLOW.count("actions/download-artifact@v8.0.1") == 6
 
 
 def test_rc1d_reconciliation_requires_supply_chain_and_live_qualification_predicates() -> None:
@@ -67,13 +70,19 @@ def test_rc1d_reconciliation_requires_supply_chain_and_live_qualification_predic
         '"rc1c_live_qualified"',
         '"restart_state_recovered"',
         '"subscription_final_state") != "enabled"',
-        '"ets.live_sharepoint.state_probe.v1"',
-        '"checkpoint_kind") != "delta"',
-        '"observation_state") != "healthy_observation"',
+        '"ets.live_sharepoint.relay_fault_stage.v1"',
+        '"stage_pass"',
+        '"terminal_total_after") != 1',
+        '"marker_terminal_after") != 1',
         '"ets.live_sharepoint.relay_recovery.v1"',
         '"recovery_pass"',
         '"queue_terminal_after") != 0',
-        '"marker_reconciled", 0) < 1',
+        'recovery.get("marker_reconciled") != 1',
+        '"ets.live_sharepoint.state_probe.v1"',
+        '"checkpoint_kind") != "delta"',
+        '"observation_state") != "healthy_observation"',
+        'gateway.get("marker_queue_synchronized", 0) < 1',
+        "baseline_state_run < fault_stage_run < recovery_run < state_run",
     ):
         assert term in WORKFLOW
 
@@ -101,6 +110,9 @@ def test_rc1d_preserves_graph_deferral_nonretention_and_no_soak_boundary() -> No
 
 def test_rc1d_success_manifest_is_freeze_ready_not_frozen() -> None:
     assert '"schema_version": "ets.live_microsoft.rc1d_pre_soak_candidate.v1"' in WORKFLOW
+    assert '"gateway_fault_stage_verified": True' in WORKFLOW
+    assert '"gateway_recovery_verified": True' in WORKFLOW
+    assert '"gateway_durable_state_healthy": True' in WORKFLOW
     assert '"pre_soak_reconciliation_passed": True' in WORKFLOW
     assert '"freeze_ready": True' in WORKFLOW
     assert '"candidate_frozen": False' in WORKFLOW

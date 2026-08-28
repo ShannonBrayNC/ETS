@@ -15,12 +15,16 @@ on:
         description: Successful RC1C subscription recovery workflow run ID
         required: true
         type: string
-      gateway_state_workflow_run_id:
-        description: Successful hardened Gateway durable-state probe workflow run ID
+      gateway_fault_stage_workflow_run_id:
+        description: Successful bounded Gateway relay fault-stage workflow run ID
         required: true
         type: string
       gateway_recovery_workflow_run_id:
         description: Successful protected Gateway relay/gap recovery workflow run ID
+        required: true
+        type: string
+      gateway_state_workflow_run_id:
+        description: Successful post-recovery hardened Gateway durable-state probe workflow run ID
         required: true
         type: string
       container_image:
@@ -48,8 +52,9 @@ jobs:
       Q0_RUN_ID: ${{ inputs.q0_workflow_run_id }}
       RC1B_RUN_ID: ${{ inputs.rc1b_workflow_run_id }}
       RC1C_RUN_ID: ${{ inputs.rc1c_workflow_run_id }}
-      GATEWAY_STATE_RUN_ID: ${{ inputs.gateway_state_workflow_run_id }}
+      GATEWAY_FAULT_STAGE_RUN_ID: ${{ inputs.gateway_fault_stage_workflow_run_id }}
       GATEWAY_RECOVERY_RUN_ID: ${{ inputs.gateway_recovery_workflow_run_id }}
+      GATEWAY_STATE_RUN_ID: ${{ inputs.gateway_state_workflow_run_id }}
       CONTAINER_IMAGE: ${{ inputs.container_image }}
       ACR_NAME: etsq1a352eb89
 
@@ -74,8 +79,9 @@ jobs:
               "Q0_RUN_ID",
               "RC1B_RUN_ID",
               "RC1C_RUN_ID",
-              "GATEWAY_STATE_RUN_ID",
+              "GATEWAY_FAULT_STAGE_RUN_ID",
               "GATEWAY_RECOVERY_RUN_ID",
+              "GATEWAY_STATE_RUN_ID",
           ):
               if re.fullmatch(r"[1-9][0-9]*", os.environ[name]) is None:
                   raise SystemExit(name + " is not a canonical workflow run ID")
@@ -84,7 +90,7 @@ jobs:
           if re.fullmatch(rf"{registry}/[^@\s]+@sha256:[0-9a-f]{{64}}", image) is None:
               raise SystemExit("container_image is outside the exact private-ACR digest boundary")
           PY
-          mkdir -p evidence/rc1d/{q0,rc1b,rc1c,gateway-state,gateway-recovery}
+          mkdir -p evidence/rc1d/{q0,rc1b,rc1c,gateway-fault-stage,gateway-recovery,gateway-state}
 
       - name: Validate source workflow run identities
         shell: bash
@@ -121,8 +127,9 @@ jobs:
           validate_run "$Q0_RUN_ID" ".github/workflows/hosted-azure-q0-image.yml"
           validate_run "$RC1B_RUN_ID" ".github/workflows/live-microsoft-rc1b-preflight.yml"
           validate_run "$RC1C_RUN_ID" ".github/workflows/live-microsoft-rc1c-subscription-recovery.yml"
-          validate_run "$GATEWAY_STATE_RUN_ID" ".github/workflows/live-sharepoint-state-boundary-probe.yml"
+          validate_run "$GATEWAY_FAULT_STAGE_RUN_ID" ".github/workflows/live-sharepoint-relay-fault-stage.yml"
           validate_run "$GATEWAY_RECOVERY_RUN_ID" ".github/workflows/live-sharepoint-relay-recovery.yml"
+          validate_run "$GATEWAY_STATE_RUN_ID" ".github/workflows/live-sharepoint-state-boundary-probe.yml"
 
       - name: Download exact Q0 evidence
         uses: actions/download-artifact@v8.0.1
@@ -151,14 +158,14 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ inputs.rc1c_workflow_run_id }}
 
-      - name: Download exact Gateway state evidence
+      - name: Download exact Gateway fault-stage evidence
         uses: actions/download-artifact@v8.0.1
         with:
-          name: live-sharepoint-state-boundary-${{ inputs.gateway_state_workflow_run_id }}
-          path: evidence/rc1d/gateway-state
+          name: live-sharepoint-relay-fault-stage-${{ inputs.gateway_fault_stage_workflow_run_id }}
+          path: evidence/rc1d/gateway-fault-stage
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: ${{ inputs.gateway_state_workflow_run_id }}
+          run-id: ${{ inputs.gateway_fault_stage_workflow_run_id }}
 
       - name: Download exact Gateway recovery evidence
         uses: actions/download-artifact@v8.0.1
@@ -168,6 +175,15 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ inputs.gateway_recovery_workflow_run_id }}
+
+      - name: Download exact post-recovery Gateway state evidence
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: live-sharepoint-state-boundary-${{ inputs.gateway_state_workflow_run_id }}
+          path: evidence/rc1d/gateway-state
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.gateway_state_workflow_run_id }}
 
       - name: Reconcile evidence and emit freeze-ready candidate manifest
         shell: bash
@@ -200,12 +216,16 @@ jobs:
           q0 = load("evidence/rc1d/q0/manifest.json")
           rc1b = load("evidence/rc1d/rc1b/result.json")
           rc1c = load("evidence/rc1d/rc1c/result.json")
-          gateway = load("evidence/rc1d/gateway-state/result.json")
+          fault_stage = load("evidence/rc1d/gateway-fault-stage/result.json")
           recovery = load("evidence/rc1d/gateway-recovery/result.json")
+          gateway = load("evidence/rc1d/gateway-state/result.json")
 
           source = os.environ["GITHUB_SHA"]
           image = os.environ["CONTAINER_IMAGE"]
           digest = image.rsplit("@", 1)[1]
+          fault_stage_run = int(os.environ["GATEWAY_FAULT_STAGE_RUN_ID"])
+          recovery_run = int(os.environ["GATEWAY_RECOVERY_RUN_ID"])
+          state_run = int(os.environ["GATEWAY_STATE_RUN_ID"])
 
           if q0.get("schema_version") != "ets.host_az.q0_image.v1":
               raise SystemExit("Q0 manifest schema changed")
@@ -260,43 +280,88 @@ jobs:
           if rc1c.get("subscription_final_state") != "enabled":
               raise SystemExit("RC1C subscription did not finish enabled")
 
-          if gateway.get("schema_version") != "ets.live_sharepoint.state_probe.v1":
-              raise SystemExit("Gateway state evidence schema changed")
-          require_true(gateway, ("checkpoint_present", "last_success_present", "public_evidence_safe"), "Gateway state")
-          require_false(gateway, (
-              "gap_open", "next_attempt_present", "lease_active", "customer_identifiers_retained",
-              "reusable_credential_retained", "m365_source_to_proof_claimed", "soak_clock_started",
-          ), "Gateway state")
-          if gateway.get("checkpoint_kind") != "delta" or gateway.get("observation_state") != "healthy_observation":
-              raise SystemExit("Gateway durable state is not at a healthy terminal delta checkpoint")
-          revision = gateway.get("checkpoint_revision")
-          if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
-              raise SystemExit("Gateway durable-state checkpoint revision is invalid")
-          if gateway.get("marker_queue_synchronized", 0) < 1:
-              raise SystemExit("Gateway state probe did not observe synchronized marker evidence")
-          for key in (
-              "marker_queue_pending", "marker_queue_in_flight",
-              "marker_queue_retryable_failure", "marker_queue_terminal_failure",
-          ):
-              if gateway.get(key) != 0:
-                  raise SystemExit("Gateway marker queue is not fully reconciled: " + key)
+          if fault_stage.get("schema_version") != "ets.live_sharepoint.relay_fault_stage.v1":
+              raise SystemExit("Gateway fault-stage evidence schema changed")
+          if fault_stage.get("workflow_run_id") != fault_stage_run:
+              raise SystemExit("Gateway fault-stage workflow identity changed")
+          if fault_stage.get("source_sha") != source or fault_stage.get("image_digest") != digest:
+              raise SystemExit("Gateway fault-stage evidence differs from the exact candidate")
+          require_true(fault_stage, (
+              "checkpoint_present_before", "last_success_present_before", "observation_healthy_before",
+              "stage_pass", "queue_state_mutated", "connector_runtime_mutated",
+              "gap_open_after", "observation_collection_gap_after", "public_evidence_safe",
+          ), "Gateway fault stage")
+          require_false(fault_stage, (
+              "gap_open_before", "lease_active_before", "lease_active_after", "core_state_mutated",
+              "customer_identifiers_retained", "event_identifiers_retained", "event_hashes_retained",
+              "core_payload_retained", "reusable_credential_retained",
+              "m365_source_to_proof_claimed", "soak_clock_started",
+          ), "Gateway fault stage")
+          if fault_stage.get("queue_failures_before") != 0:
+              raise SystemExit("Gateway fault stage did not start from a healthy queue")
+          if fault_stage.get("core_present_match") != 1:
+              raise SystemExit("Gateway fault stage did not prove the immutable Core marker copy")
+          if fault_stage.get("terminal_total_after") != 1 or fault_stage.get("marker_terminal_after") != 1:
+              raise SystemExit("Gateway fault stage did not isolate exactly one marker terminal row")
+          if fault_stage.get("retryable_after") != 0:
+              raise SystemExit("Gateway fault stage introduced retryable relay state")
+          baseline_state_run = fault_stage.get("baseline_state_workflow_run_id")
+          if not isinstance(baseline_state_run, int) or isinstance(baseline_state_run, bool) or baseline_state_run < 1:
+              raise SystemExit("Gateway fault-stage baseline state run identity is invalid")
 
           if recovery.get("schema_version") != "ets.live_sharepoint.relay_recovery.v1":
               raise SystemExit("Gateway recovery evidence schema changed")
+          if recovery.get("workflow_run_id") != recovery_run:
+              raise SystemExit("Gateway recovery workflow identity changed")
+          if recovery.get("source_sha") != source or recovery.get("image_digest") != digest:
+              raise SystemExit("Gateway recovery evidence differs from the exact candidate")
+          if recovery.get("fault_stage_workflow_run_id") != fault_stage_run:
+              raise SystemExit("Gateway recovery is not bound to the supplied fault-stage run")
           require_true(recovery, (
-              "checkpoint_present_after", "last_success_present_after", "observation_healthy_after",
-              "upstream_healthy_after", "recovery_pass", "public_evidence_safe",
-              "queue_state_mutated", "connector_runtime_mutated",
+              "checkpoint_present_after", "last_success_present_after", "gap_open_before",
+              "observation_healthy_after", "upstream_healthy_after", "recovery_pass",
+              "public_evidence_safe", "queue_state_mutated", "connector_runtime_mutated",
           ), "Gateway recovery")
           require_false(recovery, (
               "gap_open_after", "core_state_mutated", "customer_identifiers_retained",
               "event_identifiers_retained", "event_hashes_retained", "core_payload_retained",
               "reusable_credential_retained", "m365_source_to_proof_claimed", "soak_clock_started",
           ), "Gateway recovery")
+          if recovery.get("terminal_total_before") != 1 or recovery.get("terminal_marker_count") != 1:
+              raise SystemExit("Gateway recovery was outside the single staged marker boundary")
+          if recovery.get("core_present_match") != 1 or recovery.get("queue_reconciled") != 1:
+              raise SystemExit("Gateway recovery did not verify and reconcile exactly one staged marker")
+          if recovery.get("marker_reconciled") != 1:
+              raise SystemExit("Gateway recovery did not reconcile the staged marker")
           if recovery.get("queue_terminal_after") != 0 or recovery.get("queue_retryable_after") != 0:
               raise SystemExit("Gateway recovery left failed relay rows")
-          if recovery.get("marker_reconciled", 0) < 1:
-              raise SystemExit("Gateway recovery did not reconcile the synthetic marker")
+
+          if gateway.get("schema_version") != "ets.live_sharepoint.state_probe.v1":
+              raise SystemExit("post-recovery Gateway state evidence schema changed")
+          require_true(gateway, ("checkpoint_present", "last_success_present", "public_evidence_safe"), "post-recovery Gateway state")
+          require_false(gateway, (
+              "gap_open", "next_attempt_present", "lease_active", "customer_identifiers_retained",
+              "reusable_credential_retained", "m365_source_to_proof_claimed", "soak_clock_started",
+          ), "post-recovery Gateway state")
+          if gateway.get("checkpoint_kind") != "delta" or gateway.get("observation_state") != "healthy_observation":
+              raise SystemExit("post-recovery Gateway state is not a healthy terminal delta checkpoint")
+          revision = gateway.get("checkpoint_revision")
+          if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+              raise SystemExit("post-recovery Gateway checkpoint revision is invalid")
+          if gateway.get("retry_count") != 0:
+              raise SystemExit("post-recovery Gateway retry state is not clear")
+          if gateway.get("marker_local_event_count", 0) < 1 or gateway.get("marker_queue_synchronized", 0) < 1:
+              raise SystemExit("post-recovery Gateway state did not observe synchronized marker evidence")
+          for key in (
+              "queue_pending", "queue_in_flight", "queue_retryable_failure", "queue_terminal_failure",
+              "marker_queue_pending", "marker_queue_in_flight",
+              "marker_queue_retryable_failure", "marker_queue_terminal_failure",
+          ):
+              if gateway.get(key) != 0:
+                  raise SystemExit("post-recovery Gateway queue is not fully reconciled: " + key)
+
+          if not (baseline_state_run < fault_stage_run < recovery_run < state_run):
+              raise SystemExit("Gateway baseline -> fault stage -> recovery -> post-state run order is invalid")
 
           output = {
               "schema_version": "ets.live_microsoft.rc1d_pre_soak_candidate.v1",
@@ -307,15 +372,18 @@ jobs:
               "q0_workflow_run_id": int(os.environ["Q0_RUN_ID"]),
               "rc1b_workflow_run_id": int(os.environ["RC1B_RUN_ID"]),
               "rc1c_workflow_run_id": int(os.environ["RC1C_RUN_ID"]),
-              "gateway_state_workflow_run_id": int(os.environ["GATEWAY_STATE_RUN_ID"]),
-              "gateway_recovery_workflow_run_id": int(os.environ["GATEWAY_RECOVERY_RUN_ID"]),
+              "gateway_baseline_state_workflow_run_id": baseline_state_run,
+              "gateway_fault_stage_workflow_run_id": fault_stage_run,
+              "gateway_recovery_workflow_run_id": recovery_run,
+              "gateway_state_workflow_run_id": state_run,
               "q0_vulnerability_gate_passed": True,
               "q0_sbom_retained": True,
               "q0_provenance_required": True,
               "rc1b_live_qualified": True,
               "rc1c_live_qualified": True,
-              "gateway_durable_state_healthy": True,
+              "gateway_fault_stage_verified": True,
               "gateway_recovery_verified": True,
+              "gateway_durable_state_healthy": True,
               "graph_drive_subscriptions_deferred": True,
               "graph_subscription_configuration_absent": True,
               "graph_subscription_operation_performed": False,
@@ -360,8 +428,10 @@ jobs:
           print("- Q0 vulnerability/SBOM/provenance boundary: **passed**")
           print("- RC1B live qualification and fault matrix: **passed**")
           print("- RC1C subscription recovery and polling matrix: **passed**")
-          print("- Gateway durable-state probe: **healthy and reconciled**")
+          print("- Gateway healthy baseline: **passed**")
+          print("- bounded synthetic Gateway relay fault stage: **passed**")
           print("- Gateway relay/gap recovery: **passed**")
+          print("- post-recovery Gateway durable-state probe: **healthy and reconciled**")
           print("- Graph drive subscriptions: **deferred from P0**")
           print("- Graph subscription operation/public callback: **absent**")
           print("- reusable credentials/customer identifiers retained: **false**")
