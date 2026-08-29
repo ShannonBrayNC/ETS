@@ -475,6 +475,12 @@ class HostedMicrosoftGatewayRuntime:
                 last_success_at_utc=now,
                 now=now,
             )
+            if (
+                instance.connector_id == _PURVIEW_CONNECTOR_ID
+                and runtime.gap_open
+                and not result.has_more
+            ):
+                self.store.reconcile_gap(instance.instance_id, now=now)
             return
         if result.code in {
             "retryable_error",

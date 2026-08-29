@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -280,6 +281,16 @@ def test_runtime_composes_four_durable_workers_without_identity_fallback(
     for worker in runtime.workers:
         monkeypatch.setattr(worker.runner, "run", run_composed_worker)
 
+    purview_instance = next(
+        instance
+        for instance in runtime.instances
+        if instance.connector_id == "microsoft.purview.activity"
+    )
+    runtime.store.mark_gap(
+        purview_instance.instance_id,
+        now=datetime(2026, 8, 29, 0, 0, tzinfo=UTC),
+    )
+
     runtime.run_cycle()
 
     assert set(collected) == {instance.instance_id for instance in runtime.instances}
@@ -287,6 +298,9 @@ def test_runtime_composes_four_durable_workers_without_identity_fallback(
         runtime.store.get_runtime(instance.instance_id).checkpoint_revision == 1
         for instance in runtime.instances
     )
+    purview_runtime = runtime.store.get_runtime(purview_instance.instance_id)
+    assert purview_runtime.gap_open is False
+    assert purview_runtime.observation_state == "healthy_observation"
 
     class FailingGraphLifecycle:
         def run_once(self, *, now: object) -> None:

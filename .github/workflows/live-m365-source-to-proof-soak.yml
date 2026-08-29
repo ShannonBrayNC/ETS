@@ -337,7 +337,7 @@ jobs:
                   f"live-microsoft-rc1d-pre-soak-reconciliation-{run_id}",
                   "reconciliation.json",
               )
-              if payload.get("schema_version") != "ets.live_microsoft.rc1d_pre_soak_candidate.v1":
+              if payload.get("schema_version") != "ets.live_microsoft.rc1d_pre_soak_candidate.v2":
                   raise RuntimeError("RC1D freeze-ready artifact schema drifted")
               for key in (
                   "q0_vulnerability_gate_passed",
@@ -345,6 +345,7 @@ jobs:
                   "q0_provenance_required",
                   "rc1b_live_qualified",
                   "rc1c_live_qualified",
+                  "rc1c_live_health_verified",
                   "gateway_durable_state_healthy",
                   "gateway_recovery_verified",
                   "graph_drive_subscriptions_deferred",
