@@ -78,9 +78,10 @@ def test_soak_is_hourly_issue_backed_and_rc1d_gated() -> None:
     assert "ETS_MICROSOFT_P0_SOAK_STATE_B64=" in SOAK
     assert "rc1d_workflow_run_id:" in SOAK
     assert "START_72_HOUR_MICROSOFT_P0_SOAK" in SOAK
-    assert "ets.live_microsoft.rc1d_pre_soak_candidate.v1" in SOAK
+    assert "ets.live_microsoft.rc1d_pre_soak_candidate.v2" in SOAK
     assert '"pre_soak_reconciliation_passed"' in SOAK
     assert '"freeze_ready"' in SOAK
+    assert '"rc1c_live_health_verified"' in SOAK
     assert '"candidate_frozen"' in SOAK
     assert '"soak_clock_started"' in SOAK
     assert "source_drift_after_freeze" in SOAK
