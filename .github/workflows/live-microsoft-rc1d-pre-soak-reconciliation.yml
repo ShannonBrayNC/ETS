@@ -15,6 +15,10 @@ on:
         description: Successful RC1C subscription recovery workflow run ID
         required: true
         type: string
+      rc1c_live_health_workflow_run_id:
+        description: Successful post-recovery RC1C read-only live-health preflight run ID
+        required: true
+        type: string
       gateway_fault_stage_workflow_run_id:
         description: Successful bounded Gateway relay fault-stage workflow run ID
         required: true
@@ -52,6 +56,7 @@ jobs:
       Q0_RUN_ID: ${{ inputs.q0_workflow_run_id }}
       RC1B_RUN_ID: ${{ inputs.rc1b_workflow_run_id }}
       RC1C_RUN_ID: ${{ inputs.rc1c_workflow_run_id }}
+      RC1C_LIVE_HEALTH_RUN_ID: ${{ inputs.rc1c_live_health_workflow_run_id }}
       GATEWAY_FAULT_STAGE_RUN_ID: ${{ inputs.gateway_fault_stage_workflow_run_id }}
       GATEWAY_RECOVERY_RUN_ID: ${{ inputs.gateway_recovery_workflow_run_id }}
       GATEWAY_STATE_RUN_ID: ${{ inputs.gateway_state_workflow_run_id }}
@@ -79,6 +84,7 @@ jobs:
               "Q0_RUN_ID",
               "RC1B_RUN_ID",
               "RC1C_RUN_ID",
+              "RC1C_LIVE_HEALTH_RUN_ID",
               "GATEWAY_FAULT_STAGE_RUN_ID",
               "GATEWAY_RECOVERY_RUN_ID",
               "GATEWAY_STATE_RUN_ID",
@@ -90,7 +96,7 @@ jobs:
           if re.fullmatch(rf"{registry}/[^@\s]+@sha256:[0-9a-f]{{64}}", image) is None:
               raise SystemExit("container_image is outside the exact private-ACR digest boundary")
           PY
-          mkdir -p evidence/rc1d/{q0,rc1b,rc1c,gateway-fault-stage,gateway-recovery,gateway-state}
+          mkdir -p evidence/rc1d/{q0,rc1b,rc1c,rc1c-live-health,gateway-fault-stage,gateway-recovery,gateway-state}
 
       - name: Validate source workflow run identities
         shell: bash
@@ -127,9 +133,29 @@ jobs:
           validate_run "$Q0_RUN_ID" ".github/workflows/hosted-azure-q0-image.yml"
           validate_run "$RC1B_RUN_ID" ".github/workflows/live-microsoft-rc1b-preflight.yml"
           validate_run "$RC1C_RUN_ID" ".github/workflows/live-microsoft-rc1c-subscription-recovery.yml"
+          validate_run "$RC1C_LIVE_HEALTH_RUN_ID" ".github/workflows/live-microsoft-rc1c-preflight.yml"
           validate_run "$GATEWAY_FAULT_STAGE_RUN_ID" ".github/workflows/live-sharepoint-relay-fault-stage.yml"
           validate_run "$GATEWAY_RECOVERY_RUN_ID" ".github/workflows/live-sharepoint-relay-recovery.yml"
           validate_run "$GATEWAY_STATE_RUN_ID" ".github/workflows/live-sharepoint-state-boundary-probe.yml"
+
+          recovery_payload="$RUNNER_TEMP/rc1c-recovery-run.json"
+          health_payload="$RUNNER_TEMP/rc1c-live-health-run.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RC1C_RUN_ID" > "$recovery_payload"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RC1C_LIVE_HEALTH_RUN_ID" > "$health_payload"
+          python - "$recovery_payload" "$health_payload" <<'PY'
+          import json
+          import sys
+          from datetime import datetime
+          from pathlib import Path
+
+          recovery = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          health = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          recovery_created = datetime.fromisoformat(str(recovery["created_at"]).replace("Z", "+00:00"))
+          health_created = datetime.fromisoformat(str(health["created_at"]).replace("Z", "+00:00"))
+          if health_created <= recovery_created:
+              raise SystemExit("RC1C live-health preflight did not occur after subscription recovery")
+          PY
+          rm -f "$recovery_payload" "$health_payload"
 
       - name: Download exact Q0 evidence
         uses: actions/download-artifact@v8.0.1
@@ -149,7 +175,7 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ inputs.rc1b_workflow_run_id }}
 
-      - name: Download exact RC1C evidence
+      - name: Download exact RC1C recovery evidence
         uses: actions/download-artifact@v8.0.1
         with:
           name: live-microsoft-rc1c-subscription-recovery-${{ inputs.rc1c_workflow_run_id }}
@@ -157,6 +183,15 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ inputs.rc1c_workflow_run_id }}
+
+      - name: Download exact post-recovery RC1C live-health evidence
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: live-microsoft-rc1c-preflight-${{ inputs.rc1c_live_health_workflow_run_id }}
+          path: evidence/rc1d/rc1c-live-health
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.rc1c_live_health_workflow_run_id }}
 
       - name: Download exact Gateway fault-stage evidence
         uses: actions/download-artifact@v8.0.1
@@ -216,6 +251,7 @@ jobs:
           q0 = load("evidence/rc1d/q0/manifest.json")
           rc1b = load("evidence/rc1d/rc1b/result.json")
           rc1c = load("evidence/rc1d/rc1c/result.json")
+          rc1c_health = load("evidence/rc1d/rc1c-live-health/result.json")
           fault_stage = load("evidence/rc1d/gateway-fault-stage/result.json")
           recovery = load("evidence/rc1d/gateway-recovery/result.json")
           gateway = load("evidence/rc1d/gateway-state/result.json")
@@ -223,6 +259,7 @@ jobs:
           source = os.environ["GITHUB_SHA"]
           image = os.environ["CONTAINER_IMAGE"]
           digest = image.rsplit("@", 1)[1]
+          rc1c_health_run = int(os.environ["RC1C_LIVE_HEALTH_RUN_ID"])
           fault_stage_run = int(os.environ["GATEWAY_FAULT_STAGE_RUN_ID"])
           recovery_run = int(os.environ["GATEWAY_RECOVERY_RUN_ID"])
           state_run = int(os.environ["GATEWAY_STATE_RUN_ID"])
@@ -279,6 +316,37 @@ jobs:
           ), "RC1C")
           if rc1c.get("subscription_final_state") != "enabled":
               raise SystemExit("RC1C subscription did not finish enabled")
+
+          if rc1c_health.get("schema_version") != "ets.live_microsoft.rc1c_preflight_handoff.v2":
+              raise SystemExit("RC1C live-health handoff schema changed")
+          if rc1c_health.get("workflow_run_id") != rc1c_health_run:
+              raise SystemExit("RC1C live-health workflow identity changed")
+          if rc1c_health.get("source_sha") != source or rc1c_health.get("image_digest") != digest:
+              raise SystemExit("RC1C live-health evidence differs from the exact candidate")
+          require_true(rc1c_health, (
+              "preflight_passed", "purview_identity_token_acquired",
+              "purview_token_audience_exact", "purview_token_tenant_exact",
+              "purview_token_application_exact", "purview_token_roles_exact",
+              "purview_subscriptions_list_reachable", "purview_subscription_present",
+              "purview_instance_present", "purview_checkpoint_present",
+              "purview_last_success_present", "purview_healthy_observation",
+              "public_evidence_safe", "graph_subscription_deferred_from_p0",
+          ), "RC1C live health")
+          require_false(rc1c_health, (
+              "purview_webhook_configured", "purview_gap_open", "purview_lease_active",
+              "graph_durable_subscription_present", "graph_callback_ingress_external",
+              "graph_lifecycle_configuration_present", "graph_permission_mutation_performed",
+              "graph_subscription_operation_performed", "raw_purview_payload_retained",
+              "customer_identifiers_retained", "reusable_credential_retained",
+              "rc1c_live_qualified", "soak_clock_started",
+          ), "RC1C live health")
+          if rc1c_health.get("purview_subscription_status") != "enabled":
+              raise SystemExit("RC1C live-health subscription is not enabled")
+          live_revision = rc1c_health.get("purview_checkpoint_revision")
+          if not isinstance(live_revision, int) or isinstance(live_revision, bool) or live_revision < 1:
+              raise SystemExit("RC1C live-health checkpoint revision is invalid")
+          if rc1c_health.get("purview_retry_count") != 0:
+              raise SystemExit("RC1C live-health retry state is not clear")
 
           if fault_stage.get("schema_version") != "ets.live_sharepoint.relay_fault_stage.v1":
               raise SystemExit("Gateway fault-stage evidence schema changed")
@@ -364,7 +432,7 @@ jobs:
               raise SystemExit("Gateway baseline -> fault stage -> recovery -> post-state run order is invalid")
 
           output = {
-              "schema_version": "ets.live_microsoft.rc1d_pre_soak_candidate.v1",
+              "schema_version": "ets.live_microsoft.rc1d_pre_soak_candidate.v2",
               "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
               "candidate_source_sha": source,
               "candidate_image": image,
@@ -372,6 +440,7 @@ jobs:
               "q0_workflow_run_id": int(os.environ["Q0_RUN_ID"]),
               "rc1b_workflow_run_id": int(os.environ["RC1B_RUN_ID"]),
               "rc1c_workflow_run_id": int(os.environ["RC1C_RUN_ID"]),
+              "rc1c_live_health_workflow_run_id": rc1c_health_run,
               "gateway_baseline_state_workflow_run_id": baseline_state_run,
               "gateway_fault_stage_workflow_run_id": fault_stage_run,
               "gateway_recovery_workflow_run_id": recovery_run,
@@ -381,6 +450,7 @@ jobs:
               "q0_provenance_required": True,
               "rc1b_live_qualified": True,
               "rc1c_live_qualified": True,
+              "rc1c_live_health_verified": True,
               "gateway_fault_stage_verified": True,
               "gateway_recovery_verified": True,
               "gateway_durable_state_healthy": True,
@@ -428,6 +498,7 @@ jobs:
           print("- Q0 vulnerability/SBOM/provenance boundary: **passed**")
           print("- RC1B live qualification and fault matrix: **passed**")
           print("- RC1C subscription recovery and polling matrix: **passed**")
+          print("- post-recovery RC1C live durable state: **healthy and reconciled**")
           print("- Gateway healthy baseline: **passed**")
           print("- bounded synthetic Gateway relay fault stage: **passed**")
           print("- Gateway relay/gap recovery: **passed**")
