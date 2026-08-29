@@ -25,11 +25,12 @@ def test_rc1d_reconciliation_is_manual_protected_and_exact_source_bound() -> Non
     assert "cancel-in-progress: false" in WORKFLOW
 
 
-def test_rc1d_requires_all_six_release_evidence_families() -> None:
+def test_rc1d_requires_all_seven_release_evidence_families() -> None:
     for name in (
         "q0_workflow_run_id:",
         "rc1b_workflow_run_id:",
         "rc1c_workflow_run_id:",
+        "rc1c_live_health_workflow_run_id:",
         "gateway_fault_stage_workflow_run_id:",
         "gateway_recovery_workflow_run_id:",
         "gateway_state_workflow_run_id:",
@@ -39,6 +40,7 @@ def test_rc1d_requires_all_six_release_evidence_families() -> None:
         ".github/workflows/hosted-azure-q0-image.yml",
         ".github/workflows/live-microsoft-rc1b-preflight.yml",
         ".github/workflows/live-microsoft-rc1c-subscription-recovery.yml",
+        ".github/workflows/live-microsoft-rc1c-preflight.yml",
         ".github/workflows/live-sharepoint-relay-fault-stage.yml",
         ".github/workflows/live-sharepoint-relay-recovery.yml",
         ".github/workflows/live-sharepoint-state-boundary-probe.yml",
@@ -48,12 +50,13 @@ def test_rc1d_requires_all_six_release_evidence_families() -> None:
         "host-az-q0-image-",
         "live-microsoft-rc1b-preflight-",
         "live-microsoft-rc1c-subscription-recovery-",
+        "live-microsoft-rc1c-preflight-",
         "live-sharepoint-relay-fault-stage-",
         "live-sharepoint-relay-recovery-",
         "live-sharepoint-state-boundary-",
     ):
         assert artifact in WORKFLOW
-    assert WORKFLOW.count("actions/download-artifact@v8.0.1") == 6
+    assert WORKFLOW.count("actions/download-artifact@v8.0.1") == 7
 
 
 def test_rc1d_reconciliation_requires_supply_chain_and_live_qualification_predicates() -> None:
@@ -70,6 +73,11 @@ def test_rc1d_reconciliation_requires_supply_chain_and_live_qualification_predic
         '"rc1c_live_qualified"',
         '"restart_state_recovered"',
         '"subscription_final_state") != "enabled"',
+        '"ets.live_microsoft.rc1c_preflight_handoff.v2"',
+        '"purview_healthy_observation"',
+        '"purview_gap_open"',
+        '"purview_retry_count"',
+        "RC1C live-health preflight did not occur after subscription recovery",
         '"ets.live_sharepoint.relay_fault_stage.v1"',
         '"stage_pass"',
         '"terminal_total_after") != 1',
@@ -103,13 +111,17 @@ def test_rc1d_preserves_graph_deferral_nonretention_and_no_soak_boundary() -> No
     ):
         assert term in WORKFLOW
     assert "Graph drive subscriptions" in DOC
+    assert "post-recovery" in DOC
+    assert "live Purview" in DOC
     assert "freeze_ready=true" in DOC
     assert "candidate_frozen=false" in DOC
     assert "soak_clock_started=false" in DOC
 
 
 def test_rc1d_success_manifest_is_freeze_ready_not_frozen() -> None:
-    assert '"schema_version": "ets.live_microsoft.rc1d_pre_soak_candidate.v1"' in WORKFLOW
+    assert '"schema_version": "ets.live_microsoft.rc1d_pre_soak_candidate.v2"' in WORKFLOW
+    assert '"rc1c_live_health_workflow_run_id": rc1c_health_run' in WORKFLOW
+    assert '"rc1c_live_health_verified": True' in WORKFLOW
     assert '"gateway_fault_stage_verified": True' in WORKFLOW
     assert '"gateway_recovery_verified": True' in WORKFLOW
     assert '"gateway_durable_state_healthy": True' in WORKFLOW
