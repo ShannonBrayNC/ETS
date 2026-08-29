@@ -140,13 +140,14 @@ def test_rc1d_requires_ordered_baseline_stage_recovery_post_state_chain() -> Non
 
 
 def test_release_sequence_places_fault_injection_before_freeze_and_soak() -> None:
-    baseline = SEQUENCE.index("### 7.1 Healthy baseline state")
-    stage = SEQUENCE.index("### 7.2 Bounded synthetic relay fault stage")
-    recovery = SEQUENCE.index("### 7.3 Exact-stage relay/gap recovery")
-    post_state = SEQUENCE.index("### 7.4 Post-recovery healthy state")
-    rc1d = SEQUENCE.index("## 8. Reconcile RC1D")
-    soak = SEQUENCE.index("## 9. Freeze and start the new governed 72-hour soak")
-    assert baseline < stage < recovery < post_state < rc1d < soak
+    live_purview = SEQUENCE.index("## 7. Prove post-recovery live Purview durable-state health")
+    baseline = SEQUENCE.index("### 8.1 Healthy baseline state")
+    stage = SEQUENCE.index("### 8.2 Bounded synthetic relay fault stage")
+    recovery = SEQUENCE.index("### 8.3 Exact-stage relay/gap recovery")
+    post_state = SEQUENCE.index("### 8.4 Post-recovery healthy state")
+    rc1d = SEQUENCE.index("## 9. Reconcile RC1D")
+    soak = SEQUENCE.index("## 10. Freeze and start the new governed 72-hour soak")
+    assert live_purview < baseline < stage < recovery < post_state < rc1d < soak
     assert "STAGE_BOUNDED_SHAREPOINT_RELAY_FAULT" in SEQUENCE
     assert "Fault injection is pre-soak only." in SEQUENCE
     assert (
