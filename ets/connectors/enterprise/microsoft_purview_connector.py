@@ -51,6 +51,7 @@ PURVIEW_SOURCE_SYSTEM = "microsoft.purview.activity"
 PURVIEW_EVENT_TYPE = "microsoft.purview.audit.observed"
 PURVIEW_TRANSFORMATION_PROFILE = "ets.connector.microsoft-purview.common-schema.v1"
 PURVIEW_MAX_SERVICE_FIELDS = 32
+PURVIEW_MAX_DISCOVERY_WINDOW_SECONDS = 86_400
 
 _ALLOWED_SETTINGS = frozenset(
     {
@@ -304,9 +305,13 @@ class MicrosoftPurviewActivityAdapter:
             prior = None if checkpoint is None else checkpoint.observed_through_utc
             if prior is None:
                 start = now - timedelta(seconds=settings.poll_window_seconds)
+                window_end = now
             else:
                 start = prior - timedelta(seconds=settings.overlap_seconds)
-            window_end = now
+                window_end = min(
+                    now,
+                    prior + timedelta(seconds=settings.poll_window_seconds),
+                )
             page = client.list_content(
                 settings.content_type,
                 start_time_utc=start,
@@ -328,12 +333,13 @@ class MicrosoftPurviewActivityAdapter:
             cursor=page.next_page_uri,
             observed_through_utc=window_end,
         )
+        temporal_backlog = window_end < now
         return ConnectorCollectionResultV1(
             schema_version="ets.connector.collection_result.v1",
             code="ok",
             records=tuple(records),
             checkpoint=proposed,
-            has_more=page.next_page_uri is not None,
+            has_more=page.next_page_uri is not None or temporal_backlog,
             message="Purview audit content retrieved and minimized",
         )
 
@@ -375,11 +381,19 @@ def _settings(instance: ConnectorInstanceV1) -> MicrosoftPurviewConnectorSetting
         1,
         16 * 1024 * 1024,
     )
-    poll_window = _integer(instance.settings.get("poll_window_seconds", 3600), 60, 86400)
+    poll_window = _integer(
+        instance.settings.get("poll_window_seconds", 3600),
+        60,
+        PURVIEW_MAX_DISCOVERY_WINDOW_SECONDS,
+    )
     overlap = _integer(instance.settings.get("overlap_seconds", 300), 0, 3600)
     if overlap >= poll_window:
         raise ConnectorConfigurationError(
             "Purview overlap_seconds must be below poll_window_seconds"
+        )
+    if poll_window + overlap > PURVIEW_MAX_DISCOVERY_WINDOW_SECONDS:
+        raise ConnectorConfigurationError(
+            "Purview poll_window_seconds plus overlap_seconds exceeds the 24-hour source bound"
         )
     return MicrosoftPurviewConnectorSettings(
         management_profile_id=profile_id,
