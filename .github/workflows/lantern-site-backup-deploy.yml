@@ -54,68 +54,41 @@ jobs:
           test -f "$SITE_SOURCE/index.html"
           test -f "$SITE_SOURCE/styles.css"
 
-      - name: Create or reuse isolated static-site storage
+      - name: Resolve existing isolated static-site storage
         id: storage
         shell: bash
         run: |
           set -euo pipefail
           suffix="$(printf '%s' "${EXPECTED_SUBSCRIPTION_ID}:${RESOURCE_GROUP}:lantern" | sha256sum | cut -c1-13)"
           storage="lanternbkp${suffix}"
-          if ! az storage account show --name "$storage" --resource-group "$RESOURCE_GROUP" >/dev/null 2>&1; then
-            az storage account create \
-              --name "$storage" \
-              --resource-group "$RESOURCE_GROUP" \
-              --location eastus \
-              --sku Standard_LRS \
-              --kind StorageV2 \
-              --https-only true \
-              --min-tls-version TLS1_2 \
-              --allow-blob-public-access false \
-              --tags workload=lantern-site purpose=business-continuity owner=echomedia \
-              --output none
-          fi
-          az storage account update \
-            --name "$storage" \
-            --resource-group "$RESOURCE_GROUP" \
-            --https-only true \
-            --min-tls-version TLS1_2 \
-            --allow-blob-public-access false \
-            --output none
+          az storage account show --name "$storage" --resource-group "$RESOURCE_GROUP" --output none
+          endpoint="$(az storage account show --name "$storage" --resource-group "$RESOURCE_GROUP" --query primaryEndpoints.web -o tsv)"
+          test -n "$endpoint"
           echo "storage=$storage" >> "$GITHUB_OUTPUT"
+          echo "endpoint=$endpoint" >> "$GITHUB_OUTPUT"
 
-      - name: Enable static website and publish captured continuity copy
+      - name: Publish captured continuity copy with Entra data-plane auth
         id: publish
         shell: bash
         env:
           STORAGE_ACCOUNT: ${{ steps.storage.outputs.storage }}
+          ENDPOINT: ${{ steps.storage.outputs.endpoint }}
         run: |
           set -euo pipefail
-          key="$(az storage account keys list --account-name "$STORAGE_ACCOUNT" --resource-group "$RESOURCE_GROUP" --query '[0].value' -o tsv)"
-          test -n "$key"
-          echo "::add-mask::$key"
-          az storage blob service-properties update \
-            --account-name "$STORAGE_ACCOUNT" \
-            --account-key "$key" \
-            --static-website true \
-            --index-document index.html \
-            --404-document 404.html \
-            --output none
           az storage blob delete-batch \
             --account-name "$STORAGE_ACCOUNT" \
-            --account-key "$key" \
+            --auth-mode login \
             --source '$web' \
             --output none || true
           az storage blob upload-batch \
             --account-name "$STORAGE_ACCOUNT" \
-            --account-key "$key" \
+            --auth-mode login \
             --destination '$web' \
             --source "$SITE_SOURCE" \
             --overwrite true \
             --output none
-          unset key
-          endpoint="$(az storage account show --name "$STORAGE_ACCOUNT" --resource-group "$RESOURCE_GROUP" --query primaryEndpoints.web -o tsv)"
-          test -n "$endpoint"
-          echo "endpoint=$endpoint" >> "$GITHUB_OUTPUT"
+          test -n "$ENDPOINT"
+          echo "endpoint=$ENDPOINT" >> "$GITHUB_OUTPUT"
 
       - name: Verify public backup endpoint
         id: verify
@@ -129,6 +102,9 @@ jobs:
             if body="$(curl --fail --silent --show-error --max-time 10 "$ENDPOINT")"; then
               printf '%s' "$body" | grep -Fq 'Evidence you can prove.'
               printf '%s' "$body" | grep -Fq 'ETS TECHNICAL BRIEFING'
+              printf '%s' "$body" | grep -Fq 'M365 CONNECTOR'
+              printf '%s' "$body" | grep -Fq 'PROVENANCE'
+              printf '%s' "$body" | grep -Fq 'AI WITNESS'
               printf '%s' "$body" | grep -Fq 'shannon.bray@echomedia.ai'
               printf '%s' "$body" | grep -Fq 'shannonbraync@outlook.com'
               break
@@ -142,8 +118,9 @@ jobs:
             echo "- Endpoint: $ENDPOINT"
             echo "- Resource group: $RESOURCE_GROUP"
             echo "- Storage account: ${{ steps.storage.outputs.storage }}"
+            echo '- M365 Connector, Provenance, and the complete ETS platform showcase were verified in the public endpoint.'
             echo '- Primary ETS Core/Gateway resources were not modified.'
-            echo '- Contact form routes through the visitor email client to both designated Lantern addresses.'
+            echo '- Contact and early-access forms route through the visitor email client to the designated Lantern addresses.'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish deployment evidence to GitHub issue
@@ -179,14 +156,14 @@ jobs:
 
           - Source commit: `{os.environ['GITHUB_SHA']}`
           - Resource group: `{os.environ['RESOURCE_GROUP']}`
-          - Storage account: `{os.environ.get('STORAGE_ACCOUNT') or '(not created)'}`
+          - Storage account: `{os.environ.get('STORAGE_ACCOUNT') or '(not resolved)'}`
           - Azure endpoint: {endpoint or '(not available)'}
           - Storage step: `{os.environ.get('STORAGE_OUTCOME', 'unknown')}`
           - Publish step: `{os.environ.get('PUBLISH_OUTCOME', 'unknown')}`
           - Endpoint verification: `{os.environ.get('VERIFY_OUTCOME', 'unknown')}`
           - Recorded: `{datetime.now(timezone.utc).isoformat()}`
 
-          A `VERIFIED` status means the workflow fetched the public Azure endpoint and confirmed the Lantern hero, ETS Technical Briefing, and both designated partner-inquiry addresses. Primary ETS Core and Gateway resources are outside this static-site deployment path.
+          A `VERIFIED` status means the workflow fetched the public Azure endpoint and confirmed the Lantern hero, ETS Technical Briefing, M365 Connector, Provenance, AI Witness, and both designated partner-inquiry addresses. Primary ETS Core and Gateway resources are outside this static-site deployment path.
           '''
           headers = {
               'Authorization': f'Bearer {token}',
