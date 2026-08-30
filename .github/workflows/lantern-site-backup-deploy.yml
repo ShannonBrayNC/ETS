@@ -99,14 +99,16 @@ jobs:
           set -euo pipefail
           test -n "$ENDPOINT"
           for attempt in $(seq 1 12); do
-            if body="$(curl --fail --silent --show-error --max-time 10 "$ENDPOINT")"; then
+            if body="$(curl --fail --silent --show-error --max-time 10 "$ENDPOINT")" \
+              && app="$(curl --fail --silent --show-error --max-time 10 "${ENDPOINT}app.js")"; then
               printf '%s' "$body" | grep -Fq 'Evidence you can prove.'
               printf '%s' "$body" | grep -Fq 'ETS TECHNICAL BRIEFING'
-              printf '%s' "$body" | grep -Fq 'M365 CONNECTOR'
-              printf '%s' "$body" | grep -Fq 'PROVENANCE'
-              printf '%s' "$body" | grep -Fq 'AI WITNESS'
               printf '%s' "$body" | grep -Fq 'shannon.bray@echomedia.ai'
               printf '%s' "$body" | grep -Fq 'shannonbraync@outlook.com'
+              printf '%s' "$app" | grep -Fq 'M365 Connector'
+              printf '%s' "$app" | grep -Fq 'Provenance'
+              printf '%s' "$app" | grep -Fq 'AI WITNESS'
+              printf '%s' "$app" | grep -Fq 'THE COMPLETE ETS PLATFORM'
               break
             fi
             if [ "$attempt" -eq 12 ]; then exit 1; fi
@@ -118,7 +120,7 @@ jobs:
             echo "- Endpoint: $ENDPOINT"
             echo "- Resource group: $RESOURCE_GROUP"
             echo "- Storage account: ${{ steps.storage.outputs.storage }}"
-            echo '- M365 Connector, Provenance, and the complete ETS platform showcase were verified in the public endpoint.'
+            echo '- M365 Connector, Provenance, and the complete ETS platform showcase were verified in the public endpoint assets.'
             echo '- Primary ETS Core/Gateway resources were not modified.'
             echo '- Contact and early-access forms route through the visitor email client to the designated Lantern addresses.'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -163,7 +165,7 @@ jobs:
           - Endpoint verification: `{os.environ.get('VERIFY_OUTCOME', 'unknown')}`
           - Recorded: `{datetime.now(timezone.utc).isoformat()}`
 
-          A `VERIFIED` status means the workflow fetched the public Azure endpoint and confirmed the Lantern hero, ETS Technical Briefing, M365 Connector, Provenance, AI Witness, and both designated partner-inquiry addresses. Primary ETS Core and Gateway resources are outside this static-site deployment path.
+          A `VERIFIED` status means the workflow fetched the public Azure endpoint and confirmed the Lantern hero, ETS Technical Briefing, deployed app.js showcase for M365 Connector, Provenance, AI Witness, complete ETS platform, and both designated partner-inquiry addresses. Primary ETS Core and Gateway resources are outside this static-site deployment path.
           '''
           headers = {
               'Authorization': f'Bearer {token}',
