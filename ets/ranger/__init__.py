@@ -1,5 +1,11 @@
 """ETS Ranger research contracts and simulation-safe reference components."""
 
+from ets.ranger.lifecycle import (
+    RangerLifecycleController,
+    RangerLifecycleEvent,
+    RangerLifecycleKind,
+    RangerLifecycleResult,
+)
 from ets.ranger.mobility import (
     AuthorizationResult,
     ClockQuality,
@@ -36,6 +42,10 @@ __all__ = [
     "MotionReason",
     "MotionVector",
     "RangerDriveCommand",
+    "RangerLifecycleController",
+    "RangerLifecycleEvent",
+    "RangerLifecycleKind",
+    "RangerLifecycleResult",
     "RangerMobilityController",
     "RangerMobilityEvent",
     "RangerMobilityPolicy",
