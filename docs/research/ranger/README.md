@@ -117,7 +117,9 @@ All figures are planning hypotheses requiring vendor/BOM research before procure
 Current implementation increment:
 
 - [R0.1 fail-closed mobility safety architecture](safety-architecture.md)
+- [R0.1 deterministic mobility simulation](simulation.md)
 - [ADR 0001: single fail-closed motion boundary](adr/0001-single-fail-closed-motion-boundary.md)
+- [ADR 0002: evidence-shaped mobility simulation](adr/0002-evidence-shaped-mobility-simulation.md)
 
 ### R0.1 — Mobility
 - safe rolling chassis

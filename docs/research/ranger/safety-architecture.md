@@ -20,6 +20,10 @@ This is the first Ranger consequence-custody boundary:
 It does not claim that a motor obeyed the command or that the vehicle physically moved.
 Those facts require separate actuator-response and result observations in later gates.
 
+The R0.1 [deterministic mobility simulator](simulation.md) now supplies explicitly simulated
+adapter-response and derived-result records for this boundary. Those records exercise linkage
+and replay semantics but do not satisfy physical actuator-response or outcome requirements.
+
 ## Scope
 
 The R0.1 reference implementation covers:
