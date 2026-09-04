@@ -228,15 +228,34 @@ class SQLiteRangerCustodyStore:
                 raise RangerCustodyIntegrityError("SQLite integrity_check failed")
             rows = self._connection.execute(
                 """
-                SELECT record_json
+                SELECT
+                    custody_sequence,
+                    source_schema_version,
+                    source_event_id,
+                    record_digest_sha256,
+                    record_json
                 FROM ranger_custody_records
                 ORDER BY custody_sequence ASC
                 """
             ).fetchall()
         try:
-            return [RangerCustodyRecord.model_validate_json(row["record_json"]) for row in rows]
+            records = [
+                RangerCustodyRecord.model_validate_json(row["record_json"])
+                for row in rows
+            ]
         except ValidationError as exc:
             raise RangerCustodyIntegrityError("stored Ranger custody record is invalid") from exc
+        for row, record in zip(rows, records, strict=True):
+            if (
+                int(row["custody_sequence"]) != record.custody_sequence
+                or str(row["source_schema_version"]) != record.source_schema_version
+                or str(row["source_event_id"]) != record.source_event_id
+                or str(row["record_digest_sha256"]) != record.record_digest_sha256
+            ):
+                raise RangerCustodyIntegrityError(
+                    "stored Ranger custody index metadata does not match signed record"
+                )
+        return records
 
 
 class RangerCustodyLedger:
@@ -312,6 +331,13 @@ class RangerCustodyLedger:
             or source.boot_id != self.boot_id
         ):
             raise RangerCustodyError("Ranger source record identity mismatch")
+
+        source_identity = (source.schema_version, _source_event_id(source))
+        if any(
+            (record.source_schema_version, record.source_event_id) == source_identity
+            for record in self._records
+        ):
+            raise RangerCustodyConflict("duplicate Ranger source event identity")
 
         sequence = len(self._records) + 1
         previous = (

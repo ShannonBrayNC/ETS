@@ -220,6 +220,27 @@ def test_corrupted_retained_json_is_rejected_on_recovery(tmp_path) -> None:
     corrupted.close()
 
 
+def test_tampered_unsigned_index_metadata_is_rejected_on_recovery(tmp_path) -> None:
+    path = tmp_path / "custody.sqlite3"
+    key = _key_hex()
+    store, ledger = _ledger(path, key)
+    ledger.append(_source_events()[0])
+    store.close()
+
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "UPDATE ranger_custody_records SET source_event_id = ? WHERE custody_sequence = 1",
+        ("forged-index-identity",),
+    )
+    connection.commit()
+    connection.close()
+
+    corrupted = SQLiteRangerCustodyStore(path)
+    with pytest.raises(RangerCustodyIntegrityError, match="index metadata"):
+        corrupted.list_records()
+    corrupted.close()
+
+
 def test_recovery_rejects_wrong_key_or_chain_identity(tmp_path) -> None:
     path = tmp_path / "custody.sqlite3"
     key = _key_hex()
