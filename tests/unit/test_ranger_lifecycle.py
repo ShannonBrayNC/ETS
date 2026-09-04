@@ -56,8 +56,15 @@ def _command(sequence: int = 1) -> RangerDriveCommand:
 
 def test_arm_and_disarm_are_first_class_evidence() -> None:
     lifecycle = _controller()
-    armed = lifecycle.arm(now_monotonic_ns=1_000_000_000, occurred_at_utc=NOW, hardware_estop_asserted=False)
-    disarmed = lifecycle.disarm(now_monotonic_ns=1_100_000_000, occurred_at_utc=NOW)
+    armed = lifecycle.arm(
+        now_monotonic_ns=1_000_000_000,
+        occurred_at_utc=NOW,
+        hardware_estop_asserted=False,
+    )
+    disarmed = lifecycle.disarm(
+        now_monotonic_ns=1_100_000_000,
+        occurred_at_utc=NOW,
+    )
     assert armed.lifecycle_kind is RangerLifecycleKind.ARM
     assert armed.mode_before is SafetyMode.DISARMED
     assert armed.mode_after is SafetyMode.ARMED
@@ -70,7 +77,11 @@ def test_arm_and_disarm_are_first_class_evidence() -> None:
 
 def test_estop_assertion_links_lifecycle_to_mobility_event() -> None:
     lifecycle = _controller()
-    lifecycle.arm(now_monotonic_ns=1_000_000_000, occurred_at_utc=NOW, hardware_estop_asserted=False)
+    lifecycle.arm(
+        now_monotonic_ns=1_000_000_000,
+        occurred_at_utc=NOW,
+        hardware_estop_asserted=False,
+    )
     mobility, transition = lifecycle.authorize(
         _command(),
         received_monotonic_ns=1_010_000_000,
@@ -83,14 +94,24 @@ def test_estop_assertion_links_lifecycle_to_mobility_event() -> None:
     assert transition.mode_after is SafetyMode.ESTOP_LATCHED
     assert transition.reason_code is MotionReason.HARDWARE_ESTOP_ASSERTED
     assert transition.source_mobility_event_id == mobility.event_id
-    assert transition.source_mobility_event_digest_sha256 == canonical_sha256(mobility.model_dump(mode="json"))
+    assert transition.source_mobility_event_digest_sha256 == canonical_sha256(
+        mobility.model_dump(mode="json")
+    )
     assert transition.physical_estop_state_proven is False
 
 
 def test_estop_reset_returns_to_disarmed_and_requires_rearm() -> None:
     lifecycle = _controller()
-    lifecycle.arm(now_monotonic_ns=1_000_000_000, occurred_at_utc=NOW, hardware_estop_asserted=True)
-    reset = lifecycle.reset_estop(now_monotonic_ns=1_100_000_000, occurred_at_utc=NOW, hardware_estop_asserted=False)
+    lifecycle.arm(
+        now_monotonic_ns=1_000_000_000,
+        occurred_at_utc=NOW,
+        hardware_estop_asserted=True,
+    )
+    reset = lifecycle.reset_estop(
+        now_monotonic_ns=1_100_000_000,
+        occurred_at_utc=NOW,
+        hardware_estop_asserted=False,
+    )
     assert reset.lifecycle_kind is RangerLifecycleKind.ESTOP_RESET
     assert reset.mode_before is SafetyMode.ESTOP_LATCHED
     assert reset.mode_after is SafetyMode.DISARMED
@@ -99,15 +120,31 @@ def test_estop_reset_returns_to_disarmed_and_requires_rearm() -> None:
 
 def test_estop_reset_fails_while_hardware_input_is_asserted() -> None:
     lifecycle = _controller()
-    lifecycle.arm(now_monotonic_ns=1_000_000_000, occurred_at_utc=NOW, hardware_estop_asserted=True)
+    lifecycle.arm(
+        now_monotonic_ns=1_000_000_000,
+        occurred_at_utc=NOW,
+        hardware_estop_asserted=True,
+    )
     with pytest.raises(RangerSafetyInputError, match="released before reset"):
-        lifecycle.reset_estop(now_monotonic_ns=1_100_000_000, occurred_at_utc=NOW, hardware_estop_asserted=True)
+        lifecycle.reset_estop(
+            now_monotonic_ns=1_100_000_000,
+            occurred_at_utc=NOW,
+            hardware_estop_asserted=True,
+        )
 
 
 def test_watchdog_timeout_is_first_class_transition_evidence() -> None:
     lifecycle = _controller()
-    lifecycle.arm(now_monotonic_ns=1_000_000_000, occurred_at_utc=NOW, hardware_estop_asserted=False)
-    mobility, transition = lifecycle.enforce_watchdog(now_monotonic_ns=1_500_000_000, observed_at_utc=NOW, hardware_estop_asserted=False)
+    lifecycle.arm(
+        now_monotonic_ns=1_000_000_000,
+        occurred_at_utc=NOW,
+        hardware_estop_asserted=False,
+    )
+    mobility, transition = lifecycle.enforce_watchdog(
+        now_monotonic_ns=1_500_000_000,
+        observed_at_utc=NOW,
+        hardware_estop_asserted=False,
+    )
     assert mobility is not None
     assert transition is not None
     assert transition.lifecycle_kind is RangerLifecycleKind.WATCHDOG_TIMEOUT
@@ -119,9 +156,21 @@ def test_watchdog_timeout_is_first_class_transition_evidence() -> None:
 
 def test_timeout_recovery_requires_explicit_rearm_and_is_distinct() -> None:
     lifecycle = _controller()
-    lifecycle.arm(now_monotonic_ns=1_000_000_000, occurred_at_utc=NOW, hardware_estop_asserted=False)
-    lifecycle.enforce_watchdog(now_monotonic_ns=1_500_000_000, observed_at_utc=NOW, hardware_estop_asserted=False)
-    recovery = lifecycle.arm(now_monotonic_ns=1_600_000_000, occurred_at_utc=NOW, hardware_estop_asserted=False)
+    lifecycle.arm(
+        now_monotonic_ns=1_000_000_000,
+        occurred_at_utc=NOW,
+        hardware_estop_asserted=False,
+    )
+    lifecycle.enforce_watchdog(
+        now_monotonic_ns=1_500_000_000,
+        observed_at_utc=NOW,
+        hardware_estop_asserted=False,
+    )
+    recovery = lifecycle.arm(
+        now_monotonic_ns=1_600_000_000,
+        occurred_at_utc=NOW,
+        hardware_estop_asserted=False,
+    )
     assert recovery.lifecycle_kind is RangerLifecycleKind.TIMEOUT_RECOVERY_REARM
     assert recovery.mode_before is SafetyMode.COMMAND_TIMEOUT
     assert recovery.mode_after is SafetyMode.ARMED
@@ -130,8 +179,16 @@ def test_timeout_recovery_requires_explicit_rearm_and_is_distinct() -> None:
 
 def test_no_lifecycle_event_when_watchdog_does_not_change_authority() -> None:
     lifecycle = _controller()
-    lifecycle.arm(now_monotonic_ns=1_000_000_000, occurred_at_utc=NOW, hardware_estop_asserted=False)
-    mobility, transition = lifecycle.enforce_watchdog(now_monotonic_ns=1_100_000_000, observed_at_utc=NOW, hardware_estop_asserted=False)
+    lifecycle.arm(
+        now_monotonic_ns=1_000_000_000,
+        occurred_at_utc=NOW,
+        hardware_estop_asserted=False,
+    )
+    mobility, transition = lifecycle.enforce_watchdog(
+        now_monotonic_ns=1_100_000_000,
+        observed_at_utc=NOW,
+        hardware_estop_asserted=False,
+    )
     assert mobility is None
     assert transition is None
 
@@ -139,4 +196,8 @@ def test_no_lifecycle_event_when_watchdog_does_not_change_authority() -> None:
 def test_lifecycle_wall_time_must_be_timezone_aware() -> None:
     lifecycle = _controller()
     with pytest.raises(RangerSafetyInputError, match="timezone-aware"):
-        lifecycle.arm(now_monotonic_ns=1_000_000_000, occurred_at_utc=datetime(2026, 9, 4, 7, 30), hardware_estop_asserted=False)
+        lifecycle.arm(
+            now_monotonic_ns=1_000_000_000,
+            occurred_at_utc=datetime(2026, 9, 4, 7, 30),
+            hardware_estop_asserted=False,
+        )
