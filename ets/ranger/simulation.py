@@ -210,15 +210,18 @@ class RangerSimulationStep(StrictModel):
 
     schema_version: Literal["ets.ranger.simulation-step.v1"] = "ets.ranger.simulation-step.v1"
     source_mobility_event: RangerMobilityEvent
+    simulation_config: RangerSimulationConfig
     actuator_response: RangerActuatorResponse
     simulated_result: RangerSimulatedResult
 
     @model_validator(mode="after")
     def require_linkage_and_deterministic_result(self) -> Self:
         event = self.source_mobility_event
+        config = self.simulation_config
         response = self.actuator_response
         result = self.simulated_result
         event_digest = canonical_sha256(event.model_dump(mode="json"))
+        config_digest = canonical_sha256(config.model_dump(mode="json"))
         response_digest = canonical_sha256(response.model_dump(mode="json"))
 
         if response.source_mobility_event_id != event.event_id:
@@ -229,6 +232,21 @@ class RangerSimulationStep(StrictModel):
             raise ValueError("actuator response mobility-event digest mismatch")
         if response.commanded_motion != event.actuator_command.motion:
             raise ValueError("simulator response must consume the authorized actuator command")
+        if response.responded_at_utc != event.evaluated_at_utc:
+            raise ValueError("actuator response wall time must match safety-boundary release")
+        if response.responded_monotonic_ns != event.evaluated_monotonic_ns:
+            raise ValueError("actuator response monotonic time must match safety-boundary release")
+        if response.local_clock_quality is not event.local_clock_quality:
+            raise ValueError("actuator response must preserve safety-boundary clock quality")
+        expected_response_id = "rar:" + canonical_sha256(
+            {
+                "simulation_session_id": response.simulation_session_id,
+                "response_sequence": response.response_sequence,
+                "source_mobility_event_digest_sha256": event_digest,
+            }
+        )
+        if response.response_id != expected_response_id:
+            raise ValueError("actuator response identifier mismatch")
         if result.source_mobility_event_id != event.event_id:
             raise ValueError("simulated result must link to the mobility event")
         if result.source_mobility_event_digest_sha256 != event_digest:
@@ -239,6 +257,12 @@ class RangerSimulationStep(StrictModel):
             raise ValueError("simulated result actuator-response digest mismatch")
         if result.result_sequence != response.response_sequence:
             raise ValueError("response and result sequences must match")
+        if result.model_id != config.model_id or result.model_version != config.model_version:
+            raise ValueError("simulated result model identity mismatch")
+        if result.model_config_digest_sha256 != config_digest:
+            raise ValueError("simulated result configuration digest mismatch")
+        if result.step_duration_ms > config.max_step_duration_ms:
+            raise ValueError("simulated result exceeds configured step duration")
         if result.simulated_monotonic_ns != (
             response.responded_monotonic_ns + result.step_duration_ms * 1_000_000
         ):
@@ -254,6 +278,15 @@ class RangerSimulationStep(StrictModel):
         )
         if result.state_after != expected_state:
             raise ValueError("simulated result does not match deterministic model output")
+        expected_result_id = "rsr:" + canonical_sha256(
+            {
+                "simulation_session_id": result.simulation_session_id,
+                "result_sequence": result.result_sequence,
+                "source_actuator_response_digest_sha256": response_digest,
+            }
+        )
+        if result.result_id != expected_result_id:
+            raise ValueError("simulated result identifier mismatch")
 
         identity_sets = (
             (event.vehicle_id, response.vehicle_id, result.vehicle_id),
@@ -416,6 +449,7 @@ class RangerMobilitySimulator:
         )
         step = RangerSimulationStep(
             source_mobility_event=event,
+            simulation_config=self.config,
             actuator_response=response,
             simulated_result=result,
         )

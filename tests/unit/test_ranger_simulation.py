@@ -203,6 +203,16 @@ def test_bundle_rejects_tampered_derived_result() -> None:
         RangerSimulationStep.model_validate(payload)
 
 
+def test_bundle_rejects_configuration_substitution() -> None:
+    event = mobility_event(armed_controller(), 1, evaluated_ns=1_000_000_000)
+    step = simulator().apply(event, step_duration_ms=500)
+    payload = step.model_dump()
+    payload["simulation_config"]["max_step_duration_ms"] = 2_000
+
+    with pytest.raises(ValidationError, match="configuration digest mismatch"):
+        RangerSimulationStep.model_validate(payload)
+
+
 def test_step_duration_is_bounded_by_committed_config() -> None:
     config = RangerSimulationConfig(max_step_duration_ms=250)
     sim = RangerMobilitySimulator(
