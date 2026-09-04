@@ -114,6 +114,11 @@ All figures are planning hypotheses requiring vendor/BOM research before procure
 
 ## Development gates
 
+Current implementation increment:
+
+- [R0.1 fail-closed mobility safety architecture](safety-architecture.md)
+- [ADR 0001: single fail-closed motion boundary](adr/0001-single-fail-closed-motion-boundary.md)
+
 ### R0.1 — Mobility
 - safe rolling chassis
 - remote manual control
