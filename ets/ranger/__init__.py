@@ -78,6 +78,12 @@ from ets.ranger.simulation import (
     SimulatedVehicleState,
     SimulationValueClass,
 )
+from ets.ranger.source_evidence_verifier import (
+    RangerSourceEvidenceFinding,
+    RangerSourceEvidenceVerification,
+    RangerSourceEvidenceVerificationError,
+    verify_ranger_source_evidence,
+)
 
 __all__ = [
     "AuthorizationResult",
@@ -122,6 +128,9 @@ __all__ = [
     "RangerSimulationInputError",
     "RangerSimulationStep",
     "RangerSafetyInputError",
+    "RangerSourceEvidenceFinding",
+    "RangerSourceEvidenceVerification",
+    "RangerSourceEvidenceVerificationError",
     "RangerStageFinding",
     "SafetyMode",
     "SimulatedPose2D",
@@ -138,4 +147,5 @@ __all__ = [
     "verify_ranger_evidence_object",
     "verify_ranger_mission_chain",
     "verify_ranger_mission_consequences",
+    "verify_ranger_source_evidence",
 ]
