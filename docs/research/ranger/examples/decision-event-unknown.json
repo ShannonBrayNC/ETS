@@ -1,0 +1,69 @@
+{
+  "schema_version": "ranger.decision-event.v0.1",
+  "event_id": "evt-ranger-0001",
+  "mission_id": "mission-r0-demo-001",
+  "ranger_id": "ranger-r0-001",
+  "occurred_at": "2026-09-06T09:30:00Z",
+  "subject_context": [
+    {
+      "subject_id": "SUBJECT-A921",
+      "subject_scope": "MISSION_PSEUDONYM",
+      "claims": [
+        {
+          "claim_id": "claim-human-detected",
+          "kind": "subject.class",
+          "value": "human",
+          "state": "KNOWN",
+          "confidence": 0.998,
+          "threshold": 0.9,
+          "mechanism": "local-person-detector-v1",
+          "source_refs": ["evidence-camera-001"],
+          "reason": null,
+          "contradicts_claim_ids": []
+        },
+        {
+          "claim_id": "claim-identity",
+          "kind": "subject.registered_principal",
+          "state": "UNKNOWN",
+          "confidence": null,
+          "threshold": 0.95,
+          "mechanism": "local-enrolled-face-matcher-v1",
+          "source_refs": ["evidence-camera-001", "evidence-enrollment-set-001"],
+          "reason": "No enrolled principal exceeded the active recognition threshold.",
+          "contradicts_claim_ids": []
+        }
+      ]
+    }
+  ],
+  "decision": {
+    "decision_id": "decision-0001",
+    "policy_id": "policy-r0-maintain-distance-from-unknown-v1",
+    "candidate_actions": ["continue", "slow", "stop", "maintain_distance"],
+    "selected_action": "maintain_distance",
+    "authorization_state": "AUTHORIZED",
+    "participating_claim_ids": ["claim-human-detected", "claim-identity"],
+    "excluded_claim_ids": [],
+    "decision_reason": "A human was detected and identity state was UNKNOWN; policy required maintaining distance."
+  },
+  "evidence": [
+    {
+      "evidence_id": "evidence-camera-001",
+      "evidence_type": "camera.observation",
+      "source_id": "sensor-front-camera-01",
+      "captured_at": "2026-09-06T09:29:59.900Z",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "uri": "ets://mission-r0-demo-001/evidence/camera-001"
+    },
+    {
+      "evidence_id": "evidence-enrollment-set-001",
+      "evidence_type": "identity.enrollment-set",
+      "source_id": "ranger-local-identity-store",
+      "captured_at": "2026-09-06T09:29:00Z",
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "uri": "ets://mission-r0-demo-001/evidence/enrollment-set-001"
+    }
+  ],
+  "previous_event_digest": null,
+  "event_digest": null,
+  "signature": null
+}
