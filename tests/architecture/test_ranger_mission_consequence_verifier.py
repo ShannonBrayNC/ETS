@@ -2,10 +2,19 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timezone
+import hashlib
 
 from ets.ranger.decision_event import decision_event_digest
 from ets.ranger.evidence_object_adapter import ranger_decision_event_to_evidence_object
 from ets.ranger.mission_consequence_verifier import verify_ranger_mission_consequences
+
+
+def _artifact_bytes(event_id: str) -> bytes:
+    return f"camera-artifact:{event_id}".encode("utf-8")
+
+
+def _artifact_digest(event_id: str) -> str:
+    return "sha256:" + hashlib.sha256(_artifact_bytes(event_id)).hexdigest()
 
 
 def _event(event_id: str, previous: str | None, state: str, action: str, consequence_state: str = "KNOWN") -> dict[str, object]:
@@ -24,7 +33,7 @@ def _event(event_id: str, previous: str | None, state: str, action: str, consequ
                         "claim_id": f"identity-{event_id}",
                         "kind": "identity",
                         "state": state,
-                        "source_refs": ["camera-1"],
+                        "source_refs": [f"camera-{event_id}"],
                         **({"value": "registered-user-1"} if state == "KNOWN" else {"reason": f"identity state is {state}"}),
                     }
                 ],
@@ -70,7 +79,7 @@ def _event(event_id: str, previous: str | None, state: str, action: str, consequ
                 "evidence_id": f"camera-{event_id}",
                 "evidence_type": "camera-observation",
                 "source_id": "camera-1",
-                "digest": "sha256:" + "a" * 64,
+                "digest": _artifact_digest(event_id),
             }
         ],
         "previous_event_digest": previous,
@@ -88,16 +97,64 @@ def _chain() -> list[dict[str, object]]:
     return [first, second, third]
 
 
+def _all_artifacts() -> dict[str, bytes]:
+    return {f"camera-{event_id}": _artifact_bytes(event_id) for event_id in ("e1", "e2", "e3")}
+
+
 def test_mission_consequence_verifier_supports_complete_chain() -> None:
     objects = [ranger_decision_event_to_evidence_object(event) for event in _chain()]
     result = verify_ranger_mission_consequences(objects)
     assert result.valid_chain is True
     assert result.overall_status == "SUPPORTED"
     assert result.first_problem_event_index is None
+    assert result.source_evidence_verification_requested is False
+    assert [finding.source_evidence_status for finding in result.event_findings] == ["NOT_REQUESTED"] * 3
     assert result.temporal_epistemic_conservation_preserved is True
     assert [finding.consequence_status for finding in result.event_findings] == ["SUPPORTED", "SUPPORTED", "SUPPORTED"]
     transitions = result.chain_verification.epistemic_transitions
     assert [transition.to_state for transition in transitions] == ["UNKNOWN", "INDETERMINATE", "KNOWN"]
+
+
+def test_source_aware_mission_verifies_all_referenced_artifacts() -> None:
+    objects = [ranger_decision_event_to_evidence_object(event) for event in _chain()]
+    result = verify_ranger_mission_consequences(objects, artifacts=_all_artifacts())
+    assert result.overall_status == "SUPPORTED"
+    assert result.source_evidence_verification_requested is True
+    assert result.source_verified_event_count == 3
+    assert result.source_incomplete_event_count == 0
+    assert result.source_digest_mismatch_event_count == 0
+    assert [finding.source_evidence_status for finding in result.event_findings] == ["VERIFIED"] * 3
+
+
+def test_missing_source_artifact_marks_earliest_dependent_event_incomplete() -> None:
+    objects = [ranger_decision_event_to_evidence_object(event) for event in _chain()]
+    artifacts = _all_artifacts()
+    del artifacts["camera-e2"]
+    result = verify_ranger_mission_consequences(objects, artifacts=artifacts)
+    assert result.valid_chain is True
+    assert result.overall_status == "INCOMPLETE"
+    assert result.first_problem_event_index == 1
+    assert result.first_problem_event_id == "e2"
+    assert result.source_incomplete_event_count == 1
+    finding = result.event_findings[1]
+    assert finding.consequence_status == "SUPPORTED"
+    assert finding.source_evidence_status == "INCOMPLETE"
+    assert finding.source_evidence is not None
+    assert finding.source_evidence.missing_count == 1
+
+
+def test_digest_invalid_source_marks_mission_digest_mismatch_without_erasing_consequence() -> None:
+    objects = [ranger_decision_event_to_evidence_object(event) for event in _chain()]
+    artifacts = _all_artifacts()
+    artifacts["camera-e2"] = b"tampered-camera-artifact"
+    result = verify_ranger_mission_consequences(objects, artifacts=artifacts)
+    assert result.valid_chain is True
+    assert result.overall_status == "DIGEST_MISMATCH"
+    assert result.first_problem_event_id == "e2"
+    assert result.source_digest_mismatch_event_count == 1
+    finding = result.event_findings[1]
+    assert finding.consequence_status == "SUPPORTED"
+    assert finding.source_evidence_status == "DIGEST_MISMATCH"
 
 
 def test_first_contradicted_consequence_is_reported() -> None:
@@ -137,12 +194,12 @@ def test_missing_consequence_makes_mission_incomplete() -> None:
     assert result.first_problem_event_id == "e2"
 
 
-def test_broken_chain_dominates_consequence_support() -> None:
+def test_broken_chain_dominates_consequence_and_source_support() -> None:
     events = _chain()
     events[2]["previous_event_digest"] = "sha256:" + "f" * 64
     events[2]["event_digest"] = decision_event_digest(events[2])
     objects = [ranger_decision_event_to_evidence_object(event) for event in events]
-    result = verify_ranger_mission_consequences(objects)
+    result = verify_ranger_mission_consequences(objects, artifacts=_all_artifacts())
     assert result.valid_chain is False
     assert result.overall_status == "CHAIN_INVALID"
     assert result.first_problem_event_index == 2
@@ -150,7 +207,7 @@ def test_broken_chain_dominates_consequence_support() -> None:
 
 def test_later_known_identity_does_not_rewrite_earlier_unknown_state() -> None:
     objects = [ranger_decision_event_to_evidence_object(event) for event in _chain()]
-    result = verify_ranger_mission_consequences(objects)
+    result = verify_ranger_mission_consequences(objects, artifacts=_all_artifacts())
     first_states = result.event_findings[0].epistemic_states
     last_states = result.event_findings[-1].epistemic_states
     assert first_states == ("UNKNOWN",)
