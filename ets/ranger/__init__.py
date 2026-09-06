@@ -21,6 +21,12 @@ from ets.ranger.evidence_object_adapter import (
     RangerEvidenceObjectAdapterError,
     ranger_decision_event_to_evidence_object,
 )
+from ets.ranger.evidence_object_verifier import (
+    RangerClaimFinding,
+    RangerEvidenceObjectVerification,
+    RangerEvidenceVerificationError,
+    verify_ranger_evidence_object,
+)
 from ets.ranger.lifecycle import (
     RangerLifecycleController,
     RangerLifecycleEvent,
@@ -62,6 +68,7 @@ __all__ = [
     "ExecutionEnvironment",
     "MotionReason",
     "MotionVector",
+    "RangerClaimFinding",
     "RangerDriveCommand",
     "RangerCustodyConflict",
     "RangerCustodyError",
@@ -71,6 +78,8 @@ __all__ = [
     "RangerCustodyVerification",
     "RangerDecisionIntegrityError",
     "RangerEvidenceObjectAdapterError",
+    "RangerEvidenceObjectVerification",
+    "RangerEvidenceVerificationError",
     "RangerLifecycleController",
     "RangerLifecycleEvent",
     "RangerLifecycleKind",
@@ -96,4 +105,5 @@ __all__ = [
     "ranger_decision_event_to_evidence_object",
     "sign_decision_event",
     "verify_decision_event",
+    "verify_ranger_evidence_object",
 ]
