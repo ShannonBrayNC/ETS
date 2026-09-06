@@ -252,3 +252,14 @@ Next: verify subscription-to-billing-profile linkage and that profile's Azure cr
 view, and use the operator's authenticated Cloud Shell (without storage if offered)
 for read-only resource discovery. No additional device-code authentication attempts.
 No resources deployed/stopped or traffic changed; source spending remains unverified.
+
+## Billing account credit observation: 2026-09-06
+
+Operator supplied a billing account Summary screenshot displaying $200.00 credits
+remaining, $0.00 used of $200, $0.00 due and no charges reported this month. This
+confirms the displayed account-level balance, not the credit expiration, spending
+limit, eligibility rules, or linkage to the identified destination subscription.
+Account details are recorded in the protected portal observation checkpoint. The
+portal URL is truncated, so the full billing scope ID must not be reconstructed.
+Next evidence: View credits for validity/terms and View billing subscriptions for
+the exact destination subscription linkage. No deployment or source savings yet.
