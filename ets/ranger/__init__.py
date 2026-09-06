@@ -1,5 +1,11 @@
 """ETS Ranger research contracts and simulation-safe reference components."""
 
+from ets.ranger.consequence_verifier import (
+    RangerConsequenceVerification,
+    RangerConsequenceVerificationError,
+    RangerStageFinding,
+    verify_ranger_consequence,
+)
 from ets.ranger.custody import (
     RangerCustodyConflict,
     RangerCustodyError,
@@ -76,6 +82,8 @@ __all__ = [
     "MotionReason",
     "MotionVector",
     "RangerClaimFinding",
+    "RangerConsequenceVerification",
+    "RangerConsequenceVerificationError",
     "RangerDriveCommand",
     "RangerCustodyConflict",
     "RangerCustodyError",
@@ -105,6 +113,7 @@ __all__ = [
     "RangerSimulationInputError",
     "RangerSimulationStep",
     "RangerSafetyInputError",
+    "RangerStageFinding",
     "SafetyMode",
     "SimulatedPose2D",
     "SimulatedVehicleState",
@@ -116,6 +125,7 @@ __all__ = [
     "ranger_decision_event_to_evidence_object",
     "sign_decision_event",
     "verify_decision_event",
+    "verify_ranger_consequence",
     "verify_ranger_evidence_object",
     "verify_ranger_mission_chain",
 ]
