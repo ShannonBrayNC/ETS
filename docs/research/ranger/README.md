@@ -85,6 +85,18 @@ Unknown identity is also evidentiary information. Ranger and ETS should distingu
 
 See [Epistemic Identity and Bounded Observability](epistemic-identity.md).
 
+### Cyber-physical observability and consequence custody
+
+Ranger must preserve enough cyber-physical context to distinguish what was observed, what the platform was capable of observing, what decision was made, what command was issued, how the physical system responded, and what result was subsequently observed.
+
+The evidence model is intentionally observation-agnostic: stronger sensors, synchronization, calibration, attestation, and actuator feedback should strengthen the resulting evidence without requiring a new evidence theory.
+
+The cyber-physical research model covers position/pose and coordinate frames, motion/dynamics, relative geometry, clock quality and freshness, environment/terrain, energy/thermal state, mechanical/actuator state, sensor health, compute state, communications, software/model/configuration identity, security/attestation, authority/control mode, policy/mission state, faults/safety state, and physical consequence.
+
+A selected action, issued command, command acknowledgement, actuator response, and observed physical consequence are separate propositions and must not be collapsed.
+
+See [Cyber-Physical Observability Model](cyber-physical-observability.md).
+
 ### Executable Ranger Decision Event contract
 
 The first machine-readable research contract is now defined at [`schemas/ranger/decision-event.v0.1.schema.json`](../../../schemas/ranger/decision-event.v0.1.schema.json).
@@ -137,6 +149,7 @@ Current implementation increment:
 - [R0.1 deterministic mobility simulation](simulation.md)
 - [R0.2 signed local source custody](custody.md)
 - [Epistemic identity and bounded observability](epistemic-identity.md)
+- [Cyber-Physical Observability Model](cyber-physical-observability.md)
 - [Ranger Decision Event v0.1 schema](../../../schemas/ranger/decision-event.v0.1.schema.json)
 - [Unknown-identity Decision Event example](examples/decision-event-unknown.json)
 - [ADR 0001: single fail-closed motion boundary](adr/0001-single-fail-closed-motion-boundary.md)
@@ -165,6 +178,8 @@ Current implementation increment:
 - synchronized evidence timeline
 - bounded enrolled-principal recognition
 - explicit unknown/indeterminate/contradicted identity states
+- measurement uncertainty, coordinate-frame, calibration, freshness, and sensor-health evidence where available
+- explicit capability/degradation state so inability to observe is not confused with a negative observation
 
 ### R0.4 — Bounded autonomy
 - waypoint/navigation experiment
@@ -173,12 +188,14 @@ Current implementation increment:
 - policy-enforced safety boundaries
 - manual takeover / fail-safe behavior
 
-### R0.5 — Decision reconstruction
+### R0.5 — Decision and consequence reconstruction
 - capture decision inputs and relevant machine state
 - capture candidate/selected action where available
 - capture policy evaluation
-- bind command to observed result
+- distinguish selected action, issued command, command acknowledgement, actuator response, and observed result
+- bind command to actuator/vehicle response and subsequent observations
 - preserve known, unknown, unavailable, indeterminate, and contradictory decision context
+- preserve relevant capability/degradation state at consequence time
 - produce independently verifiable mission evidence package
 
 ### R0.6 — Mission-module interface
@@ -202,17 +219,19 @@ The demonstration succeeds only if an independent verifier can establish from th
 
 1. what Ranger perceived;
 2. which hardware/software/model produced the relevant observations or decisions;
-3. what vehicle and mission state existed at decision time;
+3. what vehicle, capability, and mission state existed at decision time;
 4. what alternatives or constraints participated in the decision where observable;
 5. which action was selected and authorized;
 6. which physical command was issued;
-7. what the vehicle actually did;
-8. what result was subsequently observed; and
-9. whether the evidentiary chain has been altered.
+7. whether the actuator/controller accepted or rejected the command;
+8. what the vehicle physically did;
+9. what result was subsequently observed;
+10. what relevant facts were unknown/unavailable/indeterminate/contradicted and why; and
+11. whether the evidentiary chain has been altered.
 
 ## Success criterion
 
-> Demonstrate independently verifiable provenance for an autonomous physical decision from sensor observation through physical action and resulting state.
+> Demonstrate independently verifiable provenance for an autonomous physical decision from sensor observation through physical action and resulting state, while preserving the capability and epistemic limits of the observing system.
 
 ## Immediate research backlog
 
@@ -220,14 +239,14 @@ The demonstration succeeds only if an independent verifier can establish from th
 2. Produce R0 BOM with budget / preferred / rugged alternatives.
 3. Define Ranger Core electrical and logical architecture.
 4. Define the Ranger Payload Bus and trust boundary.
-5. Evolve the Ranger Decision Event v0.1 research schema into an ETS Core-aligned evidence-object profile with canonical signing and verifier semantics.
+5. Evolve the Ranger Decision Event v0.1 research schema into an ETS Core-aligned cyber-physical evidence-object profile with canonical signing, capability state, measurement quality, consequence custody, and verifier semantics.
 6. Map Ranger events into existing ETS Edge, Gateway, Verifier, AI Witness, and Black Box capabilities.
 7. Define safety architecture: E-stop, remote takeover, watchdog, geofence, speed limits, fault state, loss-of-comms behavior.
 8. Define R0 controlled test course and acceptance criteria.
-9. Establish evidence-package verification tests before autonomy implementation.
-10. Document threat model including sensor spoofing, payload substitution, compromised compute, evidence deletion/tampering, clock/location manipulation, operator-command repudiation, biometric spoofing, identity-claim poisoning, and false corroboration.
+9. Establish evidence-package verification tests before autonomy implementation, including decision-to-command-to-result reconstruction.
+10. Document threat model including sensor spoofing, payload substitution, compromised compute, evidence deletion/tampering, clock/location manipulation, calibration manipulation, stale evidence, sensor/data loss, operator-command repudiation, biometric spoofing, identity-claim poisoning, and false corroboration.
 11. Evaluate funding and government research pathways after the non-weaponized R0 architecture is demonstrated.
-12. Maintain patent/IP notes around autonomous decision provenance, payload attestation, evidence binding, cross-platform custody, independently verifiable physical-action reconstruction, bounded claims, and epistemic absence.
+12. Maintain patent/IP notes around autonomous decision provenance, payload attestation, evidence binding, cross-platform custody, independently verifiable physical-action reconstruction, bounded claims, epistemic absence, capability-state preservation, and consequence custody.
 
 ## Research rule
 
