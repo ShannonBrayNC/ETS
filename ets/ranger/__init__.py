@@ -17,6 +17,10 @@ from ets.ranger.decision_event import (
     sign_decision_event,
     verify_decision_event,
 )
+from ets.ranger.evidence_object_adapter import (
+    RangerEvidenceObjectAdapterError,
+    ranger_decision_event_to_evidence_object,
+)
 from ets.ranger.lifecycle import (
     RangerLifecycleController,
     RangerLifecycleEvent,
@@ -66,6 +70,7 @@ __all__ = [
     "RangerCustodyRecord",
     "RangerCustodyVerification",
     "RangerDecisionIntegrityError",
+    "RangerEvidenceObjectAdapterError",
     "RangerLifecycleController",
     "RangerLifecycleEvent",
     "RangerLifecycleKind",
@@ -88,6 +93,7 @@ __all__ = [
     "decision_event_canonical_bytes",
     "decision_event_digest",
     "decision_event_preimage",
+    "ranger_decision_event_to_evidence_object",
     "sign_decision_event",
     "verify_decision_event",
 ]
