@@ -46,6 +46,12 @@ from ets.ranger.mission_chain_verifier import (
     RangerMissionEventFinding,
     verify_ranger_mission_chain,
 )
+from ets.ranger.mission_consequence_verifier import (
+    RangerMissionConsequenceError,
+    RangerMissionConsequenceEventFinding,
+    RangerMissionConsequenceVerification,
+    verify_ranger_mission_consequences,
+)
 from ets.ranger.mobility import (
     AuthorizationResult,
     ClockQuality,
@@ -102,6 +108,9 @@ __all__ = [
     "RangerLifecycleResult",
     "RangerMissionChainError",
     "RangerMissionChainVerification",
+    "RangerMissionConsequenceError",
+    "RangerMissionConsequenceEventFinding",
+    "RangerMissionConsequenceVerification",
     "RangerMissionEventFinding",
     "RangerMobilityController",
     "RangerMobilityEvent",
@@ -128,4 +137,5 @@ __all__ = [
     "verify_ranger_consequence",
     "verify_ranger_evidence_object",
     "verify_ranger_mission_chain",
+    "verify_ranger_mission_consequences",
 ]
