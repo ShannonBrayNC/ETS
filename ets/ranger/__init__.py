@@ -1,5 +1,14 @@
 """ETS Ranger research contracts and simulation-safe reference components."""
 
+from ets.ranger.custody import (
+    RangerCustodyConflict,
+    RangerCustodyError,
+    RangerCustodyIntegrityError,
+    RangerCustodyLedger,
+    RangerCustodyRecord,
+    RangerCustodyVerification,
+    SQLiteRangerCustodyStore,
+)
 from ets.ranger.lifecycle import (
     RangerLifecycleController,
     RangerLifecycleEvent,
@@ -42,6 +51,12 @@ __all__ = [
     "MotionReason",
     "MotionVector",
     "RangerDriveCommand",
+    "RangerCustodyConflict",
+    "RangerCustodyError",
+    "RangerCustodyIntegrityError",
+    "RangerCustodyLedger",
+    "RangerCustodyRecord",
+    "RangerCustodyVerification",
     "RangerLifecycleController",
     "RangerLifecycleEvent",
     "RangerLifecycleKind",
@@ -60,4 +75,5 @@ __all__ = [
     "SimulatedPose2D",
     "SimulatedVehicleState",
     "SimulationValueClass",
+    "SQLiteRangerCustodyStore",
 ]
