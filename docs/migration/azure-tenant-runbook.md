@@ -237,3 +237,18 @@ session has no authenticated browser-control capability or approved Azure worklo
 identity. No destination entitlement, deployment, cutover or source savings claimed.
 
 Reference: https://learn.microsoft.com/en-us/entra/fundamentals/security-defaults#block-device-code-flow
+
+## Portal observation: destination subscription identified
+
+Operator supplied the subscription Overview screenshot on 2026-09-06. It shows
+Azure subscription 1, Active, Owner, Azure Plan, and Default Directory. The displayed
+directory is consistent with prior authenticated tenant discovery. Exact identifiers
+are recorded in the protected destination-portal-observation.json checkpoint; this is
+portal evidence, not successful ARM discovery from the Work execution environment.
+The screenshot does not establish the credit-bearing billing scope, current balance,
+expiry, or spending-limit state. Azure Plan must not be treated as proof of credits.
+
+Next: verify subscription-to-billing-profile linkage and that profile's Azure credits
+view, and use the operator's authenticated Cloud Shell (without storage if offered)
+for read-only resource discovery. No additional device-code authentication attempts.
+No resources deployed/stopped or traffic changed; source spending remains unverified.
