@@ -9,6 +9,14 @@ from ets.ranger.custody import (
     RangerCustodyVerification,
     SQLiteRangerCustodyStore,
 )
+from ets.ranger.decision_event import (
+    RangerDecisionIntegrityError,
+    decision_event_canonical_bytes,
+    decision_event_digest,
+    decision_event_preimage,
+    sign_decision_event,
+    verify_decision_event,
+)
 from ets.ranger.lifecycle import (
     RangerLifecycleController,
     RangerLifecycleEvent,
@@ -57,6 +65,7 @@ __all__ = [
     "RangerCustodyLedger",
     "RangerCustodyRecord",
     "RangerCustodyVerification",
+    "RangerDecisionIntegrityError",
     "RangerLifecycleController",
     "RangerLifecycleEvent",
     "RangerLifecycleKind",
@@ -76,4 +85,9 @@ __all__ = [
     "SimulatedVehicleState",
     "SimulationValueClass",
     "SQLiteRangerCustodyStore",
+    "decision_event_canonical_bytes",
+    "decision_event_digest",
+    "decision_event_preimage",
+    "sign_decision_event",
+    "verify_decision_event",
 ]
