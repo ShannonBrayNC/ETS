@@ -187,3 +187,18 @@ the full repository suite and Azure integration execution were not run.
 - [Azure move prerequisites](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/move-resource-group-and-subscription)
 - [Service move support](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/move-support-resources)
 - [Azure spending limits](https://learn.microsoft.com/en-us/azure/cost-management-billing/manage/spending-limit)
+
+## Resume checkpoint: awaiting destination sign-in
+
+The continuation installed Azure CLI 2.90.0 in an isolated execution environment.
+Microsoft sign-in and ARM endpoints are reachable. An official device login has
+been initiated for the operator to select the intended destination account. Login
+is not yet confirmed; no destination identifiers or entitlement have been verified.
+Authentication codes and token caches are deliberately excluded from this record.
+The earlier generic execution-access blocker is now a destination sign-in gate.
+
+PR #611 initially failed Ruff E501 on the collector's output argument line. Commit
+`c7c97e3e5e8af0606757264d9d80ccc5b55fdf2a` fixes that line; four local safety tests
+still pass. Replacement CI is pending. No Azure resource, DNS, data, or billing
+mutation has occurred. Continue by checking destination login completion, then
+list accessible subscriptions without exposing tokens and verify billing linkage.
