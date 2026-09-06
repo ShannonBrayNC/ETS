@@ -202,3 +202,19 @@ PR #611 initially failed Ruff E501 on the collector's output argument line. Comm
 still pass. Replacement CI is pending. No Azure resource, DNS, data, or billing
 mutation has occurred. Continue by checking destination login completion, then
 list accessible subscriptions without exposing tokens and verify billing linkage.
+
+## Authentication checkpoint: 2026-09-06 05:54 UTC
+
+Destination Microsoft-account authentication succeeded using the persisted device
+handoff. Azure tenant discovery returned a Default Directory, but token acquisition
+for that directory failed with AADSTS530035 (BlockedBySecurityDefaults). The empty
+subscription result is therefore incomplete discovery, not proof of no subscription.
+Exact directory identifiers and authentication state are kept in protected execution
+storage. The common Microsoft-account token's tenant is not the deployment tenant.
+
+Azure CLI recommends directory-specific interactive login for the failed tenant.
+A saved, directory-specific login handoff has been initiated to allow the operator
+to complete any tenant MFA/security requirements. No policy, security default, role,
+resource, DNS record or evidence was changed. If the tenant rejects this interactive
+flow, stop and use an administrator-approved authentication path; do not weaken policy.
+Billing scope, subscription ID, entitlement and source cost reduction remain unverified.
