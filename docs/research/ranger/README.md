@@ -77,6 +77,14 @@ A consequential decision event should be capable of binding at least:
 - device signature
 - optional witness/verifier attestations
 
+### Bounded identity and epistemic state
+
+Ranger must distinguish observation, authentication, inference, and proof rather than collapsing them into a single identity assertion. Facial recognition against a deliberately small enrolled-principal set can provide efficient local recognition, but a biometric match remains evidence supporting an identity claim rather than absolute proof of the human narrative.
+
+Unknown identity is also evidentiary information. Ranger and ETS should distinguish `NOT_OBSERVED`, `NOT_AVAILABLE`, `UNKNOWN`, `INDETERMINATE`, and `CONTRADICTED` so a verifier can reconstruct not only what Ranger knew at consequence time, but what it did not know and why.
+
+See [Epistemic Identity and Bounded Observability](epistemic-identity.md).
+
 ## Ranger Mission Modules
 
 R0 should use one core chassis rather than separate vehicles. Mission capability is provided through modules.
@@ -120,6 +128,7 @@ Current implementation increment:
 - [R0.1 motion-authority lifecycle evidence](lifecycle-evidence.md)
 - [R0.1 deterministic mobility simulation](simulation.md)
 - [R0.2 signed local source custody](custody.md)
+- [Epistemic identity and bounded observability](epistemic-identity.md)
 - [ADR 0001: single fail-closed motion boundary](adr/0001-single-fail-closed-motion-boundary.md)
 - [ADR 0002: evidence-shaped mobility simulation](adr/0002-evidence-shaped-mobility-simulation.md)
 - [ADR 0003: signed local source custody](adr/0003-signed-local-source-custody.md)
@@ -144,6 +153,8 @@ Current implementation increment:
 - ranging/obstacle sensing
 - sensor identity and provenance
 - synchronized evidence timeline
+- bounded enrolled-principal recognition
+- explicit unknown/indeterminate/contradicted identity states
 
 ### R0.4 — Bounded autonomy
 - waypoint/navigation experiment
@@ -157,6 +168,7 @@ Current implementation increment:
 - capture candidate/selected action where available
 - capture policy evaluation
 - bind command to observed result
+- preserve known, unknown, unavailable, indeterminate, and contradictory decision context
 - produce independently verifiable mission evidence package
 
 ### R0.6 — Mission-module interface
@@ -198,14 +210,14 @@ The demonstration succeeds only if an independent verifier can establish from th
 2. Produce R0 BOM with budget / preferred / rugged alternatives.
 3. Define Ranger Core electrical and logical architecture.
 4. Define the Ranger Payload Bus and trust boundary.
-5. Define the Ranger Decision Event schema as an ETS evidence-object profile.
+5. Define the Ranger Decision Event schema as an ETS evidence-object profile, including epistemic-state semantics.
 6. Map Ranger events into existing ETS Edge, Gateway, Verifier, AI Witness, and Black Box capabilities.
 7. Define safety architecture: E-stop, remote takeover, watchdog, geofence, speed limits, fault state, loss-of-comms behavior.
 8. Define R0 controlled test course and acceptance criteria.
 9. Establish evidence-package verification tests before autonomy implementation.
-10. Document threat model including sensor spoofing, payload substitution, compromised compute, evidence deletion/tampering, clock/location manipulation, and operator-command repudiation.
+10. Document threat model including sensor spoofing, payload substitution, compromised compute, evidence deletion/tampering, clock/location manipulation, operator-command repudiation, biometric spoofing, identity-claim poisoning, and false corroboration.
 11. Evaluate funding and government research pathways after the non-weaponized R0 architecture is demonstrated.
-12. Maintain patent/IP notes around autonomous decision provenance, payload attestation, evidence binding, cross-platform custody, and independently verifiable physical-action reconstruction.
+12. Maintain patent/IP notes around autonomous decision provenance, payload attestation, evidence binding, cross-platform custody, independently verifiable physical-action reconstruction, bounded claims, and epistemic absence.
 
 ## Research rule
 
