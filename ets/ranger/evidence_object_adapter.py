@@ -1,8 +1,9 @@
 """Adapt ETS Ranger Decision Event v0.1 into Evidence Object v1.
 
 The adapter preserves the complete Ranger event under a namespaced extension while
-also projecting its claims, mission/decision context, policy references, source
-dependencies, and event digest into generic Evidence Object v1 structures.
+projecting only affirmative KNOWN Ranger claims into generic Evidence Object v1 claims.
+Non-KNOWN epistemic states remain authoritative in the Ranger extension and MUST NOT be
+promoted into ordinary Core claims.
 
 The adapter verifies the Ranger event digest before projection. It does not prove
 sensor truth, identity truth, policy sufficiency, or signer authority.
@@ -28,26 +29,30 @@ from ets.ranger.decision_event import decision_event_digest
 _RANGER_EVENT_SCHEMA = "ranger.decision-event.v0.1"
 _RANGER_EXTENSION_NAMESPACE = "org.lanternprotocol.ranger.decision-event.v0.1"
 _RANGER_INTEGRITY_PROFILE = "ets.ranger.decision-event.sha256.v0.1"
+_NON_AFFIRMATIVE_STATES = {
+    "NOT_OBSERVED",
+    "NOT_AVAILABLE",
+    "UNKNOWN",
+    "INDETERMINATE",
+    "CONTRADICTED",
+}
 
 
 class RangerEvidenceObjectAdapterError(ValueError):
     """Raised when a Ranger decision event cannot be projected safely."""
 
 
-def ranger_decision_event_to_evidence_object(
-    event: Mapping[str, Any],
-) -> EvidenceObject:
+def ranger_decision_event_to_evidence_object(event: Mapping[str, Any]) -> EvidenceObject:
     """Project a Ranger Decision Event into an immutable Evidence Object v1.
 
-    The complete source event is retained under ``extensions`` so generic ETS
-    normalization does not erase Ranger-specific epistemic semantics.
+    The complete source event is retained under ``extensions``. Generic Core claims are
+    emitted only for Ranger claims whose epistemic state is ``KNOWN``. This implements
+    epistemic conservation across the Ranger -> Evidence Object boundary.
     """
 
     payload = dict(event)
     if payload.get("schema_version") != _RANGER_EVENT_SCHEMA:
-        raise RangerEvidenceObjectAdapterError(
-            f"schema_version must be {_RANGER_EVENT_SCHEMA}"
-        )
+        raise RangerEvidenceObjectAdapterError(f"schema_version must be {_RANGER_EVENT_SCHEMA}")
 
     event_digest = payload.get("event_digest")
     if not isinstance(event_digest, str) or not event_digest.startswith("sha256:"):
@@ -88,32 +93,27 @@ def ranger_decision_event_to_evidence_object(
             kind = _required_string(source_claim, "kind")
             state = _required_string(source_claim, "state")
             source_refs = source_claim.get("source_refs", [])
-            if not isinstance(source_refs, list) or not all(
-                isinstance(item, str) and item for item in source_refs
-            ):
+            if not isinstance(source_refs, list) or not all(isinstance(item, str) and item for item in source_refs):
                 raise RangerEvidenceObjectAdapterError("claim source_refs must be strings")
 
-            # Preserve epistemic state as part of the claim value rather than
-            # upgrading UNKNOWN/INDETERMINATE/etc. into an asserted fact.
-            normalized_value = {
-                "epistemic_state": state,
-                "value": source_claim.get("value"),
-                "threshold": source_claim.get("threshold"),
-                "mechanism": source_claim.get("mechanism"),
-                "reason": source_claim.get("reason"),
-                "contradicts_claim_ids": source_claim.get("contradicts_claim_ids", []),
-            }
-            claims.append(
-                Claim(
-                    claim_id=claim_id,
-                    subject=subject_id,
-                    predicate=kind,
-                    value=normalized_value,
-                    confidence=source_claim.get("confidence"),
-                    source_ref=source_refs[0] if len(source_refs) == 1 else None,
+            if state == "KNOWN":
+                if "value" not in source_claim:
+                    raise RangerEvidenceObjectAdapterError("KNOWN Ranger claims require value")
+                claims.append(
+                    Claim(
+                        claim_id=claim_id,
+                        subject=subject_id,
+                        predicate=kind,
+                        value=source_claim.get("value"),
+                        confidence=source_claim.get("confidence"),
+                        source_ref=source_refs[0] if len(source_refs) == 1 else None,
+                    )
                 )
-            )
+            elif state not in _NON_AFFIRMATIVE_STATES:
+                raise RangerEvidenceObjectAdapterError(f"unsupported epistemic state: {state}")
 
+            # Dependencies remain visible for every Ranger claim, including epistemic
+            # absence, because the Ranger extension is the authoritative semantic record.
             for source_ref in source_refs:
                 relationship_id = f"rel:{claim_id}:depends_on:{source_ref}"
                 if relationship_id in seen_relationship_ids:
@@ -200,7 +200,4 @@ def _required_datetime(value: Mapping[str, Any], field: str) -> datetime:
     return parsed
 
 
-__all__ = [
-    "RangerEvidenceObjectAdapterError",
-    "ranger_decision_event_to_evidence_object",
-]
+__all__ = ["RangerEvidenceObjectAdapterError", "ranger_decision_event_to_evidence_object"]
