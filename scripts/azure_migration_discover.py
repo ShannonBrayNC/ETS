@@ -110,7 +110,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tenant", required=True)
     parser.add_argument("--subscription", required=True)
-    parser.add_argument("--output", required=True, type=Path, help="New protected directory outside Git")
+    parser.add_argument(
+        "--output", required=True, type=Path, help="New protected directory outside Git"
+    )
     args = parser.parse_args()
     try:
         complete = collect(args.tenant, args.subscription, args.output)
