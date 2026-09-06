@@ -33,6 +33,13 @@ from ets.ranger.lifecycle import (
     RangerLifecycleKind,
     RangerLifecycleResult,
 )
+from ets.ranger.mission_chain_verifier import (
+    RangerEpistemicTransition,
+    RangerMissionChainError,
+    RangerMissionChainVerification,
+    RangerMissionEventFinding,
+    verify_ranger_mission_chain,
+)
 from ets.ranger.mobility import (
     AuthorizationResult,
     ClockQuality,
@@ -77,6 +84,7 @@ __all__ = [
     "RangerCustodyRecord",
     "RangerCustodyVerification",
     "RangerDecisionIntegrityError",
+    "RangerEpistemicTransition",
     "RangerEvidenceObjectAdapterError",
     "RangerEvidenceObjectVerification",
     "RangerEvidenceVerificationError",
@@ -84,6 +92,9 @@ __all__ = [
     "RangerLifecycleEvent",
     "RangerLifecycleKind",
     "RangerLifecycleResult",
+    "RangerMissionChainError",
+    "RangerMissionChainVerification",
+    "RangerMissionEventFinding",
     "RangerMobilityController",
     "RangerMobilityEvent",
     "RangerMobilityPolicy",
@@ -106,4 +117,5 @@ __all__ = [
     "sign_decision_event",
     "verify_decision_event",
     "verify_ranger_evidence_object",
+    "verify_ranger_mission_chain",
 ]
