@@ -218,3 +218,22 @@ to complete any tenant MFA/security requirements. No policy, security default, r
 resource, DNS record or evidence was changed. If the tenant rejects this interactive
 flow, stop and use an administrator-approved authentication path; do not weaken policy.
 Billing scope, subscription ID, entitlement and source cost reduction remain unverified.
+
+## Confirmed device-flow block: 2026-09-06 05:58 UTC
+
+Operator supplied a directory-specific Azure CLI denial with error 530035. Stop
+all device-code retries. Microsoft Security Defaults documentation now explicitly
+states that new tenants block device code flow starting 2026-07-01. This supersedes
+the prior suggestion that tenant targeting alone might resolve the authentication
+gate. Successful Microsoft-account authentication does not grant ARM access.
+
+Next supported path: operator browser sign-in to Azure portal with the intended
+account, complete required MFA, verify the directory and Subscriptions/credit billing
+views. For execution, use browser/WAM Azure CLI authentication in an accessible
+operator environment or an administrator-approved workload identity with scoped
+roles. Do not disable Security Defaults, exempt the account, transfer session tokens,
+or interpret this error as proof that a subscription does not exist. This Work
+session has no authenticated browser-control capability or approved Azure workload
+identity. No destination entitlement, deployment, cutover or source savings claimed.
+
+Reference: https://learn.microsoft.com/en-us/entra/fundamentals/security-defaults#block-device-code-flow
