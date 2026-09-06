@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/ranger/cyber-physical-state.v0.1.schema.json",
+  "title": "ETS Ranger Cyber-Physical State v0.1",
+  "description": "Research schema for capability, measurement quality, system state, actuation, and observed physical consequence without collapsing command into result.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "captured_at", "capabilities", "measurements"],
+  "properties": {
+    "schema_version": {"const": "ranger.cyber-physical-state.v0.1"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "clock": {"$ref": "#/$defs/clockState"},
+    "capabilities": {"type": "array", "items": {"$ref": "#/$defs/capability"}},
+    "measurements": {"type": "array", "items": {"$ref": "#/$defs/measurement"}},
+    "system_state": {"type": "array", "items": {"$ref": "#/$defs/stateProperty"}},
+    "actuation": {"$ref": "#/$defs/actuation"},
+    "consequence": {"$ref": "#/$defs/consequence"}
+  },
+  "$defs": {
+    "epistemicState": {
+      "type": "string",
+      "enum": ["KNOWN", "NOT_OBSERVED", "NOT_AVAILABLE", "UNKNOWN", "INDETERMINATE", "CONTRADICTED"]
+    },
+    "capabilityState": {
+      "type": "string",
+      "enum": ["AVAILABLE", "DEGRADED", "NOT_AVAILABLE", "FAILED", "UNKNOWN"]
+    },
+    "clockState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {"type": ["string", "null"]},
+        "synchronized": {"type": ["boolean", "null"]},
+        "offset_ms": {"type": ["number", "null"]},
+        "uncertainty_ms": {"type": ["number", "null"], "minimum": 0},
+        "state": {"$ref": "#/$defs/epistemicState"},
+        "reason": {"type": ["string", "null"]}
+      },
+      "required": ["state"]
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability_id", "state"],
+      "properties": {
+        "capability_id": {"type": "string", "minLength": 1},
+        "source_id": {"type": ["string", "null"]},
+        "state": {"$ref": "#/$defs/capabilityState"},
+        "reason": {"type": ["string", "null"]},
+        "health_ref": {"type": ["string", "null"]},
+        "calibration_ref": {"type": ["string", "null"]}
+      }
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["measurement_id", "property", "state", "source_id", "captured_at"],
+      "properties": {
+        "measurement_id": {"type": "string", "minLength": 1},
+        "property": {"type": "string", "minLength": 1},
+        "value": {},
+        "unit": {"type": ["string", "null"]},
+        "state": {"$ref": "#/$defs/epistemicState"},
+        "source_id": {"type": "string", "minLength": 1},
+        "method": {"type": ["string", "null"]},
+        "captured_at": {"type": "string", "format": "date-time"},
+        "freshness_ms": {"type": ["number", "null"], "minimum": 0},
+        "uncertainty": {"type": ["number", "null"], "minimum": 0},
+        "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "coordinate_frame": {"type": ["string", "null"]},
+        "calibration_ref": {"type": ["string", "null"]},
+        "health_ref": {"type": ["string", "null"]},
+        "dependency_refs": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "reason": {"type": ["string", "null"]}
+      },
+      "allOf": [
+        {"if": {"properties": {"state": {"const": "KNOWN"}}}, "then": {"required": ["value"]}},
+        {"if": {"properties": {"state": {"enum": ["NOT_OBSERVED", "NOT_AVAILABLE", "UNKNOWN", "INDETERMINATE", "CONTRADICTED"]}}}, "then": {"required": ["reason"]}}
+      ]
+    },
+    "stateProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["property", "state"],
+      "properties": {
+        "property": {"type": "string", "minLength": 1},
+        "value": {},
+        "state": {"$ref": "#/$defs/epistemicState"},
+        "source_refs": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "reason": {"type": ["string", "null"]}
+      }
+    },
+    "actuationStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": {"$ref": "#/$defs/epistemicState"},
+        "value": {},
+        "source_refs": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "observed_at": {"type": ["string", "null"], "format": "date-time"},
+        "reason": {"type": ["string", "null"]}
+      }
+    },
+    "actuation": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "description": "Stages are intentionally separate propositions; presence or success of one stage does not imply another.",
+      "properties": {
+        "selected_action": {"$ref": "#/$defs/actuationStage"},
+        "issued_command": {"$ref": "#/$defs/actuationStage"},
+        "command_acknowledgement": {"$ref": "#/$defs/actuationStage"},
+        "actuator_response": {"$ref": "#/$defs/actuationStage"}
+      }
+    },
+    "consequence": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["state", "supporting_measurement_refs", "contradicting_measurement_refs"],
+      "properties": {
+        "state": {"$ref": "#/$defs/epistemicState"},
+        "claim": {"type": ["string", "null"]},
+        "value": {},
+        "observed_at": {"type": ["string", "null"], "format": "date-time"},
+        "supporting_measurement_refs": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "contradicting_measurement_refs": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "reason": {"type": ["string", "null"]}
+      }
+    }
+  }
+}
