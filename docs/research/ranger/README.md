@@ -85,6 +85,14 @@ Unknown identity is also evidentiary information. Ranger and ETS should distingu
 
 See [Epistemic Identity and Bounded Observability](epistemic-identity.md).
 
+### Executable Ranger Decision Event contract
+
+The first machine-readable research contract is now defined at [`schemas/ranger/decision-event.v0.1.schema.json`](../../../schemas/ranger/decision-event.v0.1.schema.json).
+
+It makes epistemic state explicit in decision evidence and binds claims to source evidence, decision participation, policy, selected action, chain linkage, and optional signature material. A canonical unknown-identity example is maintained at [`examples/decision-event-unknown.json`](examples/decision-event-unknown.json), and architecture tests enforce the stable schema identity and epistemic-state semantics.
+
+The v0.1 contract intentionally treats this as an ETS evidence-object profile rather than a final production wire format. Future revisions should align its canonicalization, signing, Evidence Object identifiers, verifier behavior, and custody rules with the ETS Core contracts.
+
 ## Ranger Mission Modules
 
 R0 should use one core chassis rather than separate vehicles. Mission capability is provided through modules.
@@ -129,6 +137,8 @@ Current implementation increment:
 - [R0.1 deterministic mobility simulation](simulation.md)
 - [R0.2 signed local source custody](custody.md)
 - [Epistemic identity and bounded observability](epistemic-identity.md)
+- [Ranger Decision Event v0.1 schema](../../../schemas/ranger/decision-event.v0.1.schema.json)
+- [Unknown-identity Decision Event example](examples/decision-event-unknown.json)
 - [ADR 0001: single fail-closed motion boundary](adr/0001-single-fail-closed-motion-boundary.md)
 - [ADR 0002: evidence-shaped mobility simulation](adr/0002-evidence-shaped-mobility-simulation.md)
 - [ADR 0003: signed local source custody](adr/0003-signed-local-source-custody.md)
@@ -210,7 +220,7 @@ The demonstration succeeds only if an independent verifier can establish from th
 2. Produce R0 BOM with budget / preferred / rugged alternatives.
 3. Define Ranger Core electrical and logical architecture.
 4. Define the Ranger Payload Bus and trust boundary.
-5. Define the Ranger Decision Event schema as an ETS evidence-object profile, including epistemic-state semantics.
+5. Evolve the Ranger Decision Event v0.1 research schema into an ETS Core-aligned evidence-object profile with canonical signing and verifier semantics.
 6. Map Ranger events into existing ETS Edge, Gateway, Verifier, AI Witness, and Black Box capabilities.
 7. Define safety architecture: E-stop, remote takeover, watchdog, geofence, speed limits, fault state, loss-of-comms behavior.
 8. Define R0 controlled test course and acceptance criteria.
