@@ -263,3 +263,74 @@ Account details are recorded in the protected portal observation checkpoint. The
 portal URL is truncated, so the full billing scope ID must not be reconstructed.
 Next evidence: View credits for validity/terms and View billing subscriptions for
 the exact destination subscription linkage. No deployment or source savings yet.
+
+## Execution checkpoint: destination foundation and state inventory
+
+Status at 2026-09-07T03:14:29Z: `AUTHORIZATION_BLOCKED`. The operator's
+protected checkpoint supersedes the earlier discovery-only status. Exact tenant,
+subscription, billing-scope, role-assignment, and key-version identifiers remain
+in protected migration records outside this public repository.
+
+Confirmed destination state:
+
+- The ETS Protocol Azure tenant/subscription and its Microsoft Customer Agreement
+  billing linkage were verified by the operator. The billing profile displayed
+  $200 Azure credit and spending limit Off; this is not permission to create
+  unnecessary resources.
+- Resource groups for ETS production, ETS shared services, and Lantern web
+  continuity exist in East US. Required providers for Container Apps,
+  App Configuration, ACR, Key Vault, Storage, Managed Identity, Network,
+  Operational Insights, and Insights are registered.
+- Destination ACR exists at `etsprod7c8ab70380.azurecr.io`, Basic SKU, with
+  its admin account disabled.
+- The qualified ETS image was imported without rebuilding and independently
+  verified at the identical immutable digest
+  `sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63`.
+  Qualified source commit:
+  `9a4c3a8aefc50a960bdd3ce34b28f86fd69f1535`.
+
+Confirmed source state:
+
+- The source tenant/subscription and critical resource groups were verified.
+  Core/Gateway and Lantern continuity resources remain in
+  `rg-ets-live-eastus`; the fleet/PostgreSQL group remains outside the current
+  migration gate and must not be modified until Core/Gateway is safely proven.
+- Core Azure Table `ETSEvents` contains 73 entities in one log partition:
+  36 `entry`, 36 `event_index`, and one `metadata` entity. This is
+  internally consistent with `AzureTableEventStore`. Evidence migration must
+  preserve the exact typed entity representation and must not replay events
+  through the API.
+- The source tree-head key has exactly one observed historical version. Preserve
+  its exact historical key ID and public verification material in protected
+  records; a destination key starts a new continuity boundary and cannot replace
+  the historical identity. Retain the source vault until independent old-evidence
+  verification succeeds.
+- Gateway storage has shares `ets-gateway-state-q1-v2` and
+  `ets-gateway-state`. The active share is `ets-gateway-state-q1-v2`;
+  observed use is 262144 bytes. The live Gateway mounts it at
+  `/var/lib/ets` for single-replica SQLite compatibility.
+
+Exact resume gate:
+
+1. Verify the signed-in source operator has `Storage File Data Privileged Reader`
+   at the `etsgwo23bf2d6oq44s` storage-account scope. Do not combine
+   `az role assignment list --all` with `--scope`.
+2. Using OAuth and `--backup-intent`, recursively inventory both Gateway shares
+   and then create protected point-in-time source snapshots.
+3. Verify and remove the temporary source ACR token
+   `ets-migration-read-20260906` if it still exists; it was scoped only to the
+   completed cross-tenant image import.
+4. Export `ETSEvents` into protected storage with exact fields and Azure data
+   types, plus independently hashed manifests. Do not commit protected data.
+
+This Work continuation began from PR head
+`495e06cef50e4f85ca8b72a31c03248f69a089bd`. Its transient container no
+longer held the earlier Azure CLI installation or authentication cache. A fresh
+destination portal authentication reached the ETS Protocol account's additional
+email-verification boundary. The browser required submission of the complete
+recovery email address before sending a code; that sensitive-data transmission
+was not approved, so execution stopped before submission. No role assignment,
+resource, secret, DNS, traffic, evidence, storage, key, or billing setting was
+changed. The Gateway authorization check, share inventory/snapshots, source ACR
+token cleanup, and table backup remain unexecuted in this continuation.
+
