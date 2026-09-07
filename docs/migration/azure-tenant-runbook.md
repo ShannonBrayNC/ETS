@@ -401,3 +401,58 @@ so no role assignment was created. Both share inventories and snapshots remain
 blocked. No account key, SAS, secret, file content, evidence, or mutable Azure
 resource was exposed or changed.
 
+## Gateway snapshots and protected evidence backup: 2026-09-07
+
+The source operator approved and received the least-privilege
+`Storage File Data Privileged Reader` role at only the Gateway storage-account
+scope. Azure reports the assignment created at
+`2026-09-07T04:10:54.159846Z`. No account key or SAS was used.
+
+OAuth plus backup intent produced the following recursive inventory:
+
+- Active share `ets-gateway-state-q1-v2`: root only, no directories, five files,
+  299008 logical bytes at inventory time: `connector-runtime.db` (53248),
+  `gateway-events.db` (143360), `gateway-sync.db` (69632),
+  `gateway-sync.db-shm` (32768), and `gateway-sync.db-wal` (0).
+  This supersedes the earlier 256 KiB observation because the live writer
+  continued to update state.
+- Legacy share `ets-gateway-state`: root only, no directories, one zero-byte
+  `connector-runtime.db`.
+
+Control-plane share snapshots were created without storage keys and read back
+through OAuth plus backup intent:
+
+- active share snapshot: `2026-09-07T04:12:12.0000000Z`;
+- legacy share snapshot: `2026-09-07T04:12:22.0000000Z`.
+
+Both snapshot listings match their source file sets and lengths. These are
+storage point-in-time/crash-consistent captures while the Gateway remained live;
+application-consistent SQLite restoration still requires an exclusive-writer
+freeze/final sync before cutover.
+
+The temporary source ACR token `ets-migration-read-20260906` was queried on
+`etsq1a352eb89` and returned ResourceNotFound. No token deletion was necessary.
+
+A protected Azure Tables REST capture of `ETSEvents` completed at
+`2026-09-07T04:16:40Z` using
+`Accept: application/json;odata=fullmetadata`. The 168122-byte payload contains
+75 entities: 37 `entry`, 37 `event_index`, and one `metadata` row.
+The metadata row reports `next_index=37`, `schema_version=1`, and log ID
+`ets-live-primary`. Validation confirmed required fields and types, unique
+partition/row keys, contiguous entry and event-index log indexes 0 through 36,
+and agreement between metadata high-water mark and both row counts.
+
+Payload SHA-256:
+`fe93a5a27ddb4bd0e5c09f0b5f333de77bdbc44d37b58959d69194e45b2caa21`.
+The protected archive is 19792 bytes with SHA-256
+`8554fe8ab3ccb37464f09573260898879b782e1dba6415edf5df9ab202bcdc6c`.
+It contains the full-metadata payload, manifest, and checksum file and is retained
+outside this public repository. The source-to-protected-copy archive hash was
+independently rechecked after download and matched exactly.
+
+No production traffic, DNS, Core/Gateway deployment, writer ownership, source
+resource availability, signing key, or fleet/PostgreSQL resource was changed.
+Next safe gate: preserve independent historical public verification material for
+the exact source key version, then adapt destination infrastructure and
+cross-tenant identity handling before any no-traffic deployment.
+
