@@ -7,6 +7,8 @@ from ets.ranger.consequence_verifier import (
     verify_ranger_consequence,
 )
 from ets.ranger.custody import (
+    RangerBootCheckpoint,
+    RangerBootContinuityVerification,
     RangerCustodyConflict,
     RangerCustodyError,
     RangerCustodyIntegrityError,
@@ -97,6 +99,8 @@ __all__ = [
     "RangerConsequenceVerification",
     "RangerConsequenceVerificationError",
     "RangerDriveCommand",
+    "RangerBootCheckpoint",
+    "RangerBootContinuityVerification",
     "RangerCustodyConflict",
     "RangerCustodyError",
     "RangerCustodyIntegrityError",

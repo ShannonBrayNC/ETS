@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -12,10 +12,12 @@ from cryptography.hazmat.primitives.serialization import (
 from pydantic import ValidationError
 
 from ets.ranger.custody import (
+    RangerBootCheckpoint,
     RangerCustodyConflict,
     RangerCustodyError,
     RangerCustodyIntegrityError,
     RangerCustodyLedger,
+    RangerCustodyRecord,
     SQLiteRangerCustodyStore,
 )
 from ets.ranger.lifecycle import RangerLifecycleController
@@ -271,3 +273,293 @@ def test_recovery_rejects_wrong_key_or_chain_identity(tmp_path) -> None:
             private_key_hex=key,
         )
     wrong_boot_store.close()
+
+
+def test_clock_qualified_checkpoint_links_consecutive_boot_chains(tmp_path) -> None:
+    key = _key_hex()
+    first_store, first = _ledger(tmp_path / "boot-1.sqlite3", key)
+    first_checkpoint = first.append_boot_checkpoint(
+        checkpoint_id="checkpoint-1",
+        boot_sequence=1,
+        started_at_utc=NOW,
+        clock_quality=ClockQuality.SYNCHRONIZED,
+        clock_source="authenticated-ntp-candidate",
+        clock_uncertainty_ms=25,
+    )
+    first.append(_source_events()[0])
+
+    second_store = SQLiteRangerCustodyStore(tmp_path / "boot-2.sqlite3")
+    second = RangerCustodyLedger(
+        second_store,
+        vehicle_id=VEHICLE_ID,
+        mission_id=MISSION_ID,
+        boot_id="boot-2",
+        signing_key_id=KEY_ID,
+        private_key_hex=key,
+    )
+    second_checkpoint = second.append_boot_checkpoint(
+        checkpoint_id="checkpoint-2",
+        boot_sequence=2,
+        started_at_utc=NOW + timedelta(minutes=1),
+        clock_quality=ClockQuality.ESTIMATED,
+        clock_source="holdover-clock",
+        clock_uncertainty_ms=750,
+        previous_boot_id=BOOT_ID,
+        previous_custody_head_digest_sha256=first.list_records()[-1].record_digest_sha256,
+    )
+
+    result = RangerCustodyLedger.verify_boot_continuity(
+        first.list_records(), second.list_records(), first.public_key_hex
+    )
+    assert result.valid
+    assert result.previous_boot_id == BOOT_ID
+    assert result.current_boot_id == "boot-2"
+    assert result.previous_head_digest_sha256 == first.list_records()[-1].record_digest_sha256
+    assert isinstance(first_checkpoint.source_event, RangerBootCheckpoint)
+    assert isinstance(second_checkpoint.source_event, RangerBootCheckpoint)
+    assert second_checkpoint.source_event.trusted_time_proven is False
+    assert second_checkpoint.source_event.external_head_witnessed is False
+    assert second_checkpoint.source_event.complete_capture_proven is False
+    first_store.close()
+    second_store.close()
+
+
+def test_continuity_rejects_substituted_head_stale_time_and_boot_sequence(tmp_path) -> None:
+    key = _key_hex()
+    first_store, first = _ledger(tmp_path / "first.sqlite3", key)
+    first.append_boot_checkpoint(
+        checkpoint_id="checkpoint-1",
+        boot_sequence=1,
+        started_at_utc=NOW,
+        clock_quality=ClockQuality.DEGRADED,
+        clock_source="rtc",
+        clock_uncertainty_ms=5_000,
+    )
+
+    def current_records(*, head: str, sequence: int, started_at: datetime):
+        store = SQLiteRangerCustodyStore(
+            tmp_path / f"current-{head[:4]}-{sequence}-{started_at.minute}.sqlite3"
+        )
+        ledger = RangerCustodyLedger(
+            store,
+            vehicle_id=VEHICLE_ID,
+            mission_id=MISSION_ID,
+            boot_id=f"boot-{sequence}",
+            signing_key_id=KEY_ID,
+            private_key_hex=key,
+        )
+        ledger.append_boot_checkpoint(
+            checkpoint_id=f"checkpoint-{sequence}-{head[:4]}-{started_at.minute}",
+            boot_sequence=sequence,
+            started_at_utc=started_at,
+            clock_quality=ClockQuality.SYNCHRONIZED,
+            clock_source="ntp",
+            clock_uncertainty_ms=10,
+            previous_boot_id=BOOT_ID,
+            previous_custody_head_digest_sha256=head,
+        )
+        records = ledger.list_records()
+        store.close()
+        return records
+
+    expected_head = first.list_records()[-1].record_digest_sha256
+    substituted = current_records(
+        head="f" * 64, sequence=2, started_at=NOW + timedelta(seconds=1)
+    )
+    stale = current_records(head=expected_head, sequence=2, started_at=NOW)
+    skipped = current_records(
+        head=expected_head, sequence=3, started_at=NOW + timedelta(seconds=1)
+    )
+
+    assert not RangerCustodyLedger.verify_boot_continuity(
+        first.list_records(), substituted, first.public_key_hex
+    ).valid
+    assert not RangerCustodyLedger.verify_boot_continuity(
+        first.list_records(), stale, first.public_key_hex
+    ).valid
+    assert not RangerCustodyLedger.verify_boot_continuity(
+        first.list_records(), skipped, first.public_key_hex
+    ).valid
+    first_store.close()
+
+
+def test_checkpoint_requires_consistent_clock_and_predecessor_claims() -> None:
+    common = {
+        "checkpoint_id": "checkpoint",
+        "vehicle_id": VEHICLE_ID,
+        "mission_id": MISSION_ID,
+        "boot_id": BOOT_ID,
+        "started_at_utc": NOW,
+        "clock_source": "local-clock",
+    }
+    with pytest.raises(ValidationError, match="cannot claim bounded uncertainty"):
+        RangerBootCheckpoint(
+            **common,
+            boot_sequence=1,
+            clock_quality=ClockQuality.UNKNOWN,
+            clock_uncertainty_ms=1,
+        )
+    with pytest.raises(ValidationError, match="requires clock_uncertainty_ms"):
+        RangerBootCheckpoint(
+            **common,
+            boot_sequence=1,
+            clock_quality=ClockQuality.SYNCHRONIZED,
+        )
+    with pytest.raises(ValidationError, match="requires the previous boot and custody head"):
+        RangerBootCheckpoint(
+            **common,
+            boot_sequence=2,
+            clock_quality=ClockQuality.UNKNOWN,
+            previous_boot_id="prior-boot",
+        )
+
+
+def test_continuity_rejects_missing_checkpoint_identity_or_key_change(tmp_path) -> None:
+    key = _key_hex()
+    first_store, first = _ledger(tmp_path / "first.sqlite3", key)
+    first.append_boot_checkpoint(
+        checkpoint_id="checkpoint-1",
+        boot_sequence=1,
+        started_at_utc=NOW,
+        clock_quality=ClockQuality.UNKNOWN,
+        clock_source="unqualified-local-clock",
+    )
+
+    legacy_store, legacy = _ledger(tmp_path / "legacy.sqlite3", key)
+    legacy.append(_source_events()[0])
+    missing = RangerCustodyLedger.verify_boot_continuity(
+        first.list_records(), legacy.list_records(), first.public_key_hex
+    )
+    assert not missing.valid
+    assert "boot checkpoint" in missing.reason
+
+    changed_store = SQLiteRangerCustodyStore(tmp_path / "changed.sqlite3")
+    changed = RangerCustodyLedger(
+        changed_store,
+        vehicle_id=VEHICLE_ID,
+        mission_id="other-mission",
+        boot_id="boot-2",
+        signing_key_id=KEY_ID,
+        private_key_hex=key,
+    )
+    changed.append_boot_checkpoint(
+        checkpoint_id="checkpoint-2",
+        boot_sequence=2,
+        started_at_utc=NOW + timedelta(seconds=1),
+        clock_quality=ClockQuality.UNKNOWN,
+        clock_source="unqualified-local-clock",
+        previous_boot_id=BOOT_ID,
+        previous_custody_head_digest_sha256=first.list_records()[-1].record_digest_sha256,
+    )
+    identity = RangerCustodyLedger.verify_boot_continuity(
+        first.list_records(), changed.list_records(), first.public_key_hex
+    )
+    assert not identity.valid
+    assert "identity changed" in identity.reason
+
+    wrong_key = _key_hex()
+    wrong_store = SQLiteRangerCustodyStore(tmp_path / "wrong-key.sqlite3")
+    wrong = RangerCustodyLedger(
+        wrong_store,
+        vehicle_id=VEHICLE_ID,
+        mission_id=MISSION_ID,
+        boot_id="boot-2",
+        signing_key_id=KEY_ID,
+        private_key_hex=wrong_key,
+    )
+    wrong.append_boot_checkpoint(
+        checkpoint_id="checkpoint-wrong-key",
+        boot_sequence=2,
+        started_at_utc=NOW + timedelta(seconds=1),
+        clock_quality=ClockQuality.UNKNOWN,
+        clock_source="unqualified-local-clock",
+        previous_boot_id=BOOT_ID,
+        previous_custody_head_digest_sha256=first.list_records()[-1].record_digest_sha256,
+    )
+    key_result = RangerCustodyLedger.verify_boot_continuity(
+        first.list_records(), wrong.list_records(), first.public_key_hex
+    )
+    assert not key_result.valid
+    assert "current custody chain is invalid" in key_result.reason
+
+    renamed_store = SQLiteRangerCustodyStore(tmp_path / "renamed-key.sqlite3")
+    renamed = RangerCustodyLedger(
+        renamed_store,
+        vehicle_id=VEHICLE_ID,
+        mission_id=MISSION_ID,
+        boot_id="boot-2",
+        signing_key_id="renamed-software-key",
+        private_key_hex=key,
+    )
+    renamed.append_boot_checkpoint(
+        checkpoint_id="checkpoint-renamed-key",
+        boot_sequence=2,
+        started_at_utc=NOW + timedelta(seconds=1),
+        clock_quality=ClockQuality.UNKNOWN,
+        clock_source="unqualified-local-clock",
+        previous_boot_id=BOOT_ID,
+        previous_custody_head_digest_sha256=first.list_records()[-1].record_digest_sha256,
+    )
+    renamed_result = RangerCustodyLedger.verify_boot_continuity(
+        first.list_records(), renamed.list_records(), first.public_key_hex
+    )
+    assert not renamed_result.valid
+    assert "signing key identity changed" in renamed_result.reason
+    first_store.close()
+    legacy_store.close()
+    changed_store.close()
+    wrong_store.close()
+    renamed_store.close()
+
+
+def test_boot_checkpoint_must_be_first_and_signing_is_deterministic(tmp_path) -> None:
+    key = _key_hex()
+    first_store, first = _ledger(tmp_path / "first.sqlite3", key)
+    first_record = first.append_boot_checkpoint(
+        checkpoint_id="checkpoint-1",
+        boot_sequence=1,
+        started_at_utc=NOW,
+        clock_quality=ClockQuality.SYNCHRONIZED,
+        clock_source="ntp",
+        clock_uncertainty_ms=20,
+    )
+    with pytest.raises(RangerCustodyConflict, match="must be the first"):
+        first.append_boot_checkpoint(
+            checkpoint_id="checkpoint-late",
+            boot_sequence=1,
+            started_at_utc=NOW,
+            clock_quality=ClockQuality.UNKNOWN,
+            clock_source="local",
+        )
+
+    late_checkpoint = RangerBootCheckpoint(
+        checkpoint_id="checkpoint-direct-bypass",
+        vehicle_id=VEHICLE_ID,
+        mission_id=MISSION_ID,
+        boot_id=BOOT_ID,
+        boot_sequence=2,
+        started_at_utc=NOW + timedelta(seconds=1),
+        clock_quality=ClockQuality.UNKNOWN,
+        clock_source="local",
+        previous_boot_id="prior-boot",
+        previous_custody_head_digest_sha256="f" * 64,
+    )
+    with pytest.raises(RangerCustodyConflict, match="must be the first"):
+        first.append(late_checkpoint)
+
+    misplaced_record = first_record.model_copy(update={"custody_sequence": 2})
+    with pytest.raises(ValidationError, match="must be the first custody record"):
+        RangerCustodyRecord.model_validate(misplaced_record.model_dump())
+
+    replay_store, replay = _ledger(tmp_path / "replay.sqlite3", key)
+    replay_record = replay.append_boot_checkpoint(
+        checkpoint_id="checkpoint-1",
+        boot_sequence=1,
+        started_at_utc=NOW,
+        clock_quality=ClockQuality.SYNCHRONIZED,
+        clock_source="ntp",
+        clock_uncertainty_ms=20,
+    )
+    assert replay_record == first_record
+    first_store.close()
+    replay_store.close()
