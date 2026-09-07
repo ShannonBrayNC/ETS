@@ -148,6 +148,7 @@ Current implementation increment:
 - [R0.1 motion-authority lifecycle evidence](lifecycle-evidence.md)
 - [R0.1 deterministic mobility simulation](simulation.md)
 - [R0.2 signed local source custody](custody.md)
+- [R0.2 clock-qualified cross-boot custody continuity](boot-continuity.md)
 - [Epistemic identity and bounded observability](epistemic-identity.md)
 - [Cyber-Physical Observability Model](cyber-physical-observability.md)
 - [Ranger Decision Event v0.1 schema](../../../schemas/ranger/decision-event.v0.1.schema.json)
@@ -155,6 +156,7 @@ Current implementation increment:
 - [ADR 0001: single fail-closed motion boundary](adr/0001-single-fail-closed-motion-boundary.md)
 - [ADR 0002: evidence-shaped mobility simulation](adr/0002-evidence-shaped-mobility-simulation.md)
 - [ADR 0003: signed local source custody](adr/0003-signed-local-source-custody.md)
+- [ADR 0004: clock-qualified cross-boot custody continuity](adr/0004-clock-qualified-boot-continuity.md)
 
 ### R0.1 — Mobility
 - safe rolling chassis

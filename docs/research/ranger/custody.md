@@ -37,8 +37,9 @@ every retained record and the ledger verifies the complete chain before acceptin
 This supports hardware-independent crash/restart testing.
 
 An R0.2 chain is scoped to one vehicle, mission, boot, and signing key. Process recovery during
-that boot resumes the chain; a later boot starts a separately identified chain until cross-boot
-checkpoint and key-rotation semantics are specified.
+that boot resumes the chain. A later boot starts a separately identified chain that can be linked
+under the stable-key [boot-continuity profile](boot-continuity.md). Authorized key rotation and
+revocation semantics remain deferred.
 
 The reference store deliberately reports:
 

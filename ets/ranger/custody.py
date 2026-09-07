@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import RLock
 from typing import Annotated, Literal, Self
@@ -21,24 +22,23 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from ets.core.canonical_json import canonical_sha256, canonicalize
 from ets.ranger.lifecycle import RangerLifecycleEvent
-from ets.ranger.mobility import RangerMobilityEvent
+from ets.ranger.mobility import ClockQuality, RangerMobilityEvent
 from ets.ranger.simulation import RangerActuatorResponse, RangerSimulatedResult
 
 _ZERO_DIGEST = "0" * 64
 _MAX_SOURCE_RECORD_BYTES = 256 * 1024
-
-RangerSourceEvent = Annotated[
-    RangerMobilityEvent
-    | RangerLifecycleEvent
-    | RangerActuatorResponse
-    | RangerSimulatedResult,
-    Field(discriminator="schema_version"),
-]
-_SOURCE_EVENT_ADAPTER: TypeAdapter[RangerSourceEvent] = TypeAdapter(RangerSourceEvent)
 
 
 class StrictModel(BaseModel):
@@ -55,6 +55,89 @@ class RangerCustodyConflict(RangerCustodyError):
 
 class RangerCustodyIntegrityError(RangerCustodyError):
     """Raised when retained custody data cannot be parsed or verified."""
+
+
+class RangerBootCheckpoint(StrictModel):
+    """Clock-qualified link from one boot-scoped custody chain to the next."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        strict=True,
+        allow_inf_nan=False,
+        json_schema_extra={
+            "$id": "https://lanternprotocol.org/schemas/ets/ranger/boot-checkpoint/v1"
+        },
+    )
+
+    schema_version: Literal["ets.ranger.boot-checkpoint.v1"] = (
+        "ets.ranger.boot-checkpoint.v1"
+    )
+    checkpoint_id: str = Field(min_length=1, max_length=256)
+    vehicle_id: str = Field(min_length=12, max_length=160)
+    mission_id: str = Field(min_length=1, max_length=128)
+    boot_id: str = Field(min_length=1, max_length=128)
+    boot_sequence: int = Field(ge=1, le=2**63 - 1)
+    started_at_utc: datetime
+    clock_quality: ClockQuality
+    clock_source: str = Field(min_length=1, max_length=128)
+    clock_uncertainty_ms: int | None = Field(default=None, ge=0, le=86_400_000)
+    previous_boot_id: str | None = Field(default=None, min_length=1, max_length=128)
+    previous_custody_head_digest_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+    trusted_time_proven: Literal[False] = False
+    external_head_witnessed: Literal[False] = False
+    complete_capture_proven: Literal[False] = False
+    claim_boundary: Literal[
+        "signed_cross_boot_link_no_trusted_time_witness_or_completeness_claim"
+    ] = "signed_cross_boot_link_no_trusted_time_witness_or_completeness_claim"
+
+    @field_validator("vehicle_id")
+    @classmethod
+    def require_ranger_vehicle_id(cls, value: str) -> str:
+        if not value.startswith("ets-ranger:"):
+            raise ValueError("vehicle_id must use the ets-ranger: namespace")
+        return value
+
+    @field_validator("started_at_utc")
+    @classmethod
+    def normalize_started_at(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("started_at_utc must be timezone-aware")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def require_explicit_clock_and_predecessor_quality(self) -> Self:
+        if self.clock_quality is ClockQuality.UNKNOWN:
+            if self.clock_uncertainty_ms is not None:
+                raise ValueError("unknown clock quality cannot claim bounded uncertainty")
+        elif self.clock_uncertainty_ms is None:
+            raise ValueError("bounded clock quality requires clock_uncertainty_ms")
+
+        previous = (
+            self.previous_boot_id,
+            self.previous_custody_head_digest_sha256,
+        )
+        if self.boot_sequence == 1:
+            if previous != (None, None):
+                raise ValueError("genesis boot cannot identify a previous custody chain")
+        elif None in previous:
+            raise ValueError("non-genesis boot requires the previous boot and custody head")
+        if self.previous_boot_id == self.boot_id:
+            raise ValueError("previous_boot_id must differ from boot_id")
+        return self
+
+
+RangerSourceEvent = Annotated[
+    RangerMobilityEvent
+    | RangerLifecycleEvent
+    | RangerActuatorResponse
+    | RangerSimulatedResult
+    | RangerBootCheckpoint,
+    Field(discriminator="schema_version"),
+]
+_SOURCE_EVENT_ADAPTER: TypeAdapter[RangerSourceEvent] = TypeAdapter(RangerSourceEvent)
 
 
 class RangerCustodyRecord(StrictModel):
@@ -80,6 +163,7 @@ class RangerCustodyRecord(StrictModel):
         "ets.ranger.lifecycle-event.v1",
         "ets.ranger.actuator-response.v1",
         "ets.ranger.simulated-result.v1",
+        "ets.ranger.boot-checkpoint.v1",
     ]
     source_event_id: str = Field(min_length=1, max_length=256)
     source_record_digest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -117,6 +201,8 @@ class RangerCustodyRecord(StrictModel):
             raise ValueError("mission_id does not match source_event")
         if self.boot_id != source.boot_id:
             raise ValueError("boot_id does not match source_event")
+        if isinstance(source, RangerBootCheckpoint) and self.custody_sequence != 1:
+            raise ValueError("boot checkpoint must be the first custody record")
         source_digest = canonical_sha256(source.model_dump(mode="json"))
         if self.source_record_digest_sha256 != source_digest:
             raise ValueError("source record digest mismatch")
@@ -127,6 +213,16 @@ class RangerCustodyVerification(StrictModel):
     valid: bool
     record_count: int = Field(ge=0)
     head_digest_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    reason: str
+
+
+class RangerBootContinuityVerification(StrictModel):
+    valid: bool
+    previous_boot_id: str | None = None
+    current_boot_id: str | None = None
+    previous_head_digest_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
     reason: str
 
 
@@ -323,6 +419,8 @@ class RangerCustodyLedger:
 
     def append(self, source_event: RangerSourceEvent) -> RangerCustodyRecord:
         source = _validate_source_event(source_event)
+        if isinstance(source, RangerBootCheckpoint) and self._records:
+            raise RangerCustodyConflict("boot checkpoint must be the first custody record")
         if len(canonicalize(source.model_dump(mode="json"))) > _MAX_SOURCE_RECORD_BYTES:
             raise RangerCustodyError("Ranger source record exceeds 256 KiB")
         if (
@@ -379,6 +477,37 @@ class RangerCustodyLedger:
         self.store.append(record)
         self._records.append(record)
         return record
+
+    def append_boot_checkpoint(
+        self,
+        *,
+        checkpoint_id: str,
+        boot_sequence: int,
+        started_at_utc: datetime,
+        clock_quality: ClockQuality,
+        clock_source: str,
+        clock_uncertainty_ms: int | None = None,
+        previous_boot_id: str | None = None,
+        previous_custody_head_digest_sha256: str | None = None,
+    ) -> RangerCustodyRecord:
+        """Append the required first source record that identifies a boot boundary."""
+
+        if self._records:
+            raise RangerCustodyConflict("boot checkpoint must be the first custody record")
+        checkpoint = RangerBootCheckpoint(
+            checkpoint_id=checkpoint_id,
+            vehicle_id=self.vehicle_id,
+            mission_id=self.mission_id,
+            boot_id=self.boot_id,
+            boot_sequence=boot_sequence,
+            started_at_utc=started_at_utc,
+            clock_quality=clock_quality,
+            clock_source=clock_source,
+            clock_uncertainty_ms=clock_uncertainty_ms,
+            previous_boot_id=previous_boot_id,
+            previous_custody_head_digest_sha256=previous_custody_head_digest_sha256,
+        )
+        return self.append(checkpoint)
 
     @staticmethod
     def verify_chain(
@@ -446,6 +575,61 @@ class RangerCustodyLedger:
             reason="signatures, source digests, identities, and append linkage are valid",
         )
 
+    @staticmethod
+    def verify_boot_continuity(
+        previous_records: Iterable[RangerCustodyRecord],
+        current_records: Iterable[RangerCustodyRecord],
+        public_key_hex: str,
+    ) -> RangerBootContinuityVerification:
+        """Verify stable-key continuity between two complete boot-scoped chains."""
+
+        previous = list(previous_records)
+        current = list(current_records)
+        previous_verification = RangerCustodyLedger.verify_chain(previous, public_key_hex)
+        if not previous_verification.valid:
+            return _continuity_failure(
+                f"previous custody chain is invalid: {previous_verification.reason}"
+            )
+        current_verification = RangerCustodyLedger.verify_chain(current, public_key_hex)
+        if not current_verification.valid:
+            return _continuity_failure(
+                f"current custody chain is invalid: {current_verification.reason}"
+            )
+
+        previous_checkpoint = _first_boot_checkpoint(previous)
+        current_checkpoint = _first_boot_checkpoint(current)
+        if previous_checkpoint is None or current_checkpoint is None:
+            return _continuity_failure("each custody chain must start with a boot checkpoint")
+        if (
+            previous_checkpoint.vehicle_id != current_checkpoint.vehicle_id
+            or previous_checkpoint.mission_id != current_checkpoint.mission_id
+        ):
+            return _continuity_failure("vehicle or mission identity changed across boots")
+        if previous[0].signing_key_id != current[0].signing_key_id:
+            return _continuity_failure("signing key identity changed without an authorized handoff")
+        if current_checkpoint.previous_boot_id != previous_checkpoint.boot_id:
+            return _continuity_failure("previous boot identity does not match")
+        if (
+            current_checkpoint.previous_custody_head_digest_sha256
+            != previous_verification.head_digest_sha256
+        ):
+            return _continuity_failure("previous custody head digest does not match")
+        if current_checkpoint.boot_sequence != previous_checkpoint.boot_sequence + 1:
+            return _continuity_failure("boot sequence is missing, duplicate, or reordered")
+        if current_checkpoint.started_at_utc <= previous_checkpoint.started_at_utc:
+            return _continuity_failure("recorded boot timestamp did not advance")
+        return RangerBootContinuityVerification(
+            valid=True,
+            previous_boot_id=previous_checkpoint.boot_id,
+            current_boot_id=current_checkpoint.boot_id,
+            previous_head_digest_sha256=previous_verification.head_digest_sha256,
+            reason=(
+                "signed stable-key identity and boot link, recorded order, and explicit "
+                "clock quality are valid; "
+                "trusted time, external witnessing, and complete capture are not proven"
+            ),
+        )
+
     def list_records(self) -> list[RangerCustodyRecord]:
         return self.store.list_records()
 
@@ -458,6 +642,8 @@ def _validate_source_event(source_event: RangerSourceEvent) -> RangerSourceEvent
 
 
 def _source_event_id(source: RangerSourceEvent) -> str:
+    if isinstance(source, RangerBootCheckpoint):
+        return source.checkpoint_id
     if isinstance(source, (RangerMobilityEvent, RangerLifecycleEvent)):
         return source.event_id
     if isinstance(source, RangerActuatorResponse):
@@ -523,3 +709,16 @@ def _record_payload(
 
 def _verification_failure(count: int, reason: str) -> RangerCustodyVerification:
     return RangerCustodyVerification(valid=False, record_count=count, reason=reason)
+
+
+def _first_boot_checkpoint(
+    records: list[RangerCustodyRecord],
+) -> RangerBootCheckpoint | None:
+    if not records or records[0].custody_sequence != 1:
+        return None
+    source = records[0].source_event
+    return source if isinstance(source, RangerBootCheckpoint) else None
+
+
+def _continuity_failure(reason: str) -> RangerBootContinuityVerification:
+    return RangerBootContinuityVerification(valid=False, reason=reason)
