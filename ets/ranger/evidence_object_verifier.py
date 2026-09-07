@@ -8,7 +8,8 @@ sensor truth, human identity, location truth, or policy sufficiency.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -94,8 +95,7 @@ def verify_ranger_evidence_object(
         (
             item
             for item in evidence.integrity
-            if item.scope == _RANGER_INTEGRITY_SCOPE
-            and item.profile == _RANGER_INTEGRITY_PROFILE
+            if item.scope == _RANGER_INTEGRITY_SCOPE and item.profile == _RANGER_INTEGRITY_PROFILE
         ),
         None,
     )
@@ -125,7 +125,9 @@ def verify_ranger_evidence_object(
     decision = event.get("decision")
     if not isinstance(decision, Mapping):
         raise RangerEvidenceVerificationError("embedded Ranger decision is invalid")
-    participating = _string_tuple(decision.get("participating_claim_ids", []), "participating_claim_ids")
+    participating = _string_tuple(
+        decision.get("participating_claim_ids", []), "participating_claim_ids"
+    )
     excluded = _string_tuple(decision.get("excluded_claim_ids", []), "excluded_claim_ids")
 
     findings: list[RangerClaimFinding] = []

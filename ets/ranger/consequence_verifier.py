@@ -8,7 +8,8 @@ stages into a single success boolean.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -85,7 +86,8 @@ def verify_ranger_consequence(evidence: EvidenceObject) -> RangerConsequenceVeri
     capability_limitations = tuple(
         _capability_limitation(item)
         for item in capabilities
-        if isinstance(item, Mapping) and item.get("state") in {"DEGRADED", "NOT_AVAILABLE", "FAILED", "UNKNOWN"}
+        if isinstance(item, Mapping)
+        and item.get("state") in {"DEGRADED", "NOT_AVAILABLE", "FAILED", "UNKNOWN"}
     )
 
     actuation = cps.get("actuation")
@@ -119,15 +121,20 @@ def verify_ranger_consequence(evidence: EvidenceObject) -> RangerConsequenceVeri
         raise RangerConsequenceVerificationError("consequence must be object or null")
     else:
         consequence_state = _required_string(consequence, "state")
-        supporting_refs = _string_tuple(consequence.get("supporting_measurement_refs", []), "supporting_measurement_refs")
-        contradicting_refs = _string_tuple(consequence.get("contradicting_measurement_refs", []), "contradicting_measurement_refs")
+        supporting_refs = _string_tuple(
+            consequence.get("supporting_measurement_refs", []), "supporting_measurement_refs"
+        )
+        contradicting_refs = _string_tuple(
+            consequence.get("contradicting_measurement_refs", []), "contradicting_measurement_refs"
+        )
         if contradicting_refs or consequence_state == "CONTRADICTED":
             stages.append(
                 RangerStageFinding(
                     stage="observed_consequence",
                     status="CONTRADICTED",
                     epistemic_state=consequence_state,
-                    reason=_optional_string(consequence.get("reason")) or "Contradicting consequence evidence exists.",
+                    reason=_optional_string(consequence.get("reason"))
+                    or "Contradicting consequence evidence exists.",
                 )
             )
         elif consequence_state == "KNOWN" and supporting_refs:
@@ -173,7 +180,9 @@ def verify_ranger_consequence(evidence: EvidenceObject) -> RangerConsequenceVeri
     )
 
 
-def _verify_actuation(actuation: Mapping[str, Any], selected_action: str) -> list[RangerStageFinding]:
+def _verify_actuation(
+    actuation: Mapping[str, Any], selected_action: str
+) -> list[RangerStageFinding]:
     findings: list[RangerStageFinding] = []
     ordered = (
         ("selected_action", selected_action),
@@ -203,12 +212,17 @@ def _verify_actuation(actuation: Mapping[str, Any], selected_action: str) -> lis
                         stage=stage_name,
                         status="CONTRADICTED",
                         epistemic_state=epistemic,
-                        reason="Cyber-physical selected_action does not match Decision Event selected_action.",
+                        reason=(
+                            "Cyber-physical selected_action does not match Decision Event "
+                            "selected_action."
+                        ),
                     )
                 )
             else:
                 findings.append(
-                    RangerStageFinding(stage=stage_name, status="SUPPORTED", epistemic_state=epistemic)
+                    RangerStageFinding(
+                        stage=stage_name, status="SUPPORTED", epistemic_state=epistemic
+                    )
                 )
         else:
             findings.append(

@@ -45,7 +45,7 @@ def test_adapter_projects_only_known_claims_into_generic_core_claims() -> None:
     assert "claim-identity" not in claim_ids
 
     human_claim = next(item for item in evidence.claims if item.claim_id == "claim-human-detected")
-    assert human_claim.value is True
+    assert human_claim.value == "human"
 
 
 def test_adapter_preserves_unknown_in_ranger_extension() -> None:
@@ -82,7 +82,9 @@ def test_adapter_never_promotes_non_known_state_to_core_claim(state: str) -> Non
 def test_adapter_preserves_participating_and_excluded_claim_context() -> None:
     evidence = ranger_decision_event_to_evidence_object(_sealed_event())
 
-    decision_context = next(item for item in evidence.contexts if item.context_type == "ranger-decision")
+    decision_context = next(
+        item for item in evidence.contexts if item.context_type == "ranger-decision"
+    )
     assert decision_context.attributes["participating_claim_ids"] == [
         "claim-human-detected",
         "claim-identity",
@@ -94,7 +96,9 @@ def test_adapter_preserves_participating_and_excluded_claim_context() -> None:
 def test_adapter_preserves_source_dependencies_for_non_known_claims() -> None:
     evidence = ranger_decision_event_to_evidence_object(_sealed_event())
 
-    dependency_targets = {relationship.target_evidence_ref for relationship in evidence.relationships}
+    dependency_targets = {
+        relationship.target_evidence_ref for relationship in evidence.relationships
+    }
     assert dependency_targets == {
         "evidence-camera-001",
         "evidence-enrollment-set-001",

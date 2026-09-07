@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = ROOT / "schemas" / "ranger" / "cyber-physical-state.v0.1.schema.json"
 
@@ -14,7 +13,10 @@ def _schema() -> dict[str, object]:
 
 def test_schema_identity_is_stable_and_strict() -> None:
     schema = _schema()
-    assert schema["$id"] == "https://lanternprotocol.net/schemas/ranger/cyber-physical-state.v0.1.schema.json"
+    assert (
+        schema["$id"]
+        == "https://lanternprotocol.net/schemas/ranger/cyber-physical-state.v0.1.schema.json"
+    )
     assert schema["additionalProperties"] is False
     assert schema["properties"]["schema_version"]["const"] == "ranger.cyber-physical-state.v0.1"
 

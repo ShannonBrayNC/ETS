@@ -5,7 +5,12 @@ from copy import deepcopy
 from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat, PublicFormat
+from cryptography.hazmat.primitives.serialization import (
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+    PublicFormat,
+)
 
 from ets.evidence_object.canonical import object_hash
 from ets.ranger.decision_event import decision_event_digest, sign_decision_event
@@ -70,9 +75,9 @@ def test_reverse_verifier_detects_wrong_signature_key_without_upgrading_truth() 
     signed = sign_decision_event(_event(), private_key_hex=private_hex, key_id="test-key")
     evidence = ranger_decision_event_to_evidence_object(signed)
 
-    wrong_key = Ed25519PrivateKey.generate().public_key().public_bytes(
-        Encoding.Raw, PublicFormat.Raw
-    ).hex()
+    wrong_key = (
+        Ed25519PrivateKey.generate().public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
+    )
     result = verify_ranger_evidence_object(evidence, ranger_public_key_hex=wrong_key)
 
     assert result.ranger_event_digest_valid is True
@@ -89,7 +94,7 @@ def test_reverse_verifier_detects_wrong_expected_outer_hash() -> None:
 
 def test_reverse_verifier_detects_tampered_embedded_event_even_if_object_rebuilt() -> None:
     original = ranger_decision_event_to_evidence_object(_event())
-    payload = original.model_dump(mode="json")
+    payload = original.model_dump()
     tampered = deepcopy(payload)
     extension = tampered["extensions"]["org.lanternprotocol.ranger.decision-event.v0.1"]
     extension["decision_event"]["decision"]["selected_action"] = "continue"
