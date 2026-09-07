@@ -1,10 +1,58 @@
 """ETS Ranger research contracts and simulation-safe reference components."""
 
+from ets.ranger.consequence_verifier import (
+    RangerConsequenceVerification,
+    RangerConsequenceVerificationError,
+    RangerStageFinding,
+    verify_ranger_consequence,
+)
+from ets.ranger.custody import (
+    RangerBootCheckpoint,
+    RangerBootContinuityVerification,
+    RangerCustodyConflict,
+    RangerCustodyError,
+    RangerCustodyIntegrityError,
+    RangerCustodyLedger,
+    RangerCustodyRecord,
+    RangerCustodyVerification,
+    SQLiteRangerCustodyStore,
+)
+from ets.ranger.decision_event import (
+    RangerDecisionIntegrityError,
+    decision_event_canonical_bytes,
+    decision_event_digest,
+    decision_event_preimage,
+    sign_decision_event,
+    verify_decision_event,
+)
+from ets.ranger.evidence_object_adapter import (
+    RangerEvidenceObjectAdapterError,
+    ranger_decision_event_to_evidence_object,
+)
+from ets.ranger.evidence_object_verifier import (
+    RangerClaimFinding,
+    RangerEvidenceObjectVerification,
+    RangerEvidenceVerificationError,
+    verify_ranger_evidence_object,
+)
 from ets.ranger.lifecycle import (
     RangerLifecycleController,
     RangerLifecycleEvent,
     RangerLifecycleKind,
     RangerLifecycleResult,
+)
+from ets.ranger.mission_chain_verifier import (
+    RangerEpistemicTransition,
+    RangerMissionChainError,
+    RangerMissionChainVerification,
+    RangerMissionEventFinding,
+    verify_ranger_mission_chain,
+)
+from ets.ranger.mission_consequence_verifier import (
+    RangerMissionConsequenceError,
+    RangerMissionConsequenceEventFinding,
+    RangerMissionConsequenceVerification,
+    verify_ranger_mission_consequences,
 )
 from ets.ranger.mobility import (
     AuthorizationResult,
@@ -32,6 +80,12 @@ from ets.ranger.simulation import (
     SimulatedVehicleState,
     SimulationValueClass,
 )
+from ets.ranger.source_evidence_verifier import (
+    RangerSourceEvidenceFinding,
+    RangerSourceEvidenceVerification,
+    RangerSourceEvidenceVerificationError,
+    verify_ranger_source_evidence,
+)
 
 __all__ = [
     "AuthorizationResult",
@@ -41,11 +95,33 @@ __all__ = [
     "ExecutionEnvironment",
     "MotionReason",
     "MotionVector",
+    "RangerClaimFinding",
+    "RangerConsequenceVerification",
+    "RangerConsequenceVerificationError",
     "RangerDriveCommand",
+    "RangerBootCheckpoint",
+    "RangerBootContinuityVerification",
+    "RangerCustodyConflict",
+    "RangerCustodyError",
+    "RangerCustodyIntegrityError",
+    "RangerCustodyLedger",
+    "RangerCustodyRecord",
+    "RangerCustodyVerification",
+    "RangerDecisionIntegrityError",
+    "RangerEpistemicTransition",
+    "RangerEvidenceObjectAdapterError",
+    "RangerEvidenceObjectVerification",
+    "RangerEvidenceVerificationError",
     "RangerLifecycleController",
     "RangerLifecycleEvent",
     "RangerLifecycleKind",
     "RangerLifecycleResult",
+    "RangerMissionChainError",
+    "RangerMissionChainVerification",
+    "RangerMissionConsequenceError",
+    "RangerMissionConsequenceEventFinding",
+    "RangerMissionConsequenceVerification",
+    "RangerMissionEventFinding",
     "RangerMobilityController",
     "RangerMobilityEvent",
     "RangerMobilityPolicy",
@@ -56,8 +132,24 @@ __all__ = [
     "RangerSimulationInputError",
     "RangerSimulationStep",
     "RangerSafetyInputError",
+    "RangerSourceEvidenceFinding",
+    "RangerSourceEvidenceVerification",
+    "RangerSourceEvidenceVerificationError",
+    "RangerStageFinding",
     "SafetyMode",
     "SimulatedPose2D",
     "SimulatedVehicleState",
     "SimulationValueClass",
+    "SQLiteRangerCustodyStore",
+    "decision_event_canonical_bytes",
+    "decision_event_digest",
+    "decision_event_preimage",
+    "ranger_decision_event_to_evidence_object",
+    "sign_decision_event",
+    "verify_decision_event",
+    "verify_ranger_consequence",
+    "verify_ranger_evidence_object",
+    "verify_ranger_mission_chain",
+    "verify_ranger_mission_consequences",
+    "verify_ranger_source_evidence",
 ]
