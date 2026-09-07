@@ -377,3 +377,27 @@ work account, verify the exact subscription/tenant before any write, and then
 continue with `Storage File Data Privileged Reader` verification at the Gateway
 storage-account scope. No Azure mutation occurred in this checkpoint.
 
+## Source authorization checkpoint: 2026-09-07
+
+At 2026-09-07T03:56:24Z, separate MFA-backed authentication completed for the
+authorized Echo Media source operator. Cloud Shell confirmed the expected source
+subscription and tenant as Enabled/default before any scoped operation.
+
+The exact Gateway storage authorization gate was then evaluated without combining
+`az role assignment list --all` with `--scope`:
+
+- No direct `Storage File Data Privileged Reader` assignment was returned for
+  the signed-in operator at the `etsgwo23bf2d6oq44s` storage-account scope.
+- Repeating the check with `--include-inherited` returned no matching assignment.
+- A scope-wide inherited query returned no matching role for any visible principal.
+- OAuth listing of `ets-gateway-state-q1-v2` with `--backup-intent` reproduced
+  the insufficient-permissions failure. Azure CLI suggested account-key fallback;
+  it was deliberately not used.
+
+The next bounded write is to grant `Storage File Data Privileged Reader` to the
+signed-in source operator at only the Gateway storage-account scope. Browser safety
+requires action-time approval for this permission change; approval was not returned,
+so no role assignment was created. Both share inventories and snapshots remain
+blocked. No account key, SAS, secret, file content, evidence, or mutable Azure
+resource was exposed or changed.
+
