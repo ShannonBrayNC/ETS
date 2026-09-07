@@ -334,3 +334,46 @@ resource, secret, DNS, traffic, evidence, storage, key, or billing setting was
 changed. The Gateway authorization check, share inventory/snapshots, source ACR
 token cleanup, and table backup remain unexecuted in this continuation.
 
+## Live destination verification: 2026-09-07
+
+At 2026-09-07T03:39:53Z, interactive Azure portal authentication completed for
+the confirmed ETS Protocol account with multifactor authentication. Azure Cloud
+Shell was started in ephemeral mode; no persistent Cloud Shell storage was
+created by this session.
+
+Live ARM/portal verification established:
+
+- `Azure subscription 1` is Enabled/Active in the confirmed destination tenant.
+  The signed-in migration operator is Owner. The account's accessible-subscription
+  list contains only this destination subscription.
+- The Startups billing surface displays `$200 in credits - Exp Dec 2, 2026`.
+  Treat this as a live display observation, not permission to create unnecessary
+  resources or proof that every meter is credit eligible.
+- Four destination resource groups exist and report Succeeded:
+  `rg-ets-prod-eastus`, `rg-ets-shared-eastus`,
+  `rg-lantern-web-eastus` in East US, plus pre-existing
+  `rg-ets.protocol-3456` in West US 3.
+- The pre-existing non-migration group contains one Foundry account, one Foundry
+  project, and one Search service. They were not created, modified, classified
+  as redundant, or deleted by this migration session.
+- All required migration providers report Registered:
+  `Microsoft.App`, `Microsoft.AppConfiguration`,
+  `Microsoft.ContainerRegistry`, `Microsoft.KeyVault`,
+  `Microsoft.Storage`, `Microsoft.ManagedIdentity`,
+  `Microsoft.Network`, `Microsoft.OperationalInsights`, and
+  `Microsoft.Insights`.
+- ACR `etsprod7c8ab70380.azurecr.io` reports provisioning Succeeded, Basic SKU,
+  and admin user disabled.
+- Repository `ets/hosted-q1` contains the qualified immutable manifest
+  `sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63`.
+  It is untagged, consistent with digest-only deployment. Two additional untagged
+  manifests are present and were not modified. No image was rebuilt, retagged,
+  imported, or deleted.
+
+The destination account has no access to the source subscription, so it cannot
+perform the Gateway file-role check. Azure's account-selector flow is open for a
+separate source-operator sign-in. Resume there, authenticate the authorized source
+work account, verify the exact subscription/tenant before any write, and then
+continue with `Storage File Data Privileged Reader` verification at the Gateway
+storage-account scope. No Azure mutation occurred in this checkpoint.
+
