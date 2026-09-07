@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from copy import deepcopy
-from datetime import datetime, timezone
 import hashlib
+from copy import deepcopy
+from datetime import UTC, datetime
 
 from ets.ranger.decision_event import decision_event_digest
 from ets.ranger.evidence_object_adapter import ranger_decision_event_to_evidence_object
@@ -10,20 +10,22 @@ from ets.ranger.mission_consequence_verifier import verify_ranger_mission_conseq
 
 
 def _artifact_bytes(event_id: str) -> bytes:
-    return f"camera-artifact:{event_id}".encode("utf-8")
+    return f"camera-artifact:{event_id}".encode()
 
 
 def _artifact_digest(event_id: str) -> str:
     return "sha256:" + hashlib.sha256(_artifact_bytes(event_id)).hexdigest()
 
 
-def _event(event_id: str, previous: str | None, state: str, action: str, consequence_state: str = "KNOWN") -> dict[str, object]:
+def _event(
+    event_id: str, previous: str | None, state: str, action: str, consequence_state: str = "KNOWN"
+) -> dict[str, object]:
     event: dict[str, object] = {
         "schema_version": "ranger.decision-event.v0.1",
         "event_id": event_id,
         "mission_id": "mission-1",
         "ranger_id": "ranger-1",
-        "occurred_at": datetime(2026, 9, 6, 10, 0, tzinfo=timezone.utc).isoformat().replace("+00:00", "Z"),
+        "occurred_at": datetime(2026, 9, 6, 10, 0, tzinfo=UTC).isoformat().replace("+00:00", "Z"),
         "subject_context": [
             {
                 "subject_id": "SUBJECT-1",
@@ -34,7 +36,11 @@ def _event(event_id: str, previous: str | None, state: str, action: str, consequ
                         "kind": "identity",
                         "state": state,
                         "source_refs": [f"camera-{event_id}"],
-                        **({"value": "registered-user-1"} if state == "KNOWN" else {"reason": f"identity state is {state}"}),
+                        **(
+                            {"value": "registered-user-1"}
+                            if state == "KNOWN"
+                            else {"reason": f"identity state is {state}"}
+                        ),
                     }
                 ],
             }
@@ -47,7 +53,9 @@ def _event(event_id: str, previous: str | None, state: str, action: str, consequ
         },
         "cyber_physical_state": {
             "schema_version": "ranger.cyber-physical-state.v0.1",
-            "captured_at": datetime(2026, 9, 6, 10, 0, tzinfo=timezone.utc).isoformat().replace("+00:00", "Z"),
+            "captured_at": datetime(2026, 9, 6, 10, 0, tzinfo=UTC)
+            .isoformat()
+            .replace("+00:00", "Z"),
             "capabilities": [{"capability_id": "camera", "state": "AVAILABLE"}],
             "measurements": [
                 {
@@ -57,7 +65,9 @@ def _event(event_id: str, previous: str | None, state: str, action: str, consequ
                     "unit": "m/s",
                     "state": "KNOWN",
                     "source_id": "encoder-1",
-                    "captured_at": datetime(2026, 9, 6, 10, 0, tzinfo=timezone.utc).isoformat().replace("+00:00", "Z"),
+                    "captured_at": datetime(2026, 9, 6, 10, 0, tzinfo=UTC)
+                    .isoformat()
+                    .replace("+00:00", "Z"),
                 }
             ],
             "actuation": {
@@ -69,7 +79,9 @@ def _event(event_id: str, previous: str | None, state: str, action: str, consequ
             "consequence": {
                 "state": consequence_state,
                 "claim": "vehicle response observed",
-                "supporting_measurement_refs": [f"speed-{event_id}"] if consequence_state == "KNOWN" else [],
+                "supporting_measurement_refs": [f"speed-{event_id}"]
+                if consequence_state == "KNOWN"
+                else [],
                 "contradicting_measurement_refs": [],
                 **({"reason": "consequence unavailable"} if consequence_state != "KNOWN" else {}),
             },
@@ -108,11 +120,21 @@ def test_mission_consequence_verifier_supports_complete_chain() -> None:
     assert result.overall_status == "SUPPORTED"
     assert result.first_problem_event_index is None
     assert result.source_evidence_verification_requested is False
-    assert [finding.source_evidence_status for finding in result.event_findings] == ["NOT_REQUESTED"] * 3
+    assert [finding.source_evidence_status for finding in result.event_findings] == [
+        "NOT_REQUESTED"
+    ] * 3
     assert result.temporal_epistemic_conservation_preserved is True
-    assert [finding.consequence_status for finding in result.event_findings] == ["SUPPORTED", "SUPPORTED", "SUPPORTED"]
+    assert [finding.consequence_status for finding in result.event_findings] == [
+        "SUPPORTED",
+        "SUPPORTED",
+        "SUPPORTED",
+    ]
     transitions = result.chain_verification.epistemic_transitions
-    assert [transition.to_state for transition in transitions] == ["UNKNOWN", "INDETERMINATE", "KNOWN"]
+    assert [transition.to_state for transition in transitions] == [
+        "UNKNOWN",
+        "INDETERMINATE",
+        "KNOWN",
+    ]
 
 
 def test_source_aware_mission_verifies_all_referenced_artifacts() -> None:

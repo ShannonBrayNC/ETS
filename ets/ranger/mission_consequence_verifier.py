@@ -68,7 +68,8 @@ class RangerMissionConsequenceVerification(BaseModel):
     truth_claim_supported: bool = False
     temporal_epistemic_conservation_preserved: bool = True
     claim_boundary: str = (
-        "mission_reconstruction_supports_only_the_supplied_evidence_chain_and_source_bytes_and_does_not_prove_complete_capture_or_external_truth"
+        "mission_reconstruction_supports_only_the_supplied_evidence_chain_and_source_bytes_"
+        "and_does_not_prove_complete_capture_or_external_truth"
     )
 
 
@@ -90,7 +91,9 @@ def verify_ranger_mission_consequences(
 
     objects = list(evidence_objects)
     if not objects:
-        raise RangerMissionConsequenceError("mission must contain at least one Ranger Evidence Object")
+        raise RangerMissionConsequenceError(
+            "mission must contain at least one Ranger Evidence Object"
+        )
 
     chain = verify_ranger_mission_chain(
         objects,
@@ -111,8 +114,7 @@ def verify_ranger_mission_consequences(
             and chain_finding.event_verification.ranger_integrity_binding_valid
         )
         epistemic_states = tuple(
-            finding.epistemic_state
-            for finding in chain_finding.event_verification.claim_findings
+            finding.epistemic_state for finding in chain_finding.event_verification.claim_findings
         )
 
         source_evidence: RangerSourceEvidenceVerification | None = None
@@ -180,7 +182,9 @@ def verify_ranger_mission_consequences(
         source_evidence_verification_requested=artifacts is not None,
         source_verified_event_count=sum(status == "VERIFIED" for status in source_statuses),
         source_incomplete_event_count=sum(status == "INCOMPLETE" for status in source_statuses),
-        source_digest_mismatch_event_count=sum(status == "DIGEST_MISMATCH" for status in source_statuses),
+        source_digest_mismatch_event_count=sum(
+            status == "DIGEST_MISMATCH" for status in source_statuses
+        ),
         event_findings=tuple(findings),
         chain_verification=chain,
     )

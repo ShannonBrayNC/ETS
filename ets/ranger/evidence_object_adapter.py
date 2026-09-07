@@ -11,8 +11,9 @@ sensor truth, identity truth, policy sufficiency, or signer authority.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Any, Mapping
+from typing import Any
 
 from ets.evidence_object.models import (
     Claim,
@@ -93,7 +94,9 @@ def ranger_decision_event_to_evidence_object(event: Mapping[str, Any]) -> Eviden
             kind = _required_string(source_claim, "kind")
             state = _required_string(source_claim, "state")
             source_refs = source_claim.get("source_refs", [])
-            if not isinstance(source_refs, list) or not all(isinstance(item, str) and item for item in source_refs):
+            if not isinstance(source_refs, list) or not all(
+                isinstance(item, str) and item for item in source_refs
+            ):
                 raise RangerEvidenceObjectAdapterError("claim source_refs must be strings")
 
             if state == "KNOWN":

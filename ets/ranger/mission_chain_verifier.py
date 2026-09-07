@@ -8,7 +8,6 @@ truth, policy correctness, or completeness of the mission record.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict
 
@@ -107,7 +106,10 @@ def verify_ranger_mission_chain(
 
         if not predecessor_valid:
             valid_chain = False
-        if not verification.ranger_event_digest_valid or not verification.ranger_integrity_binding_valid:
+        if (
+            not verification.ranger_event_digest_valid
+            or not verification.ranger_integrity_binding_valid
+        ):
             valid_chain = False
         if ranger_public_key_hex is not None and verification.ranger_signature_status != "VALID":
             valid_chain = False

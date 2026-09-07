@@ -56,8 +56,22 @@ def _event() -> dict[str, object]:
                 "reason": None,
             },
             "capabilities": [
-                {"capability_id": "camera", "source_id": "camera-01", "state": "AVAILABLE", "reason": None, "health_ref": "health-camera", "calibration_ref": "cal-camera"},
-                {"capability_id": "lidar", "source_id": "lidar-01", "state": "AVAILABLE", "reason": None, "health_ref": "health-lidar", "calibration_ref": "cal-lidar"},
+                {
+                    "capability_id": "camera",
+                    "source_id": "camera-01",
+                    "state": "AVAILABLE",
+                    "reason": None,
+                    "health_ref": "health-camera",
+                    "calibration_ref": "cal-camera",
+                },
+                {
+                    "capability_id": "lidar",
+                    "source_id": "lidar-01",
+                    "state": "AVAILABLE",
+                    "reason": None,
+                    "health_ref": "health-lidar",
+                    "calibration_ref": "cal-lidar",
+                },
             ],
             "measurements": [
                 {
@@ -81,10 +95,34 @@ def _event() -> dict[str, object]:
             ],
             "system_state": [],
             "actuation": {
-                "selected_action": {"state": "KNOWN", "value": "stop", "source_refs": ["decision-001"], "observed_at": "2026-09-06T10:00:00.100+00:00", "reason": None},
-                "issued_command": {"state": "KNOWN", "value": {"velocity_mps": 0.0}, "source_refs": ["controller-command-001"], "observed_at": "2026-09-06T10:00:00.150+00:00", "reason": None},
-                "command_acknowledgement": {"state": "KNOWN", "value": "accepted", "source_refs": ["motor-controller-ack-001"], "observed_at": "2026-09-06T10:00:00.170+00:00", "reason": None},
-                "actuator_response": {"state": "KNOWN", "value": {"wheel_speed_mps": 0.0}, "source_refs": ["motor-response-001"], "observed_at": "2026-09-06T10:00:00.400+00:00", "reason": None},
+                "selected_action": {
+                    "state": "KNOWN",
+                    "value": "stop",
+                    "source_refs": ["decision-001"],
+                    "observed_at": "2026-09-06T10:00:00.100+00:00",
+                    "reason": None,
+                },
+                "issued_command": {
+                    "state": "KNOWN",
+                    "value": {"velocity_mps": 0.0},
+                    "source_refs": ["controller-command-001"],
+                    "observed_at": "2026-09-06T10:00:00.150+00:00",
+                    "reason": None,
+                },
+                "command_acknowledgement": {
+                    "state": "KNOWN",
+                    "value": "accepted",
+                    "source_refs": ["motor-controller-ack-001"],
+                    "observed_at": "2026-09-06T10:00:00.170+00:00",
+                    "reason": None,
+                },
+                "actuator_response": {
+                    "state": "KNOWN",
+                    "value": {"wheel_speed_mps": 0.0},
+                    "source_refs": ["motor-response-001"],
+                    "observed_at": "2026-09-06T10:00:00.400+00:00",
+                    "reason": None,
+                },
             },
             "consequence": {
                 "state": "KNOWN",
@@ -151,7 +189,10 @@ def test_missing_actuation_evidence_is_not_observed() -> None:
 
     result = verify_ranger_consequence(_evidence(event))
     assert result.overall_status == "NOT_OBSERVED"
-    assert any(stage.stage == "actuation" and stage.status == "NOT_OBSERVED" for stage in result.stage_findings)
+    assert any(
+        stage.stage == "actuation" and stage.status == "NOT_OBSERVED"
+        for stage in result.stage_findings
+    )
 
 
 def test_selected_action_mismatch_is_contradicted() -> None:
@@ -167,7 +208,10 @@ def test_selected_action_mismatch_is_contradicted() -> None:
 
     result = verify_ranger_consequence(_evidence(event))
     assert result.overall_status == "CONTRADICTED"
-    assert any(stage.stage == "selected_action" and stage.status == "CONTRADICTED" for stage in result.stage_findings)
+    assert any(
+        stage.stage == "selected_action" and stage.status == "CONTRADICTED"
+        for stage in result.stage_findings
+    )
 
 
 def test_degraded_capability_is_reported_without_promoting_truth() -> None:
