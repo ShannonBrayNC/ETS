@@ -160,12 +160,7 @@ var graphLifecycleConfigurationValidated = !graphLifecyclePartiallyConfigured ||
 var graphLifecycleConfigured = graphSubscriptionRenewalWindowSeconds < graphSubscriptionLifetimeSeconds
   ? graphLifecycleConfigurationValidated
   : fail('Graph subscription renewal window must be shorter than its lifetime.')
-var federatedMicrosoftApplicationsValid = !empty(microsoftApplicationId)
-  && !empty(microsoftDirectoryApplicationId)
-  && !empty(microsoftPurviewApplicationId)
-  && microsoftApplicationId != microsoftDirectoryApplicationId
-  && microsoftApplicationId != microsoftPurviewApplicationId
-  && microsoftDirectoryApplicationId != microsoftPurviewApplicationId
+var federatedMicrosoftApplicationsValid = !empty(microsoftApplicationId) && !empty(microsoftDirectoryApplicationId) && !empty(microsoftPurviewApplicationId) && microsoftApplicationId != microsoftDirectoryApplicationId && microsoftApplicationId != microsoftPurviewApplicationId && microsoftDirectoryApplicationId != microsoftPurviewApplicationId
 var microsoftApplicationIds = microsoftCredentialMode == 'managed_identity'
   ? {
       sharepoint: gatewayIdentity.properties.clientId
