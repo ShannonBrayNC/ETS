@@ -47,7 +47,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/azure_migration_restore_preflight.py \
+          python -m scripts.azure_migration_restore_preflight \
             --expected-tenant "$EXPECTED_TENANT_ID" \
             --expected-subscription "$EXPECTED_SUBSCRIPTION_ID"
 
