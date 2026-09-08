@@ -3,7 +3,6 @@
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_BOOTSTRAP = ROOT / "scripts" / "azure_migration_source_transfer_oidc_bootstrap.sh"
 TRANSFER_PREFLIGHT = (
