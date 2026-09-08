@@ -90,6 +90,12 @@ def test_gateway_bicep_pins_production_auth_and_server_scope_configuration() -> 
         "ETS_GATEWAY_TENANT_ID",
         "ETS_GATEWAY_WORKSPACE_ID",
         "ETS_GATEWAY_MICROSOFT_TENANT_ID",
+        "ETS_GATEWAY_MICROSOFT_CREDENTIAL_MODE",
+        "ETS_GATEWAY_MICROSOFT_APPLICATION_ID",
+        "ETS_GATEWAY_MICROSOFT_DIRECTORY_APPLICATION_ID",
+        "ETS_GATEWAY_MICROSOFT_PURVIEW_APPLICATION_ID",
+        "federated_managed_identity",
+        "var microsoftApplicationIds",
         "ETS_GATEWAY_SHAREPOINT_DRIVE_ID",
     ]
     for term in required:
