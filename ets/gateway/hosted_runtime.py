@@ -429,7 +429,10 @@ class HostedMicrosoftGatewayRuntime:
         store: ConnectorRuntimeStore,
         relay: GatewayCoreRelayWorker,
         event_store: SQLiteEventStore,
-        microsoft_credentials: AzureManagedIdentityCredentialProvider,
+        microsoft_credentials: (
+            AzureManagedIdentityCredentialProvider
+            | AzureFederatedManagedIdentityCredentialProvider
+        ),
         core_tokens: AzureManagedIdentityCoreTokenProvider,
         graph_subscription_store: SQLiteMicrosoftGraphSubscriptionStore | None,
         graph_subscription_lifecycle: MicrosoftGraphSubscriptionLifecycleManager | None,
@@ -673,6 +676,10 @@ def _compose_runtime(
     if not settings.manifest_dir.is_dir():
         raise RuntimeError("Gateway connector manifest directory is unavailable")
 
+    microsoft_credentials: (
+        AzureManagedIdentityCredentialProvider
+        | AzureFederatedManagedIdentityCredentialProvider
+    )
     if settings.microsoft_credential_mode == "federated_managed_identity":
         microsoft_credentials = AzureFederatedManagedIdentityCredentialProvider(
             (
