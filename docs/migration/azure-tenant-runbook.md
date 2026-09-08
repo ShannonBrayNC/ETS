@@ -456,3 +456,42 @@ Next safe gate: preserve independent historical public verification material for
 the exact source key version, then adapt destination infrastructure and
 cross-tenant identity handling before any no-traffic deployment.
 
+## Historical signing verification material: 2026-09-08
+
+At `2026-09-08T00:21:30Z`, MFA-backed source access reconfirmed the expected
+Enabled/default source tenant and subscription. The source vault still reports
+exactly one version of `ets-tree-head`, preserving the historical version ID
+`9f578feb997d49abb0a42b5e41651996`.
+
+Only public verification material was exported. No private key material, secret,
+certificate private data, or signing operation was requested. The captured key
+is enabled RSA with sign/verify operations, a 384-byte (3072-bit) modulus,
+creation/update time `2026-08-19T03:43:15Z`, and recovery level
+`Recoverable`.
+
+Protected outputs retained outside Git include the versioned public JWK plus
+metadata, a PEM public key, a continuity manifest, and checksums. Validation
+confirmed the PEM parses as a public key and its decoded RSA modulus/exponent
+exactly match the JWK. Recorded hashes:
+
+- public JWK/metadata SHA-256:
+  `26f84cb98eac5f74df0ddfef481c14a77e9fe1d45b18dce2dd9bbb9857728a38`;
+- PEM SHA-256:
+  `316823e13778e9514e498a9d0ecbb85aa02780aea99f4697d62a7fec54fbff32`;
+- SubjectPublicKeyInfo DER SHA-256:
+  `9b23ad8fa446dfd10fe09405dab607da69808c33d82b229ff61b9c050eec98ec`;
+- 1864-byte protected archive SHA-256:
+  `eee2efdc674967c5df81cb5002ef46e6417e2b90606a65e2f5d6abfd9c81476a`.
+
+The archive hash matched after source-to-protected-storage transfer. Historical
+signatures must continue to reference the exact source key-version ID. A
+destination key is a new signing identity and cannot be represented as the
+historical key. The source vault remains required until independent verification
+of old evidence succeeds; no key or vault setting was changed.
+
+Next executable gate is repository adaptation for separated Azure deployment
+tenant and Microsoft/SharePoint directory tenant, followed by an isolated
+destination infrastructure what-if before resource creation. No traffic, DNS,
+writer ownership, source availability, or fleet/PostgreSQL resource changed in
+this checkpoint.
+
