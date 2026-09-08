@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "target": "destination",
+  "target": "source",
   "operation": "inventory",
-  "request_id": "destination-inventory-after-data-plane-read-rbac-20260908T193500Z"
+  "request_id": "source-refresh-before-protected-transfer-20260908T203100Z"
 }
