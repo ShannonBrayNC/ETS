@@ -2,5 +2,5 @@
   "schema_version": 1,
   "target": "destination",
   "operation": "inventory",
-  "request_id": "destination-inventory-after-concurrency-fix-20260908T193100Z"
+  "request_id": "destination-inventory-after-data-plane-read-rbac-20260908T193500Z"
 }
