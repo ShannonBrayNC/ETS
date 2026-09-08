@@ -13,6 +13,29 @@ for source read access or one destination read-only user-assigned identity/FIC.
 EOF
 }
 
+ensure_role() {
+  local principal_id="$1"
+  local role="$2"
+  local scope="$3"
+  local count
+  count="$(az role assignment list \
+    --assignee "$principal_id" \
+    --scope "$scope" \
+    --role "$role" \
+    --query 'length(@)' -o tsv)"
+  if [[ "$count" == "0" ]]; then
+    az role assignment create \
+      --assignee-object-id "$principal_id" \
+      --assignee-principal-type ServicePrincipal \
+      --role "$role" \
+      --scope "$scope" \
+      --only-show-errors -o none
+  elif [[ "$count" != "1" ]]; then
+    echo "STOP: expected zero or one '$role' assignment at the exact scope; found $count." >&2
+    exit 2
+  fi
+}
+
 mode="${1:-}"
 
 case "$mode" in
@@ -64,20 +87,9 @@ case "$mode" in
       exit 2
     fi
 
-    echo "Granting only the two missing source data-plane reader roles..."
-    az role assignment create \
-      --assignee-object-id "$principal_id" \
-      --assignee-principal-type ServicePrincipal \
-      --role "Storage Table Data Reader" \
-      --scope "$core_id" \
-      --only-show-errors -o none
-
-    az role assignment create \
-      --assignee-object-id "$principal_id" \
-      --assignee-principal-type ServicePrincipal \
-      --role "Storage File Data Privileged Reader" \
-      --scope "$gateway_id" \
-      --only-show-errors -o none
+    echo "Ensuring only the two required source data-plane reader roles..."
+    ensure_role "$principal_id" "Storage Table Data Reader" "$core_id"
+    ensure_role "$principal_id" "Storage File Data Privileged Reader" "$gateway_id"
 
     echo "Source GitHub OIDC data-plane read roles are assigned."
     echo "Allow Azure RBAC propagation before rerunning source/inventory."
@@ -130,12 +142,7 @@ case "$mode" in
 
     for rg in rg-ets-prod-eastus rg-ets-shared-eastus; do
       scope="$(az group show -n "$rg" --query id -o tsv)"
-      az role assignment create \
-        --assignee-object-id "$principal_id" \
-        --assignee-principal-type ServicePrincipal \
-        --role Reader \
-        --scope "$scope" \
-        --only-show-errors -o none || true
+      ensure_role "$principal_id" "Reader" "$scope"
     done
 
     echo
