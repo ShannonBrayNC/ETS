@@ -111,6 +111,7 @@ case "$mode" in
       exit 2
     fi
     DEST_RG="rg-ets-shared-eastus"
+    DEST_PROD_RG="rg-ets-prod-eastus"
     IDENTITY="ets-gh-migration-dst-read"
     FIC="github-ets-migration-destination-read"
     SUBJECT="repo:ShannonBrayNC/ETS:environment:ets-azure-migration-destination-read"
@@ -149,10 +150,52 @@ case "$mode" in
         --only-show-errors -o none
     fi
 
-    for rg in rg-ets-prod-eastus rg-ets-shared-eastus; do
+    for rg in "$DEST_PROD_RG" "$DEST_RG"; do
       scope="$(az group show -n "$rg" --query id -o tsv)"
       ensure_role "$principal_id" "Reader" "$scope"
     done
+
+    # If the isolated zero-replica destination stack already exists, also grant
+    # the read-only OIDC identity the two narrow data-plane roles needed for
+    # migration validation. These grants do not permit evidence/file mutation.
+    mapfile -t dest_storage_rows < <(
+      az storage account list -g "$DEST_PROD_RG" \
+        --query "[].[name,id]" -o tsv
+    )
+    if [[ "${#dest_storage_rows[@]}" -gt 0 ]]; then
+      dest_core_id=""
+      dest_gateway_id=""
+      for row in "${dest_storage_rows[@]}"; do
+        name="${row%%$'\t'*}"
+        id="${row#*$'\t'}"
+        case "$name" in
+          etsgw*) dest_gateway_id="$id" ;;
+          *)
+            if [[ -n "$dest_core_id" ]]; then
+              echo "STOP: multiple destination non-Gateway storage accounts found." >&2
+              exit 2
+            fi
+            dest_core_id="$id"
+            ;;
+        esac
+      done
+      if [[ -z "$dest_core_id" || -z "$dest_gateway_id" ]]; then
+        echo "STOP: destination storage exists but Core/Gateway accounts were not uniquely discoverable." >&2
+        exit 2
+      fi
+
+      table_id="$(az resource show \
+        --ids "$dest_core_id/tableServices/default/tables/ETSEvents" \
+        --query id -o tsv)"
+      if [[ -z "$table_id" ]]; then
+        echo "STOP: destination ETSEvents table ARM resource was not found." >&2
+        exit 2
+      fi
+
+      echo "Ensuring destination read-only data-plane roles..."
+      ensure_role "$principal_id" "Storage Table Data Reader" "$table_id"
+      ensure_role "$principal_id" "Storage File Data Privileged Reader" "$dest_gateway_id"
+    fi
 
     echo
     echo "Destination read-only OIDC identity is ready."
