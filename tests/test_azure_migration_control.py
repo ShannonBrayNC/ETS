@@ -38,6 +38,22 @@ class MigrationControlTests(unittest.TestCase):
                     {"name": "etsgwstate", "type": "Microsoft.Storage/storageAccounts"},
                     {"name": "lanternbackup", "type": "Microsoft.Storage/storageAccounts"},
                 ]
+            if args[:2] == ["account", "show"]:
+                return {"user": {"name": "client-id"}}
+            if args[:3] == ["role", "assignment", "list"]:
+                return [
+                    {
+                        "role": "Reader",
+                        "scope": "/subscriptions/s/resourceGroups/rg-test",
+                    },
+                    {
+                        "role": "Storage Table Data Reader",
+                        "scope": (
+                            "/subscriptions/s/resourceGroups/rg-test/providers/"
+                            "Microsoft.Storage/storageAccounts/corestore"
+                        ),
+                    },
+                ]
             if args[:3] == ["storage", "entity", "query"]:
                 self.assertIn("corestore", args)
                 return {
@@ -59,6 +75,8 @@ class MigrationControlTests(unittest.TestCase):
         self.assertEqual(result["resource_count"], 3)
         self.assertEqual(result["evidence_entities"], 3)
         self.assertEqual(result["gateway_root_entries"], 1)
+        self.assertEqual(result["rbac_status"], "ok")
+        self.assertEqual(result["rbac_roles"]["Reader"], {"resource_group": 1})
         forbidden = {"create", "delete", "update", "set", "start", "stop", "restart"}
         self.assertFalse(any(any(token in forbidden for token in call) for call in calls))
 
@@ -81,6 +99,7 @@ class MigrationControlTests(unittest.TestCase):
             with patch("scripts.azure_migration_control.az_json", side_effect=read):
                 result = inventory()
 
+        self.assertEqual(result["rbac_status"], "blocked")
         self.assertEqual(result["evidence_status"], "blocked")
         self.assertEqual(result["gateway_status"], "blocked")
         self.assertNotIn("SENSITIVE", str(result))
