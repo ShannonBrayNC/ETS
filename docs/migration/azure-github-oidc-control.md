@@ -1,6 +1,6 @@
 # GitHub OIDC migration control plane
 
-Status: source and destination OIDC authentication are proven. Source protected Table/File reads are proven. Destination management-plane inventory is proven; its protected Table/File reads require the two narrow read-only data-plane grants added to the idempotent destination bootstrap helper.
+Status: source and destination OIDC authentication, management-plane inventory, and bounded protected Table/File data-plane reads are proven. Recurring read-only migration discovery no longer requires interactive human MFA.
 
 ## Purpose
 
@@ -41,7 +41,7 @@ Azure identity:     ets-gh-migration-dst-read
 Federated subject:  repo:ShannonBrayNC/ETS:environment:ets-azure-migration-destination-read
 ```
 
-No client secret exists. GitHub receives a short-lived OIDC token and exchanges it through Azure Login.
+No client secret is required by this control path. GitHub receives a short-lived OIDC token and exchanges it through Azure Login.
 
 The GitHub environment is configured with non-secret environment variables:
 
@@ -51,7 +51,7 @@ The GitHub environment is configured with non-secret environment variables:
 
 A destination `context` run completed successfully and verified the expected tenant/subscription through OIDC without human MFA.
 
-A destination `inventory` run also completed successfully:
+The first destination `inventory` run proved management-plane access and intentionally exposed the missing data-plane grants:
 
 - context: `verified`
 - resource count in the migration production group: 16
@@ -61,16 +61,31 @@ A destination `inventory` run also completed successfully:
 - protected evidence data plane: `blocked`
 - protected Gateway data plane: `blocked`
 
-The 16 resources match the already approved zero-replica Core/Gateway staging deployment documented in the main migration runbook. The blocked protected data planes are expected because the destination OIDC identity initially had management-plane Reader only.
+The 16 resources match the already approved zero-replica Core/Gateway staging deployment documented in the main migration runbook.
 
-The idempotent `destination-read` bootstrap now also detects an existing isolated destination stack and, when present, ensures only:
+The idempotent `destination-read` bootstrap then ensured only:
 
 - `Storage Table Data Reader` on the destination `ETSEvents` table
 - `Storage File Data Privileged Reader` on the destination Gateway storage account
 
 These are read-only validation grants; they do not permit evidence or Gateway file mutation.
 
-Run the same destination bootstrap once more from an operator-authenticated destination Cloud Shell, then allow RBAC propagation and rerun `destination/inventory`. The success condition is both protected data planes reporting `ok`.
+After RBAC propagation, authoritative branch-push OIDC run `34270043390` at commit `aa0005be7c472ca93cd78100db47774fc5b90d5b` completed successfully on 2026-09-08. Azure Login succeeded through the federated environment subject and the bounded destination inventory reported:
+
+- context: `verified`
+- resource count: 16
+- RBAC summary: `ok`
+- evidence data plane: `ok`
+- evidence entities: 1
+- metadata rows: 1
+- metadata `next_index`: 0
+- Gateway data plane: `ok`
+- Gateway root entries: 3
+- `Reader`: two resource-group scopes
+- `Storage Table Data Reader`: one resource scope
+- `Storage File Data Privileged Reader`: one resource scope
+
+The single destination evidence entity is the known initialized metadata row and the three Gateway root entries are the known inert initialization files from zero-replica staging. This run performed no evidence/file write, protected-state transfer, DNS change, replica change, or RBAC mutation.
 
 ## Trigger model while PR #611 remains open
 
@@ -98,11 +113,12 @@ Push and pull-request executions use separate concurrency groups so PR validatio
 
 ## Recommended sequence
 
-1. Keep recurring source discovery in ordinary ChatGPT/GitHub through OIDC; do not spend Work cycles on source sign-in.
-2. Rerun the idempotent destination bootstrap once to add only the two destination data-plane reader roles.
-3. Trigger `destination/inventory` and require both protected data planes to report `ok`.
-4. Keep protected evidence transfer and restoration out of this read-only workflow. Implement the write path as a separately approval-gated identity/workflow after both read contexts are proven.
+1. Keep recurring source and destination discovery in ordinary ChatGPT/GitHub through OIDC; do not spend Work cycles on routine Azure sign-in.
+2. Keep protected evidence transfer and restoration out of this read-only workflow. Implement the write path as a separately approval-gated identity/workflow with the narrowest destination data-plane contributor scopes.
+3. Require protected source artifact rehydration and manifest/hash verification before any destination restore.
+4. Preserve the destination initialization snapshot/metadata as rollback material before overwrite.
 5. Before cutover, fence source writers and capture a final evidence/Gateway high-water mark because the live source state continues to advance.
+6. Activate a destination writer only after restored evidence/Gateway state and historical signing continuity independently verify.
 
 ## Security boundary
 
