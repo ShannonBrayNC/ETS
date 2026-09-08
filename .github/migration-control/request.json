@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
   "target": "destination",
-  "operation": "context",
-  "request_id": "destination-context-after-oidc-bootstrap-20260908T190000Z"
+  "operation": "inventory",
+  "request_id": "destination-inventory-after-oidc-context-20260908T192900Z"
 }
