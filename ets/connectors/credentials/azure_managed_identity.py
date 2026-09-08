@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from threading import Lock
 from typing import Protocol
-from uuid import UUID
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from ets.connectors.credentials.models import (
     CREDENTIAL_METADATA_SCHEMA_VERSION,
