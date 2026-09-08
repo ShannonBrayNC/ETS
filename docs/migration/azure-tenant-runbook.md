@@ -648,3 +648,58 @@ operator roles and action-time approval before permission changes and protected
 data transfer. Cross-tenant application registrations, federated credentials,
 EchoMedia service principals/admin consent, and `Sites.Selected` grants remain
 uncreated and require a separate guarded authorization checkpoint.
+
+
+## Destination pre-restore data-plane inventory: 2026-09-08
+
+After explicit action-time approval, destination operator
+`f8a7dadf-a4a7-4ed6-8ebd-76abf97b8bb7` received two read-only data-plane
+roles at the narrowest practical scopes:
+
+- `Storage File Data Privileged Reader` on storage account
+  `etsgwoif5r5ydprrou`, role assignment
+  `4bc8063e-5339-4a33-a03a-caf5d1a4875a`;
+- `Storage Table Data Reader` on only
+  `etsv5j37z3xe76tm/tableServices/default/tables/ETSEvents`, role assignment
+  `2d93f196-e358-4c36-af76-8ea1cfd2fe89`.
+
+OAuth plus backup intent confirmed that the transient Gateway provisioning
+replica initialized three files in destination share
+`ets-gateway-state-q1-v2`:
+
+| File | Bytes | Last modified | SHA-256 |
+| --- | ---: | --- | --- |
+| `connector-runtime.db` | 36864 | `2026-09-08T15:04:00Z` | `bccf48a25e87817107ef379f47b706a7517e36e252a91d735db1b15311c20e91` |
+| `gateway-events.db` | 32768 | `2026-09-08T15:02:56Z` | `0d5224bc01e6ab193c7f577eb7556fdd1dfd77f5879435e3d7faa5872cbf9a67` |
+| `gateway-sync.db` | 28672 | `2026-09-08T15:02:56Z` | `4d15ca448b106f4a4e001f38aefbcba418ed3dec5a30c45cd999925245bd5ab8` |
+
+Python standard-library SQLite read-only checks returned `ok` for all three
+files. The initialized event and sync queues are empty:
+`artifact_records=0`, `events=0`, `sync_meta=0`, and `sync_queue=0`.
+The connector database has one row each in `connector_instances`,
+`connector_runtime`, and `connector_admin_audit`; these are the inert
+placeholder initialization records, not migrated source state.
+
+Before any overwrite, a non-destructive share snapshot was created at
+`2026-09-08T16:06:59.0000000Z`. OAuth plus backup-intent read-back of that
+snapshot matches the three live-share file names, byte lengths, and
+last-modified values above.
+
+The destination `ETSEvents` table contains exactly one initialized metadata
+entity:
+
+- `PartitionKey=log-bd744418f1f73463f9cf6ecf92bad9e3`;
+- `RowKey=meta`, `kind=metadata`;
+- `log_id=ets-live-primary`, `next_index=0`, `schema_version=1`;
+- service timestamp `2026-09-08T14:48:24.267079Z`.
+
+This is not the protected source partition and is not evidence. It must be
+handled explicitly before exact restoration of the protected 75-entity source
+representation. No destination file or table entity was overwritten, updated,
+or deleted in this checkpoint. Both Container Apps remain at zero replicas.
+
+The next write gate requires a destination file contributor role, a destination
+table contributor role, protected source artifact rehydration, and explicit
+authorization to transmit the protected Gateway snapshot files and 75 ETS table
+entities into the ETS Protocol subscription. The destination initialization
+snapshot and recorded metadata provide rollback for that operation.
