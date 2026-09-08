@@ -61,6 +61,25 @@ param sourcePrincipal string = 'gateway://microsoft/sharepoint'
 @maxLength(36)
 param microsoftTenantId string
 
+@description('Microsoft credential route. Federated mode exchanges destination UAMI assertions through multitenant applications provisioned in the Microsoft resource tenant.')
+@allowed([
+  'managed_identity'
+  'federated_managed_identity'
+])
+param microsoftCredentialMode string = 'managed_identity'
+
+@description('Multitenant SharePoint application client ID used only in federated mode.')
+@maxLength(36)
+param microsoftApplicationId string = ''
+
+@description('Multitenant directory application client ID used only in federated mode.')
+@maxLength(36)
+param microsoftDirectoryApplicationId string = ''
+
+@description('Multitenant Purview application client ID used only in federated mode.')
+@maxLength(36)
+param microsoftPurviewApplicationId string = ''
+
 @description('Approved SharePoint drive identifier.')
 @minLength(1)
 param sharePointDriveId string
@@ -141,6 +160,26 @@ var graphLifecycleConfigurationValidated = !graphLifecyclePartiallyConfigured ||
 var graphLifecycleConfigured = graphSubscriptionRenewalWindowSeconds < graphSubscriptionLifetimeSeconds
   ? graphLifecycleConfigurationValidated
   : fail('Graph subscription renewal window must be shorter than its lifetime.')
+var microsoftApplicationIds = microsoftCredentialMode == 'managed_identity'
+  ? {
+      sharepoint: gatewayIdentity.properties.clientId
+      directory: directoryIdentity.properties.clientId
+      purview: purviewIdentity.properties.clientId
+    }
+  : (
+      !empty(microsoftApplicationId)
+      && !empty(microsoftDirectoryApplicationId)
+      && !empty(microsoftPurviewApplicationId)
+      && microsoftApplicationId != microsoftDirectoryApplicationId
+      && microsoftApplicationId != microsoftPurviewApplicationId
+      && microsoftDirectoryApplicationId != microsoftPurviewApplicationId
+        ? {
+            sharepoint: microsoftApplicationId
+            directory: microsoftDirectoryApplicationId
+            purview: microsoftPurviewApplicationId
+          }
+        : fail('Federated Microsoft credential mode requires three distinct application client IDs.')
+    )
 var keyVaultSecretsUserRoleId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '4633458b-17de-408a-b874-0445c86b69e6'
@@ -403,8 +442,20 @@ resource gateway 'Microsoft.App/containerApps@2026-01-01' = {
               value: microsoftTenantId
             }
             {
+              name: 'ETS_GATEWAY_MICROSOFT_CREDENTIAL_MODE'
+              value: microsoftCredentialMode
+            }
+            {
               name: 'ETS_GATEWAY_MICROSOFT_APPLICATION_ID'
-              value: gatewayIdentity.properties.clientId
+              value: microsoftApplicationIds.sharepoint
+            }
+            {
+              name: 'ETS_GATEWAY_MICROSOFT_DIRECTORY_APPLICATION_ID'
+              value: microsoftApplicationIds.directory
+            }
+            {
+              name: 'ETS_GATEWAY_MICROSOFT_PURVIEW_APPLICATION_ID'
+              value: microsoftApplicationIds.purview
             }
             {
               name: 'ETS_GATEWAY_SHAREPOINT_DRIVE_ID'
