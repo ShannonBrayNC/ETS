@@ -108,6 +108,13 @@ param graphSubscriptionLifetimeSeconds int = 2419200
 @maxValue(2537999)
 param graphSubscriptionRenewalWindowSeconds int = 86400
 
+@description('Minimum runtime replicas. Set to 0 only for migration staging before writer ownership is transferred.')
+@allowed([
+  0
+  1
+])
+param runtimeMinReplicas int = 1
+
 @description('Bounded poll cadence shared by the composed Microsoft connector instances.')
 @minValue(30)
 @maxValue(3600)
@@ -508,7 +515,7 @@ resource gateway 'Microsoft.App/containerApps@2026-01-01' = {
         }
       ]
       scale: {
-        minReplicas: 1
+        minReplicas: runtimeMinReplicas
         maxReplicas: 1
       }
     }
