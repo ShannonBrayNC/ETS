@@ -160,26 +160,25 @@ var graphLifecycleConfigurationValidated = !graphLifecyclePartiallyConfigured ||
 var graphLifecycleConfigured = graphSubscriptionRenewalWindowSeconds < graphSubscriptionLifetimeSeconds
   ? graphLifecycleConfigurationValidated
   : fail('Graph subscription renewal window must be shorter than its lifetime.')
+var federatedMicrosoftApplicationsValid = !empty(microsoftApplicationId)
+  && !empty(microsoftDirectoryApplicationId)
+  && !empty(microsoftPurviewApplicationId)
+  && microsoftApplicationId != microsoftDirectoryApplicationId
+  && microsoftApplicationId != microsoftPurviewApplicationId
+  && microsoftDirectoryApplicationId != microsoftPurviewApplicationId
 var microsoftApplicationIds = microsoftCredentialMode == 'managed_identity'
   ? {
       sharepoint: gatewayIdentity.properties.clientId
       directory: directoryIdentity.properties.clientId
       purview: purviewIdentity.properties.clientId
     }
-  : (
-      !empty(microsoftApplicationId)
-      && !empty(microsoftDirectoryApplicationId)
-      && !empty(microsoftPurviewApplicationId)
-      && microsoftApplicationId != microsoftDirectoryApplicationId
-      && microsoftApplicationId != microsoftPurviewApplicationId
-      && microsoftDirectoryApplicationId != microsoftPurviewApplicationId
-        ? {
-            sharepoint: microsoftApplicationId
-            directory: microsoftDirectoryApplicationId
-            purview: microsoftPurviewApplicationId
-          }
-        : fail('Federated Microsoft credential mode requires three distinct application client IDs.')
-    )
+  : federatedMicrosoftApplicationsValid
+    ? {
+        sharepoint: microsoftApplicationId
+        directory: microsoftDirectoryApplicationId
+        purview: microsoftPurviewApplicationId
+      }
+    : fail('Federated Microsoft credential mode requires three distinct application client IDs.')
 var keyVaultSecretsUserRoleId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '4633458b-17de-408a-b874-0445c86b69e6'
