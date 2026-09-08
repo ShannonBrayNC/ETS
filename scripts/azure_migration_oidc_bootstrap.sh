@@ -21,8 +21,7 @@ ensure_role() {
   count="$(az role assignment list \
     --assignee "$principal_id" \
     --scope "$scope" \
-    --role "$role" \
-    --query 'length(@)' -o tsv)"
+    --query "[?roleDefinitionName=='$role'] | length(@)" -o tsv)"
   if [[ "$count" == "0" ]]; then
     az role assignment create \
       --assignee-object-id "$principal_id" \
@@ -46,12 +45,16 @@ case "$mode" in
     tmpdir="$(mktemp -d)"
     trap 'rm -rf "$tmpdir"' EXIT
 
+    # Avoid `az role assignment list --all --role ...` here. Some Cloud Shell
+    # Azure CLI builds fail while resolving a role name without an explicit scope
+    # (ValueError: No value for given attribute). Enumerate once, then filter the
+    # returned roleDefinitionName values locally in JMESPath instead.
     az role assignment list --all \
-      --role "Container Apps Jobs Contributor" \
-      --query '[].principalId' -o tsv | sort -u > "$tmpdir/contributor"
+      --query "[?roleDefinitionName=='Container Apps Jobs Contributor'].principalId" \
+      -o tsv | sort -u > "$tmpdir/contributor"
     az role assignment list --all \
-      --role "Container Apps Jobs Operator" \
-      --query '[].principalId' -o tsv | sort -u > "$tmpdir/operator"
+      --query "[?roleDefinitionName=='Container Apps Jobs Operator'].principalId" \
+      -o tsv | sort -u > "$tmpdir/operator"
 
     mapfile -t candidates < <(comm -12 "$tmpdir/contributor" "$tmpdir/operator")
     if [[ "${#candidates[@]}" -ne 1 ]]; then
