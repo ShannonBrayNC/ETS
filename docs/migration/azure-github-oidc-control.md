@@ -1,6 +1,6 @@
 # GitHub OIDC migration control plane
 
-Status: source management-plane and protected Table/File data-plane OIDC reads proven; destination OIDC bootstrap remains operator-authenticated one-time work.
+Status: source and destination OIDC authentication are proven. Source protected Table/File reads are proven. Destination management-plane inventory is proven; its protected Table/File reads require the two narrow read-only data-plane grants added to the idempotent destination bootstrap helper.
 
 ## Purpose
 
@@ -17,7 +17,7 @@ The one-time source bootstrap granted only:
 - `Storage Table Data Reader` on the source Core storage account
 - `Storage File Data Privileged Reader` on the source Gateway storage account
 
-After propagation, GitHub OIDC run 12 completed source inventory with both protected data planes `ok`:
+After propagation, GitHub OIDC completed source inventory with both protected data planes `ok`:
 
 - live resource group: 24 resources
 - Azure Table `ETSEvents`: 89 entities
@@ -27,15 +27,13 @@ After propagation, GitHub OIDC run 12 completed source inventory with both prote
 
 The live evidence high-water mark increased from earlier protected captures, proving the source writer remains active. Do not treat any prior snapshot/export as the final cutover state; take a final fenced sync/high-water mark immediately before destination writer activation.
 
-The OIDC principal is a `ServicePrincipal`. Its sanitized role inventory now includes the two scoped migration read roles in addition to its pre-existing bounded ETS roles. It does not expose an RBAC administrator role and must not self-escalate.
+The source OIDC principal is a `ServicePrincipal`. Its sanitized role inventory includes the two scoped migration read roles in addition to its pre-existing bounded ETS roles. It does not expose an RBAC administrator role and must not self-escalate.
 
 No new source workload identity is required for recurring read-only migration operations. Source human authentication should now be reserved for operator-only RBAC changes, write bootstrap, cutover approval, or irreversible actions.
 
-## Destination side bootstrap
+## Proven destination side
 
-Create one read-only user-assigned managed identity in the verified destination shared resource group. The exact tenant/subscription values belong in the operator session and GitHub environment settings, not this public file.
-
-Suggested names:
+The destination bootstrap created or reused:
 
 ```text
 GitHub environment: ets-azure-migration-destination-read
@@ -43,27 +41,36 @@ Azure identity:     ets-gh-migration-dst-read
 Federated subject:  repo:ShannonBrayNC/ETS:environment:ets-azure-migration-destination-read
 ```
 
-The checked-in helper performs the bounded bootstrap:
+No client secret exists. GitHub receives a short-lived OIDC token and exchanges it through Azure Login.
 
-```bash
-bash scripts/azure_migration_oidc_bootstrap.sh destination-read '<verified destination subscription id>'
-```
-
-It verifies the selected subscription, creates or reuses the read-only user-assigned identity, creates or reuses the GitHub federated credential, and ensures Reader only on `rg-ets-prod-eastus` and `rg-ets-shared-eastus`. It then prints the three identifiers needed by GitHub. It creates no client secret.
-
-Microsoft supports federated identity credentials on user-assigned managed identities. GitHub OIDC uses `api://AzureADTokenExchange` as the Azure Login audience.
-
-## GitHub destination environment
-
-Create `ets-azure-migration-destination-read` in repository Settings, then add environment values for:
+The GitHub environment is configured with non-secret environment variables:
 
 - `AZURE_CLIENT_ID`
 - `AZURE_TENANT_ID`
 - `AZURE_SUBSCRIPTION_ID`
 
-The workflow consumes those names through the environment's existing secret interface; they are identifiers, not authentication secrets. The OIDC token issued by GitHub is the actual short-lived credential. Do not create or store a client secret.
+A destination `context` run completed successfully and verified the expected tenant/subscription through OIDC without human MFA.
 
-Do not put passwords, SAS tokens, account keys, evidence payloads, or private key material into GitHub variables, Actions logs, artifacts, or this public repository.
+A destination `inventory` run also completed successfully:
+
+- context: `verified`
+- resource count in the migration production group: 16
+- RBAC summary: `ok`
+- OIDC principal type: `ServicePrincipal`
+- OIDC role summary: Reader at two resource-group scopes
+- protected evidence data plane: `blocked`
+- protected Gateway data plane: `blocked`
+
+The 16 resources match the already approved zero-replica Core/Gateway staging deployment documented in the main migration runbook. The blocked protected data planes are expected because the destination OIDC identity initially had management-plane Reader only.
+
+The idempotent `destination-read` bootstrap now also detects an existing isolated destination stack and, when present, ensures only:
+
+- `Storage Table Data Reader` on the destination `ETSEvents` table
+- `Storage File Data Privileged Reader` on the destination Gateway storage account
+
+These are read-only validation grants; they do not permit evidence or Gateway file mutation.
+
+Run the same destination bootstrap once more from an operator-authenticated destination Cloud Shell, then allow RBAC propagation and rerun `destination/inventory`. The success condition is both protected data planes reporting `ok`.
 
 ## Trigger model while PR #611 remains open
 
@@ -87,15 +94,15 @@ The fixed operation set is currently:
 
 No arbitrary Azure CLI arguments are forwarded from the request.
 
+Push and pull-request executions use separate concurrency groups so PR validation cannot cancel the authoritative branch-push OIDC execution.
+
 ## Recommended sequence
 
 1. Keep recurring source discovery in ordinary ChatGPT/GitHub through OIDC; do not spend Work cycles on source sign-in.
-2. In the destination human session, run `destination-read` once.
-3. Add the three returned destination identifiers to the GitHub environment.
-4. Trigger `destination/context` and require a verified tenant/subscription/state result.
-5. Trigger `destination/inventory` and add only any exact data-plane reader roles proven missing.
-6. Keep protected evidence transfer and restoration out of this read-only workflow. Implement the write path as a separately approval-gated identity/workflow after both OIDC contexts are proven.
-7. Before cutover, fence source writers and capture a final evidence/Gateway high-water mark because the live source state continues to advance.
+2. Rerun the idempotent destination bootstrap once to add only the two destination data-plane reader roles.
+3. Trigger `destination/inventory` and require both protected data planes to report `ok`.
+4. Keep protected evidence transfer and restoration out of this read-only workflow. Implement the write path as a separately approval-gated identity/workflow after both read contexts are proven.
+5. Before cutover, fence source writers and capture a final evidence/Gateway high-water mark because the live source state continues to advance.
 
 ## Security boundary
 
