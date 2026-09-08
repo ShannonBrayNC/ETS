@@ -35,7 +35,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: azure-migration-oidc-control
+  group: azure-migration-oidc-control-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:
