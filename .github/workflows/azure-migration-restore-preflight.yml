@@ -2,6 +2,12 @@ name: Azure Migration Restore Preflight
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - migration/azure-ets-destination-discovery
+    paths:
+      - '.github/workflows/azure-migration-restore-preflight.yml'
+      - 'scripts/azure_migration_restore_preflight.py'
 
 permissions:
   contents: read
