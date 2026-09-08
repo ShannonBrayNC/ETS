@@ -693,9 +693,11 @@ entity:
 - `log_id=ets-live-primary`, `next_index=0`, `schema_version=1`;
 - service timestamp `2026-09-08T14:48:24.267079Z`.
 
-This is not the protected source partition and is not evidence. It must be
-handled explicitly before exact restoration of the protected 75-entity source
-representation. No destination file or table entity was overwritten, updated,
+This is initialization state and not migrated evidence. Its partition key may
+be deterministically derived from `ets-live-primary`; equality with the protected
+source partition must be checked directly against the protected export before
+restoration. The row must then be replaced by the protected metadata entity,
+not treated as an additional event-log partition. No destination file or table entity was overwritten, updated,
 or deleted in this checkpoint. Both Container Apps remain at zero replicas.
 
 The next write gate requires a destination file contributor role, a destination
