@@ -6,6 +6,13 @@ on:
       - migration/azure-ets-destination-discovery
     paths:
       - '.github/migration-control/request.json'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/migration-control/request.json'
+      - '.github/workflows/azure-migration-control.yml'
+      - 'scripts/azure_migration_control.py'
   workflow_dispatch:
     inputs:
       target:
