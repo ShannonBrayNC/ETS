@@ -63,25 +63,38 @@ def _items(payload: Any) -> list[dict[str, Any]]:
     raise MigrationControlError("Azure data response has an unexpected shape")
 
 
+def _discover_storage_accounts(resources: list[dict[str, Any]]) -> tuple[str | None, str | None]:
+    names = [
+        str(item.get("name", ""))
+        for item in resources
+        if str(item.get("type", "")).lower() == "microsoft.storage/storageaccounts"
+    ]
+    gateway = [name for name in names if name.lower().startswith("etsgw")]
+    core = [
+        name
+        for name in names
+        if name not in gateway and not name.lower().startswith("lantern")
+    ]
+    return (core[0] if len(core) == 1 else None, gateway[0] if len(gateway) == 1 else None)
+
+
 def inventory() -> dict[str, Any]:
     resource_group = _required_env("MIGRATION_RESOURCE_GROUP")
-    resources = az_json(
+    resources_raw = az_json(
         [
             "resource",
             "list",
             "--resource-group",
             resource_group,
             "--query",
-            "[].{type:type}",
+            "[].{name:name,type:type}",
         ]
     )
-    if not isinstance(resources, list):
+    if not isinstance(resources_raw, list):
         raise MigrationControlError("Resource inventory response is invalid")
-    resource_types = Counter(
-        str(item.get("type", "unknown"))
-        for item in resources
-        if isinstance(item, dict)
-    )
+    resources = [item for item in resources_raw if isinstance(item, dict)]
+    resource_types = Counter(str(item.get("type", "unknown")) for item in resources)
+    discovered_core, discovered_gateway = _discover_storage_accounts(resources)
 
     result: dict[str, Any] = {
         "resource_count": len(resources),
@@ -89,7 +102,8 @@ def inventory() -> dict[str, Any]:
     }
 
     table_account = os.environ.get("MIGRATION_CORE_STORAGE_ACCOUNT", "").strip()
-    table_name = os.environ.get("MIGRATION_EVIDENCE_TABLE", "").strip()
+    table_account = table_account or discovered_core or ""
+    table_name = os.environ.get("MIGRATION_EVIDENCE_TABLE", "ETSEvents").strip()
     if table_account and table_name:
         try:
             entities = _items(
@@ -130,10 +144,13 @@ def inventory() -> dict[str, Any]:
                 }
             )
     else:
-        result["evidence_status"] = "not_configured"
+        result["evidence_status"] = "not_discovered"
 
     gateway_account = os.environ.get("MIGRATION_GATEWAY_STORAGE_ACCOUNT", "").strip()
-    gateway_share = os.environ.get("MIGRATION_GATEWAY_SHARE", "").strip()
+    gateway_account = gateway_account or discovered_gateway or ""
+    gateway_share = os.environ.get(
+        "MIGRATION_GATEWAY_SHARE", "ets-gateway-state-q1-v2"
+    ).strip()
     if gateway_account and gateway_share:
         try:
             files = _items(
@@ -157,7 +174,7 @@ def inventory() -> dict[str, Any]:
         else:
             result.update({"gateway_status": "ok", "gateway_root_entries": len(files)})
     else:
-        result["gateway_status"] = "not_configured"
+        result["gateway_status"] = "not_discovered"
 
     return result
 
@@ -186,11 +203,10 @@ def write_summary(target: str, operation: str, result: dict[str, Any]) -> None:
         for resource_type, count in result["resource_types"].items():
             lines.append(f"- `{resource_type}`: `{count}`")
     content = "\n".join(lines) + "\n"
+    print(content, end="")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as stream:
             stream.write(content)
-    else:
-        print(content, end="")
 
 
 def main() -> int:
