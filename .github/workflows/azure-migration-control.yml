@@ -1,0 +1,159 @@
+name: Azure Migration OIDC Control
+
+on:
+  push:
+    branches:
+      - migration/azure-ets-destination-discovery
+    paths:
+      - '.github/migration-control/request.json'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Azure side to inspect
+        required: true
+        type: choice
+        options:
+          - source
+          - destination
+      operation:
+        description: Bounded read-only operation
+        required: true
+        type: choice
+        options:
+          - context
+          - inventory
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-oidc-control
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Validate bounded migration request
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      target: ${{ steps.request.outputs.target }}
+      operation: ${{ steps.request.outputs.operation }}
+    steps:
+      - name: Check out request
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve request
+        id: request
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            target="${{ inputs.target }}"
+            operation="${{ inputs.operation }}"
+          else
+            readarray -t request < <(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path('.github/migration-control/request.json').read_text())
+          if payload.get('schema_version') != 1:
+              raise SystemExit('unsupported migration-control request schema')
+          target = payload.get('target')
+          operation = payload.get('operation')
+          if target not in {'source', 'destination'}:
+              raise SystemExit('target must be source or destination')
+          if operation not in {'context', 'inventory'}:
+              raise SystemExit('operation must be context or inventory')
+          print(target)
+          print(operation)
+          PY
+          )
+            target="${request[0]}"
+            operation="${request[1]}"
+          fi
+          case "$target:$operation" in
+            source:context|source:inventory|destination:context|destination:inventory) ;;
+            *) echo 'unsupported migration-control request' >&2; exit 2 ;;
+          esac
+          printf 'target=%s\noperation=%s\n' "$target" "$operation" >> "$GITHUB_OUTPUT"
+
+  source:
+    name: Source read-only control
+    needs: plan
+    if: needs.plan.outputs.target == 'source'
+    runs-on: ubuntu-latest
+    environment: ets-azure-q1
+    timeout-minutes: 15
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      MIGRATION_RESOURCE_GROUP: ${{ vars.MIGRATION_SOURCE_RESOURCE_GROUP }}
+      MIGRATION_CORE_STORAGE_ACCOUNT: ${{ vars.MIGRATION_SOURCE_CORE_STORAGE_ACCOUNT }}
+      MIGRATION_GATEWAY_STORAGE_ACCOUNT: ${{ vars.MIGRATION_SOURCE_GATEWAY_STORAGE_ACCOUNT }}
+      MIGRATION_EVIDENCE_TABLE: ${{ vars.MIGRATION_EVIDENCE_TABLE }}
+      MIGRATION_GATEWAY_SHARE: ${{ vars.MIGRATION_SOURCE_GATEWAY_SHARE }}
+    steps:
+      - name: Check out exact migration source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Azure login with existing source workload identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Execute bounded source read
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/azure_migration_control.py \
+            --target source \
+            --operation "${{ needs.plan.outputs.operation }}" \
+            --expected-tenant "$EXPECTED_TENANT_ID" \
+            --expected-subscription "$EXPECTED_SUBSCRIPTION_ID"
+
+  destination:
+    name: Destination read-only control
+    needs: plan
+    if: needs.plan.outputs.target == 'destination'
+    runs-on: ubuntu-latest
+    environment: ets-azure-migration-destination-read
+    timeout-minutes: 15
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      MIGRATION_RESOURCE_GROUP: ${{ vars.MIGRATION_DESTINATION_RESOURCE_GROUP }}
+      MIGRATION_CORE_STORAGE_ACCOUNT: ${{ vars.MIGRATION_DESTINATION_CORE_STORAGE_ACCOUNT }}
+      MIGRATION_GATEWAY_STORAGE_ACCOUNT: ${{ vars.MIGRATION_DESTINATION_GATEWAY_STORAGE_ACCOUNT }}
+      MIGRATION_EVIDENCE_TABLE: ${{ vars.MIGRATION_EVIDENCE_TABLE }}
+      MIGRATION_GATEWAY_SHARE: ${{ vars.MIGRATION_DESTINATION_GATEWAY_SHARE }}
+    steps:
+      - name: Check out exact migration source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Azure login with destination workload identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Execute bounded destination read
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/azure_migration_control.py \
+            --target destination \
+            --operation "${{ needs.plan.outputs.operation }}" \
+            --expected-tenant "$EXPECTED_TENANT_ID" \
+            --expected-subscription "$EXPECTED_SUBSCRIPTION_ID"
