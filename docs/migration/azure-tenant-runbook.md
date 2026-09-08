@@ -495,3 +495,62 @@ destination infrastructure what-if before resource creation. No traffic, DNS,
 writer ownership, source availability, or fleet/PostgreSQL resource changed in
 this checkpoint.
 
+
+
+## Destination identity adaptation and infrastructure what-if: 2026-09-08
+
+Repository adaptation now separates the Azure deployment tenant from the
+EchoMedia Microsoft resource tenant instead of replacing one tenant ID with the
+other. The existing same-tenant managed-identity route remains the default for
+the source deployment. A new fail-closed
+`federated_managed_identity` route uses three distinct destination
+user-assigned managed identities as assertions for three distinct multitenant
+applications registered in the ETS Protocol tenant and provisioned into the
+EchoMedia tenant. The runtime exchanges
+`api://AzureADTokenExchange/.default` assertions through
+`ClientAssertionCredential`; no application secret, certificate private key,
+or cross-tenant managed-identity attachment is introduced.
+
+The EchoMedia service principals must receive only their existing bounded
+connector permissions: the approved SharePoint `Sites.Selected` grant for the
+existing site/drive, `User.Read.All` plus `Group.Read.All` for directory
+collection without `Directory.Read.All`, and the existing Office 365
+Management Activity permission for Purview. No permission was granted and no
+application or service principal was created in this checkpoint.
+
+Both Core and Gateway Bicep templates now expose
+`runtimeMinReplicas`, restricted to zero or one and defaulting to one.
+Migration staging must pass zero explicitly. This prevents the destination
+containers from starting or competing for writer ownership while storage,
+identity, and authorization are prepared. Static tests cover the zero-replica
+control and the separated application IDs. The legacy source path remains
+backward compatible.
+
+MFA-backed destination access was reconfirmed for subscription
+`5729a82b-8850-4868-b96c-96c3805cbb9d` in tenant
+`0d20cf0f-3498-46c1-a0db-69b09c634cc2`. The destination ACR was re-read in
+`rg-ets-shared-eastus` with Basic SKU and its admin account disabled.
+`rg-ets-prod-eastus` contained zero resources before the checks.
+
+The exact PR templates compiled in ephemeral destination Cloud Shell. Azure
+Resource Manager what-if then evaluated them against
+`rg-ets-prod-eastus` using the qualified immutable image digest and
+`runtimeMinReplicas=0`:
+
+- Core: 17 resources predicted for creation and one unsupported prediction;
+- Gateway: 12 resources predicted for creation and one unsupported prediction.
+
+In both cases the unsupported item is the ACR pull role assignment whose
+destination identity principal ID cannot be calculated until deployment. No
+other diagnostic was reported. A post-what-if resource inventory again returned
+zero resources, proving the operation did not create the destination stack.
+
+GitHub Hosted Azure Bicep and the new unit tests pass. Ruff passes. The first
+full CI run exposed only a credential-provider union type annotation, which was
+corrected in `dcf143c939be3f35639ee980e1943a262cbd00c3`; its final CI rerun is
+the current gate. Do not deploy resources until that rerun passes. After it
+passes, the next bounded write is a zero-replica destination deployment, followed
+by read-back of the three UAMI principal IDs and guarded multitenant
+application/federated-credential provisioning. Source identities, permissions,
+traffic, DNS, evidence writers, signing key, and fleet/PostgreSQL resources
+remain unchanged.
