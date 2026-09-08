@@ -1,0 +1,50 @@
+name: Azure Migration Restore Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-restore-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Verify fenced destination restore state
+    runs-on: ubuntu-latest
+    environment: ets-azure-migration-destination-read
+    timeout-minutes: 15
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      EXPECTED_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      EXPECTED_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      MIGRATION_RESOURCE_GROUP: rg-ets-prod-eastus
+      MIGRATION_EVIDENCE_TABLE: ETSEvents
+      MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+    steps:
+      - name: Check out exact migration source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Azure login with destination read-only workload identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify restore preconditions without writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/azure_migration_restore_preflight.py \
+            --expected-tenant "$EXPECTED_TENANT_ID" \
+            --expected-subscription "$EXPECTED_SUBSCRIPTION_ID"
+
+# Intentionally no restore/write job exists here. Protected-state transfer must use
+# a separate environment and identity after required-reviewer protection, artifact
+# rehydration/hash verification, and explicit authorization are recorded.
