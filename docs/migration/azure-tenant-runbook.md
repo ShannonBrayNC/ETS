@@ -545,12 +545,16 @@ destination identity principal ID cannot be calculated until deployment. No
 other diagnostic was reported. A post-what-if resource inventory again returned
 zero resources, proving the operation did not create the destination stack.
 
-GitHub Hosted Azure Bicep and the new unit tests pass. Ruff passes. The first
-full CI run exposed only a credential-provider union type annotation, which was
-corrected in `dcf143c939be3f35639ee980e1943a262cbd00c3`; its final CI rerun is
-the current gate. Do not deploy resources until that rerun passes. After it
-passes, the next bounded write is a zero-replica destination deployment, followed
-by read-back of the three UAMI principal IDs and guarded multitenant
-application/federated-credential provisioning. Source identities, permissions,
-traffic, DNS, evidence writers, signing key, and fleet/PostgreSQL resources
-remain unchanged.
+GitHub Hosted Azure Bicep, the new unit tests, Ruff, mypy, CodeQL,
+Security Audit, Formal Specs, and all other PR workflows completed successfully
+for checkpoint `4c002af9118ce7872891464bc1f7bae793792f92`. The clean CI rerun
+therefore clears the repository validation gate.
+
+The next bounded write is a zero-replica destination deployment, followed by
+read-back of the three UAMI principal IDs and guarded multitenant
+application/federated-credential provisioning. That deployment creates scoped
+ACR-pull, Key Vault, and Table RBAC assignments, so browser action-time
+confirmation was requested. The confirmation returned without a selection;
+no deployment was started. Source identities, permissions, traffic, DNS,
+evidence writers, signing key, and fleet/PostgreSQL resources remain unchanged,
+and `rg-ets-prod-eastus` remains empty.
