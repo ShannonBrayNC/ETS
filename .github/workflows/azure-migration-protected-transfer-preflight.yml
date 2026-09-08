@@ -1,0 +1,118 @@
+name: Azure Migration Protected Transfer Preflight
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - migration/azure-ets-destination-discovery
+    paths:
+      - '.github/migration-control/transfer-request.json'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-protected-transfer-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Verify protected cross-tenant transfer path
+    runs-on: ubuntu-latest
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 20
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      SOURCE_TENANT_ID: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+      SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - name: Check out exact migration source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject missing environment identifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in \
+            SOURCE_AZURE_CLIENT_ID SOURCE_TENANT_ID SOURCE_SUBSCRIPTION_ID \
+            AZURE_CLIENT_ID DEST_TENANT_ID DEST_SUBSCRIPTION_ID; do
+            case "$name" in
+              SOURCE_AZURE_CLIENT_ID) value='${{ vars.SOURCE_AZURE_CLIENT_ID }}' ;;
+              AZURE_CLIENT_ID) value='${{ vars.AZURE_CLIENT_ID }}' ;;
+              SOURCE_TENANT_ID) value="$SOURCE_TENANT_ID" ;;
+              SOURCE_SUBSCRIPTION_ID) value="$SOURCE_SUBSCRIPTION_ID" ;;
+              DEST_TENANT_ID) value="$DEST_TENANT_ID" ;;
+              DEST_SUBSCRIPTION_ID) value="$DEST_SUBSCRIPTION_ID" ;;
+            esac
+            if [[ -z "$value" ]]; then
+              echo "Required protected-transfer environment variable is missing: $name" >&2
+              exit 2
+            fi
+          done
+
+      - name: Azure login with dedicated source transfer identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.SOURCE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify source protected-state read path
+        shell: bash
+        env:
+          MIGRATION_RESOURCE_GROUP: rg-ets-live-eastus
+          MIGRATION_EVIDENCE_TABLE: ETSEvents
+          MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_control \
+            --target source \
+            --operation inventory \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
+
+      - name: Clear source Azure session
+        shell: bash
+        run: az account clear
+
+      - name: Azure login with destination restore identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify destination remains fenced and initialization-only
+        shell: bash
+        env:
+          MIGRATION_RESOURCE_GROUP: rg-ets-prod-eastus
+          MIGRATION_EVIDENCE_TABLE: ETSEvents
+          MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_restore_preflight \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID"
+
+      - name: Confirm no protected-state writes are implemented
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Protected transfer boundary
+
+          - source identity: `read-only`
+          - destination identity: `scoped restore identity`
+          - source bytes copied: `no`
+          - destination entities/files changed: `no`
+          - writer activated: `no`
+
+          This preflight proves the approval-gated cross-tenant identity path only.
+          It intentionally contains no protected-state export, upload, delete, replace,
+          merge, or writer-activation command.
+          EOF
