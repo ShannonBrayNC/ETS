@@ -38,8 +38,9 @@ This supports hardware-independent crash/restart testing.
 
 An R0.2 chain is scoped to one vehicle, mission, boot, and signing key. Process recovery during
 that boot resumes the chain. A later boot starts a separately identified chain that can be linked
-under the stable-key [boot-continuity profile](boot-continuity.md). Authorized key rotation and
-revocation semantics remain deferred.
+under the [boot-continuity profile](boot-continuity.md). Stable-key continuity remains supported;
+planned boot-boundary rotation and revocation can additionally be evaluated against the separate
+[custody-key authority history](key-authority.md).
 
 The reference store deliberately reports:
 
@@ -69,7 +70,7 @@ physical actuator or vehicle produced a claimed result.
 | --- | --- | --- |
 | Evidence modification or reordered/missing record | Canonical source/record digests, signatures, sequence and predecessor checks | Replicated immutable checkpoint publication |
 | Duplicate/replayed source record | Unique source schema/event identity and verifier duplicate checks | Cross-device replay policy and mission registry |
-| Vehicle, mission, boot, or signing-key substitution | Signed identity binding and fail-closed recovery validation | Hardware identity, attestation, key rotation, revocation, and standing |
+| Vehicle, mission, boot, or signing-key substitution | Signed identity binding, fail-closed recovery validation, and authority-relative key standing | Hardware identity, attestation, Fleet authorization, and globally current key history |
 | Corrupted local database | SQLite integrity check plus strict record parsing and chain verification | Power-loss-qualified storage, recovery media, and environmental qualification |
 | Stolen software signing key | Explicit software-key classification; wrong-key verification fails | TPM/HSM-backed non-exportable signing key and measured boot |
 | Evidence deletion including suffix truncation | Internal gaps are detected; a [verifier-retained checkpoint](retained-checkpoints.md) detects rollback behind a retained head | Replicated immutable checkpoint publication and expected-event policy |

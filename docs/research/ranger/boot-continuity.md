@@ -24,8 +24,9 @@ is retained as the first source event in the new boot's ordinary signed custody 
 Ed25519 public key, then rejects missing checkpoints, identity changes, wrong predecessor heads,
 changed signing-key identifiers, missing, duplicate, or reordered boot-sequence transitions, and
 non-advancing recorded timestamps. A checkpoint is rejected anywhere except custody sequence one,
-including when submitted through the generic append API. Stable-key verification is deliberate:
-key rotation and revocation need a separately authorized handoff.
+including when submitted through the generic append API. The stable-key verifier remains the
+minimal profile. `RangerKeyAuthorityLedger.verify_boot_continuity` can additionally resolve an
+authorized boot-boundary change through the separate [custody-key authority history](key-authority.md).
 
 Clock semantics are explicit:
 
@@ -43,7 +44,7 @@ Clock semantics are explicit:
 | Clock or GNSS manipulation | Local wall clock, NTP/GNSS input, or clock-quality declaration | Misordered or falsely precise event time | Signed source, quality, uncertainty, and recorded-time order; unknown quality cannot claim a bound | Authenticated time, rollback-resistant state, and independent time witness | Clock-source identity, quality, bound, raw time evidence, and witness where available | Reject naive time, inconsistent quality/bounds, and non-advancing recorded time |
 | Missing, duplicate, or reordered transition | Boot counter input or checkpoint ordering | Ambiguous supplied boot lineage | Checkpoint must be first and pairwise sequence must advance by exactly one | Hardware anti-rollback counter and durable mission registry | Adjacent checkpoints and retained sequence state | Try skipped, duplicate, reversed, and misplaced checkpoints |
 | Replay of an otherwise valid pair or omitted historical boot | Verifier request or incomplete export | Old but valid lineage is presented as current | Pairwise verification alone cannot detect it; the verifier-retained profile rejects state older than its signed latest checkpoint | Authoritative multi-party latest-state discovery and hardware anti-rollback state | Registry history or separately retained latest checkpoint | Replay the same valid pair against a newer retained checkpoint |
-| Signing-key or key-identity substitution | Public-key input, record envelope, or signer configuration | Unauthorized continuity or ambiguous key history | Both chains verify under one expected key and the signed key identifier must remain stable | Authorized rotation/revocation and trust-history evaluation | Trusted public key, signed key IDs, and handoff record when supported | Use a wrong key and reuse the correct key under a changed identifier |
+| Signing-key or key-identity substitution | Public-key input, record envelope, or signer configuration | Unauthorized continuity or ambiguous key history | Stable-key mode requires one key; authority-history mode requires signed enrollment plus dual-proof boot-boundary rotation and rejects effective revocation | Fleet composition, hardware-backed identity, globally current history, and emergency recovery | Complete authority history, authority key, custody chains, signed key IDs, and possession proofs | Use a wrong key, omit a proof, replay a superseded key, and sign after revocation |
 | Compromised checkpoint producer | Ranger runtime or exported software key | False clock/head statements can still be validly signed | Explicit software-key and no-trusted-time claim boundaries | Non-exportable hardware key, measured boot, configuration provenance, and compromise response | Attestation, firmware/configuration digests, key history, and incident evidence | Deferred negative controls under the hardware-attestation profile |
 | Current-chain suffix deletion | Local storage or export after checkpoint creation | Recent events disappear without an internal gap | A verifier-retained head detects truncation behind the retained record count | Replicated immutable checkpoint publication and expected-event policy | Later retained head or source completeness policy | Truncate current suffix before and after registry retention |
 
