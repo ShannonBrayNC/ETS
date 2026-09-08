@@ -133,8 +133,8 @@ jobs:
     timeout-minutes: 15
     env:
       AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
-      EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      EXPECTED_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      EXPECTED_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       MIGRATION_RESOURCE_GROUP: rg-ets-prod-eastus
       MIGRATION_EVIDENCE_TABLE: ETSEvents
       MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
@@ -147,9 +147,9 @@ jobs:
       - name: Azure login with destination workload identity
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Execute bounded destination read
         shell: bash
