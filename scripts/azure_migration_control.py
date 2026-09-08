@@ -78,6 +78,49 @@ def _discover_storage_accounts(resources: list[dict[str, Any]]) -> tuple[str | N
     return (core[0] if len(core) == 1 else None, gateway[0] if len(gateway) == 1 else None)
 
 
+def _scope_class(scope: str) -> str:
+    normalized = scope.rstrip("/")
+    if "/resourceGroups/" not in normalized:
+        return "subscription_or_above"
+    suffix = normalized.split("/resourceGroups/", 1)[1]
+    return "resource_group" if "/providers/" not in suffix else "resource"
+
+
+def _rbac_summary() -> tuple[str, dict[str, dict[str, int]]]:
+    try:
+        account = az_json(["account", "show"])
+        if not isinstance(account, dict) or not isinstance(account.get("user"), dict):
+            raise MigrationControlError("Azure principal response is invalid")
+        principal = str(account["user"].get("name", "")).strip()
+        if not principal:
+            raise MigrationControlError("Azure principal is missing")
+        assignments = az_json(
+            [
+                "role",
+                "assignment",
+                "list",
+                "--assignee",
+                principal,
+                "--all",
+                "--query",
+                "[].{role:roleDefinitionName,scope:scope}",
+            ]
+        )
+        if not isinstance(assignments, list):
+            raise MigrationControlError("Azure role response is invalid")
+    except MigrationControlError:
+        return "blocked", {}
+
+    summary: dict[str, Counter[str]] = {}
+    for assignment in assignments:
+        if not isinstance(assignment, dict):
+            continue
+        role = str(assignment.get("role", "unknown"))
+        scope = _scope_class(str(assignment.get("scope", "")))
+        summary.setdefault(role, Counter())[scope] += 1
+    return "ok", {role: dict(sorted(scopes.items())) for role, scopes in sorted(summary.items())}
+
+
 def inventory() -> dict[str, Any]:
     resource_group = _required_env("MIGRATION_RESOURCE_GROUP")
     resources_raw = az_json(
@@ -96,9 +139,12 @@ def inventory() -> dict[str, Any]:
     resource_types = Counter(str(item.get("type", "unknown")) for item in resources)
     discovered_core, discovered_gateway = _discover_storage_accounts(resources)
 
+    rbac_status, rbac_roles = _rbac_summary()
     result: dict[str, Any] = {
         "resource_count": len(resources),
         "resource_types": dict(sorted(resource_types.items())),
+        "rbac_status": rbac_status,
+        "rbac_roles": rbac_roles,
     }
 
     table_account = os.environ.get("MIGRATION_CORE_STORAGE_ACCOUNT", "").strip()
@@ -190,6 +236,7 @@ def write_summary(target: str, operation: str, result: dict[str, Any]) -> None:
     ]
     if operation == "inventory":
         lines.append(f"- resource count: `{result['resource_count']}`")
+        lines.append(f"- RBAC summary: `{result['rbac_status']}`")
         lines.append(f"- evidence data plane: `{result['evidence_status']}`")
         if result.get("evidence_status") == "ok":
             lines.append(f"- evidence entities: `{result['evidence_entities']}`")
@@ -198,6 +245,11 @@ def write_summary(target: str, operation: str, result: dict[str, Any]) -> None:
         lines.append(f"- gateway data plane: `{result['gateway_status']}`")
         if result.get("gateway_status") == "ok":
             lines.append(f"- gateway root entries: `{result['gateway_root_entries']}`")
+        if result.get("rbac_status") == "ok":
+            lines.append("")
+            lines.append("OIDC principal roles (scope class only):")
+            for role, scopes in result["rbac_roles"].items():
+                lines.append(f"- `{role}`: `{scopes}`")
         lines.append("")
         lines.append("Resource types:")
         for resource_type, count in result["resource_types"].items():
