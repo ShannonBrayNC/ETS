@@ -67,12 +67,12 @@ physical actuator or vehicle produced a claimed result.
 
 | Threat | Detection in this increment | Remaining mitigation |
 | --- | --- | --- |
-| Evidence modification or reordered/missing record | Canonical source/record digests, signatures, sequence and predecessor checks | External anchoring and replicated witness checkpoints |
+| Evidence modification or reordered/missing record | Canonical source/record digests, signatures, sequence and predecessor checks | Replicated immutable checkpoint publication |
 | Duplicate/replayed source record | Unique source schema/event identity and verifier duplicate checks | Cross-device replay policy and mission registry |
 | Vehicle, mission, boot, or signing-key substitution | Signed identity binding and fail-closed recovery validation | Hardware identity, attestation, key rotation, revocation, and standing |
 | Corrupted local database | SQLite integrity check plus strict record parsing and chain verification | Power-loss-qualified storage, recovery media, and environmental qualification |
 | Stolen software signing key | Explicit software-key classification; wrong-key verification fails | TPM/HSM-backed non-exportable signing key and measured boot |
-| Evidence deletion including suffix truncation | Internal gaps are detected | A deleted suffix requires an externally witnessed head or expected-event policy |
+| Evidence deletion including suffix truncation | Internal gaps are detected; a [verifier-retained checkpoint](retained-checkpoints.md) detects rollback behind a retained head | Replicated immutable checkpoint publication and expected-event policy |
 
 ## ETS projection boundary
 
