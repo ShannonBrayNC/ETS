@@ -18,10 +18,16 @@ ensure_role() {
   local role="$2"
   local scope="$3"
   local count
+
+  # Do not use `--assignee` here. For a newly created managed identity Azure AD/
+  # Microsoft Graph replication can lag behind ARM, causing `az role assignment
+  # list --assignee ...` to fail even though the principalId is already valid.
+  # Enumerating the exact scope and filtering by principalId avoids that Graph
+  # lookup; creation below also uses --assignee-object-id for the same reason.
   count="$(az role assignment list \
-    --assignee "$principal_id" \
     --scope "$scope" \
-    --query "[?roleDefinitionName=='$role'] | length(@)" -o tsv)"
+    --query "[?principalId=='$principal_id' && roleDefinitionName=='$role'] | length(@)" \
+    -o tsv)"
   if [[ "$count" == "0" ]]; then
     az role assignment create \
       --assignee-object-id "$principal_id" \
