@@ -550,11 +550,101 @@ Security Audit, Formal Specs, and all other PR workflows completed successfully
 for checkpoint `4c002af9118ce7872891464bc1f7bae793792f92`. The clean CI rerun
 therefore clears the repository validation gate.
 
-The next bounded write is a zero-replica destination deployment, followed by
-read-back of the three UAMI principal IDs and guarded multitenant
-application/federated-credential provisioning. That deployment creates scoped
-ACR-pull, Key Vault, and Table RBAC assignments, so browser action-time
-confirmation was requested. The confirmation returned without a selection;
-no deployment was started. Source identities, permissions, traffic, DNS,
-evidence writers, signing key, and fleet/PostgreSQL resources remain unchanged,
-and `rg-ets-prod-eastus` remains empty.
+The zero-replica destination deployment gate was subsequently approved and
+executed. Its read-back and safety results are recorded in the next checkpoint.
+
+
+## Destination Core and Gateway zero-replica deployment: 2026-09-08
+
+The approved destination deployment used the exact PR checkpoint
+`4c002af9118ce7872891464bc1f7bae793792f92`, the existing Basic ACR
+`etsprod7c8ab70380` with its admin account disabled, and the qualified
+immutable image:
+
+`etsprod7c8ab70380.azurecr.io/ets/hosted-q1@sha256:e37f78a32dd995bcd73b1dfb4f3ae590bcc0694d8170f0a0a748d937be35fd63`
+
+No image rebuild, mutable tag, ACR admin credential, source subscription write,
+traffic change, DNS change, or fleet/PostgreSQL change occurred.
+
+The Core deployment `ets-migration-core-zero-20260908` initially reached all
+resource creations except its four App Configuration key-value child resources.
+The store correctly had local authentication disabled and ARM data-plane proxy
+mode set to `Pass-through`; the remaining failure was the deployment caller's
+missing data-plane role. The operator object
+`f8a7dadf-a4a7-4ed6-8ebd-76abf97b8bb7` received
+`App Configuration Data Owner` at only the destination store scope
+`.../configurationStores/ets-v5j37z3xe76tm-cfg` (role assignment
+`bff25385-49c9-4bf5-a2e0-35b01f0519b5`). After RBAC propagation, the same
+idempotent deployment succeeded at `2026-09-08T15:06:48.810708Z`,
+correlation ID `0af451f1-9160-46ad-8099-4cbbfcce30ac`. ARM operation
+read-back reports `Succeeded` for all four non-secret settings:
+`ETS_SIGNING_MODE`, `ETS_AZURE_MANAGED_IDENTITY_ENABLED`,
+`ETS_AZURE_KEY_VAULT_URL`, and `ETS_AZURE_KEY_NAME`.
+
+Created Core resources include:
+
+- Container App `ets-v5j37z3xe76tm-api`;
+- managed environment `ets-v5j37z3xe76tm-cae`;
+- storage account `etsv5j37z3xe76tm`, table `ETSEvents`;
+- Key Vault `ets-v5j37z3xe76tm-kv`;
+- App Configuration `ets-v5j37z3xe76tm-cfg`;
+- Application Insights `ets-v5j37z3xe76tm-appi`;
+- runtime identity `ets-v5j37z3xe76tm-identity`;
+- ACR pull identity `ets-v5j37z3xe76tm-pull`.
+
+Core read-back at `2026-09-08T15:12:07Z` confirmed internal-only ingress,
+`minReplicas=0`, `maxReplicas=1`, the exact immutable image digest, and one
+healthy active revision with zero replicas. Scoped RBAC read-back confirmed
+`Key Vault Crypto User` for the runtime identity at only the destination vault,
+`Storage Table Data Contributor` at only the destination `ETSEvents` table,
+and `AcrPull` for the pull identity at only the destination registry.
+
+The destination signing key is a new identity created
+`2026-09-08T14:47:14Z`:
+
+`https://ets-v5j37z3xe76tm-kv.vault.azure.net/keys/ets-tree-head/ab08ef62e5d44637a3409d68cadd0bf1`
+
+It must never be substituted for historical source key version
+`9f578feb997d49abb0a42b5e41651996`. The protected source public-key archive
+and source vault retention requirement remain unchanged.
+
+The Gateway deployment `ets-migration-gateway-zero-20260908` succeeded at
+`2026-09-08T15:02:37.952815Z`, correlation ID
+`c987d982-3148-49d0-a427-d56836785abf`. It created:
+
+- Container App `ets-oif5r5ydprrou-gw`;
+- runtime, directory, Purview, and pull identities
+  `ets-oif5r5ydprrou-gw-id`, `ets-oif5r5ydprrou-gw-dir-id`,
+  `ets-oif5r5ydprrou-gw-pur-id`, and `ets-oif5r5ydprrou-gw-pull`;
+- state storage `etsgwoif5r5ydprrou` and active share
+  `ets-gateway-state-q1-v2`;
+- Key Vault `ets-oif5r5ydprrou-gkv`.
+
+Destination UAMI identifiers for guarded cross-tenant provisioning are:
+
+| Identity | Client ID | Principal ID |
+| --- | --- | --- |
+| Gateway runtime | `5c4edb37-106e-4093-beda-fdafcf04479d` | `46a5589a-37dc-4d5e-8d61-d0582b7dce61` |
+| Gateway directory | `6f657f0d-1fcb-450c-9985-919ed6adc5fe` | `51ef8c3b-a486-446e-9c89-14013d1cd167` |
+| Gateway Purview | `f1a002e8-f22b-44d5-ba17-806d582b6695` | `fdfffcbc-13b9-4438-a35c-b882a59dc5e6` |
+| Gateway ACR pull | `73e59a1f-2cba-4891-befb-3a70dc9bfc70` | `35b23aaf-a256-4194-9835-c3a5ddc75977` |
+| Core runtime | `89a3822f-de30-45b0-bbb4-e527780e04ac` | `c8b20188-7514-48d0-bece-26504329c3c2` |
+| Core ACR pull | `43478ec2-60a5-40b9-bf6b-1d039dfdeb78` | `e9848794-027b-4b99-a5f5-30f5e1db2af4` |
+
+Gateway read-back confirmed internal-only ingress, `minReplicas=0`,
+`maxReplicas=1`, and the exact immutable image. Azure started one transient
+replica while provisioning revision `ets-oif5r5ydprrou-gw--zsyz55n`.
+Although all Microsoft application, drive, tenant/workspace, and authorization
+values were explicit non-production placeholders, the revision was immediately
+deactivated. Final read-back reports `active=false` and `replicas=0`.
+Core also remains at zero replicas. There are no destination writers and no
+production traffic.
+
+The next protected-state gate is to inventory the new Gateway share for any
+initialization files left by the transient provisioning replica, verify the new
+`ETSEvents` table, and then restore the protected source snapshots/exports
+without replaying events. This requires narrowly scoped destination data-plane
+operator roles and action-time approval before permission changes and protected
+data transfer. Cross-tenant application registrations, federated credentials,
+EchoMedia service principals/admin consent, and `Sites.Selected` grants remain
+uncreated and require a separate guarded authorization checkpoint.
