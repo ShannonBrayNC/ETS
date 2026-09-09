@@ -15,7 +15,13 @@ OIDC federated credential. It grants only:
 
 - Reader on rg-ets-prod-eastus
 - Storage Table Data Contributor on the destination ETSEvents table
+- Storage File Data Privileged Reader on the destination Gateway storage account
 - Storage File Data Privileged Contributor on the destination active Gateway share
+
+The account-level Azure Files grant is read-only and exists because the verified
+`az storage file list --auth-mode login --backup-intent` path requires account-level
+read authorization. File mutation authority remains constrained to the active
+Gateway share.
 
 It does not copy evidence, modify Gateway files, change DNS, change replicas,
 create application credentials, or activate a destination writer.
@@ -109,7 +115,7 @@ share_id="$(az resource show \
   --ids "$gateway_id/fileServices/default/shares/$GATEWAY_SHARE" \
   --query id -o tsv)"
 prod_rg_id="$(az group show -n "$DEST_PROD_RG" --query id -o tsv)"
-if [[ -z "$table_id" || -z "$share_id" || -z "$prod_rg_id" ]]; then
+if [[ -z "$table_id" || -z "$share_id" || -z "$gateway_id" || -z "$prod_rg_id" ]]; then
   echo "STOP: exact destination restore scopes could not be resolved." >&2
   exit 2
 fi
@@ -152,6 +158,7 @@ fi
 
 ensure_role "$principal_id" "Reader" "$prod_rg_id"
 ensure_role "$principal_id" "Storage Table Data Contributor" "$table_id"
+ensure_role "$principal_id" "Storage File Data Privileged Reader" "$gateway_id"
 ensure_role "$principal_id" "Storage File Data Privileged Contributor" "$share_id"
 
 echo
