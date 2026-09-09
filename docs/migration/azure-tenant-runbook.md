@@ -705,3 +705,95 @@ table contributor role, protected source artifact rehydration, and explicit
 authorization to transmit the protected Gateway snapshot files and 75 ETS table
 entities into the ETS Protocol subscription. The destination initialization
 snapshot and recorded metadata provide rollback for that operation.
+
+## Protected Core/Gateway state restored and verified: 2026-09-09
+
+At `2026-09-09T12:21:31Z`, the fixed pre-cutover Core/Gateway checkpoint
+was restored into the isolated ETS Protocol destination. No destination
+Container App was started and no production traffic, DNS, source resource, fleet,
+PostgreSQL resource, historical key, or Lantern route was changed.
+
+After explicit authorization, destination operator
+`f8a7dadf-a4a7-4ed6-8ebd-76abf97b8bb7` received:
+
+- `Storage File Data Privileged Contributor` on
+  `etsgwoif5r5ydprrou`, assignment
+  `e5c6e1c0-e629-4dfb-bf06-78e9658d149d`;
+- `Storage Table Data Contributor` on only
+  `etsv5j37z3xe76tm/tableServices/default/tables/ETSEvents`, assignment
+  `38d6bfba-1bf7-42be-82da-aff083d403d6`.
+
+Protected inputs were rehydrated outside Git and verified before transfer:
+
+| Protected input | SHA-256 |
+| --- | --- |
+| `ets-gateway-snapshot-20260907T041212Z.tar.gz` | `f7090e361a372dea23dc6abd57a46e643231b0187e06c69e278fd89067b2e508` |
+| `ets-azure-table-backup-20260907T041640Z.tar.gz` | `8554fe8ab3ccb37464f09573260898879b782e1dba6415edf5df9ab202bcdc6c` |
+| `ETSEvents.fullmetadata.json` | `fe93a5a27ddb4bd0e5c09f0b5f333de77bdbc44d37b58959d69194e45b2caa21` |
+| evidence manifest | `465e75160fd9d7bbd51843ad750309dd6fae769b6b664cc2fe861ab2f30d0818` |
+
+The Gateway active share `ets-gateway-state-q1-v2` was restored by OAuth
+with Azure Files backup intent. The three initialization databases were replaced
+and the source snapshot's SQLite companion files were added. Independent
+download/read-back produced:
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `connector-runtime.db` | 53248 | `e10bf7a367d6cc64ad91267cb505b3c11b9e05f9697575753419d1543a8d04ff` |
+| `gateway-events.db` | 143360 | `719b3562d6eda3f5850c5f246059f5a034a5439915c64d36514e04116785b9ee` |
+| `gateway-sync.db` | 69632 | `c73ff918b6522d1c3b742aaed5df67ce3a734b77be9d55820245b369411066aa` |
+| `gateway-sync.db-shm` | 32768 | `fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb` |
+| `gateway-sync.db-wal` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+
+Python standard-library SQLite read-back returned `ok` for all three
+databases. A first combined upload command disconnected before changing the
+share; a live size inventory proved the initialization files were still intact
+before the successful bounded retry.
+
+The protected `ETSEvents` export contained exactly 75 typed entities:
+37 `entry`, 37 `event_index`, and one `metadata`. Its metadata
+partition and row matched the destination initialization row, so no additional
+row deletion was required. A guarded insert-or-replace restore removed only
+service-assigned `Timestamp`/OData fields from request bodies; it retained every
+application property, including keys, exact `event_json`, event and leaf
+hashes, event-ID mappings, log indexes, log ID, schema version, and
+`next_index`. The first REST attempt used update-only semantics and returned
+HTTP 404 on the first nonexistent entity before any write. The corrected,
+resumable attempt completed and canonical comparison of every preserved property
+returned:
+
+`3fc28604e15cd3bb132440f205f8b0432e035fd1735d50542e7116a5c8f6194a`
+
+Independent Azure CLI read-back confirmed 75 total entities, 37 entries,
+37 event indexes, one metadata row, and `next_index=37`. Service-assigned
+timestamps and ETags are destination values; originals remain in the protected
+full-metadata export and manifest.
+
+Post-restore scale/read-back remains fenced:
+
+- Core `ets-v5j37z3xe76tm-api`: `minReplicas=0`,
+  active revision has zero replicas;
+- Gateway `ets-oif5r5ydprrou-gw`: `minReplicas=0`, no active revisions.
+
+The initialization rollback snapshot
+`2026-09-08T16:06:59.0000000Z` remains available. A post-restore share
+snapshot was not created: the CLI does not support OAuth for that operation and
+the direct OAuth management request failed closed with
+`FileOAuthManagementApiRestrictedToSrp`. No account key or SAS was obtained or
+used.
+
+This is a protected validation checkpoint, not a cutover checkpoint. Source
+Core remained live and had advanced to 89 entities (44 entries, 44 event indexes,
+one metadata row with `next_index=44`) when checked before restore. Therefore
+the destination is seven events behind current source state. Do not start a
+destination writer. Final synchronization requires an exclusive source write
+freeze, a new exact typed export or validated seven-event delta, full
+preserved-property comparison, and explicit writer ownership transfer.
+
+Historical source signing version
+`9f578feb997d49abb0a42b5e41651996` remains unchanged and retained. The
+destination signing key remains a new continuity boundary, not a historical-key
+replacement. The next executable gate is cross-tenant Microsoft identity
+provisioning and connector qualification, followed by final freeze/sync; both
+require their own scoped permission and consent checkpoint.
+
