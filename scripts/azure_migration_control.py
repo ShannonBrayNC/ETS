@@ -250,6 +250,15 @@ def inventory() -> dict[str, Any]:
     return result
 
 
+def require_data_plane(result: dict[str, Any]) -> None:
+    """Fail closed when a protected read path is not fully available."""
+
+    if result.get("evidence_status") != "ok":
+        raise MigrationControlError("Required evidence data-plane read is unavailable")
+    if result.get("gateway_status") != "ok":
+        raise MigrationControlError("Required Gateway data-plane read is unavailable")
+
+
 def write_summary(target: str, operation: str, result: dict[str, Any]) -> None:
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     lines = [
@@ -295,11 +304,22 @@ def main() -> int:
     parser.add_argument("--operation", choices=("context", "inventory"), required=True)
     parser.add_argument("--expected-tenant", required=True)
     parser.add_argument("--expected-subscription", required=True)
+    parser.add_argument(
+        "--require-data-plane",
+        action="store_true",
+        help="fail unless both evidence and Gateway protected reads are available",
+    )
     args = parser.parse_args()
 
     try:
         verify_context(args.expected_tenant, args.expected_subscription)
         result = inventory() if args.operation == "inventory" else {}
+        if args.require_data_plane:
+            if args.operation != "inventory":
+                raise MigrationControlError(
+                    "--require-data-plane is valid only with inventory"
+                )
+            require_data_plane(result)
         write_summary(args.target, args.operation, result)
     except (MigrationControlError, subprocess.TimeoutExpired, OSError) as exc:
         print(f"Migration control blocked: {type(exc).__name__}")
