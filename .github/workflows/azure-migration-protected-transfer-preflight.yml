@@ -73,6 +73,7 @@ jobs:
           python -m scripts.azure_migration_control \
             --target source \
             --operation inventory \
+            --require-data-plane \
             --expected-tenant "$SOURCE_TENANT_ID" \
             --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
 
