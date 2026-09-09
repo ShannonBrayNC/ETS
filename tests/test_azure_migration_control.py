@@ -7,6 +7,7 @@ from unittest.mock import patch
 from scripts.azure_migration_control import (
     MigrationControlError,
     inventory,
+    require_data_plane,
     verify_context,
 )
 
@@ -103,6 +104,15 @@ class MigrationControlTests(unittest.TestCase):
         self.assertEqual(result["evidence_status"], "blocked")
         self.assertEqual(result["gateway_status"], "blocked")
         self.assertNotIn("SENSITIVE", str(result))
+
+    def test_required_data_plane_fails_closed_when_gateway_is_blocked(self) -> None:
+        result = {"evidence_status": "ok", "gateway_status": "blocked"}
+        with self.assertRaisesRegex(MigrationControlError, "Gateway"):
+            require_data_plane(result)
+
+    def test_required_data_plane_accepts_complete_protected_reads(self) -> None:
+        result = {"evidence_status": "ok", "gateway_status": "ok"}
+        require_data_plane(result)
 
 
 if __name__ == "__main__":
