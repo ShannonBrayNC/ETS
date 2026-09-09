@@ -100,6 +100,59 @@ Passing CI is not automatically a research result. A CI test becomes research-re
 - **Existing basis:** EAQ research program.
 - **Next academic step:** execute bounded, authorized, isolated experiment series and publish negative as well as positive findings.
 
+## Prospective experiment registrations
+
+### EXP-001 — Bounded Evidence Graph reconstruction comparison
+
+- **Record type:** prospective
+- **Research questions:** RQ1, RQ2, RQ3
+- **Hypotheses:** H-C001-A, H-C002-A, H-C002-B, H-C002-C
+- **Contribution IDs:** EA-C001, EA-C002
+- **Date/time:** registered 2026-09-09; execution not yet performed
+- **Researchers/operators:** to be assigned before execution
+- **Independent variables:** representation condition:
+  1. baseline W3C PROV;
+  2. W3C PROV with domain extensions but no Evidence Architecture verification rules;
+  3. Evidence Architecture representation with bounded verification vectors, epistemic states, edge-as-claim metadata, standing separation, and consequence-stage decomposition.
+- **Dependent variables:**
+  - supported-claim precision;
+  - unsupported-inference rate;
+  - missed-contradiction rate;
+  - false-completeness assumption rate;
+  - command/result confusion rate;
+  - standing/integrity confusion rate;
+  - reconstruction time;
+  - inter-rater agreement.
+- **Controls/baselines:** matched factual scenarios and matched underlying source evidence across all three representation conditions.
+- **System boundary:** evaluator-facing evidence packages only; no claim that the representation changes real-world truth or source-system correctness.
+- **Threat/fault model:** deliberate missing evidence, contradictory evidence, stale authority/policy state, shared-source dependencies, command without confirmed consequence, and consequence observation that conflicts with intended action.
+- **Hardware:** not material for initial evaluator study; execution environment to be recorded if tooling is used.
+- **Software/ref/commit SHA:** exact generation and evaluation tooling refs must be frozen before execution.
+- **Configuration:** scenario corpus, evaluator instructions, scoring rubric, and randomization procedure must be frozen before execution.
+- **Input/dataset:** prospective synthetic/mixed evidence scenarios designed from non-sensitive ETS use cases. No post-hoc scenario selection after results are known.
+- **Protocol:**
+  1. construct semantically matched evidence packages for each scenario under all three conditions;
+  2. randomize condition/scenario presentation where feasible;
+  3. provide evaluators the same fixed reconstruction questions;
+  4. record each conclusion and the evidence cited for it;
+  5. score whether each conclusion is supported, unsupported, contradicted, or indeterminate;
+  6. record elapsed reconstruction time;
+  7. preserve raw evaluator responses and scoring artifacts;
+  8. analyze predeclared metrics without removing negative or null results.
+- **Pre-registered expected outcome:** the Evidence Architecture condition is expected to reduce unsupported inference, command/result confusion, standing/integrity confusion, and false-completeness assumptions relative to baseline PROV. No effect size is claimed in advance.
+- **Actual outcome:** not executed
+- **Raw artifact locations:** to be assigned before execution
+- **Artifact hashes:** not applicable until artifacts exist
+- **Statistical/formal treatment:** define before execution based on evaluator count; at minimum report raw counts/rates, confidence intervals where appropriate, and inter-rater agreement. Avoid significance claims if sample size does not support them.
+- **Anomalies:** none; experiment not executed
+- **Negative results/counterexamples:** must be retained. Failure to improve predeclared metrics narrows or refutes the relevant candidate contribution.
+- **Interpretation:** pending
+- **Alternative explanations:** evaluator training effects, representation verbosity, terminology familiarity, scenario bias, and scoring-rubric bias must be considered.
+- **Limitations:** an evaluator study tests reconstruction/interpretation utility, not cryptographic novelty, real-world truth, legal admissibility, or universal superiority over PROV.
+- **Reproduction instructions:** to be authored before execution.
+- **Independent reproduction status:** not attempted
+- **Publication mapping:** candidate foundational Evidence Architecture / Evidence Graph paper.
+
 ## Negative-result rule
 
 Negative results, failed hypotheses, anomalous runs, and counterexamples must remain in the research record. They may trigger revised hypotheses or contribution boundaries, but they must not be discarded because they weaken a product claim.
