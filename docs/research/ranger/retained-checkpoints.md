@@ -81,7 +81,10 @@ well. Future Edge, Gateway, Verifier, AI Witness, or Black Box transport must pr
 vehicle custody record and registry checkpoint without upgrading registry-relative freshness into
 global completeness, standing, semantic truth, actuator response, or physical outcome.
 
-The current registry instance is configured with one Ranger key. The
-[custody-key authority profile](key-authority.md) now defines enrollment, boot-boundary rotation,
-and revocation evidence, but composing that resolver into retained-checkpoint acceptance remains a
-separate increment.
+This v1 registry remains the stable static-key profile. The
+[authority-bound retained-checkpoint profile](authority-bound-checkpoints.md) composes the
+[custody-key authority history](key-authority.md) into a new versioned contract without changing
+v1 semantics. It separately retains authority-history heads, resolves the correct Ranger key by
+boot sequence, permits evidence-backed rotation, and rejects effective revocation. Hardware-rooted
+identity, Fleet-authoritative composition, immutable replication, and authenticated time remain
+future work.

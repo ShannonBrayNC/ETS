@@ -42,8 +42,9 @@ standing, and allows independently verified custody continuity across a planned 
 correctly signed boot at or after revocation now fails key-standing verification.
 
 R0 deliberately has no overlap window or emergency authority-only rotation: rotation happens at a
-boot boundary and needs the old key. The current retained-checkpoint registry still has a static
-Ranger key and must be composed with this history in a later increment. Detecting whole-history
-rollback requires an externally retained latest authority head. Production also requires Fleet
-composition, authenticated administration, hardware key custody, anti-rollback state, encryption,
-and authority-key lifecycle governance.
+boot boundary and needs the old key. [ADR 0007](0007-authority-bound-retained-checkpoints.md) now
+composes this history with separately retained authority heads and a new custody-checkpoint
+profile; the original static-key checkpoint contract remains unchanged. Whole-registry rollback
+still requires immutable replication or an externally retained latest checkpoint. Production also
+requires Fleet composition, authenticated administration, hardware key custody, anti-rollback
+state, encryption, and authority/registry key lifecycle governance.

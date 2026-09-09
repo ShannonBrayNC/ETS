@@ -151,6 +151,7 @@ Current implementation increment:
 - [R0.2 clock-qualified cross-boot custody continuity](boot-continuity.md)
 - [R0.2 verifier-retained latest-head checkpoints](retained-checkpoints.md)
 - [R0.2 custody-key authority history](key-authority.md)
+- [R0.2 authority-bound retained checkpoints](authority-bound-checkpoints.md)
 - [Epistemic identity and bounded observability](epistemic-identity.md)
 - [Cyber-Physical Observability Model](cyber-physical-observability.md)
 - [Ranger Decision Event v0.1 schema](../../../schemas/ranger/decision-event.v0.1.schema.json)
@@ -161,6 +162,7 @@ Current implementation increment:
 - [ADR 0004: clock-qualified cross-boot custody continuity](adr/0004-clock-qualified-boot-continuity.md)
 - [ADR 0005: verifier-retained latest-head checkpoints](adr/0005-verifier-retained-latest-head.md)
 - [ADR 0006: authority-relative custody-key history](adr/0006-authority-relative-custody-key-history.md)
+- [ADR 0007: authority-bound retained checkpoints](adr/0007-authority-bound-retained-checkpoints.md)
 
 ### R0.1 — Mobility
 - safe rolling chassis

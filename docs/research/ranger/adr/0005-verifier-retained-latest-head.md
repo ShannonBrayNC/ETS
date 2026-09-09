@@ -31,6 +31,7 @@ trusted time, completeness, standing, semantic truth, or physical outcome.
 - Vehicle and registry signatures are purpose-separated under distinct expected keys.
 - Registry rollback remains possible when the entire software store is replaced with an earlier
   valid copy; replicated immutable publication or quorum witnesses are follow-on work.
-- Authorized Ranger and registry key rotation/revocation, authenticated time, hardware-backed
-  custody, and fleet enrollment remain outside this increment.
-
+- The later [ADR 0007](0007-authority-bound-retained-checkpoints.md) composes separately retained
+  key-authority heads with a new checkpoint profile while preserving this static-key v1 contract.
+- Registry-key lifecycle, authenticated time, hardware-backed custody, and Fleet enrollment remain
+  outside this increment.

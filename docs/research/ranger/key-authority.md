@@ -86,9 +86,10 @@ change only when the supplied authority history places the replacement key in fo
 boot.
 
 Successful verification establishes authority-relative historical key standing against the
-supplied complete history. It does not prove that the history is globally latest. A truncated but
-otherwise valid authority suffix requires a separately retained or replicated latest authority
-head to detect.
+supplied complete history. It does not prove that the history is globally latest. The
+[authority-bound retained-checkpoint profile](authority-bound-checkpoints.md) now detects a
+truncated but otherwise valid authority prefix relative to a separately retained registry head
+and binds each accepted Ranger custody head to the exact authority view used.
 
 ## Threat coverage
 
@@ -108,11 +109,12 @@ The reference events explicitly report no operational device authorization, admi
 independence, hardware identity, global history currentness, semantic truth, or physical outcome.
 They do not enter Ranger's real-time safety loop, and Gateway remains outside that loop.
 
-The existing verifier-retained checkpoint registry still accepts one statically configured Ranger
-key. A follow-on increment must make that registry resolve keys through this authority history and
-must separately retain the latest authority-history head. Production work also requires shared
-Fleet composition, authenticated administrative enrollment, hardware-backed keys, anti-rollback
-boot state, encrypted storage, authority-key rotation/revocation, and emergency recovery.
+The original verifier-retained checkpoint registry continues to accept one statically configured
+Ranger key for versioned compatibility. The composed authority-bound profile now resolves keys
+through this history and separately retains authority-history heads. Production work still
+requires shared Fleet composition, authenticated administrative enrollment and time,
+hardware-backed keys, anti-rollback boot state, encrypted and replicated storage, authority and
+registry key rotation/revocation, reconciliation evidence, and emergency recovery.
 
 ## Differentiation hypothesis and IP uncertainty
 
