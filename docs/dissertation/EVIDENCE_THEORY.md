@@ -11,7 +11,10 @@ ETS proposes that modern distributed systems insufficiently distinguish between:
 - certainty,
 - disagreement,
 - omission,
-- and visibility.
+- visibility,
+- provenance,
+- interpretation,
+- and epistemic warrant.
 
 The central research direction of ETS is therefore not merely append-only transparency.
 
@@ -19,7 +22,7 @@ It is the development of:
 
 > a formal architecture for computationally bounded evidentiary coordination under adversarial and incomplete observation conditions.
 
-This document defines the conceptual foundation for that claim.
+This document defines the conceptual foundation for that claim. The extended treatment of source ancestry, epistemic distance, interpretation provenance, claim genealogy, observability boundaries, and narrative compression is defined in `EPISTEMIC_PROVENANCE.md`.
 
 ---
 
@@ -32,7 +35,9 @@ Examples:
 - a log entry becomes “truth”;
 - a quorum becomes “certainty”;
 - missing data becomes “absence of events”;
-- synchronized state becomes “global knowledge.”
+- synchronized state becomes “global knowledge”;
+- an authentic source becomes a correct source;
+- repeated reports become independent corroboration.
 
 These collapses are operationally convenient but philosophically and scientifically dangerous.
 
@@ -40,8 +45,10 @@ ETS instead attempts to preserve distinctions between:
 
 - what was submitted,
 - what was observed,
+- what was asserted or reported,
 - what was propagated,
 - what was independently witnessed,
+- what was inferred or interpreted,
 - what remains uncertain,
 - and what conclusions remain defensible.
 
@@ -116,13 +123,15 @@ ETS therefore treats observation as:
 
 > perspectival rather than universal.
 
+Observation must also remain distinct from assertion: a record that an actor asserted proposition X proves the existence/provenance of the assertion under stated assumptions, not X itself.
+
 ---
 
 # 4. Visibility
 
 ## Definition
 
-Visibility represents the subset of evidence or state accessible to a participant under transport, timing, topology, and adversarial constraints.
+Visibility represents the subset of evidence or state accessible to a participant under transport, timing, topology, sensor, archival, and adversarial constraints.
 
 Visibility may be constrained by:
 
@@ -131,7 +140,10 @@ Visibility may be constrained by:
 - packet loss;
 - selective delivery;
 - replay timing;
-- topology asymmetry.
+- topology asymmetry;
+- sensor scope;
+- collection policy;
+- retention and survival.
 
 ## Importance
 
@@ -146,6 +158,8 @@ ETS rejects this assumption.
 Visibility itself becomes:
 
 > a first-class protocol variable.
+
+The declared limits of visibility form an **observability boundary**. Absence outside that boundary cannot be promoted to evidence of absence without an expectation model.
 
 ---
 
@@ -193,7 +207,9 @@ Confidence may depend on:
 - transport visibility;
 - replay consistency;
 - verifier agreement;
-- conflict absence.
+- conflict absence;
+- source independence;
+- epistemic distance.
 
 ## Important Boundary
 
@@ -249,7 +265,8 @@ Disagreement may indicate:
 - stale observations;
 - adversarial visibility;
 - equivocation;
-- or legitimate uncertainty.
+- legitimate uncertainty;
+- or competing interpretations of a common evidentiary record.
 
 ---
 
@@ -275,7 +292,8 @@ Instead, ETS models:
 - missing observations;
 - replay asymmetry;
 - visibility gaps;
-- stale transport conditions.
+- stale transport conditions;
+- observability boundaries.
 
 ## Important Boundary
 
@@ -320,7 +338,10 @@ Epistemic degradation represents the reduction in justified confidence caused by
 - incomplete visibility;
 - adversarial pressure;
 - transport asymmetry;
-- conflicting observations.
+- conflicting observations;
+- transformation depth;
+- source dependence;
+- context loss.
 
 This concept is essential because distributed systems often degrade gradually rather than catastrophically.
 
@@ -331,6 +352,8 @@ ETS increasingly models:
 instead of merely:
 
 > binary failure.
+
+The related concept of **epistemic distance** records the multidimensional separation between a claimed state/event and the evidence used to justify a conclusion about it.
 
 ---
 
@@ -354,6 +377,9 @@ Instead, ETS attempts to formally model:
 - disagreement;
 - confidence;
 - transport;
+- provenance;
+- interpretation;
+- source independence;
 - and uncertainty
 
 as independent protocol concepts.
@@ -362,7 +388,26 @@ This separation is the central theoretical contribution of ETS.
 
 ---
 
-# 13. Dissertation-Level Contribution
+# 13. Epistemic Provenance
+
+Provenance establishes the lineage of an artifact, assertion, observation, or interpretation. It does not establish the truth of the represented proposition.
+
+ETS therefore preserves the boundary:
+
+```text
+provenance != truth
+integrity != correctness
+repetition != independent corroboration
+precedence != causation
+```
+
+Interpretations and narrative summaries are themselves transformations and SHOULD carry provenance to their source evidentiary subgraphs.
+
+See `EPISTEMIC_PROVENANCE.md` for the normative research vocabulary and cyber-physical implications.
+
+---
+
+# 14. Dissertation-Level Contribution
 
 The strongest emerging dissertation contribution is likely not:
 
@@ -372,7 +417,7 @@ The strongest emerging dissertation contribution is likely not:
 
 The strongest contribution is likely:
 
-> the synthesis of evidence, visibility, confidence, uncertainty, replay, and disagreement into a coherent formal architecture for computationally bounded evidentiary coordination.
+> the synthesis of evidence, visibility, confidence, uncertainty, replay, disagreement, provenance, source independence, and interpretation into a coherent formal architecture for computationally bounded evidentiary coordination.
 
 That framing differentiates ETS from:
 
@@ -382,7 +427,7 @@ That framing differentiates ETS from:
 
 ---
 
-# 14. Final Boundary
+# 15. Final Boundary
 
 ETS is strongest when it explicitly acknowledges:
 
@@ -390,13 +435,22 @@ ETS is strongest when it explicitly acknowledges:
 - bounded visibility;
 - incomplete observation;
 - adversarial transport;
+- source dependence;
+- interpretation;
 - and confidence limitations.
 
 The project becomes weaker whenever it implies:
 
 - omniscience,
 - universal certainty,
-- or perfect completeness.
+- perfect completeness,
+- or that provenance alone establishes truth.
+
+A useful shorthand is:
+
+> provenance is not providence.
+
+ETS can establish where a claim came from and provide machinery for evaluating what the evidence justifies. It cannot cryptographically manufacture objective reality.
 
 That philosophical restraint is not a weakness.
 
