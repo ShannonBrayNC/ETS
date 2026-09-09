@@ -14,7 +14,12 @@ restore environment. It grants only:
 
 - Reader on rg-ets-live-eastus
 - Storage Table Data Reader on the exact source ETSEvents table
-- Storage File Data Privileged Reader on the exact active Gateway share
+- Storage File Data Privileged Reader on the source Gateway storage account
+
+The Azure Files reader is intentionally assigned at the Gateway storage-account
+scope because the verified `az storage file list --auth-mode login --backup-intent`
+path requires account-level read authorization before enumerating the bounded
+active share. The identity remains read-only and cannot modify Gateway state.
 
 It does not copy evidence, modify Gateway files, create snapshots, change DNS,
 change replicas, create application credentials, or activate a writer.
@@ -52,7 +57,6 @@ fi
 
 SRC_LIVE_RG="rg-ets-live-eastus"
 SRC_IDENTITY_RG="rg-ets-q1-eastus"
-GATEWAY_SHARE="ets-gateway-state-q1-v2"
 IDENTITY="ets-gh-migration-src-transfer"
 FIC="github-ets-migration-source-transfer"
 SUBJECT="repo:ShannonBrayNC/ETS:environment:ets-azure-migration-destination-restore"
@@ -105,11 +109,8 @@ fi
 table_id="$(az resource show \
   --ids "$core_id/tableServices/default/tables/ETSEvents" \
   --query id -o tsv)"
-share_id="$(az resource show \
-  --ids "$gateway_id/fileServices/default/shares/$GATEWAY_SHARE" \
-  --query id -o tsv)"
 live_rg_id="$(az group show -n "$SRC_LIVE_RG" --query id -o tsv)"
-if [[ -z "$table_id" || -z "$share_id" || -z "$live_rg_id" ]]; then
+if [[ -z "$table_id" || -z "$gateway_id" || -z "$live_rg_id" ]]; then
   echo "STOP: exact source transfer scopes could not be resolved." >&2
   exit 2
 fi
@@ -151,7 +152,7 @@ fi
 
 ensure_role "$principal_id" "Reader" "$live_rg_id"
 ensure_role "$principal_id" "Storage Table Data Reader" "$table_id"
-ensure_role "$principal_id" "Storage File Data Privileged Reader" "$share_id"
+ensure_role "$principal_id" "Storage File Data Privileged Reader" "$gateway_id"
 
 echo
 echo "Source transfer OIDC identity is read-only and ready for the protected restore environment."
