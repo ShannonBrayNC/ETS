@@ -55,6 +55,16 @@ from ets.ranger.evidence_object_verifier import (
     RangerEvidenceVerificationError,
     verify_ranger_evidence_object,
 )
+from ets.ranger.external_publication import (
+    RangerExternallyPublishedReceiptVerification,
+    RangerExternalPublicationChainVerification,
+    RangerExternalPublicationError,
+    RangerExternalPublicationReceipt,
+    RangerExternalPublisher,
+    verify_external_publication_chain,
+    verify_externally_published_authority_checkpoint,
+    verify_externally_published_authority_head,
+)
 from ets.ranger.key_authority import (
     RangerKeyAuthorityConflict,
     RangerKeyAuthorityError,
@@ -180,6 +190,11 @@ __all__ = [
     "RangerEvidenceObjectAdapterError",
     "RangerEvidenceObjectVerification",
     "RangerEvidenceVerificationError",
+    "RangerExternalPublicationChainVerification",
+    "RangerExternalPublicationError",
+    "RangerExternalPublicationReceipt",
+    "RangerExternalPublisher",
+    "RangerExternallyPublishedReceiptVerification",
     "RangerKeyAuthorityConflict",
     "RangerKeyAuthorityError",
     "RangerKeyAuthorityEvent",
@@ -237,6 +252,9 @@ __all__ = [
     "ranger_decision_event_to_evidence_object",
     "sign_decision_event",
     "verify_decision_event",
+    "verify_external_publication_chain",
+    "verify_externally_published_authority_checkpoint",
+    "verify_externally_published_authority_head",
     "verify_ranger_consequence",
     "verify_ranger_evidence_object",
     "verify_ranger_mission_chain",
