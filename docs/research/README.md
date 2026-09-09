@@ -12,7 +12,21 @@ This folder contains:
 - reproducibility guidance;
 - research notes for verifier federation and temporal behavior;
 - publication-oriented drafts and appendices;
-- traceability artifacts connecting claims to models, code, and tests.
+- traceability artifacts connecting claims to models, code, and tests;
+- a doctoral research qualification layer under `phd/` that maps research
+  questions, candidate contributions, experiments, public works, and future
+  PhD-route requirements without overstating current academic validation.
+
+## Doctoral Research Qualification
+
+`phd/README.md` is the entry point for converting the existing ETS research
+corpus into a traceable doctoral portfolio. It deliberately distinguishes
+engineering implementation from contribution-to-knowledge evidence and marks
+retrospective reconstruction separately from prospective research records.
+
+The doctoral layer complements this directory's formal claim controls; it does
+not replace `FORMAL_TRACEABILITY_MATRIX.md`, formal models, reproducibility
+artifacts, or Ranger research sources of truth.
 
 ## Claim Boundary
 
