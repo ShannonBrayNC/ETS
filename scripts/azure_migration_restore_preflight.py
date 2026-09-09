@@ -198,8 +198,14 @@ def main() -> int:
         verify_context(args.expected_tenant, args.expected_subscription)
         result = preflight()
         write_summary(result)
-    except (MigrationControlError, OSError) as exc:
-        print(f"Restore preflight blocked: {type(exc).__name__}")
+    except MigrationControlError as exc:
+        # MigrationControlError messages emitted by this module/control helper are
+        # intentionally sanitized and contain no credentials or protected payloads.
+        # Preserve the exact failing guard so operator approval is actionable.
+        print(f"Restore preflight blocked: {exc}")
+        return 2
+    except OSError:
+        print("Restore preflight blocked: local I/O failure")
         return 2
     return 0
 
