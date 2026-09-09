@@ -192,7 +192,12 @@ def build_governed_authority_acceptance(
         acceptance_interval_end_utc=acceptance_end,
     )
     return RangerGovernedAuthorityAcceptance.model_validate(
-        {**payload, "acceptance_digest_sha256": canonical_sha256(payload)}
+        {
+            **payload,
+            "acceptance_digest_sha256": canonical_sha256(
+                _json_native_acceptance_payload(payload)
+            ),
+        }
     )
 
 
@@ -254,7 +259,7 @@ def verify_governed_authority_acceptance(
         acceptance_interval_start_utc=acceptance_start,
         acceptance_interval_end_utc=acceptance_end,
     )
-    expected_digest = canonical_sha256(expected_payload)
+    expected_digest = canonical_sha256(_json_native_acceptance_payload(expected_payload))
     if validated.model_dump(exclude={"acceptance_digest_sha256"}) != expected_payload:
         return _failure("governed authority acceptance manifest does not match signed inputs")
     if validated.acceptance_digest_sha256 != expected_digest:
@@ -419,6 +424,13 @@ def _acceptance_payload(
             "outcome_claim"
         ),
     }
+
+
+def _json_native_acceptance_payload(payload: dict[str, object]) -> dict[str, object]:
+    candidate = RangerGovernedAuthorityAcceptance.model_validate(
+        {**payload, "acceptance_digest_sha256": "0" * 64}
+    )
+    return candidate.model_dump(mode="json", exclude={"acceptance_digest_sha256"})
 
 
 def _failure(reason: str) -> RangerGovernedAuthorityVerification:

@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.serialization import (
     PublicFormat,
 )
 
+from ets.core.canonical_json import canonical_sha256
 from ets.ranger.governance import (
     RangerGovernanceSubjectKind,
     build_administrative_approval,
@@ -182,6 +183,9 @@ def test_governed_authority_acceptance_composes_signed_proofs(tmp_path: Path) ->
     assert verification.authenticated_administration_proven
     assert verification.trusted_time_proven
     assert verification.approval_precedes_acceptance_proven
+    assert acceptance.acceptance_digest_sha256 == canonical_sha256(
+        acceptance.model_dump(mode="json", exclude={"acceptance_digest_sha256"})
+    )
     assert not acceptance.operational_device_authorization_proven
     assert not acceptance.globally_current_history_proven
     assert not acceptance.global_clock_correctness_proven
