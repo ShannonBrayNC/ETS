@@ -114,44 +114,26 @@ Passing CI is not automatically a research result. A CI test becomes research-re
   1. baseline W3C PROV;
   2. W3C PROV with domain extensions but no Evidence Architecture verification rules;
   3. Evidence Architecture representation with bounded verification vectors, epistemic states, edge-as-claim metadata, standing separation, and consequence-stage decomposition.
-- **Dependent variables:**
-  - supported-claim precision;
-  - unsupported-inference rate;
-  - missed-contradiction rate;
-  - false-completeness assumption rate;
-  - command/result confusion rate;
-  - standing/integrity confusion rate;
-  - reconstruction time;
-  - inter-rater agreement.
+- **Dependent variables:** supported-claim precision; unsupported-inference rate; missed-contradiction rate; false-completeness assumption rate; command/result confusion rate; standing/integrity confusion rate; reconstruction time; inter-rater agreement.
 - **Controls/baselines:** matched factual scenarios and matched underlying source evidence across all three representation conditions.
 - **System boundary:** evaluator-facing evidence packages only; no claim that the representation changes real-world truth or source-system correctness.
 - **Threat/fault model:** deliberate missing evidence, contradictory evidence, stale authority/policy state, shared-source dependencies, command without confirmed consequence, and consequence observation that conflicts with intended action.
-- **Hardware:** not material for initial evaluator study; execution environment to be recorded if tooling is used.
-- **Software/ref/commit SHA:** exact generation and evaluation tooling refs must be frozen before execution.
-- **Configuration:** scenario corpus, evaluator instructions, scoring rubric, and randomization procedure must be frozen before execution.
-- **Input/dataset:** prospective synthetic/mixed evidence scenarios designed from non-sensitive ETS use cases. No post-hoc scenario selection after results are known.
-- **Protocol:**
-  1. construct semantically matched evidence packages for each scenario under all three conditions;
-  2. randomize condition/scenario presentation where feasible;
-  3. provide evaluators the same fixed reconstruction questions;
-  4. record each conclusion and the evidence cited for it;
-  5. score whether each conclusion is supported, unsupported, contradicted, or indeterminate;
-  6. record elapsed reconstruction time;
-  7. preserve raw evaluator responses and scoring artifacts;
-  8. analyze predeclared metrics without removing negative or null results.
-- **Pre-registered expected outcome:** the Evidence Architecture condition is expected to reduce unsupported inference, command/result confusion, standing/integrity confusion, and false-completeness assumptions relative to baseline PROV. No effect size is claimed in advance.
-- **Actual outcome:** not executed
-- **Raw artifact locations:** to be assigned before execution
-- **Artifact hashes:** not applicable until artifacts exist
-- **Statistical/formal treatment:** define before execution based on evaluator count; at minimum report raw counts/rates, confidence intervals where appropriate, and inter-rater agreement. Avoid significance claims if sample size does not support them.
+- **Input/dataset:** frozen 12-scenario corpus in `EXP-001_SCENARIO_CORPUS.md`.
+- **Protocol:** frozen in `EXP-001_PREREGISTRATION.md`, with neutral packaging, scoring, assignment, and equivalence controls committed separately.
+- **Pre-registered expected outcome:** Condition C is expected to reduce core boundary errors relative to A and B; no effect size is claimed in advance.
+- **Actual outcome:** NOT EXECUTED
+- **Raw artifact locations:** none; no evaluator data exist
+- **Artifact hashes:** design artifact Git blob SHAs tracked in `EXP-001_ARTIFACT_MANIFEST.md`; final SHA-256 packet hashes pending final pre-execution freeze.
+- **Statistical/formal treatment:** frozen analysis skeleton; no result data present.
 - **Anomalies:** none; experiment not executed
 - **Negative results/counterexamples:** must be retained. Failure to improve predeclared metrics narrows or refutes the relevant candidate contribution.
 - **Interpretation:** pending
-- **Alternative explanations:** evaluator training effects, representation verbosity, terminology familiarity, scenario bias, and scoring-rubric bias must be considered.
-- **Limitations:** an evaluator study tests reconstruction/interpretation utility, not cryptographic novelty, real-world truth, legal admissibility, or universal superiority over PROV.
-- **Reproduction instructions:** to be authored before execution.
+- **Alternative explanations:** evaluator training effects, representation verbosity, terminology familiarity, scenario bias, and scoring-rubric bias are predeclared.
+- **Limitations:** evaluator study tests reconstruction/interpretation utility, not cryptographic novelty, real-world truth, legal admissibility, or universal superiority over PROV.
+- **Reproduction instructions:** pre-execution controls committed; final rendered artifacts and assignment set remain pending.
 - **Independent reproduction status:** not attempted
 - **Publication mapping:** candidate foundational Evidence Architecture / Evidence Graph paper.
+- **Current gate state:** NOT READY FOR CONFIRMATORY EXECUTION. Outstanding: 36 rendered packets; independent equivalence certification; seed/assignment artifacts; final SHA-256 manifest; institutional human-subjects determination before recruitment.
 
 ## Negative-result rule
 
