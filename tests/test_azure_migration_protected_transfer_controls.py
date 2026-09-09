@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_BOOTSTRAP = ROOT / "scripts" / "azure_migration_source_transfer_oidc_bootstrap.sh"
+RESTORE_BOOTSTRAP = ROOT / "scripts" / "azure_migration_restore_oidc_bootstrap.sh"
 TRANSFER_PREFLIGHT = (
     ROOT / ".github" / "workflows" / "azure-migration-protected-transfer-preflight.yml"
 )
@@ -17,6 +18,10 @@ class ProtectedTransferControlTests(unittest.TestCase):
         self.assertIn("Storage Table Data Reader", text)
         self.assertIn("Storage File Data Privileged Reader", text)
         self.assertIn('ensure_role "$principal_id" "Reader" "$live_rg_id"', text)
+        self.assertIn(
+            'ensure_role "$principal_id" "Storage File Data Privileged Reader" "$gateway_id"',
+            text,
+        )
         self.assertNotIn("Storage Table Data Contributor", text)
         self.assertNotIn("Storage File Data Privileged Contributor", text)
         self.assertNotIn('ensure_role "$principal_id" "Contributor"', text)
@@ -25,11 +30,25 @@ class ProtectedTransferControlTests(unittest.TestCase):
             text,
         )
 
+    def test_destination_restore_separates_file_read_and_write_scopes(self) -> None:
+        text = RESTORE_BOOTSTRAP.read_text(encoding="utf-8")
+
+        self.assertIn(
+            'ensure_role "$principal_id" "Storage File Data Privileged Reader" "$gateway_id"',
+            text,
+        )
+        self.assertIn(
+            'ensure_role "$principal_id" "Storage File Data Privileged Contributor" "$share_id"',
+            text,
+        )
+        self.assertNotIn('ensure_role "$principal_id" "Contributor"', text)
+
     def test_transfer_preflight_contains_no_data_transfer_action(self) -> None:
         text = TRANSFER_PREFLIGHT.read_text(encoding="utf-8")
 
         self.assertIn("environment: ets-azure-migration-destination-restore", text)
         self.assertIn("azure_migration_control", text)
+        self.assertIn("--require-data-plane", text)
         self.assertIn("azure_migration_restore_preflight", text)
         forbidden = (
             "actions/upload-artifact",
