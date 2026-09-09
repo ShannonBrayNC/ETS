@@ -19,10 +19,10 @@ Git blob SHAs below identify repository content versions. Final rendered evaluat
 | Fact-equivalence and scoring key | `docs/research/phd/EXP-001_FACT_EQUIVALENCE_AND_SCORING_KEY.md` | `3cf04f4056c33651208b572f97fde45de18bdd16` | frozen |
 | Evaluator instructions | `docs/research/phd/EXP-001_EVALUATOR_INSTRUCTIONS.md` | `0d0c14bb2910a4f3b57f6e83f70a68ef3519fb72` | frozen |
 | Analysis skeleton | `docs/research/phd/EXP-001_ANALYSIS_SKELETON.md` | `d394354270ae7786c14d9e36f2c2a1b3e8963725` | frozen/no result data |
-| Condition rendering contract | `docs/research/phd/EXP-001_CONDITION_PACKAGES.md` | pending refresh after commit | frozen design |
-| Equivalence certification gate | `docs/research/phd/EXP-001_EQUIVALENCE_CERTIFICATION.md` | pending refresh after commit | frozen design |
-| Assignment/randomization procedure | `docs/research/phd/EXP-001_ASSIGNMENT_AND_RANDOMIZATION.md` | pending refresh after commit | frozen design |
-| Human-subjects decision memo | `docs/research/phd/EXP-001_HUMAN_SUBJECTS_DECISION_MEMO.md` | pending refresh after commit | pre-recruitment control |
+| Condition rendering contract | `docs/research/phd/EXP-001_CONDITION_PACKAGES.md` | `3c86e4ae7f8fd2b9a3a303d4cffc9a1921da9a4f` | frozen design |
+| Equivalence certification gate | `docs/research/phd/EXP-001_EQUIVALENCE_CERTIFICATION.md` | `5804d1c12954439f2057aaf5c7ae40ebf1b529a0` | frozen design |
+| Assignment/randomization procedure | `docs/research/phd/EXP-001_ASSIGNMENT_AND_RANDOMIZATION.md` | `12b0cbfa0d3da78df7b33bd542d92df825640efc` | frozen design |
+| Human-subjects decision memo | `docs/research/phd/EXP-001_HUMAN_SUBJECTS_DECISION_MEMO.md` | `df59ca001c28b9b457773c8579e00c618524b839` | pre-recruitment control |
 
 ## Required generated artifacts before execution
 
