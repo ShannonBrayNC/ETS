@@ -45,7 +45,9 @@ The entries below are **candidate** contributions. They require literature revie
 - **Research questions:** RQ1, RQ3
 - **Candidate claim:** ETS provides a bounded Evidence Object model for independently evaluating identity, integrity, provenance, custody, and declared verification context while separating those properties from semantic truth.
 - **Existing evidence:** protocol contracts, canonicalization/hash implementation, verifier tests, formal traceability matrix.
-- **Primary gaps:** systematic prior-art comparison; minimum-sufficiency argument; independent implementation/reproduction.
+- **Prior-art qualification:** first-pass WP1 comparison completed in `WP1_EVIDENCE_OBJECT_GRAPH_PRIOR_ART.md`; broad novelty claims around provenance records, signed metadata, transparency logs, event histories, and attester/verifier separation are explicitly excluded.
+- **Provisional research gap:** domain-neutral composition of independently inspectable assurance dimensions with explicit epistemic/nonclaim semantics, historical standing context, and consequence/result evidence remains a candidate gap requiring deeper literature review and evaluation.
+- **Primary gaps:** peer-reviewed systematic prior-art review; minimum-sufficiency argument; independent implementation/reproduction; evaluation of the narrowed differentiators.
 
 ### EA-C002 — Evidence Graph model
 
@@ -54,7 +56,9 @@ The entries below are **candidate** contributions. They require literature revie
 - **Research questions:** RQ2, RQ3
 - **Candidate claim:** typed graph relationships can make derivation, custody, authority, observation, decision, action, and consequence claims separately inspectable and verifiable without asserting truth merely from graph membership.
 - **Existing evidence:** existing architecture/research corpus; Ranger relationship modeling.
-- **Primary gaps:** canonical graph semantics; prior-art comparison to W3C PROV and related provenance models; empirical/formal evaluation.
+- **Prior-art qualification:** first-pass WP1 comparison completed in `WP1_EVIDENCE_OBJECT_GRAPH_PRIOR_ART.md`; W3C PROV is the primary baseline and prevents any broad novelty claim for typed provenance graphs.
+- **Provisional research gap:** edges as separately attributable evidentiary claims combined with epistemic/contradiction state, authority/policy dependencies, consequence custody, shared-source dependency, and explicit noncausality remains a candidate gap requiring formal mapping and evaluation.
+- **Primary gaps:** relation-by-relation mapping to W3C PROV; peer-reviewed prior-art review; canonical graph semantics; empirical/formal evaluation.
 
 ### EA-C003 — Explicit trust and claim-boundary decomposition
 
