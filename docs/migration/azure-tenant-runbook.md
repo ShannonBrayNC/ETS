@@ -797,3 +797,29 @@ replacement. The next executable gate is cross-tenant Microsoft identity
 provisioning and connector qualification, followed by final freeze/sync; both
 require their own scoped permission and consent checkpoint.
 
+
+
+## Source identity authentication failure boundary: 2026-09-09
+
+At `2026-09-09T12:58:11Z`, the execution session attempted read-only
+source EchoMedia tenant identity inspection through the official Microsoft
+interactive sign-in flow. Password authentication completed through the secure
+browser handoff, but Microsoft Authenticator push number matching did not reach
+the operator's device. The pending challenge was later reported by Microsoft as
+denied. The two visible recovery links—an Authenticator security code and a
+different-code method—did not open a usable verification form; Microsoft
+subsequently displayed `Request wasn't sent` and `Sorry, we're having trouble
+verifying your account. Please try again.`
+
+Stop repeating push-MFA attempts in this browser session. No directory
+application, service principal, federated credential, permission, consent,
+Azure resource, protected state, writer, route, DNS record, or source resource
+was changed. Cross-tenant identity provisioning remains unexecuted.
+
+The safe resume paths are either (1) an administrator-approved source tenant
+session whose MFA succeeds, used only for the bounded source permission
+inventory and later consent operations, or (2) a pre-authorized non-interactive
+source identity with the exact least-privilege Microsoft Graph/directory roles
+required for that inventory. Do not weaken Security Defaults or MFA. In
+parallel, repository-only validation and destination zero-writer safeguards may
+continue, but connector qualification and final writer transfer remain gated.
