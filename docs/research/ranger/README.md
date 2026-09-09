@@ -77,6 +77,20 @@ A consequential decision event should be capable of binding at least:
 - device signature
 - optional witness/verifier attestations
 
+### Epistemic provenance boundary
+
+Ranger must not collapse a trustworthy evidence chain into a claim of objective truth.
+
+A signed camera frame establishes what the sensor pipeline produced under stated assumptions; it does not prove that the represented object or event existed exactly as interpreted in the physical world. A verified classifier output establishes what the declared model concluded from declared inputs; it does not establish that the classification was correct. A reconstructed decision establishes why Ranger acted under its recorded state and policy; it does not establish that the action was objectively optimal.
+
+The cyber-physical epistemic chain is therefore:
+
+`Physical state → Sensor observation → Transformation → Interpretation/classification → Policy evaluation → Authorization → Action → Resulting-state observation`
+
+Each transition should retain source ancestry, timing, transformation identity, assumptions, uncertainty, and applicable observability limits. Corroborating observations should preserve common-source dependencies so multiple derivative reports are not mistaken for independent witnesses.
+
+The dissertation-level definitions for epistemic distance, source independence, observability boundary, interpretation provenance, claim genealogy, causal discipline, and narrative compression are in [`../../dissertation/EPISTEMIC_PROVENANCE.md`](../../dissertation/EPISTEMIC_PROVENANCE.md).
+
 ### Bounded identity and epistemic state
 
 Ranger must distinguish observation, authentication, inference, and proof rather than collapsing them into a single identity assertion. Facial recognition against a deliberately small enrolled-principal set can provide efficient local recognition, but a biometric match remains evidence supporting an identity claim rather than absolute proof of the human narrative.
@@ -188,6 +202,8 @@ Current implementation increment:
 - explicit unknown/indeterminate/contradicted identity states
 - measurement uncertainty, coordinate-frame, calibration, freshness, and sensor-health evidence where available
 - explicit capability/degradation state so inability to observe is not confused with a negative observation
+- source ancestry and independence metadata for corroborating observations
+- explicit observability boundaries for consequential claims
 
 ### R0.4 — Bounded autonomy
 - waypoint/navigation experiment
@@ -204,7 +220,8 @@ Current implementation increment:
 - bind command to actuator/vehicle response and subsequent observations
 - preserve known, unknown, unavailable, indeterminate, and contradictory decision context
 - preserve relevant capability/degradation state at consequence time
-- produce independently verifiable mission evidence package
+- preserve interpretation provenance and epistemic transformation ancestry
+- produce independently verifiable mission evidence package without representing reconstruction as proof of objective truth
 
 ### R0.6 — Mission-module interface
 - physical/electrical/data interface specification
@@ -225,21 +242,25 @@ Ranger receives a destination inside a controlled test area. During movement, an
 
 The demonstration succeeds only if an independent verifier can establish from the resulting ETS package:
 
-1. what Ranger perceived;
+1. what Ranger's sensors reported;
 2. which hardware/software/model produced the relevant observations or decisions;
 3. what vehicle, capability, and mission state existed at decision time;
 4. what alternatives or constraints participated in the decision where observable;
 5. which action was selected and authorized;
 6. which physical command was issued;
 7. whether the actuator/controller accepted or rejected the command;
-8. what the vehicle physically did;
+8. what downstream sensors reported about the vehicle's physical response;
 9. what result was subsequently observed;
-10. what relevant facts were unknown/unavailable/indeterminate/contradicted and why; and
-11. whether the evidentiary chain has been altered.
+10. what relevant facts were unknown/unavailable/indeterminate/contradicted and why;
+11. whether the evidentiary chain has been altered;
+12. which observations are independent versus derivative; and
+13. where the evidence package reaches its observability and epistemic boundaries.
+
+The verifier must not infer from successful reconstruction alone that Ranger's perception was true, its classification correct, or its action optimal.
 
 ## Success criterion
 
-> Demonstrate independently verifiable provenance for an autonomous physical decision from sensor observation through physical action and resulting state, while preserving the capability and epistemic limits of the observing system.
+> Demonstrate independently verifiable provenance for an autonomous physical decision from sensor observation through physical action and resulting state, while preserving source ancestry, interpretation provenance, and the capability and epistemic limits of the observing system.
 
 ## Immediate research backlog
 
@@ -247,14 +268,14 @@ The demonstration succeeds only if an independent verifier can establish from th
 2. Produce R0 BOM with budget / preferred / rugged alternatives.
 3. Define Ranger Core electrical and logical architecture.
 4. Define the Ranger Payload Bus and trust boundary.
-5. Evolve the Ranger Decision Event v0.1 research schema into an ETS Core-aligned cyber-physical evidence-object profile with canonical signing, capability state, measurement quality, consequence custody, and verifier semantics.
+5. Evolve the Ranger Decision Event v0.1 research schema into an ETS Core-aligned cyber-physical evidence-object profile with canonical signing, capability state, measurement quality, source ancestry, interpretation provenance, consequence custody, and verifier semantics.
 6. Map Ranger events into existing ETS Edge, Gateway, Verifier, AI Witness, and Black Box capabilities.
 7. Define safety architecture: E-stop, remote takeover, watchdog, geofence, speed limits, fault state, loss-of-comms behavior.
 8. Define R0 controlled test course and acceptance criteria.
-9. Establish evidence-package verification tests before autonomy implementation, including decision-to-command-to-result reconstruction.
-10. Document threat model including sensor spoofing, payload substitution, compromised compute, evidence deletion/tampering, clock/location manipulation, calibration manipulation, stale evidence, sensor/data loss, operator-command repudiation, biometric spoofing, identity-claim poisoning, and false corroboration.
+9. Establish evidence-package verification tests before autonomy implementation, including decision-to-command-to-result reconstruction and independence-aware corroboration.
+10. Document threat model including sensor spoofing, payload substitution, compromised compute, evidence deletion/tampering, clock/location manipulation, calibration manipulation, stale evidence, sensor/data loss, operator-command repudiation, biometric spoofing, identity-claim poisoning, false corroboration, common-source amplification, and interpretation laundering.
 11. Evaluate funding and government research pathways after the non-weaponized R0 architecture is demonstrated.
-12. Maintain patent/IP notes around autonomous decision provenance, payload attestation, evidence binding, cross-platform custody, independently verifiable physical-action reconstruction, bounded claims, epistemic absence, capability-state preservation, and consequence custody.
+12. Maintain patent/IP notes around autonomous decision provenance, payload attestation, evidence binding, cross-platform custody, independently verifiable physical-action reconstruction, bounded claims, epistemic absence, capability-state preservation, source independence, interpretation provenance, and consequence custody.
 
 ## Research rule
 
