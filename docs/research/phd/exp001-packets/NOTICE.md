@@ -1,0 +1,1 @@
+Generation artifacts in this directory are pre-execution research materials only. They are not results, findings, or evidence that any experimental hypothesis is supported.
