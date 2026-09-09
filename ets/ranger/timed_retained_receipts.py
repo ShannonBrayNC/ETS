@@ -239,8 +239,8 @@ def verify_time_attested_authority_checkpoint(
         configured_time_identity_proven=True,
         reason=(
             "the complete presented authority-bound custody receipt chain verifies, including its "
-            "retained authority binding, and the configured time-authority key attests to the exact "
-            "registry-signed receipt digest; local receipt time, global currentness, complete "
+            "retained authority binding, and the configured time-authority key attests to the "
+            "exact registry-signed receipt digest; local receipt time, global currentness, complete "
             "capture, and physical outcome remain unproven"
         ),
     )
