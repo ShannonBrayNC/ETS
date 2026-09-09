@@ -24,9 +24,9 @@ Its allowed roles are deliberately read-only and narrowly scoped:
 
 - Reader on `rg-ets-live-eastus`;
 - Storage Table Data Reader on the exact source `ETSEvents` table;
-- Storage File Data Privileged Reader on the exact source `ets-gateway-state-q1-v2` share.
+- Storage File Data Privileged Reader on the source Gateway storage account.
 
-It receives no source Table/File contributor role and no broad Azure administrative role.
+The Azure Files role is account-scoped because the verified Azure CLI login/backup-intent enumeration path requires account-level read authorization before the active share can be listed. This grant remains read-only. It receives no source Table/File contributor role and no broad Azure administrative role.
 
 ### Destination restore identity
 
@@ -34,21 +34,30 @@ It receives no source Table/File contributor role and no broad Azure administrat
 
 - Reader on `rg-ets-prod-eastus`;
 - Storage Table Data Contributor on the exact destination `ETSEvents` table;
+- Storage File Data Privileged Reader on the destination Gateway storage account;
 - Storage File Data Privileged Contributor on the exact active destination Gateway share.
 
-The identity is capable of the future restore only when a workflow runs inside the protected GitHub environment. No client secret is used.
+The account-level File role is read-only and supports preflight enumeration. File mutation authority remains bounded to the active Gateway share. The identity is capable of the future restore only when a workflow runs inside the protected GitHub environment. No client secret is used.
 
 ## Preflight workflow
 
 `.github/workflows/azure-migration-protected-transfer-preflight.yml` proves that one approved ephemeral GitHub runner can:
 
 1. obtain a short-lived OIDC token for the dedicated source read identity;
-2. verify source context and sanitized protected-state counts;
+2. verify source context and require both ETSEvents and Gateway protected-state reads to succeed;
 3. clear the source Azure session;
 4. obtain a separate short-lived OIDC token for the destination restore identity;
 5. verify the destination is still fenced at zero replicas and initialization-only.
 
 The preflight intentionally contains no protected-state export, GitHub artifact upload, destination write, source snapshot creation, DNS change, or writer activation.
+
+### 2026-09-09 fail-closed finding
+
+The first approved protected-transfer preflight proved both OIDC logins but failed before any write. The source inventory showed ETSEvents readable at 89 entities with `next_index=44`, while the dedicated source-transfer identity could not enumerate the Gateway share. The destination restore identity then failed its initialization-state preflight. Independent validation with the already-proven destination read-only identity confirmed the destination itself was healthy: 16 resources, one initialization metadata row with `next_index=0`, three Gateway root entries, and the standalone zero-replica restore preflight passed.
+
+The failure therefore exposed an Azure Files authorization-scope mismatch rather than destination drift. The working read-only controls use `Storage File Data Privileged Reader` at the Gateway storage-account scope. The transfer bootstraps were corrected to use that verified account-level read scope, while destination write authority remains constrained to the exact active share. The protected source inventory was also changed to fail closed if either ETSEvents or Gateway protected reads are unavailable; a diagnostic `blocked` result can no longer let the transfer preflight continue.
+
+No protected source bytes were copied and no destination state was changed during the failed run.
 
 ## Protected bytes rule
 
