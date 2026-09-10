@@ -260,7 +260,7 @@ try {
         throw 'Microsoft resource tenant does not contain the expected verified domain.'
     }
 
-    $connectorMatches = Get-ServicePrincipalByAppId -AppId $applicationId
+    $connectorMatches = @(Get-ServicePrincipalByAppId -AppId $applicationId)
     if ($connectorMatches.Count -eq 0) {
         Write-PreviewStatus `
             -Stage 'resource_enterprise_application' `
@@ -279,7 +279,7 @@ try {
         throw 'EchoMedia enterprise application is not owned by the destination Azure tenant.'
     }
 
-    $graphMatches = Get-ServicePrincipalByAppId -AppId $graphAppId
+    $graphMatches = @(Get-ServicePrincipalByAppId -AppId $graphAppId)
     if ($graphMatches.Count -ne 1) {
         throw 'Microsoft Graph service principal could not be resolved uniquely.'
     }
