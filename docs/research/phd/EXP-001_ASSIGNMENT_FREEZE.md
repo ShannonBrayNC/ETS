@@ -33,10 +33,20 @@ Each slot contains four M, four R, and four K exposures. Every scenario receives
 
 ## Frozen scenario-order permutations
 
-- E01: S01, S07, S12, S11, S10, S03, S02, S09, S06, S05, S04, S08
-- E02: S04, S12, S09, S03, S10, S11, S02, S07, S06, S01, S08, S05
-- E03: S05, S02, S09, S01, S08, S11, S04, S10, S07, S12, S03, S06
-- E04-E12: generate deterministically from the same seed using the procedure in `EXP-001_ASSIGNMENT_AND_RANDOMIZATION.md`; exact permutations must be materialized and hashed before recruitment.
+- E01: S01, S02, S12, S05, S11, S04, S06, S09, S10, S03, S08, S07
+- E02: S08, S07, S10, S01, S05, S04, S06, S11, S02, S03, S12, S09
+- E03: S06, S07, S02, S04, S03, S11, S10, S12, S01, S09, S08, S05
+- E04: S08, S10, S02, S11, S06, S01, S12, S09, S03, S05, S07, S04
+- E05: S12, S07, S02, S03, S09, S01, S08, S04, S05, S06, S10, S11
+- E06: S01, S10, S02, S08, S03, S12, S04, S11, S06, S07, S05, S09
+- E07: S05, S03, S12, S10, S02, S09, S04, S11, S06, S08, S01, S07
+- E08: S04, S09, S01, S05, S12, S03, S10, S08, S06, S02, S11, S07
+- E09: S01, S05, S12, S06, S08, S03, S11, S07, S09, S02, S10, S04
+- E10: S02, S09, S08, S04, S10, S12, S01, S06, S11, S03, S05, S07
+- E11: S01, S05, S07, S06, S08, S12, S10, S02, S09, S03, S11, S04
+- E12: S03, S12, S07, S11, S01, S09, S05, S04, S02, S10, S08, S06
+
+These exact permutations are frozen before evaluator recruitment and SHALL NOT be regenerated or adapted in response to observed outcomes.
 
 ## Replacement rule
 
