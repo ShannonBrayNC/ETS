@@ -1,6 +1,6 @@
 # EXP-001 Pre-Execution Artifact Manifest
 
-**Status:** deterministic packet and assignment freeze complete; external gates remain  
+**Status:** deterministic internal freeze complete; independent/institutional gates remain  
 **Experiment:** EXP-001  
 **Execution state:** NOT EXECUTED
 
@@ -17,8 +17,11 @@ Track the immutable inputs and controls that must be frozen before confirmatory 
 | Fact-equivalence and scoring key | `docs/research/phd/EXP-001_FACT_EQUIVALENCE_AND_SCORING_KEY.md` | frozen |
 | Evaluator instructions | `docs/research/phd/EXP-001_EVALUATOR_INSTRUCTIONS.md` | frozen |
 | Analysis skeleton | `docs/research/phd/EXP-001_ANALYSIS_SKELETON.md` | frozen/no result data |
+| Analysis implementation | `docs/research/phd/exp001-analysis/exp001_analysis.py` | implemented/no result data |
+| Analysis implementation notes | `docs/research/phd/exp001-analysis/README.md` | frozen operating boundary |
 | Condition rendering contract | `docs/research/phd/EXP-001_CONDITION_PACKAGES.md` | frozen design |
 | Equivalence certification gate | `docs/research/phd/EXP-001_EQUIVALENCE_CERTIFICATION.md` | frozen design |
+| Independent-review packet | `docs/research/phd/exp001-equivalence/` | scaffolding ready; certification not complete |
 | Assignment/randomization procedure | `docs/research/phd/EXP-001_ASSIGNMENT_AND_RANDOMIZATION.md` | frozen design |
 | Assignment matrix | `docs/research/phd/EXP-001_ASSIGNMENT_MATRIX.md` | frozen pre-outcome |
 | Assignment freeze | `docs/research/phd/EXP-001_ASSIGNMENT_FREEZE.md` | frozen; all 12 orders materialized |
@@ -62,13 +65,24 @@ The earlier `rendered_sha256.expected.json` is preserved as evidence of the fail
 
 No participant identity or outcome data was used to create these assignments.
 
+## Analysis implementation state
+
+The frozen analysis skeleton now has a corresponding executable descriptive-analysis implementation. It requires the three preregistered input tables, validates their schemas and assignment consistency, and reports the preregistered condition summaries with raw numerators and denominators.
+
+The implementation contains no participant data, no synthetic result presented as experimental evidence, and no outcome-dependent inferential-test selection. Inferential analysis remains bounded by the frozen analysis skeleton.
+
+## Independent equivalence-review state
+
+Reviewer-facing certification scaffolding now exists for all 12 scenario triplets. It reproduces the mandatory equivalence checks and explicitly prohibits author-only review from satisfying confirmatory readiness.
+
+No independent reviewer has yet certified the 12 triplets. The presence of review forms is not a certification result.
+
 ## Remaining blocking gates before confirmatory evaluator exposure
 
-1. independent fact-equivalence certification for all 12 A/B/C scenario triplets;
+1. completed independent fact-equivalence certification for all 12 A/B/C scenario triplets;
 2. participant information/consent artifact if required by the governing institution;
 3. institutional human-subjects determination record;
-4. final analysis script/notebook implementation matching the frozen analysis skeleton, containing no result data;
-5. final pre-execution commit SHA recorded in `EXPERIMENT_LEDGER.md` after the external review gates are satisfied.
+4. final pre-execution commit SHA recorded in `EXPERIMENT_LEDGER.md` only after the external gates are satisfied.
 
 ## Mutation rule
 
@@ -78,4 +92,4 @@ After the final pre-execution manifest commit, any substantive artifact change m
 
 **NOT READY FOR CONFIRMATORY EXECUTION.**
 
-The deterministic packet freeze, rendered packet materialization, seed, format mapping, assignment matrix, and all scenario orders are frozen. Independent equivalence certification, institutional human-subjects determination, and the final no-results analysis implementation remain outstanding.
+All internal deterministic packet, assignment, and no-results analysis preparation is substantially complete. The remaining blockers are independent fact-equivalence certification and the governing institutional human-subjects determination, plus any participant-information artifact that determination requires.
