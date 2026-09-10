@@ -28,9 +28,13 @@ def main() -> int:
     failures: list[str] = []
 
     if expected.get("packet_count") != 36:
-        failures.append(f"expected manifest packet_count={expected.get('packet_count')} (wanted 36)")
+        failures.append(
+            f"expected manifest packet_count={expected.get('packet_count')} (wanted 36)"
+        )
     if actual_manifest.get("packet_count") != 36:
-        failures.append(f"actual manifest packet_count={actual_manifest.get('packet_count')} (wanted 36)")
+        failures.append(
+            f"actual manifest packet_count={actual_manifest.get('packet_count')} (wanted 36)"
+        )
     if expected.get("format_mapping") != actual_manifest.get("format_mapping"):
         failures.append("format mapping differs")
     if expected.get("seed") != actual_manifest.get("seed"):
@@ -43,7 +47,9 @@ def main() -> int:
     actual_names = set(actual_hashes)
     if expected_names != actual_names:
         failures.append(
-            f"packet name set differs: missing={sorted(expected_names-actual_names)} extra={sorted(actual_names-expected_names)}"
+            "packet name set differs: "
+            f"missing={sorted(expected_names - actual_names)} "
+            f"extra={sorted(actual_names - expected_names)}"
         )
 
     for name in sorted(expected_names | actual_names):
