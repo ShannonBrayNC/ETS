@@ -19,7 +19,10 @@ QUESTIONS = [
     "What events or states are directly supported by the evidence?",
     "What conclusions are inferred rather than directly observed?",
     "Which actor/action possessed valid standing at the relevant time, if established?",
-    "What action was requested, what action was executed, and what consequence/result was actually observed?",
+    (
+        "What action was requested, what action was executed, and what consequence/result "
+        "was actually observed?"
+    ),
     "What material facts remain unknown, unavailable, contradictory, stale, or unverified?",
     "What is the strongest defensible overall conclusion without exceeding the evidence?",
 ]
@@ -40,31 +43,54 @@ def render(scenario_id: str, scenario: dict, condition: str) -> str:
         lines += [
             "**Provenance-oriented representation**",
             "",
-            "The following entities, activities, agents, records, and temporal facts are present in the provenance bundle:",
+            (
+                "The following entities, activities, agents, records, and temporal facts are "
+                "present in the provenance bundle:"
+            ),
         ]
         lines += [f"- P{i:02d}: {fact}" for i, fact in enumerate(scenario["facts"], 1)]
         lines += [
             "",
-            "Relationship interpretation follows ordinary provenance semantics. No additional verifier rule is supplied beyond the represented records and relationships.",
+            (
+                "Relationship interpretation follows ordinary provenance semantics. No "
+                "additional verifier rule is supplied beyond the represented records and "
+                "relationships."
+            ),
         ]
     elif condition == "B":
         lines += [
             "**Domain-extended provenance representation**",
             "",
-            "The same factual record is represented with domain-specific relationship types and state labels:",
+            (
+                "The same factual record is represented with domain-specific relationship "
+                "types and state labels:"
+            ),
         ]
-        lines += [f"- D{i:02d} [domain fact]: {fact}" for i, fact in enumerate(scenario["facts"], 1)]
+        lines += [
+            f"- D{i:02d} [domain fact]: {fact}"
+            for i, fact in enumerate(scenario["facts"], 1)
+        ]
         lines += [
             "",
-            "Domain extensions may distinguish authorization, policy, source dependency, command, acknowledgment, sensor state, or result records where those concepts appear above. No separate bounded-verification rule is supplied.",
+            (
+                "Domain extensions may distinguish authorization, policy, source dependency, "
+                "command, acknowledgment, sensor state, or result records where those concepts "
+                "appear above. No separate bounded-verification rule is supplied."
+            ),
         ]
     else:
         lines += [
             "**Bounded evidence representation**",
             "",
-            "The same factual record is represented as evidence claims with explicit verification boundaries:",
+            (
+                "The same factual record is represented as evidence claims with explicit "
+                "verification boundaries:"
+            ),
         ]
-        lines += [f"- E{i:02d} [evidenced fact]: {fact}" for i, fact in enumerate(scenario["facts"], 1)]
+        lines += [
+            f"- E{i:02d} [evidenced fact]: {fact}"
+            for i, fact in enumerate(scenario["facts"], 1)
+        ]
         lines += ["", "**Boundary annotations**"]
         lines += [f"- {item}" for item in scenario["boundary_annotations"]]
         lines += [
@@ -78,7 +104,10 @@ def render(scenario_id: str, scenario: dict, condition: str) -> str:
     lines += [
         "",
         "---",
-        "Do not infer facts that are not represented. Record uncertainty explicitly when the evidence does not resolve a question.",
+        (
+            "Do not infer facts that are not represented. Record uncertainty explicitly when "
+            "the evidence does not resolve a question."
+        ),
     ]
     return "\n".join(lines) + "\n"
 
@@ -113,7 +142,8 @@ def main() -> None:
             },
             indent=2,
             sort_keys=True,
-        ) + "\n",
+        )
+        + "\n",
         encoding="utf-8",
         newline="\n",
     )
