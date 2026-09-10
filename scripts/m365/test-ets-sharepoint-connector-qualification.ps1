@@ -41,6 +41,7 @@ $destinationScopes = @('Application.Read.All')
 $resourceScopes = @(
     'Application.Read.All',
     'Organization.Read.All',
+    'Sites.Read.All',
     'Sites.FullControl.All'
 )
 
