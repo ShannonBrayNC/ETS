@@ -23,9 +23,15 @@ def test_qualification_script_is_read_only():
 def test_qualification_requires_distinct_cross_tenant_contexts():
     assert "DestinationAzureTenantId" in QUALIFIER
     assert "MicrosoftResourceTenantId" in QUALIFIER
-    assert "Cross-tenant qualification requires distinct Azure and Microsoft resource tenants" in QUALIFIER
+    assert (
+        "Cross-tenant qualification requires distinct Azure and Microsoft resource tenants"
+        in QUALIFIER
+    )
     assert "Active Azure tenant" in QUALIFIER
-    assert "Microsoft Graph organization id does not match the expected resource tenant" in QUALIFIER
+    assert (
+        "Microsoft Graph organization id does not match the expected resource tenant"
+        in QUALIFIER
+    )
 
 
 def test_qualification_requires_multitenant_app_and_exact_federated_credential():
@@ -48,7 +54,10 @@ def test_qualification_requires_echo_media_enterprise_app_provenance():
 def test_qualification_requires_sites_selected_and_exact_site_grant():
     assert "Sites.Selected" in QUALIFIER
     assert "Expected exactly one Sites.Selected app-role assignment" in QUALIFIER
-    assert "Federated SharePoint application has unexpected additional application permissions" in QUALIFIER
+    assert (
+        "Federated SharePoint application has unexpected additional application permissions"
+        in QUALIFIER
+    )
     assert "Expected exactly one site-level permission" in QUALIFIER
     assert "ExpectedSiteRole = 'read'" in QUALIFIER
     assert "siteReadGrantVerified = $true" in QUALIFIER
