@@ -10,7 +10,10 @@ OUT = ROOT / "forms"
 CHECKS = [
     "Every reconstruction-material fact appears in all three conditions.",
     "No condition adds a reconstruction-material fact absent from the fact inventory.",
-    "No condition silently resolves an unknown, unavailable, indeterminate, or contradictory fact.",
+    (
+        "No condition silently resolves an unknown, unavailable, indeterminate, "
+        "or contradictory fact."
+    ),
     "No condition upgrades a local or claimed timestamp into independently trusted time.",
     "No condition converts identity into authority or authority into current standing.",
     "No condition converts a requested command or acknowledgment into execution.",
@@ -25,6 +28,7 @@ CHECKS = [
 
 def render_form(scenario_number: int) -> str:
     scenario = f"S{scenario_number:02d}"
+    packet_prefix = f"../exp001-packets/rendered/scenario-{scenario_number:02d}"
     lines = [
         f"# EXP-001 Fact-Equivalence Certification — {scenario}",
         "",
@@ -34,11 +38,14 @@ def render_form(scenario_number: int) -> str:
         "## Artifact references",
         "",
         f"- Scenario: `{scenario}`",
-        f"- Format M packet: `../exp001-packets/rendered/scenario-{scenario_number:02d}-format-M.md`",
-        f"- Format R packet: `../exp001-packets/rendered/scenario-{scenario_number:02d}-format-R.md`",
-        f"- Format K packet: `../exp001-packets/rendered/scenario-{scenario_number:02d}-format-K.md`",
+        f"- Format M packet: `{packet_prefix}-format-M.md`",
+        f"- Format R packet: `{packet_prefix}-format-R.md`",
+        f"- Format K packet: `{packet_prefix}-format-K.md`",
         "- Frozen fact inventory: `../EXP-001_FACT_EQUIVALENCE_AND_SCORING_KEY.md`",
-        "- Authoritative packet hashes: `../exp001-packets/rendered_sha256.authoritative.json`",
+        (
+            "- Authoritative packet hashes: "
+            "`../exp001-packets/rendered_sha256.authoritative.json`"
+        ),
         "",
         "## Reviewer record",
         "",
@@ -65,8 +72,11 @@ def render_form(scenario_number: int) -> str:
             "",
             "## Gate rule",
             "",
-            "A FAIL blocks this scenario from confirmatory use. Author-only review must be labeled "
-            "`AUTHOR-ONLY / NOT CONFIRMATORY READY` and cannot alone satisfy this gate.",
+            (
+                "A FAIL blocks this scenario from confirmatory use. Author-only review must "
+                "be labeled `AUTHOR-ONLY / NOT CONFIRMATORY READY` and cannot alone satisfy "
+                "this gate."
+            ),
             "",
         ]
     )
