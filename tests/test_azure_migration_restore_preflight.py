@@ -88,7 +88,7 @@ class RestorePreflightTests(unittest.TestCase):
                 with self.assertRaisesRegex(MigrationControlError, "scale fence"):
                     preflight()
 
-    def test_preflight_rejects_changed_evidence_state(self) -> None:
+    def test_preflight_rejects_changed_evidence_state_with_sanitized_diagnostics(self) -> None:
         def read(args: list[str]):
             if args[:3] == ["storage", "entity", "query"]:
                 return {
@@ -110,7 +110,37 @@ class RestorePreflightTests(unittest.TestCase):
                 "scripts.azure_migration_restore_preflight.az_json",
                 side_effect=read,
             ):
-                with self.assertRaisesRegex(MigrationControlError, "initialization-only"):
+                with self.assertRaisesRegex(
+                    MigrationControlError,
+                    r"initialization-only \(entities=2, metadata_rows=1, metadata_next_index=1\)",
+                ):
+                    preflight()
+
+    def test_preflight_rejects_changed_initialization_metadata_with_sanitized_diagnostics(self) -> None:
+        def read(args: list[str]):
+            if args[:3] == ["storage", "entity", "query"]:
+                return {
+                    "items": [
+                        {
+                            "RowKey": "meta",
+                            "kind": "metadata",
+                            "next_index": 3,
+                            "schema_version": 1,
+                            "log_id": "ets-live-primary",
+                        }
+                    ]
+                }
+            return self._healthy_read(args)
+
+        with patch.dict(os.environ, self.env, clear=True):
+            with patch(
+                "scripts.azure_migration_restore_preflight.az_json",
+                side_effect=read,
+            ):
+                with self.assertRaisesRegex(
+                    MigrationControlError,
+                    r"metadata changed \(entities=1, metadata_rows=1, metadata_next_index=3\)",
+                ):
                     preflight()
 
     def test_preflight_rejects_changed_gateway_files(self) -> None:
