@@ -28,10 +28,12 @@ def test_stage5_operator_authorization_is_bound_to_exact_resource_tenant_operato
     assert "$approvedVerifiedDomain = 'echomedia.ai'" in SCRIPT_LINES
     assert "$approvedSharePointHostname = 'echomediaai.sharepoint.com'" in SCRIPT_LINES
     assert "$approvedSitePath = '/sites/ETS'" in SCRIPT_LINES
-    assert (
-        "$approvedSiteId = 'echomediaai.sharepoint.com,2604ea4c-3b40-4195-b1a8-e3d7327b7c41,9ddf1ece-7f81-4258-af25-91e06afaa682'"
-        in SCRIPT_LINES
+    expected_site_id_line = (
+        "$approvedSiteId = 'echomediaai.sharepoint.com,"
+        "2604ea4c-3b40-4195-b1a8-e3d7327b7c41,"
+        "9ddf1ece-7f81-4258-af25-91e06afaa682'"
     )
+    assert expected_site_id_line in SCRIPT_LINES
 
 
 def test_stage5_operator_authorization_verifies_site_and_permission_state_read_only():
