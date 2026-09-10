@@ -116,7 +116,9 @@ class RestorePreflightTests(unittest.TestCase):
                 ):
                     preflight()
 
-    def test_preflight_rejects_changed_initialization_metadata_with_sanitized_diagnostics(self) -> None:
+    def test_preflight_rejects_changed_initialization_metadata_with_sanitized_diagnostics(
+        self,
+    ) -> None:
         def read(args: list[str]):
             if args[:3] == ["storage", "entity", "query"]:
                 return {
