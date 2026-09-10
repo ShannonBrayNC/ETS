@@ -53,6 +53,6 @@ detection.
 
 ## Follow-on
 
-Add publisher/custodian key lifecycle evidence, then qualify a real WORM/object-lock backend with
-independent administration, retention-policy evidence, replication, deletion-negative tests, and
-availability observations.
+ADR 0013 adds publisher/custodian key lifecycle evidence. Next, qualify a real WORM/object-lock
+backend with independently verifiable administration, retention-policy evidence, replication,
+deletion-negative tests, and availability observations.

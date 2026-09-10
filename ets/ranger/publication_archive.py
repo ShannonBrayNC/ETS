@@ -616,6 +616,20 @@ def _audit_payload_from_record(audit: RangerPublicationRetrievalAudit) -> dict[s
     )
 
 
+def publication_retrieval_audit_signing_payload(
+    audit: RangerPublicationRetrievalAudit,
+) -> dict[str, Any]:
+    """Return the canonical signed payload for one strict retrieval audit.
+
+    Key-lifecycle verifiers use this helper to check an audit with the
+    custodian key that stood at a named authority-history prefix. It does not
+    make the archive backend immutable or continuously available.
+    """
+
+    validated = RangerPublicationRetrievalAudit.model_validate(audit.model_dump())
+    return _audit_payload_from_record(validated)
+
+
 def _private_key(value: str) -> Ed25519PrivateKey:
     try:
         return Ed25519PrivateKey.from_private_bytes(bytes.fromhex(value))

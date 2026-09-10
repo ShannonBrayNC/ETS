@@ -76,5 +76,6 @@ custody.
 
 The [publication archive and retrieval-audit profile](publication-archive.md) now adds separately
 keyed logical append-only persistence, expected-head-relative rollback detection, and signed
-retrieval observations. Physical WORM deployment, independently evidenced administration,
-publisher/custodian key lifecycle, replication, and continued availability remain follow-on work.
+retrieval observations. The [publisher/custodian key-lifecycle profile](publication-key-lifecycle.md)
+adds historical standing across rotation and revocation. Physical WORM deployment, independently
+evidenced administration, replication, and continued availability remain follow-on work.

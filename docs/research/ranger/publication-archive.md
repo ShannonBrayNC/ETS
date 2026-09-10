@@ -72,5 +72,8 @@ from a provider name or successful API response.
 
 ## Next sequential slice
 
-Define and test publisher/custodian key rotation and revocation so historical publication and
-retrieval evidence remains verifiable without treating an old key as currently authorized.
+The [publisher/custodian key-lifecycle profile](publication-key-lifecycle.md) now preserves
+historical source-key standing across rotation and revocation without treating an old key as
+currently authorized. Next, qualify a separately administered immutable publication backend with
+retained latest-head custody, backend configuration evidence, retrieval audits, and
+deletion-negative tests.
