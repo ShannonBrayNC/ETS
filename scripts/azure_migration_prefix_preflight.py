@@ -64,7 +64,13 @@ def _discover_storage_accounts(resource_group: str) -> tuple[str, str]:
         raise MigrationControlError("Storage inventory is invalid")
     names = [str(item.get("name", "")) for item in resources if isinstance(item, dict)]
     gateway = [name for name in names if name.lower().startswith("etsgw")]
-    core = [name for name in names if name and name not in gateway]
+    core = [
+        name
+        for name in names
+        if name
+        and name not in gateway
+        and not name.lower().startswith("lantern")
+    ]
     if len(core) != 1 or len(gateway) != 1:
         raise MigrationControlError("Core/Gateway storage is not uniquely identifiable")
     return core[0], gateway[0]
