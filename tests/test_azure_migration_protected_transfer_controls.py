@@ -49,7 +49,11 @@ class ProtectedTransferControlTests(unittest.TestCase):
         self.assertIn("environment: ets-azure-migration-destination-restore", text)
         self.assertIn("azure_migration_control", text)
         self.assertIn("--require-data-plane", text)
-        self.assertIn("azure_migration_restore_preflight", text)
+        self.assertIn("azure_migration_prefix_preflight", text)
+        self.assertIn("--mode capture-source", text)
+        self.assertIn("--mode verify-destination", text)
+        self.assertIn("$RUNNER_TEMP/ets-source-prefix.json", text)
+        self.assertIn('rm -f "$RUNNER_TEMP/ets-source-prefix.json"', text)
         forbidden = (
             "actions/upload-artifact",
             "actions/download-artifact",
