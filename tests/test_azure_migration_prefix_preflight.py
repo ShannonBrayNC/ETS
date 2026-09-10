@@ -132,6 +132,49 @@ class PrefixPreflightTests(unittest.TestCase):
         forbidden = {"create", "delete", "update", "set", "start", "stop", "restart"}
         self.assertFalse(any(call and call[0] in forbidden for call in calls))
 
+    def test_verify_rejects_gateway_file_drift_with_actionable_diagnostic(self) -> None:
+        source_state = _validated_state(_entities(2))
+        manifest_payload = {
+            "manifest_version": 1,
+            "source_next_index": source_state["next_index"],
+            "metadata_digest": source_state["metadata_digest"],
+            "pair_digests": source_state["pair_digests"],
+        }
+
+        def destination_read(args: list[str]):
+            if args[:2] == ["containerapp", "list"]:
+                return [
+                    {"name": "core", "min": 0, "max": 1},
+                    {"name": "gateway", "min": 0, "max": 1},
+                ]
+            if args[:3] == ["containerapp", "replica", "list"]:
+                return []
+            if args[:2] == ["resource", "list"]:
+                return [{"name": "corestore"}, {"name": "etsgwstate"}]
+            if args[:3] == ["storage", "entity", "query"]:
+                return {"items": _entities(1)}
+            if args[:3] == ["storage", "file", "list"]:
+                return [
+                    {"name": "connector-runtime.db"},
+                    {"name": "gateway-events.db"},
+                    {"name": "unexpected.db"},
+                ]
+            raise AssertionError(args)
+
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "prefix.json"
+            manifest.write_text(json.dumps(manifest_payload), encoding="utf-8")
+            with patch.dict(os.environ, self.destination_env, clear=True):
+                with patch(
+                    "scripts.azure_migration_prefix_preflight.az_json",
+                    side_effect=destination_read,
+                ):
+                    with self.assertRaisesRegex(
+                        MigrationControlError,
+                        r"missing=gateway-sync\.db; unexpected=unexpected\.db",
+                    ):
+                        verify_destination_prefix(manifest)
+
     def test_verify_rejects_divergent_destination_prefix(self) -> None:
         source_state = _validated_state(_entities(2))
         manifest_payload = {
