@@ -2,13 +2,18 @@ SCRIPT_PATH = "scripts/m365/apply-ets-sharepoint-cross-tenant-stage2-fic.ps1"
 
 with open(SCRIPT_PATH, encoding="utf-8") as script_stream:
     SCRIPT = script_stream.read()
+SCRIPT_LINES = SCRIPT.splitlines()
 
 
 def test_stage2_has_exactly_one_fic_mutation() -> None:
     assert "[switch]$Apply" in SCRIPT
     assert SCRIPT.count("az ad app federated-credential create") == 1
     assert "api://AzureADTokenExchange" in SCRIPT
-    assert "https://login.microsoftonline.com/" in SCRIPT
+    expected_issuer_line = (
+        '$expectedIssuer = "https://login.microsoftonline.com/'
+        '$approvedDestinationTenantId/v2.0"'
+    )
+    assert expected_issuer_line in SCRIPT_LINES
 
     forbidden = (
         "az ad app create",
