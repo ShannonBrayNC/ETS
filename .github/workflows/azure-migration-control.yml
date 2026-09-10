@@ -158,7 +158,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${{ needs.plan.outputs.operation }}" == "identity_names" ]]; then
-            python scripts/azure_migration_identity_names.py \
+            python -m scripts.azure_migration_identity_names \
               --expected-tenant "$EXPECTED_TENANT_ID" \
               --expected-subscription "$EXPECTED_SUBSCRIPTION_ID"
           else
