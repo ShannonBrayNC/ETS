@@ -17,6 +17,10 @@ EXPECTED_GATEWAY_FILES = {
     "gateway-events.db",
     "gateway-sync.db",
 }
+_GATEWAY_SYNC_WAL_SIDECARS = {
+    "gateway-sync.db-shm",
+    "gateway-sync.db-wal",
+}
 _STABLE_FIELDS = (
     "PartitionKey",
     "RowKey",
@@ -282,6 +286,22 @@ def _verify_zero_replicas(resource_group: str) -> None:
             raise MigrationControlError("Destination has an active Container App replica")
 
 
+def _file_length(item: dict[str, Any]) -> int | None:
+    value = item.get("contentLength")
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    properties = item.get("properties")
+    if isinstance(properties, dict):
+        nested = properties.get("contentLength")
+        if isinstance(nested, int) and not isinstance(nested, bool) and nested >= 0:
+            return nested
+        if isinstance(nested, str) and nested.isdigit():
+            return int(nested)
+    return None
+
+
 def _verify_gateway_files(account: str, share_name: str) -> int:
     files = _items(
         az_json(
@@ -296,19 +316,37 @@ def _verify_gateway_files(account: str, share_name: str) -> int:
                 "--auth-mode",
                 "login",
                 "--backup-intent",
+                "--query",
+                "[].{name:name,contentLength:properties.contentLength}",
             ]
         )
     )
-    names = {str(item.get("name", "")) for item in files}
-    if names != EXPECTED_GATEWAY_FILES:
-        missing = sorted(EXPECTED_GATEWAY_FILES - names)
-        unexpected = sorted(names - EXPECTED_GATEWAY_FILES)
+    by_name = {str(item.get("name", "")): item for item in files}
+    names = set(by_name)
+    missing = sorted(EXPECTED_GATEWAY_FILES - names)
+    unexpected = names - EXPECTED_GATEWAY_FILES
+    unsupported = sorted(unexpected - _GATEWAY_SYNC_WAL_SIDECARS)
+
+    if missing or unsupported or (unexpected and unexpected != _GATEWAY_SYNC_WAL_SIDECARS):
         missing_summary = ",".join(missing) if missing else "none"
-        unexpected_summary = ",".join(unexpected) if unexpected else "none"
+        unexpected_summary = ",".join(sorted(unexpected)) if unexpected else "none"
         raise MigrationControlError(
             "Destination Gateway initialization file set changed "
             f"(missing={missing_summary}; unexpected={unexpected_summary})"
         )
+
+    if unexpected == _GATEWAY_SYNC_WAL_SIDECARS:
+        wal_length = _file_length(by_name["gateway-sync.db-wal"])
+        if wal_length is None:
+            raise MigrationControlError(
+                "Destination Gateway WAL sidecar size could not be verified"
+            )
+        if wal_length != 0:
+            raise MigrationControlError(
+                "Destination Gateway WAL contains uncheckpointed state "
+                f"(gateway-sync.db-wal bytes={wal_length})"
+            )
+
     return len(files)
 
 
