@@ -1,19 +1,15 @@
-import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PREVIEW = (
     ROOT / "scripts" / "m365" / "preview-ets-sharepoint-cross-tenant-bootstrap.ps1"
 ).read_text(encoding="utf-8")
+NORMALIZED_PREVIEW = " ".join(PREVIEW.split()).casefold()
 
 
 def test_preview_contains_no_graph_mutation_methods():
-    mutating_methods = re.findall(
-        r"-Method\s+(POST|PATCH|PUT|DELETE)\b",
-        PREVIEW,
-        flags=re.IGNORECASE,
-    )
-    assert mutating_methods == []
+    for method in ("post", "patch", "put", "delete"):
+        assert f"-method {method}" not in NORMALIZED_PREVIEW
     assert "Invoke-MgGraphRequest -Method GET" in PREVIEW
     assert "mutationPerformed = $false" in PREVIEW
 
