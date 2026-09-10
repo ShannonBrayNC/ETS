@@ -13,6 +13,7 @@ on:
       - '.github/migration-control/request.json'
       - '.github/workflows/azure-migration-control.yml'
       - 'scripts/azure_migration_control.py'
+      - 'scripts/azure_migration_identity_names.py'
   workflow_dispatch:
     inputs:
       target:
@@ -29,6 +30,7 @@ on:
         options:
           - context
           - inventory
+          - identity_names
 
 permissions:
   contents: read
@@ -72,8 +74,8 @@ jobs:
           operation = payload.get('operation')
           if target not in {'source', 'destination'}:
               raise SystemExit('target must be source or destination')
-          if operation not in {'context', 'inventory'}:
-              raise SystemExit('operation must be context or inventory')
+          if operation not in {'context', 'inventory', 'identity_names'}:
+              raise SystemExit('operation must be context, inventory, or identity_names')
           print(target)
           print(operation)
           PY
@@ -82,7 +84,7 @@ jobs:
             operation="${request[1]}"
           fi
           case "$target:$operation" in
-            source:context|source:inventory|destination:context|destination:inventory) ;;
+            source:context|source:inventory|destination:context|destination:inventory|destination:identity_names) ;;
             *) echo 'unsupported migration-control request' >&2; exit 2 ;;
           esac
           printf 'target=%s\noperation=%s\n' "$target" "$operation" >> "$GITHUB_OUTPUT"
@@ -155,8 +157,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/azure_migration_control.py \
-            --target destination \
-            --operation "${{ needs.plan.outputs.operation }}" \
-            --expected-tenant "$EXPECTED_TENANT_ID" \
-            --expected-subscription "$EXPECTED_SUBSCRIPTION_ID"
+          if [[ "${{ needs.plan.outputs.operation }}" == "identity_names" ]]; then
+            python scripts/azure_migration_identity_names.py \
+              --expected-tenant "$EXPECTED_TENANT_ID" \
+              --expected-subscription "$EXPECTED_SUBSCRIPTION_ID"
+          else
+            python scripts/azure_migration_control.py \
+              --target destination \
+              --operation "${{ needs.plan.outputs.operation }}" \
+              --expected-tenant "$EXPECTED_TENANT_ID" \
+              --expected-subscription "$EXPECTED_SUBSCRIPTION_ID"
+          fi
