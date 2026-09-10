@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import Protocol
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from ets.connectors.credentials.models import (
     CREDENTIAL_METADATA_SCHEMA_VERSION,
@@ -28,6 +29,7 @@ MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE = "azure-mi://microsoft-graph/directory
 MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE = "azure-mi://office-365-management/purview"
 MICROSOFT_GRAPH_DEFAULT_SCOPE = "https://graph.microsoft.com/.default"
 MICROSOFT_PURVIEW_DEFAULT_SCOPE = "https://manage.office.com/.default"
+AZURE_AD_TOKEN_EXCHANGE_SCOPE = "api://AzureADTokenExchange/.default"
 
 
 class ManagedIdentityAccessToken(Protocol):
@@ -256,6 +258,251 @@ class AzureManagedIdentityCredentialProvider:
             }
         )
 
+
+
+@dataclass(frozen=True, slots=True)
+class AzureFederatedManagedIdentityCredentialProfile:
+    """Map one connector reference through a UAMI-backed multitenant Entra app."""
+
+    reference: str
+    managed_identity_client_id: str
+    tenant_id: str
+    application_id: str
+    scope: str
+
+    def __post_init__(self) -> None:
+        AzureManagedIdentityCredentialProfile(
+            reference=self.reference,
+            client_id=self.managed_identity_client_id,
+            scope=self.scope,
+        )
+        for name, value in (
+            ("tenant_id", self.tenant_id),
+            ("application_id", self.application_id),
+        ):
+            normalized = value.strip()
+            try:
+                UUID(normalized)
+            except (AttributeError, TypeError, ValueError) as exc:
+                raise ValueError(f"federated profile {name} must be a GUID") from exc
+            object.__setattr__(self, name, normalized)
+        object.__setattr__(
+            self, "managed_identity_client_id", self.managed_identity_client_id.strip()
+        )
+        object.__setattr__(self, "reference", self.reference.strip())
+        object.__setattr__(self, "scope", self.scope.strip())
+
+
+FederatedCredentialFactory = Callable[
+    [AzureFederatedManagedIdentityCredentialProfile, ManagedIdentityTokenCredential],
+    ManagedIdentityTokenCredential,
+]
+
+
+def _load_federated_managed_identity_credential(
+    profile: AzureFederatedManagedIdentityCredentialProfile,
+    managed_identity_credential: ManagedIdentityTokenCredential,
+) -> ManagedIdentityTokenCredential:
+    try:
+        module = importlib.import_module("azure.identity")
+    except ModuleNotFoundError as exc:
+        raise CredentialProviderError(
+            "azure-identity is required for federated managed-identity credentials"
+        ) from exc
+
+    factory = getattr(module, "ClientAssertionCredential", None)
+    if factory is None:
+        raise CredentialProviderError(
+            "azure.identity.ClientAssertionCredential is unavailable"
+        )
+
+    def assertion() -> str:
+        return managed_identity_credential.get_token(
+            AZURE_AD_TOKEN_EXCHANGE_SCOPE
+        ).token
+
+    credential: ManagedIdentityTokenCredential = factory(
+        tenant_id=profile.tenant_id,
+        client_id=profile.application_id,
+        func=assertion,
+    )
+    return credential
+
+
+class AzureFederatedManagedIdentityCredentialProvider:
+    """Exchange destination UAMI assertions for tokens from another Entra tenant."""
+
+    scheme = AZURE_MANAGED_IDENTITY_SCHEME
+
+    def __init__(
+        self,
+        profiles: tuple[AzureFederatedManagedIdentityCredentialProfile, ...],
+        *,
+        managed_identity_credentials: dict[str, ManagedIdentityTokenCredential] | None = None,
+        credentials: dict[str, ManagedIdentityTokenCredential] | None = None,
+        managed_identity_credential_factory: CredentialFactory = (
+            _load_managed_identity_credential
+        ),
+        credential_factory: FederatedCredentialFactory = (
+            _load_federated_managed_identity_credential
+        ),
+        clock: Clock = _utc_now,
+    ) -> None:
+        if not profiles:
+            raise ValueError("at least one federated managed identity profile is required")
+        by_reference: dict[str, AzureFederatedManagedIdentityCredentialProfile] = {}
+        for profile in profiles:
+            key = profile.reference.casefold()
+            if key in by_reference:
+                raise ValueError("federated profile references must be unique")
+            by_reference[key] = profile
+        supplied = dict(credentials or {})
+        if set(supplied) - set(by_reference):
+            raise ValueError("federated credentials include an unconfigured reference")
+        configured_client_ids = {
+            profile.managed_identity_client_id for profile in profiles
+        }
+        supplied_managed = dict(managed_identity_credentials or {})
+        if set(supplied_managed) - configured_client_ids:
+            raise ValueError(
+                "managed identity credentials include an unconfigured client_id"
+            )
+        self._profiles = by_reference
+        self._managed_identity_credentials = supplied_managed
+        self._credentials = supplied
+        self._managed_identity_credential_factory = (
+            managed_identity_credential_factory
+        )
+        self._credential_factory = credential_factory
+        self._clock = clock
+        self._lock = Lock()
+        self._closed = False
+
+    def describe(self, reference: CredentialReferenceV1) -> CredentialMetadataV1:
+        with self._lock:
+            self._ensure_open()
+            self._profile(reference)
+            now = self._now()
+            return self._metadata(
+                reference,
+                version=None,
+                expires_at_utc=None,
+                updated_at_utc=now,
+            )
+
+    def resolve(self, reference: CredentialReferenceV1) -> CredentialLease:
+        with self._lock:
+            self._ensure_open()
+            profile = self._profile(reference)
+            now = self._now()
+            key = profile.reference.casefold()
+            credential = self._credentials.get(key)
+            if credential is None:
+                managed = self._managed_identity_credentials.get(
+                    profile.managed_identity_client_id
+                )
+                if managed is None:
+                    try:
+                        managed = self._managed_identity_credential_factory(
+                            profile.managed_identity_client_id
+                        )
+                    except Exception as exc:
+                        raise CredentialResolutionError(
+                            "unavailable",
+                            "Azure managed identity credential initialization failed",
+                        ) from exc
+                    self._managed_identity_credentials[
+                        profile.managed_identity_client_id
+                    ] = managed
+                try:
+                    credential = self._credential_factory(profile, managed)
+                except Exception as exc:
+                    raise CredentialResolutionError(
+                        "unavailable",
+                        "federated client assertion credential initialization failed",
+                    ) from exc
+                self._credentials[key] = credential
+            try:
+                access_token = credential.get_token(profile.scope)
+            except Exception as exc:
+                raise CredentialResolutionError(
+                    "unavailable",
+                    "federated managed identity could not acquire the configured audience token",
+                ) from exc
+            material, expires_on, expires_at_utc = _validated_access_token(
+                access_token, now=now
+            )
+            metadata = self._metadata(
+                reference,
+                version=str(expires_on),
+                expires_at_utc=expires_at_utc,
+                updated_at_utc=now,
+            )
+            return CredentialLease(material, metadata)
+
+    def close(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            credentials = [
+                *self._credentials.values(),
+                *self._managed_identity_credentials.values(),
+            ]
+        seen: set[int] = set()
+        for credential in credentials:
+            identity = id(credential)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            credential.close()
+
+    def _ensure_open(self) -> None:
+        if self._closed:
+            raise CredentialProviderError(
+                "federated managed identity provider is closed"
+            )
+
+    def _profile(
+        self, reference: CredentialReferenceV1
+    ) -> AzureFederatedManagedIdentityCredentialProfile:
+        parsed = parse_credential_reference(reference.ref)
+        if parsed.scheme != self.scheme:
+            raise CredentialProviderError(
+                f"credential reference scheme {parsed.scheme!r} does not match provider"
+            )
+        profile = self._profiles.get(reference.ref.casefold())
+        if profile is None:
+            raise CredentialProviderError(
+                "federated managed identity provider rejected an unconfigured reference"
+            )
+        return profile
+
+    def _now(self) -> datetime:
+        value = self._clock()
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise CredentialProviderError("credential provider clock must be timezone-aware")
+        return value.astimezone(UTC)
+
+    @staticmethod
+    def _metadata(
+        reference: CredentialReferenceV1,
+        *,
+        version: str | None,
+        expires_at_utc: datetime | None,
+        updated_at_utc: datetime,
+    ) -> CredentialMetadataV1:
+        return CredentialMetadataV1.model_validate(
+            {
+                "schema_version": CREDENTIAL_METADATA_SCHEMA_VERSION,
+                "reference": reference.model_dump(mode="python"),
+                "provider": "azure-federated-managed-identity",
+                "status": "available",
+                "version": version,
+                "expires_at_utc": expires_at_utc,
+                "updated_at_utc": updated_at_utc,
+            }
+        )
 
 class AzureManagedIdentityGraphCredentialProvider(AzureManagedIdentityCredentialProvider):
     """Acquire short-lived Microsoft Graph tokens using one user-assigned managed identity."""

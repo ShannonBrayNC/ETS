@@ -18,6 +18,47 @@ The persistent Gateway identity was qualified by the #415 Azure bootstrap as:
 This orchestration remains an explicit operator action. Merging the script does not mutate Microsoft
 Entra and does not grant GitHub Actions directory-administration authority.
 
+## Cross-tenant migration boundary
+
+The destination Azure tenant and the EchoMedia Microsoft resource tenant are
+intentionally different. The existing same-tenant orchestration remains the live
+source default; it must not be pointed at the destination by replacing tenant IDs.
+
+Destination Gateway staging uses three distinct user-assigned managed identities
+in the ETS Protocol Azure tenant and three distinct multitenant applications
+registered in that same tenant. Each application must have one federated identity
+credential whose issuer is the ETS Protocol tenant v2 issuer, whose case-sensitive
+subject is the corresponding destination UAMI principal ID, and whose audience is
+`api://AzureADTokenExchange`.
+
+Each multitenant application must then be provisioned as an enterprise application
+in the EchoMedia tenant. Grant only the existing connector-specific application
+permissions there:
+
+- SharePoint application: the approved `Sites.Selected` scope for the existing
+  drive/site only;
+- directory application: the existing `User.Read.All` and `Group.Read.All`
+  application permissions, without `Directory.Read.All`;
+- Purview application: the existing Office 365 Management Activity permission.
+
+The hosted runtime requests a destination UAMI token for
+`api://AzureADTokenExchange/.default`, uses it as a client assertion for the
+matching multitenant application, and requests the final Graph or Office 365
+Management token from the EchoMedia tenant. No client secret, certificate private
+key, ACR administrator credential, or cross-tenant managed-identity attachment is
+introduced.
+
+Use `ETS_GATEWAY_MICROSOFT_CREDENTIAL_MODE=federated_managed_identity` only
+after all three application IDs, federated credentials, EchoMedia enterprise
+applications, consent grants, and the exact SharePoint site grant have been
+independently read back. The Core relay still uses the destination Gateway UAMI
+directly against the destination Core application and its ETS scope map.
+
+The destination Bicep must first be evaluated with `runtimeMinReplicas=0`.
+Do not raise either Core or Gateway to one replica, remove source permissions, or
+transfer writer ownership until positive and negative connector authorization
+tests pass.
+
 ## ETS scope is explicit
 
 The Core application-to-ETS-scope map answers **where** an authenticated application is authorized

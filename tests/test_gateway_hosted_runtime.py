@@ -466,3 +466,61 @@ def test_poll_interval_is_bounded(
 
     with pytest.raises(RuntimeError):
         HostedMicrosoftGatewaySettings.from_env()
+
+
+def test_settings_accept_cross_tenant_federated_managed_identity_applications(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv(
+        "ETS_GATEWAY_MICROSOFT_CREDENTIAL_MODE", "federated_managed_identity"
+    )
+    monkeypatch.setenv(
+        "ETS_GATEWAY_MICROSOFT_APPLICATION_ID",
+        "66666666-6666-6666-6666-666666666666",
+    )
+    monkeypatch.setenv(
+        "ETS_GATEWAY_MICROSOFT_DIRECTORY_APPLICATION_ID",
+        "77777777-7777-7777-7777-777777777777",
+    )
+    monkeypatch.setenv(
+        "ETS_GATEWAY_MICROSOFT_PURVIEW_APPLICATION_ID",
+        "88888888-8888-8888-8888-888888888888",
+    )
+
+    settings = HostedMicrosoftGatewaySettings.from_env()
+
+    assert settings.microsoft_credential_mode == "federated_managed_identity"
+    assert settings.microsoft_application_id.startswith("66666666")
+    assert settings.microsoft_directory_application_id.startswith("77777777")
+    assert settings.microsoft_purview_application_id.startswith("88888888")
+    assert settings.microsoft_tenant_id == "22222222-2222-2222-2222-222222222222"
+
+
+def test_settings_fail_closed_for_incomplete_federated_applications(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv(
+        "ETS_GATEWAY_MICROSOFT_CREDENTIAL_MODE", "federated_managed_identity"
+    )
+    monkeypatch.setenv(
+        "ETS_GATEWAY_MICROSOFT_APPLICATION_ID",
+        "66666666-6666-6666-6666-666666666666",
+    )
+
+    with pytest.raises(RuntimeError, match="requires directory and Purview"):
+        HostedMicrosoftGatewaySettings.from_env()
+
+
+def test_settings_keep_legacy_managed_identity_application_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv(
+        "ETS_GATEWAY_MICROSOFT_DIRECTORY_APPLICATION_ID",
+        "77777777-7777-7777-7777-777777777777",
+    )
+
+    with pytest.raises(RuntimeError, match="requires each Microsoft application id"):
+        HostedMicrosoftGatewaySettings.from_env()

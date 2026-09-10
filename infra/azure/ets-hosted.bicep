@@ -46,6 +46,13 @@ param authTenantId string = ''
 @description('Server-owned JSON map from application/client ID to ETS tenant/workspace scope.')
 param authAppScopeMapJson string = ''
 
+@description('Minimum runtime replicas. Set to 0 only for migration staging before writer ownership is transferred.')
+@allowed([
+  0
+  1
+])
+param runtimeMinReplicas int = 1
+
 @description('Azure Table name used for ETS event persistence.')
 @minLength(3)
 @maxLength(63)
@@ -419,7 +426,7 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
         }
       ]
       scale: {
-        minReplicas: 1
+        minReplicas: runtimeMinReplicas
         maxReplicas: 1
       }
     }

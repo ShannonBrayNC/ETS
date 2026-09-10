@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "target": "destination",
+  "operation": "identity_names",
+  "request_id": "destination-identity-names-gate2-20260910T0255Z"
+}

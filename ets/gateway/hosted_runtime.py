@@ -19,6 +19,8 @@ from ets.connectors.credentials.azure_managed_identity import (
     MICROSOFT_GRAPH_DEFAULT_SCOPE,
     MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE,
     MICROSOFT_PURVIEW_DEFAULT_SCOPE,
+    AzureFederatedManagedIdentityCredentialProfile,
+    AzureFederatedManagedIdentityCredentialProvider,
     AzureManagedIdentityCredentialProfile,
     AzureManagedIdentityCredentialProvider,
 )
@@ -141,7 +143,10 @@ class HostedMicrosoftGatewaySettings:
     source_id: str
     source_principal: str
     microsoft_tenant_id: str
+    microsoft_credential_mode: str
     microsoft_application_id: str
+    microsoft_directory_application_id: str
+    microsoft_purview_application_id: str
     sharepoint_drive_id: str
     poll_interval_seconds: int
     auth_jwks_json: str | None
@@ -237,13 +242,61 @@ class HostedMicrosoftGatewaySettings:
                 "hosted Microsoft connector profiles require three distinct managed identities"
             )
 
+        microsoft_credential_mode = os.getenv(
+            "ETS_GATEWAY_MICROSOFT_CREDENTIAL_MODE", "managed_identity"
+        ).strip().casefold()
+        if microsoft_credential_mode not in {
+            "managed_identity",
+            "federated_managed_identity",
+        }:
+            raise RuntimeError(
+                "ETS_GATEWAY_MICROSOFT_CREDENTIAL_MODE must be managed_identity "
+                "or federated_managed_identity"
+            )
         microsoft_application_id = _required_env(
             "ETS_GATEWAY_MICROSOFT_APPLICATION_ID", maximum=36
         )
-        if microsoft_application_id.casefold() != managed_identity_client_id.casefold():
-            raise RuntimeError(
-                "SharePoint Microsoft application id must match the SharePoint/Core identity"
+        directory_application_id = _optional_env(
+            "ETS_GATEWAY_MICROSOFT_DIRECTORY_APPLICATION_ID"
+        )
+        purview_application_id = _optional_env(
+            "ETS_GATEWAY_MICROSOFT_PURVIEW_APPLICATION_ID"
+        )
+        if microsoft_credential_mode == "managed_identity":
+            directory_application_id = (
+                directory_application_id or directory_managed_identity_client_id
             )
+            purview_application_id = (
+                purview_application_id or purview_managed_identity_client_id
+            )
+            expected_pairs = (
+                (microsoft_application_id, managed_identity_client_id),
+                (directory_application_id, directory_managed_identity_client_id),
+                (purview_application_id, purview_managed_identity_client_id),
+            )
+            if any(
+                application.casefold() != identity.casefold()
+                for application, identity in expected_pairs
+            ):
+                raise RuntimeError(
+                    "managed_identity mode requires each Microsoft application id "
+                    "to match its managed identity client id"
+                )
+        else:
+            if directory_application_id is None or purview_application_id is None:
+                raise RuntimeError(
+                    "federated_managed_identity mode requires directory and Purview "
+                    "Microsoft application ids"
+                )
+            application_ids = {
+                microsoft_application_id.casefold(),
+                directory_application_id.casefold(),
+                purview_application_id.casefold(),
+            }
+            if len(application_ids) != 3:
+                raise RuntimeError(
+                    "federated Microsoft connector profiles require three distinct applications"
+                )
 
         return cls(
             state_dir=state_dir,
@@ -261,7 +314,10 @@ class HostedMicrosoftGatewaySettings:
             microsoft_tenant_id=_required_env(
                 "ETS_GATEWAY_MICROSOFT_TENANT_ID", maximum=36
             ),
+            microsoft_credential_mode=microsoft_credential_mode,
             microsoft_application_id=microsoft_application_id,
+            microsoft_directory_application_id=directory_application_id,
+            microsoft_purview_application_id=purview_application_id,
             sharepoint_drive_id=_required_env(
                 "ETS_GATEWAY_SHAREPOINT_DRIVE_ID", maximum=500
             ),
@@ -373,7 +429,10 @@ class HostedMicrosoftGatewayRuntime:
         store: ConnectorRuntimeStore,
         relay: GatewayCoreRelayWorker,
         event_store: SQLiteEventStore,
-        microsoft_credentials: AzureManagedIdentityCredentialProvider,
+        microsoft_credentials: (
+            AzureManagedIdentityCredentialProvider
+            | AzureFederatedManagedIdentityCredentialProvider
+        ),
         core_tokens: AzureManagedIdentityCoreTokenProvider,
         graph_subscription_store: SQLiteMicrosoftGraphSubscriptionStore | None,
         graph_subscription_lifecycle: MicrosoftGraphSubscriptionLifecycleManager | None,
@@ -617,25 +676,58 @@ def _compose_runtime(
     if not settings.manifest_dir.is_dir():
         raise RuntimeError("Gateway connector manifest directory is unavailable")
 
-    microsoft_credentials = AzureManagedIdentityCredentialProvider(
-        (
-            AzureManagedIdentityCredentialProfile(
-                reference=MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
-                client_id=settings.managed_identity_client_id,
-                scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
-            ),
-            AzureManagedIdentityCredentialProfile(
-                reference=MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
-                client_id=settings.directory_managed_identity_client_id,
-                scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
-            ),
-            AzureManagedIdentityCredentialProfile(
-                reference=MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE,
-                client_id=settings.purview_managed_identity_client_id,
-                scope=MICROSOFT_PURVIEW_DEFAULT_SCOPE,
-            ),
-        )
+    microsoft_credentials: (
+        AzureManagedIdentityCredentialProvider
+        | AzureFederatedManagedIdentityCredentialProvider
     )
+    if settings.microsoft_credential_mode == "federated_managed_identity":
+        microsoft_credentials = AzureFederatedManagedIdentityCredentialProvider(
+            (
+                AzureFederatedManagedIdentityCredentialProfile(
+                    reference=MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
+                    managed_identity_client_id=settings.managed_identity_client_id,
+                    tenant_id=settings.microsoft_tenant_id,
+                    application_id=settings.microsoft_application_id,
+                    scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
+                ),
+                AzureFederatedManagedIdentityCredentialProfile(
+                    reference=MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
+                    managed_identity_client_id=(
+                        settings.directory_managed_identity_client_id
+                    ),
+                    tenant_id=settings.microsoft_tenant_id,
+                    application_id=settings.microsoft_directory_application_id,
+                    scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
+                ),
+                AzureFederatedManagedIdentityCredentialProfile(
+                    reference=MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE,
+                    managed_identity_client_id=settings.purview_managed_identity_client_id,
+                    tenant_id=settings.microsoft_tenant_id,
+                    application_id=settings.microsoft_purview_application_id,
+                    scope=MICROSOFT_PURVIEW_DEFAULT_SCOPE,
+                ),
+            )
+        )
+    else:
+        microsoft_credentials = AzureManagedIdentityCredentialProvider(
+            (
+                AzureManagedIdentityCredentialProfile(
+                    reference=MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
+                    client_id=settings.managed_identity_client_id,
+                    scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
+                ),
+                AzureManagedIdentityCredentialProfile(
+                    reference=MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
+                    client_id=settings.directory_managed_identity_client_id,
+                    scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
+                ),
+                AzureManagedIdentityCredentialProfile(
+                    reference=MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE,
+                    client_id=settings.purview_managed_identity_client_id,
+                    scope=MICROSOFT_PURVIEW_DEFAULT_SCOPE,
+                ),
+            )
+        )
     broker = CredentialBroker()
     broker.register(microsoft_credentials)
     sharepoint_tenant_profile = MicrosoftTenantProfileV1(
@@ -649,7 +741,7 @@ def _compose_runtime(
     directory_tenant_profile = MicrosoftTenantProfileV1(
         schema_version="ets.connector.microsoft.tenant_profile.v1",
         tenant_id=settings.microsoft_tenant_id,
-        application_id=settings.directory_managed_identity_client_id,
+        application_id=settings.microsoft_directory_application_id,
         cloud="global",
         credential_ref=_credential_reference(MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE),
         consent_state="granted",
@@ -657,7 +749,7 @@ def _compose_runtime(
     purview_tenant_profile = MicrosoftTenantProfileV1(
         schema_version="ets.connector.microsoft.tenant_profile.v1",
         tenant_id=settings.microsoft_tenant_id,
-        application_id=settings.purview_managed_identity_client_id,
+        application_id=settings.microsoft_purview_application_id,
         cloud="global",
         credential_ref=_credential_reference(MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE),
         consent_state="granted",

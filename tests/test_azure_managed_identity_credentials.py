@@ -7,11 +7,14 @@ from pathlib import Path
 import pytest
 
 from ets.connectors.credentials.azure_managed_identity import (
+    AZURE_AD_TOKEN_EXCHANGE_SCOPE,
     MICROSOFT_DIRECTORY_CREDENTIAL_REFERENCE,
     MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
     MICROSOFT_GRAPH_DEFAULT_SCOPE,
     MICROSOFT_PURVIEW_CREDENTIAL_REFERENCE,
     MICROSOFT_PURVIEW_DEFAULT_SCOPE,
+    AzureFederatedManagedIdentityCredentialProfile,
+    AzureFederatedManagedIdentityCredentialProvider,
     AzureManagedIdentityCredentialProfile,
     AzureManagedIdentityCredentialProvider,
     AzureManagedIdentityGraphCredentialProvider,
@@ -302,3 +305,89 @@ def test_p0_identity_boundary_is_separated_and_does_not_expand_onedrive() -> Non
         "public hostname",
     ):
         assert required in IDENTITY_BOUNDARY
+
+
+def test_federated_provider_exchanges_uami_assertion_for_target_tenant_token() -> None:
+    managed = FakeCredential(
+        token=FakeAccessToken(
+            token="managed-identity-assertion",
+            expires_on=int((NOW + timedelta(minutes=10)).timestamp()),
+        )
+    )
+    target = FakeCredential()
+    captured: list[tuple[str, str, str]] = []
+    managed_client_id = "11111111-2222-3333-4444-555555555555"
+    profile = AzureFederatedManagedIdentityCredentialProfile(
+        reference=MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
+        managed_identity_client_id=managed_client_id,
+        tenant_id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        application_id="99999999-8888-7777-6666-555555555555",
+        scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
+    )
+
+    def factory(
+        configured: AzureFederatedManagedIdentityCredentialProfile,
+        assertion_credential: FakeCredential,
+    ) -> FakeCredential:
+        assertion = assertion_credential.get_token(AZURE_AD_TOKEN_EXCHANGE_SCOPE)
+        captured.append(
+            (configured.tenant_id, configured.application_id, assertion.token)
+        )
+        return target
+
+    instance = AzureFederatedManagedIdentityCredentialProvider(
+        (profile,),
+        managed_identity_credentials={managed_client_id: managed},
+        credential_factory=factory,
+        clock=lambda: NOW,
+    )
+
+    with instance.resolve(reference()) as lease:
+        assert lease.reveal() == b"graph-runtime-token"
+        assert lease.metadata.provider == "azure-federated-managed-identity"
+
+    assert managed.requested_scopes == [(AZURE_AD_TOKEN_EXCHANGE_SCOPE,)]
+    assert target.requested_scopes == [(MICROSOFT_GRAPH_DEFAULT_SCOPE,)]
+    assert captured == [
+        (
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            "99999999-8888-7777-6666-555555555555",
+            "managed-identity-assertion",
+        )
+    ]
+
+
+def test_federated_provider_rejects_invalid_target_identity_before_token_request() -> None:
+    with pytest.raises(ValueError, match="tenant_id must be a GUID"):
+        AzureFederatedManagedIdentityCredentialProfile(
+            reference=MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
+            managed_identity_client_id="11111111-2222-3333-4444-555555555555",
+            tenant_id="not-a-tenant",
+            application_id="99999999-8888-7777-6666-555555555555",
+            scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
+        )
+
+
+def test_federated_provider_closes_assertion_and_target_credentials_once() -> None:
+    managed = FakeCredential()
+    target = FakeCredential()
+    managed_client_id = "11111111-2222-3333-4444-555555555555"
+    profile = AzureFederatedManagedIdentityCredentialProfile(
+        reference=MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
+        managed_identity_client_id=managed_client_id,
+        tenant_id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        application_id="99999999-8888-7777-6666-555555555555",
+        scope=MICROSOFT_GRAPH_DEFAULT_SCOPE,
+    )
+    instance = AzureFederatedManagedIdentityCredentialProvider(
+        (profile,),
+        managed_identity_credentials={managed_client_id: managed},
+        credentials={profile.reference.casefold(): target},
+        clock=lambda: NOW,
+    )
+
+    instance.close()
+    instance.close()
+
+    assert managed.close_count == 1
+    assert target.close_count == 1
