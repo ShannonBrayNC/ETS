@@ -152,6 +152,10 @@ Current implementation increment:
 - [R0.2 verifier-retained latest-head checkpoints](retained-checkpoints.md)
 - [R0.2 custody-key authority history](key-authority.md)
 - [R0.2 authority-bound retained checkpoints](authority-bound-checkpoints.md)
+- [R0.2 additive governance and trusted-time evidence](governance-time.md)
+- [R0.2 governed authority acceptance](governed-authority-acceptance.md)
+- [R0.2 trusted-time retained receipts](trusted-time-retained-receipts.md)
+- [R0.2 external publication receipts](external-publication.md)
 - [Epistemic identity and bounded observability](epistemic-identity.md)
 - [Cyber-Physical Observability Model](cyber-physical-observability.md)
 - [Ranger Decision Event v0.1 schema](../../../schemas/ranger/decision-event.v0.1.schema.json)
@@ -163,6 +167,10 @@ Current implementation increment:
 - [ADR 0005: verifier-retained latest-head checkpoints](adr/0005-verifier-retained-latest-head.md)
 - [ADR 0006: authority-relative custody-key history](adr/0006-authority-relative-custody-key-history.md)
 - [ADR 0007: authority-bound retained checkpoints](adr/0007-authority-bound-retained-checkpoints.md)
+- [ADR 0008: additive governance and trusted time](adr/0008-additive-governance-trusted-time.md)
+- [ADR 0009: governed authority acceptance](adr/0009-governed-authority-acceptance.md)
+- [ADR 0010: trusted-time retained receipts](adr/0010-trusted-time-retained-receipts.md)
+- [ADR 0011: external publication receipts](adr/0011-external-publication-receipts.md)
 
 ### R0.1 — Mobility
 - safe rolling chassis
