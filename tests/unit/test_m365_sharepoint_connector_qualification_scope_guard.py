@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 SCRIPT_PATH = Path("scripts/m365/test-ets-sharepoint-connector-qualification.ps1")
 SCRIPT = SCRIPT_PATH.read_text(encoding="utf-8")
 SCRIPT_LINES = set(SCRIPT.splitlines())
