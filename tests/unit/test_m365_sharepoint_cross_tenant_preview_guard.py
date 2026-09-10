@@ -3,6 +3,7 @@ PREVIEW_PATH = "scripts/m365/preview-ets-sharepoint-cross-tenant-bootstrap.ps1"
 with open(PREVIEW_PATH, encoding="utf-8") as preview_stream:
     PREVIEW = preview_stream.read()
 NORMALIZED_PREVIEW = " ".join(PREVIEW.split()).casefold()
+PREVIEW_LINES = set(PREVIEW.splitlines())
 
 
 def test_preview_contains_no_graph_mutation_methods():
@@ -29,11 +30,16 @@ def test_preview_contains_no_azure_or_graph_provisioning_commands():
 
 
 def test_preview_is_bound_to_known_destination_identity_and_site_defaults():
-    assert "rg-ets-prod-eastus" in PREVIEW
-    assert "ets-oif5r5ydprrou-gw-id" in PREVIEW
-    assert "echomediaai.sharepoint.com" in PREVIEW
-    assert "'/sites/ETS'" in PREVIEW
-    assert "ExpectedSiteRole = 'read'" in PREVIEW
+    assert "    [string]$ResourceGroup = 'rg-ets-prod-eastus'," in PREVIEW_LINES
+    assert "    [string]$ManagedIdentityName = 'ets-oif5r5ydprrou-gw-id'," in PREVIEW_LINES
+    assert (
+        "    [string]$SharePointHostname = 'echomediaai.sharepoint.com',"
+        in PREVIEW_LINES
+    )
+    assert "    [string]$SitePath = '/sites/ETS'," in PREVIEW_LINES
+    assert "    [string]$ExpectedSiteRole = 'read'," in PREVIEW_LINES
+    assert "$SharePointHostname -cne $approvedSharePointHostname" in PREVIEW
+    assert "$SitePath -cne $approvedSitePath" in PREVIEW
 
 
 def test_preview_requires_exact_cross_tenant_federation_contract():
