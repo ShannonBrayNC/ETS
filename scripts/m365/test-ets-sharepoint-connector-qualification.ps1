@@ -7,28 +7,38 @@ param(
     [string]$ManagedIdentityName,
 
     [Parameter(Mandatory = $true)]
+    [string]$DestinationAzureTenantId,
+
+    [Parameter(Mandatory = $true)]
+    [string]$MicrosoftResourceTenantId,
+
+    [Parameter(Mandatory = $true)]
+    [string]$MicrosoftApplicationId,
+
+    [Parameter(Mandatory = $true)]
     [string]$SharePointHostname,
 
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^/(sites|teams)/[^/]+')]
     [string]$SitePath,
 
-    [Parameter(Mandatory = $true)]
-    [string]$ExpectedTenantId,
-
     [ValidateSet('read')]
     [string]$ExpectedSiteRole = 'read',
 
-    [string]$ExpectedVerifiedDomain,
+    [string]$ExpectedVerifiedDomain = 'echomedia.ai',
 
-    [string]$ExpectedOperatorAccount
+    [string]$ExpectedDestinationOperatorAccount,
+
+    [string]$ExpectedResourceOperatorAccount
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $graphAppId = '00000003-0000-0000-c000-000000000000'
-$requiredScopes = @(
+$tokenExchangeAudience = 'api://AzureADTokenExchange'
+$destinationScopes = @('Application.Read.All')
+$resourceScopes = @(
     'Application.Read.All',
     'Organization.Read.All',
     'Sites.FullControl.All'
@@ -52,11 +62,31 @@ function Get-ServicePrincipalByAppId {
     param([Parameter(Mandatory = $true)][string]$AppId)
 
     $filter = [uri]::EscapeDataString("appId eq '$AppId'")
-    $uri = "https://graph.microsoft.com/v1.0/servicePrincipals?`$filter=$filter&`$select=id,appId,displayName,appRoles"
+    $uri = (
+        "https://graph.microsoft.com/v1.0/servicePrincipals?`$filter=$filter&" +
+        "`$select=id,appId,displayName,appRoles,accountEnabled,servicePrincipalType," +
+        "appOwnerOrganizationId"
+    )
     $response = Invoke-GraphGet -Uri $uri
     $matches = @($response.value)
     if ($matches.Count -ne 1) {
         throw "Expected exactly one service principal for appId '$AppId'."
+    }
+    return $matches[0]
+}
+
+function Get-ApplicationByAppId {
+    param([Parameter(Mandatory = $true)][string]$AppId)
+
+    $filter = [uri]::EscapeDataString("appId eq '$AppId'")
+    $uri = (
+        "https://graph.microsoft.com/v1.0/applications?`$filter=$filter&" +
+        "`$select=id,appId,displayName,signInAudience"
+    )
+    $response = Invoke-GraphGet -Uri $uri
+    $matches = @($response.value)
+    if ($matches.Count -ne 1) {
+        throw "Expected exactly one application registration for appId '$AppId'."
     }
     return $matches[0]
 }
@@ -79,6 +109,27 @@ function Get-PermissionApplicationIds {
     return $ids.ToArray()
 }
 
+function Assert-GraphContext {
+    param(
+        [Parameter(Mandatory = $true)][string]$TenantId,
+        [string]$ExpectedAccount
+    )
+
+    $context = Get-MgContext
+    if (-not $context.TenantId -or $context.TenantId -ne $TenantId) {
+        throw "Microsoft Graph tenant does not match expected tenant '$TenantId'."
+    }
+    if ($ExpectedAccount) {
+        if (-not $context.Account -or $context.Account -ine $ExpectedAccount) {
+            throw (
+                "Microsoft Graph operator '$($context.Account)' does not match expected operator " +
+                "'$ExpectedAccount'."
+            )
+        }
+    }
+    return $context
+}
+
 Assert-Command -Name 'az'
 Assert-Command -Name 'Connect-MgGraph'
 Assert-Command -Name 'Disconnect-MgGraph'
@@ -88,15 +139,18 @@ Assert-Command -Name 'Invoke-MgGraphRequest'
 if ($SharePointHostname -notmatch '\.sharepoint\.com$') {
     throw 'SharePointHostname must be a SharePoint Online hostname ending in .sharepoint.com.'
 }
+if ($DestinationAzureTenantId -eq $MicrosoftResourceTenantId) {
+    throw 'Cross-tenant qualification requires distinct Azure and Microsoft resource tenants.'
+}
 
 $azureAccount = az account show --output json | ConvertFrom-Json
 if (-not $azureAccount.tenantId) {
     throw 'Azure CLI is not signed in to an Entra tenant.'
 }
-if ($azureAccount.tenantId -ne $ExpectedTenantId) {
+if ($azureAccount.tenantId -ne $DestinationAzureTenantId) {
     throw (
-        "Active Azure tenant '$($azureAccount.tenantId)' does not match expected tenant " +
-        "'$ExpectedTenantId'."
+        "Active Azure tenant '$($azureAccount.tenantId)' does not match expected destination " +
+        "tenant '$DestinationAzureTenantId'."
     )
 }
 
@@ -108,50 +162,86 @@ if (-not $identity.clientId -or -not $identity.principalId -or -not $identity.id
     throw 'Managed identity response did not include clientId, principalId, and resource id.'
 }
 
-$connected = $false
+$destinationConnected = $false
 try {
     Connect-MgGraph `
-        -TenantId $ExpectedTenantId `
-        -Scopes $requiredScopes `
+        -TenantId $DestinationAzureTenantId `
+        -Scopes $destinationScopes `
         -ContextScope Process `
         -NoWelcome
-    $connected = $true
+    $destinationConnected = $true
+    $destinationContext = Assert-GraphContext `
+        -TenantId $DestinationAzureTenantId `
+        -ExpectedAccount $ExpectedDestinationOperatorAccount
 
-    $context = Get-MgContext
-    if (-not $context.TenantId -or $context.TenantId -ne $ExpectedTenantId) {
-        throw 'Microsoft Graph tenant does not match the expected destination tenant.'
+    $application = Get-ApplicationByAppId -AppId $MicrosoftApplicationId
+    if ($application.signInAudience -ne 'AzureADMultipleOrgs') {
+        throw 'Destination Microsoft application is not configured as a multitenant application.'
     }
-    if ($ExpectedOperatorAccount) {
-        if (-not $context.Account -or $context.Account -ine $ExpectedOperatorAccount) {
-            throw (
-                "Microsoft Graph operator '$($context.Account)' does not match expected operator " +
-                "'$ExpectedOperatorAccount'."
-            )
-        }
+
+    $credentials = Invoke-GraphGet -Uri (
+        "https://graph.microsoft.com/v1.0/applications/$($application.id)/" +
+        "federatedIdentityCredentials?`$select=id,name,issuer,subject,audiences"
+    )
+    $federatedCredentials = @($credentials.value)
+    if ($federatedCredentials.Count -ne 1) {
+        throw (
+            "Expected exactly one federated identity credential for the SharePoint application; " +
+            "found $($federatedCredentials.Count)."
+        )
     }
+
+    $credential = $federatedCredentials[0]
+    $expectedIssuer = "https://login.microsoftonline.com/$DestinationAzureTenantId/v2.0"
+    $audiences = @($credential.audiences)
+    if ($credential.issuer -cne $expectedIssuer) {
+        throw 'Federated identity credential issuer does not match the destination tenant issuer.'
+    }
+    if ($credential.subject -cne $identity.principalId) {
+        throw 'Federated identity credential subject does not match the destination UAMI principal ID.'
+    }
+    if ($audiences.Count -ne 1 -or $audiences[0] -cne $tokenExchangeAudience) {
+        throw 'Federated identity credential audience is not the exact Azure AD token exchange audience.'
+    }
+}
+finally {
+    if ($destinationConnected) {
+        Disconnect-MgGraph | Out-Null
+    }
+}
+
+$resourceConnected = $false
+try {
+    Connect-MgGraph `
+        -TenantId $MicrosoftResourceTenantId `
+        -Scopes $resourceScopes `
+        -ContextScope Process `
+        -NoWelcome
+    $resourceConnected = $true
+    $resourceContext = Assert-GraphContext `
+        -TenantId $MicrosoftResourceTenantId `
+        -ExpectedAccount $ExpectedResourceOperatorAccount
 
     $organization = Invoke-GraphGet -Uri (
         "https://graph.microsoft.com/v1.0/organization?`$select=id,displayName,verifiedDomains"
     )
     $organizations = @($organization.value)
     if ($organizations.Count -ne 1) {
-        throw 'Expected exactly one Microsoft Entra organization in the authenticated tenant.'
+        throw 'Expected exactly one Microsoft Entra organization in the resource tenant.'
     }
     $tenant = $organizations[0]
-    if ($tenant.id -ne $ExpectedTenantId) {
-        throw 'Microsoft Graph organization id does not match the expected destination tenant.'
+    if ($tenant.id -ne $MicrosoftResourceTenantId) {
+        throw 'Microsoft Graph organization id does not match the expected resource tenant.'
     }
 
-    if ($ExpectedVerifiedDomain) {
-        $domain = @($tenant.verifiedDomains | Where-Object {
-            $_.name -ieq $ExpectedVerifiedDomain
-        })
-        if ($domain.Count -ne 1) {
-            throw (
-                "Authenticated tenant does not contain required verified domain " +
-                "'$ExpectedVerifiedDomain'."
-            )
-        }
+    $domain = @($tenant.verifiedDomains | Where-Object {
+        $_.name -ieq $ExpectedVerifiedDomain
+    })
+    if ($domain.Count -ne 1) {
+        throw (
+            "Authenticated Microsoft resource tenant does not contain required verified domain " +
+            "'$ExpectedVerifiedDomain'."
+        )
     }
 
     $graphSp = Get-ServicePrincipalByAppId -AppId $graphAppId
@@ -165,27 +255,39 @@ try {
     }
     $sitesSelectedRole = $sitesSelectedRoles[0]
 
-    $managedIdentitySp = Get-ServicePrincipalByAppId -AppId $identity.clientId
-    $assignmentsUri = (
-        "https://graph.microsoft.com/v1.0/servicePrincipals/$($managedIdentitySp.id)/" +
-        "appRoleAssignments?`$select=id,appRoleId,resourceId,principalId"
-    )
-    $assignments = Invoke-GraphGet -Uri $assignmentsUri
-    $existingRole = @($assignments.value | Where-Object {
-        $_.resourceId -eq $graphSp.id -and $_.appRoleId -eq $sitesSelectedRole.id
-    })
-    if ($existingRole.Count -ne 1) {
-        throw (
-            "Expected exactly one Sites.Selected app-role assignment for managed identity " +
-            "'$ManagedIdentityName'; found $($existingRole.Count)."
-        )
+    $connectorSp = Get-ServicePrincipalByAppId -AppId $MicrosoftApplicationId
+    if ($connectorSp.servicePrincipalType -ne 'Application') {
+        throw 'EchoMedia connector enterprise application has an unexpected service-principal type.'
+    }
+    if ($connectorSp.accountEnabled -ne $true) {
+        throw 'EchoMedia connector enterprise application is disabled.'
+    }
+    if ($connectorSp.appOwnerOrganizationId -ne $DestinationAzureTenantId) {
+        throw 'EchoMedia enterprise application is not owned by the destination Azure tenant.'
     }
 
-    $siteUri = (
+    $assignments = Invoke-GraphGet -Uri (
+        "https://graph.microsoft.com/v1.0/servicePrincipals/$($connectorSp.id)/" +
+        "appRoleAssignments?`$select=id,appRoleId,resourceId,principalId"
+    )
+    $assignmentSet = @($assignments.value)
+    $sitesSelectedAssignments = @($assignmentSet | Where-Object {
+        $_.resourceId -eq $graphSp.id -and $_.appRoleId -eq $sitesSelectedRole.id
+    })
+    if ($sitesSelectedAssignments.Count -ne 1) {
+        throw (
+            "Expected exactly one Sites.Selected app-role assignment for the federated " +
+            "SharePoint application; found $($sitesSelectedAssignments.Count)."
+        )
+    }
+    if ($assignmentSet.Count -ne 1) {
+        throw 'Federated SharePoint application has unexpected additional application permissions.'
+    }
+
+    $site = Invoke-GraphGet -Uri (
         "https://graph.microsoft.com/v1.0/sites/${SharePointHostname}:${SitePath}?" +
         "`$select=id,displayName,webUrl"
     )
-    $site = Invoke-GraphGet -Uri $siteUri
     if (-not $site.id -or -not $site.webUrl) {
         throw 'SharePoint site could not be resolved from the supplied hostname and site path.'
     }
@@ -195,44 +297,43 @@ try {
         "`$select=id,roles,grantedToIdentities,grantedToIdentitiesV2"
     )
     $siteGrants = @($permissions.value | Where-Object {
-        @(Get-PermissionApplicationIds -Permission $_) -contains $identity.clientId
+        @(Get-PermissionApplicationIds -Permission $_) -contains $MicrosoftApplicationId
     })
     if ($siteGrants.Count -ne 1) {
         throw (
-            "Expected exactly one site-level permission for managed identity '$ManagedIdentityName'; " +
-            "found $($siteGrants.Count)."
+            "Expected exactly one site-level permission for the federated SharePoint " +
+            "application; found $($siteGrants.Count)."
         )
     }
 
     $roles = @($siteGrants[0].roles)
     if ($roles.Count -ne 1 -or $roles[0] -ne $ExpectedSiteRole) {
         throw (
-            "Managed identity site grant role(s) '$($roles -join ',')' do not match expected " +
-            "role '$ExpectedSiteRole'."
+            "Federated SharePoint application site grant role(s) '$($roles -join ',')' do not " +
+            "match expected role '$ExpectedSiteRole'."
         )
     }
 
     [pscustomobject]@{
         qualification = 'pass'
         mutationPerformed = $false
-        tenantId = $context.TenantId
-        tenantDisplayName = $tenant.displayName
-        verifiedDomain = $ExpectedVerifiedDomain
-        operatorAccount = $context.Account
-        managedIdentityName = $ManagedIdentityName
-        managedIdentityResourceId = $identity.id
-        managedIdentityClientId = $identity.clientId
-        managedIdentityPrincipalId = $identity.principalId
-        sitesSelectedAppRoleId = $sitesSelectedRole.id
-        sitesSelectedAssignmentCount = $existingRole.Count
-        sharePointSiteId = $site.id
-        sharePointSiteUrl = $site.webUrl
-        sharePointSiteRole = $roles[0]
-        sharePointPermissionCount = $siteGrants.Count
+        destinationAzureTenantVerified = $true
+        destinationManagedIdentityVerified = $true
+        multitenantApplicationVerified = $true
+        federatedIdentityCredentialVerified = $true
+        microsoftResourceTenantVerified = $true
+        enterpriseApplicationVerified = $true
+        sitesSelectedVerified = $true
+        exactSharePointSiteVerified = $true
+        siteReadGrantVerified = $true
+        destinationOperatorVerified = [bool]$ExpectedDestinationOperatorAccount
+        resourceOperatorVerified = [bool]$ExpectedResourceOperatorAccount
+        reusableCredentialRetained = $false
+        sourcePayloadRetained = $false
     } | ConvertTo-Json -Depth 4
 }
 finally {
-    if ($connected) {
+    if ($resourceConnected) {
         Disconnect-MgGraph | Out-Null
     }
 }
