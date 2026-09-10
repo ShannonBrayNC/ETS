@@ -74,6 +74,7 @@ custody.
 
 ## Next sequential slice
 
-Add an immutable, separately administered publication adapter and rollback-resistant custody for
-the expected latest-head observation, including publisher-key lifecycle evidence and retrieval
-audits.
+The [publication archive and retrieval-audit profile](publication-archive.md) now adds separately
+keyed logical append-only persistence, expected-head-relative rollback detection, and signed
+retrieval observations. Physical WORM deployment, independently evidenced administration,
+publisher/custodian key lifecycle, replication, and continued availability remain follow-on work.
