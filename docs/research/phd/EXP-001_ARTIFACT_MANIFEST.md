@@ -1,14 +1,12 @@
 # EXP-001 Pre-Execution Artifact Manifest
 
-**Status:** living manifest until final pre-execution freeze  
+**Status:** deterministic packet and assignment freeze complete; external gates remain  
 **Experiment:** EXP-001  
 **Execution state:** NOT EXECUTED
 
 ## Purpose
 
 Track the immutable inputs and controls that must be frozen before confirmatory evaluator exposure.
-
-Git blob SHAs identify repository content versions. Final rendered evaluator packets and generated assignment artifacts SHALL also receive SHA-256 hashes at the final pre-execution freeze.
 
 ## Current frozen design artifacts
 
@@ -23,58 +21,54 @@ Git blob SHAs identify repository content versions. Final rendered evaluator pac
 | Equivalence certification gate | `docs/research/phd/EXP-001_EQUIVALENCE_CERTIFICATION.md` | frozen design |
 | Assignment/randomization procedure | `docs/research/phd/EXP-001_ASSIGNMENT_AND_RANDOMIZATION.md` | frozen design |
 | Assignment matrix | `docs/research/phd/EXP-001_ASSIGNMENT_MATRIX.md` | frozen pre-outcome |
+| Assignment freeze | `docs/research/phd/EXP-001_ASSIGNMENT_FREEZE.md` | frozen; all 12 orders materialized |
 | Human-subjects decision memo | `docs/research/phd/EXP-001_HUMAN_SUBJECTS_DECISION_MEMO.md` | pre-recruitment control |
 | Packet source | `docs/research/phd/exp001-packets/packet_source.json` | frozen source |
 | Packet renderer | `docs/research/phd/exp001-packets/generate_packets.py` | frozen renderer |
-| Expected packet hashes | `docs/research/phd/exp001-packets/rendered_sha256.expected.json` | **discrepancy detected; not validated** |
-| Packet freeze verifier | `docs/research/phd/exp001-packets/verify_packet_freeze.py` | frozen verifier |
-| Packet freeze discrepancy record | `docs/research/phd/exp001-packets/PACKET_FREEZE_DISCREPANCY.md` | active blocking record |
+| Historical expected packet hashes | `docs/research/phd/exp001-packets/rendered_sha256.expected.json` | retained discrepancy evidence; superseded for authoritative use |
+| Authoritative packet hashes | `docs/research/phd/exp001-packets/rendered_sha256.authoritative.json` | deterministic two-pass freeze PASS |
+| Rendered evaluator packets | `docs/research/phd/exp001-packets/rendered/` | 36 files materialized and frozen |
+| Authoritative assignment JSON | `docs/research/phd/exp001-packets/assignment_matrix.authoritative.json` | frozen |
+| Authoritative scenario-order JSON | `docs/research/phd/exp001-packets/scenario_order.authoritative.json` | frozen |
+| Packet freeze discrepancy record | `docs/research/phd/exp001-packets/PACKET_FREEZE_DISCREPANCY.md` | historical blocking record; preserved |
+| Packet freeze resolution | `docs/research/phd/EXP-001_PACKET_FREEZE_RESOLUTION.md` | current reconciliation result |
 
-## Packet-freeze integrity finding
+## Deterministic packet freeze
 
-A pre-execution regeneration check found that the currently committed packet source/renderer do not reproduce the SHA-256 values stored in `rendered_sha256.expected.json`.
+The packet source and renderer were regenerated twice from the WP2 baseline before evaluator exposure. Both runs produced exactly 36 packets and identical SHA-256 sets.
 
-The expected manifest is therefore **not accepted as authoritative** until the discrepancy is resolved in a clean environment and documented prospectively. It must not be silently replaced.
+- WP2 baseline commit: `ace12315203396de4b961cd50234d9c248d6f961`
+- packet source Git blob: `47984a13eb484e3f3737ac6afcfc2633415ff033`
+- renderer Git blob: `488a449685229c605eb0c76755443a5309a8e678`
+- authoritative packet-manifest Git blob: `6e8040ef9f1e9a5fec5705db0c19b26255c8f045`
+- packet count: 36
+- repeated-render result: PASS
+- execution state: NOT EXECUTED
 
-No rendered packet is confirmatory-frozen while this gate fails.
+The earlier `rendered_sha256.expected.json` is preserved as evidence of the failed first freeze and is not treated as authoritative.
 
 ## Frozen assignment controls
 
 - seed: `a5c57f031335d92aa42b64affd657334`
 - opaque mapping: Condition A -> Format M; Condition B -> Format R; Condition C -> Format K
 - prospective evaluator slots: E01-E12
-- per-scenario balance: 4 observations per format across 12 slots
-- per-evaluator balance: 4 scenarios per format
-- scenario orders: frozen in `EXP-001_ASSIGNMENT_MATRIX.md`
+- per-scenario balance: four observations per format across 12 slots
+- per-evaluator balance: four scenarios per format
+- all E01-E12 scenario orders are materialized prospectively
+- assignment matrix Git blob: `41970b5247d12a770bcec6be9e9e4b2dadcaae4f`
+- scenario-order Git blob: `3dfa041de83b2a8ec220e511e133822f6aef0672`
+- assignment matrix SHA-256: `e0157c341f68fd7a8ecb6bc4454c8ab59a032da814bb097bb7fd70df36ef12d1`
+- scenario-order SHA-256: `657b0fd2c07fe8aa2855ff824525891a93f886b17256885327420fcb24035b05`
 
 No participant identity or outcome data was used to create these assignments.
 
-## Required generated/review artifacts before execution
+## Remaining blocking gates before confirmatory evaluator exposure
 
-The following remain blocking:
-
-1. a clean reproduction run identifying and resolving the packet-hash discrepancy;
-2. 36 rendered evaluator packets whose bytes match the authoritative replacement/final SHA-256 manifest;
-3. completed independent fact-equivalence certification for all 12 scenario triplets;
-4. SHA-256 hash list for the final assignment and scenario-order artifacts;
-5. participant information/consent artifact if required;
-6. institutional human-subjects determination record;
-7. final analysis script/notebook implementation matching the frozen skeleton, containing no result data before execution.
-
-## Final freeze procedure
-
-Immediately before evaluator recruitment:
-
-1. verify the branch/commit containing all design artifacts;
-2. resolve the packet-hash discrepancy and preserve the failing comparison evidence;
-3. materialize all 36 packets from the authoritative source/renderer;
-4. independently review fact equivalence;
-5. compute SHA-256 for every packet and generated control artifact;
-6. update this manifest with exact hashes;
-7. commit the final manifest;
-8. record the final pre-execution commit SHA in `EXPERIMENT_LEDGER.md`;
-9. confirm institutional human-subjects determination is on file where required;
-10. only then permit confirmatory evaluator exposure.
+1. independent fact-equivalence certification for all 12 A/B/C scenario triplets;
+2. participant information/consent artifact if required by the governing institution;
+3. institutional human-subjects determination record;
+4. final analysis script/notebook implementation matching the frozen analysis skeleton, containing no result data;
+5. final pre-execution commit SHA recorded in `EXPERIMENT_LEDGER.md` after the external review gates are satisfied.
 
 ## Mutation rule
 
@@ -84,4 +78,4 @@ After the final pre-execution manifest commit, any substantive artifact change m
 
 **NOT READY FOR CONFIRMATORY EXECUTION.**
 
-The assignment design is now frozen, but packet-hash validation, rendered packet freeze, independent equivalence certification, final control hashes, and institutional human-subjects determination remain outstanding.
+The deterministic packet freeze, rendered packet materialization, seed, format mapping, assignment matrix, and all scenario orders are frozen. Independent equivalence certification, institutional human-subjects determination, and the final no-results analysis implementation remain outstanding.
