@@ -32,6 +32,8 @@ $ErrorActionPreference = 'Stop'
 
 $graphAppId = '00000003-0000-0000-c000-000000000000'
 $tokenExchangeAudience = 'api://AzureADTokenExchange'
+$approvedSharePointHostname = 'echomediaai.sharepoint.com'
+$approvedSitePath = '/sites/ETS'
 $destinationScopes = @('Application.Read.All')
 $resourceScopes = @(
     'Application.Read.All',
@@ -144,8 +146,11 @@ Assert-Command -Name 'Invoke-MgGraphRequest'
 if ($DestinationAzureTenantId -eq $MicrosoftResourceTenantId) {
     throw 'Cross-tenant preview requires distinct Azure and Microsoft resource tenants.'
 }
-if ($SharePointHostname -notmatch '\.sharepoint\.com$') {
-    throw 'SharePointHostname must end in .sharepoint.com.'
+if ($SharePointHostname -cne $approvedSharePointHostname) {
+    throw 'SharePointHostname must match the approved EchoMedia SharePoint hostname exactly.'
+}
+if ($SitePath -cne $approvedSitePath) {
+    throw 'SitePath must match the approved ETS SharePoint site path exactly.'
 }
 
 $azureAccount = az account show --output json | ConvertFrom-Json
