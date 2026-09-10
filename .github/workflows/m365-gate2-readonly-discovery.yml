@@ -62,6 +62,8 @@ jobs:
             exit 2
           fi
           printf 'principal_id=%s\n' "$principal_id" >> "$GITHUB_OUTPUT"
+          echo 'destination_azure_context=verified'
+          echo 'destination_gateway_uami=verified'
           echo 'destination_azure_context=verified' >> "$GITHUB_STEP_SUMMARY"
           echo 'destination_gateway_uami=verified' >> "$GITHUB_STEP_SUMMARY"
 
@@ -84,6 +86,7 @@ jobs:
             exit 2
           fi
           printf 'tenant_id=%s\n' "$resource_tenant_id" >> "$GITHUB_OUTPUT"
+          echo "microsoft_resource_tenant_id=$resource_tenant_id"
           echo "microsoft_resource_tenant_id=$resource_tenant_id" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Read destination application and FIC state through Microsoft Graph
@@ -101,18 +104,22 @@ jobs:
           set -e
 
           if [[ $graph_status -ne 0 ]]; then
+            echo 'first_blocker=destination_graph_read_authority'
             echo 'first_blocker=destination_graph_read_authority' >> "$GITHUB_STEP_SUMMARY"
             echo 'mutation_performed=false' >> "$GITHUB_STEP_SUMMARY"
             if grep -Eqi '403|Authorization_RequestDenied|Insufficient privileges' "$error_file"; then
+              echo 'graph_result=read_denied'
               echo 'graph_result=read_denied' >> "$GITHUB_STEP_SUMMARY"
               exit 3
             fi
+            echo 'graph_result=read_failed'
             echo 'graph_result=read_failed' >> "$GITHUB_STEP_SUMMARY"
             exit 3
           fi
 
           count="$(jq '.value | length' <<<"$app_json")"
           if [[ "$count" -eq 0 ]]; then
+            echo 'first_missing_stage=destination_multitenant_application'
             echo 'first_missing_stage=destination_multitenant_application' >> "$GITHUB_STEP_SUMMARY"
             echo 'mutation_required=true' >> "$GITHUB_STEP_SUMMARY"
             echo 'mutation_performed=false' >> "$GITHUB_STEP_SUMMARY"
@@ -126,6 +133,7 @@ jobs:
           object_id="$(jq -r '.value[0].id' <<<"$app_json")"
           audience="$(jq -r '.value[0].signInAudience' <<<"$app_json")"
           if [[ "$audience" != 'AzureADMultipleOrgs' ]]; then
+            echo 'first_missing_stage=destination_multitenant_application_configuration'
             echo 'first_missing_stage=destination_multitenant_application_configuration' >> "$GITHUB_STEP_SUMMARY"
             echo 'mutation_required=true' >> "$GITHUB_STEP_SUMMARY"
             echo 'mutation_performed=false' >> "$GITHUB_STEP_SUMMARY"
@@ -142,6 +150,7 @@ jobs:
             <<<"$fic_json")"
 
           if [[ "$fic_count" -eq 0 ]]; then
+            echo 'first_missing_stage=destination_federated_identity_credential'
             echo 'first_missing_stage=destination_federated_identity_credential' >> "$GITHUB_STEP_SUMMARY"
             echo 'mutation_required=true' >> "$GITHUB_STEP_SUMMARY"
             echo 'mutation_performed=false' >> "$GITHUB_STEP_SUMMARY"
@@ -152,6 +161,7 @@ jobs:
             exit 2
           fi
 
+          echo 'destination_federation_state=exact'
           echo 'destination_federation_state=exact' >> "$GITHUB_STEP_SUMMARY"
           echo 'next_stage=resource_tenant_enterprise_application_readback' >> "$GITHUB_STEP_SUMMARY"
           echo 'mutation_performed=false' >> "$GITHUB_STEP_SUMMARY"
