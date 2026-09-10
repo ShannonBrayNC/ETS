@@ -66,6 +66,32 @@ def test_stage1_apply_fails_closed_and_revalidates_shape() -> None:
         assert marker in SCRIPT
 
 
+def test_stage1_graph_reads_are_windows_safe_and_fail_closed() -> None:
+    assert "applications?`$filter=$filter&" not in SCRIPT
+    assert "function Invoke-AzRestGetJson" in SCRIPT
+    assert "& az rest --method get --url $Uri --output json" in SCRIPT
+    assert "if ($exitCode -ne 0)" in SCRIPT
+    assert "Destination application lookup" in SCRIPT
+    assert "Destination application detail read" in SCRIPT
+
+
+def test_stage1_lookup_results_are_always_arrays() -> None:
+    initial_lookup = (
+        "$matches = @(Get-ApplicationMatches -DisplayName $ApplicationDisplayName)"
+    )
+    post_lookup = (
+        "$postMatches = @(Get-ApplicationMatches -DisplayName $ApplicationDisplayName)"
+    )
+    assert initial_lookup in SCRIPT
+    assert post_lookup in SCRIPT
+
+
+def test_stage1_create_checks_native_exit_code() -> None:
+    assert "$createExitCode = $LASTEXITCODE" in SCRIPT
+    assert "if ($createExitCode -ne 0)" in SCRIPT
+    assert "Destination application creation failed with exit code" in SCRIPT
+
+
 def test_stage1_result_explicitly_denies_later_stage_claims() -> None:
     assert "federatedIdentityCredentialCreated = $false" in SCRIPT
     assert "resourceTenantServicePrincipalCreated = $false" in SCRIPT
