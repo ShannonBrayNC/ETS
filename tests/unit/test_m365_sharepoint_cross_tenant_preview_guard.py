@@ -51,6 +51,11 @@ def test_preview_requires_exact_cross_tenant_federation_contract():
     assert "appOwnerOrganizationId -ne $DestinationAzureTenantId" in PREVIEW
 
 
+def test_preview_normalizes_service_principal_lookup_results():
+    assert "$connectorMatches = @(Get-ServicePrincipalByAppId -AppId $applicationId)" in PREVIEW
+    assert "$graphMatches = @(Get-ServicePrincipalByAppId -AppId $graphAppId)" in PREVIEW
+
+
 def test_preview_requires_minimal_resource_permissions():
     assert "Sites.Selected" in PREVIEW
     assert "unexpected Graph permission set" in PREVIEW
