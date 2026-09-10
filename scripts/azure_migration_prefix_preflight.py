@@ -301,7 +301,14 @@ def _verify_gateway_files(account: str, share_name: str) -> int:
     )
     names = {str(item.get("name", "")) for item in files}
     if names != EXPECTED_GATEWAY_FILES:
-        raise MigrationControlError("Destination Gateway initialization file set changed")
+        missing = sorted(EXPECTED_GATEWAY_FILES - names)
+        unexpected = sorted(names - EXPECTED_GATEWAY_FILES)
+        missing_summary = ",".join(missing) if missing else "none"
+        unexpected_summary = ",".join(unexpected) if unexpected else "none"
+        raise MigrationControlError(
+            "Destination Gateway initialization file set changed "
+            f"(missing={missing_summary}; unexpected={unexpected_summary})"
+        )
     return len(files)
 
 
