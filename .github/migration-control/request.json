@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
   "target": "destination",
-  "operation": "inventory",
-  "request_id": "destination-refresh-after-protected-preflight-failure-20260909T0005Z"
+  "operation": "identity_names",
+  "request_id": "destination-identity-names-gate2-20260910T0255Z"
 }
