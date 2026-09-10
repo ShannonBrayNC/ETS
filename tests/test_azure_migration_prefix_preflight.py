@@ -175,6 +175,94 @@ class PrefixPreflightTests(unittest.TestCase):
                     ):
                         verify_destination_prefix(manifest)
 
+    def test_verify_accepts_empty_gateway_sync_wal_sidecars(self) -> None:
+        source_state = _validated_state(_entities(2))
+        manifest_payload = {
+            "manifest_version": 1,
+            "source_next_index": source_state["next_index"],
+            "metadata_digest": source_state["metadata_digest"],
+            "pair_digests": source_state["pair_digests"],
+        }
+
+        def destination_read(args: list[str]):
+            if args[:2] == ["containerapp", "list"]:
+                return [
+                    {"name": "core", "min": 0, "max": 1},
+                    {"name": "gateway", "min": 0, "max": 1},
+                ]
+            if args[:3] == ["containerapp", "replica", "list"]:
+                return []
+            if args[:2] == ["resource", "list"]:
+                return [{"name": "corestore"}, {"name": "etsgwstate"}]
+            if args[:3] == ["storage", "entity", "query"]:
+                return {"items": _entities(1)}
+            if args[:3] == ["storage", "file", "list"]:
+                return [
+                    {"name": "connector-runtime.db", "contentLength": 4096},
+                    {"name": "gateway-events.db", "contentLength": 4096},
+                    {"name": "gateway-sync.db", "contentLength": 4096},
+                    {"name": "gateway-sync.db-shm", "contentLength": 32768},
+                    {"name": "gateway-sync.db-wal", "contentLength": 0},
+                ]
+            raise AssertionError(args)
+
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "prefix.json"
+            manifest.write_text(json.dumps(manifest_payload), encoding="utf-8")
+            with patch.dict(os.environ, self.destination_env, clear=True):
+                with patch(
+                    "scripts.azure_migration_prefix_preflight.az_json",
+                    side_effect=destination_read,
+                ):
+                    result = verify_destination_prefix(manifest)
+
+        self.assertEqual(result["gateway_root_entries"], 5)
+
+    def test_verify_rejects_nonempty_gateway_sync_wal_sidecar(self) -> None:
+        source_state = _validated_state(_entities(2))
+        manifest_payload = {
+            "manifest_version": 1,
+            "source_next_index": source_state["next_index"],
+            "metadata_digest": source_state["metadata_digest"],
+            "pair_digests": source_state["pair_digests"],
+        }
+
+        def destination_read(args: list[str]):
+            if args[:2] == ["containerapp", "list"]:
+                return [
+                    {"name": "core", "min": 0, "max": 1},
+                    {"name": "gateway", "min": 0, "max": 1},
+                ]
+            if args[:3] == ["containerapp", "replica", "list"]:
+                return []
+            if args[:2] == ["resource", "list"]:
+                return [{"name": "corestore"}, {"name": "etsgwstate"}]
+            if args[:3] == ["storage", "entity", "query"]:
+                return {"items": _entities(1)}
+            if args[:3] == ["storage", "file", "list"]:
+                return [
+                    {"name": "connector-runtime.db", "contentLength": 4096},
+                    {"name": "gateway-events.db", "contentLength": 4096},
+                    {"name": "gateway-sync.db", "contentLength": 4096},
+                    {"name": "gateway-sync.db-shm", "contentLength": 32768},
+                    {"name": "gateway-sync.db-wal", "contentLength": 8192},
+                ]
+            raise AssertionError(args)
+
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "prefix.json"
+            manifest.write_text(json.dumps(manifest_payload), encoding="utf-8")
+            with patch.dict(os.environ, self.destination_env, clear=True):
+                with patch(
+                    "scripts.azure_migration_prefix_preflight.az_json",
+                    side_effect=destination_read,
+                ):
+                    with self.assertRaisesRegex(
+                        MigrationControlError,
+                        r"WAL contains uncheckpointed state .*bytes=8192",
+                    ):
+                        verify_destination_prefix(manifest)
+
     def test_verify_rejects_divergent_destination_prefix(self) -> None:
         source_state = _validated_state(_entities(2))
         manifest_payload = {
