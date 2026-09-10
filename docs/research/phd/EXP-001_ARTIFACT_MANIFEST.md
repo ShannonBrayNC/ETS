@@ -1,6 +1,6 @@
 # EXP-001 Pre-Execution Artifact Manifest
 
-**Status:** deterministic internal freeze complete; independent/institutional gates remain  
+**Status:** deterministic internal freeze complete; external gate packets submission-ready  
 **Experiment:** EXP-001  
 **Execution state:** NOT EXECUTED
 
@@ -22,10 +22,14 @@ Track the immutable inputs and controls that must be frozen before confirmatory 
 | Condition rendering contract | `docs/research/phd/EXP-001_CONDITION_PACKAGES.md` | frozen design |
 | Equivalence certification gate | `docs/research/phd/EXP-001_EQUIVALENCE_CERTIFICATION.md` | frozen design |
 | Independent-review packet | `docs/research/phd/exp001-equivalence/` | scaffolding ready; certification not complete |
+| Independent reviewer handoff | `docs/research/phd/EXP-001_INDEPENDENT_REVIEWER_HANDOFF.md` | handoff-ready; no certification claimed |
 | Assignment/randomization procedure | `docs/research/phd/EXP-001_ASSIGNMENT_AND_RANDOMIZATION.md` | frozen design |
 | Assignment matrix | `docs/research/phd/EXP-001_ASSIGNMENT_MATRIX.md` | frozen pre-outcome |
 | Assignment freeze | `docs/research/phd/EXP-001_ASSIGNMENT_FREEZE.md` | frozen; all 12 orders materialized |
 | Human-subjects decision memo | `docs/research/phd/EXP-001_HUMAN_SUBJECTS_DECISION_MEMO.md` | pre-recruitment control |
+| Institutional review packet | `docs/research/phd/EXP-001_INSTITUTIONAL_REVIEW_PACKET.md` | submission-ready draft; no determination claimed |
+| Institutional submission cover memo | `docs/research/phd/EXP-001_INSTITUTIONAL_SUBMISSION_COVER_MEMO.md` | submission-ready draft |
+| Participant information draft | `docs/research/phd/EXP-001_PARTICIPANT_INFORMATION_DRAFT.md` | draft only; not approved for recruitment |
 | Packet source | `docs/research/phd/exp001-packets/packet_source.json` | frozen source |
 | Packet renderer | `docs/research/phd/exp001-packets/generate_packets.py` | frozen renderer |
 | Historical expected packet hashes | `docs/research/phd/exp001-packets/rendered_sha256.expected.json` | retained discrepancy evidence; superseded for authoritative use |
@@ -67,22 +71,31 @@ No participant identity or outcome data was used to create these assignments.
 
 ## Analysis implementation state
 
-The frozen analysis skeleton now has a corresponding executable descriptive-analysis implementation. It requires the three preregistered input tables, validates their schemas and assignment consistency, and reports the preregistered condition summaries with raw numerators and denominators.
+The frozen analysis skeleton has a corresponding executable descriptive-analysis implementation. It requires the three preregistered input tables, validates their schemas and assignment consistency, and reports the preregistered condition summaries with raw numerators and denominators.
 
 The implementation contains no participant data, no synthetic result presented as experimental evidence, and no outcome-dependent inferential-test selection. Inferential analysis remains bounded by the frozen analysis skeleton.
 
 ## Independent equivalence-review state
 
-Reviewer-facing certification scaffolding now exists for all 12 scenario triplets. It reproduces the mandatory equivalence checks and explicitly prohibits author-only review from satisfying confirmatory readiness.
+Reviewer-facing certification scaffolding exists for all 12 scenario triplets. The dedicated independent-review handoff document now packages the review objective, mandatory checks, materiality rule, permitted outcomes, disagreement handling, attestation fields, and completion gate.
 
-No independent reviewer has yet certified the 12 triplets. The presence of review forms is not a certification result.
+No independent reviewer has yet certified the 12 triplets. The presence of review forms or a reviewer packet is not a certification result.
+
+## Institutional review state
+
+A submission-ready institutional packet and cover memo now describe the study design, intended adult participant population, data fields, foreseeable risks, risk-minimization measures, privacy boundaries, frozen analysis plan, completed pre-execution controls, and the exact determination being requested.
+
+A neutral participant-information draft also exists for institutional revision if needed. It is explicitly marked not approved for recruitment and contains no fabricated institutional contact, retention period, compensation promise, consent mechanism, or approval language.
+
+No institutional human-subjects determination has yet been obtained or claimed.
 
 ## Remaining blocking gates before confirmatory evaluator exposure
 
 1. completed independent fact-equivalence certification for all 12 A/B/C scenario triplets;
-2. participant information/consent artifact if required by the governing institution;
-3. institutional human-subjects determination record;
-4. final pre-execution commit SHA recorded in `EXPERIMENT_LEDGER.md` only after the external gates are satisfied.
+2. written governing institutional human-subjects determination;
+3. institutionally required participant-information/consent approval, if applicable;
+4. any institutionally required investigator training, affiliation, privacy, retention, recruitment, or compensation controls;
+5. final pre-execution commit SHA recorded in `EXPERIMENT_LEDGER.md` only after all applicable external gates are satisfied.
 
 ## Mutation rule
 
@@ -92,4 +105,4 @@ After the final pre-execution manifest commit, any substantive artifact change m
 
 **NOT READY FOR CONFIRMATORY EXECUTION.**
 
-All internal deterministic packet, assignment, and no-results analysis preparation is substantially complete. The remaining blockers are independent fact-equivalence certification and the governing institutional human-subjects determination, plus any participant-information artifact that determination requires.
+All internal deterministic packet, assignment, no-results analysis, institutional-submission, and independent-review handoff preparation is substantially complete. The remaining blockers require independent or institutional action and must not be self-attested by the investigator.
