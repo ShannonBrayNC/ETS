@@ -1,9 +1,7 @@
-from pathlib import Path
+PREVIEW_PATH = "scripts/m365/preview-ets-sharepoint-cross-tenant-bootstrap.ps1"
 
-ROOT = Path(__file__).resolve().parents[2]
-PREVIEW = (
-    ROOT / "scripts" / "m365" / "preview-ets-sharepoint-cross-tenant-bootstrap.ps1"
-).read_text(encoding="utf-8")
+with open(PREVIEW_PATH, encoding="utf-8") as preview_stream:
+    PREVIEW = preview_stream.read()
 NORMALIZED_PREVIEW = " ".join(PREVIEW.split()).casefold()
 
 
