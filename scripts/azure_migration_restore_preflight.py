@@ -92,6 +92,25 @@ def _verify_zero_replicas(resource_group: str) -> list[str]:
     return sorted(names)
 
 
+def _evidence_state_summary(entities: list[dict[str, Any]]) -> str:
+    """Return only sanitized structural state for blocked-preflight diagnostics."""
+    metadata_rows = [
+        entity
+        for entity in entities
+        if entity.get("RowKey") == "meta" and entity.get("kind") == "metadata"
+    ]
+    next_indexes = sorted(
+        str(entity.get("next_index"))
+        for entity in metadata_rows
+        if entity.get("next_index") is not None
+    )
+    next_index_summary = ",".join(next_indexes) if next_indexes else "none"
+    return (
+        f"entities={len(entities)}, metadata_rows={len(metadata_rows)}, "
+        f"metadata_next_index={next_index_summary}"
+    )
+
+
 def _verify_initialized_state(resource_group: str) -> dict[str, Any]:
     core_account, gateway_account = _discover_storage_accounts(resource_group)
     table_name = _required_env("MIGRATION_EVIDENCE_TABLE")
@@ -119,8 +138,11 @@ def _verify_initialized_state(resource_group: str) -> dict[str, Any]:
             ]
         )
     )
+    evidence_state = _evidence_state_summary(entities)
     if len(entities) != 1:
-        raise MigrationControlError("Destination ETSEvents is no longer initialization-only")
+        raise MigrationControlError(
+            f"Destination ETSEvents is no longer initialization-only ({evidence_state})"
+        )
     metadata = entities[0]
     if (
         metadata.get("RowKey") != "meta"
@@ -129,7 +151,9 @@ def _verify_initialized_state(resource_group: str) -> dict[str, Any]:
         or metadata.get("schema_version") != 1
         or metadata.get("log_id") != "ets-live-primary"
     ):
-        raise MigrationControlError("Destination ETSEvents initialization metadata changed")
+        raise MigrationControlError(
+            f"Destination ETSEvents initialization metadata changed ({evidence_state})"
+        )
 
     files = _items(
         az_json(
