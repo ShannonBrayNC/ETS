@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 from statistics import mean, median
 from typing import Any
@@ -117,14 +117,16 @@ def summarize_condition(
     answered = [row for row in responses if row["condition_code"] == condition]
     scored = [row for row in scores if row["condition_code"] == condition]
     labels = Counter(row["primary_label"] for row in scored)
-    assertion_count = sum(labels[label] for label in LABELS - {"NOT_APPLICABLE"})
+    assertion_count = sum(
+        labels[label] for label in LABELS - {"NOT_APPLICABLE"}
+    )
     supported = labels["SUPPORTED"]
-    denominators: dict[str, int] = {}
     errors: dict[str, dict[str, float | int | None]] = {}
     for name, field in ERROR_FIELDS.items():
-        denominator = sum(1 for row in scored if row["primary_label"] != "NOT_APPLICABLE")
+        denominator = sum(
+            1 for row in scored if row["primary_label"] != "NOT_APPLICABLE"
+        )
         numerator = sum(1 for row in scored if truthy(row[field]))
-        denominators[name] = denominator
         errors[name] = {
             "numerator": numerator,
             "denominator": denominator,
@@ -132,7 +134,9 @@ def summarize_condition(
         }
     elapsed = [float(row["elapsed_seconds"]) for row in answered]
     confidence = Counter(int(row["confidence_1_to_5"]) for row in answered)
-    precision_denominator = supported + labels["UNSUPPORTED"] + labels["CONTRADICTED"]
+    precision_denominator = (
+        supported + labels["UNSUPPORTED"] + labels["CONTRADICTED"]
+    )
     return {
         "condition": condition,
         "evaluator_count": len({row["evaluator_id"] for row in assigned}),
@@ -143,13 +147,19 @@ def summarize_condition(
         "supported_claim_precision": {
             "numerator": supported,
             "denominator": precision_denominator,
-            "rate": supported / precision_denominator if precision_denominator else None,
+            "rate": (
+                supported / precision_denominator
+                if precision_denominator
+                else None
+            ),
         },
         "reconstruction_time_seconds": {
             "mean": mean(elapsed) if elapsed else None,
             "median": median(elapsed) if elapsed else None,
         },
-        "confidence_distribution": {str(score): confidence[score] for score in range(1, 6)},
+        "confidence_distribution": {
+            str(score): confidence[score] for score in range(1, 6)
+        },
     }
 
 
@@ -176,7 +186,8 @@ def main() -> int:
         "analysis_scope": "preregistered descriptive metrics",
         "conditions": summaries,
     }
-    args.output.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    rendered = json.dumps(output, indent=2, sort_keys=True) + "\n"
+    args.output.write_text(rendered, encoding="utf-8")
     return 0
 
 
