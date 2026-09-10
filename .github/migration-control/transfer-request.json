@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "operation": "protected-transfer-preflight",
-  "request_id": "protected-transfer-preflight-prefix-discovery-fix-20260910T0042Z",
+  "request_id": "protected-transfer-preflight-gateway-drift-20260910T0140Z",
   "source": "rg-ets-live-eastus",
   "destination": "rg-ets-prod-eastus",
   "writes_authorized": false
