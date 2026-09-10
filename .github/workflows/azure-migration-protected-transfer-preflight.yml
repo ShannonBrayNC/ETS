@@ -77,6 +77,20 @@ jobs:
             --expected-tenant "$SOURCE_TENANT_ID" \
             --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
 
+      - name: Capture ephemeral source evidence manifest
+        shell: bash
+        env:
+          MIGRATION_RESOURCE_GROUP: rg-ets-live-eastus
+          MIGRATION_EVIDENCE_TABLE: ETSEvents
+          MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_prefix_preflight \
+            --mode capture-source \
+            --manifest "$RUNNER_TEMP/ets-source-prefix.json" \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
+
       - name: Clear source Azure session
         shell: bash
         run: az account clear
@@ -88,7 +102,7 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Verify destination remains fenced and initialization-only
+      - name: Verify destination is a fenced exact source prefix
         shell: bash
         env:
           MIGRATION_RESOURCE_GROUP: rg-ets-prod-eastus
@@ -96,9 +110,16 @@ jobs:
           MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
         run: |
           set -euo pipefail
-          python -m scripts.azure_migration_restore_preflight \
+          python -m scripts.azure_migration_prefix_preflight \
+            --mode verify-destination \
+            --manifest "$RUNNER_TEMP/ets-source-prefix.json" \
             --expected-tenant "$DEST_TENANT_ID" \
             --expected-subscription "$DEST_SUBSCRIPTION_ID"
+
+      - name: Remove ephemeral source evidence manifest
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/ets-source-prefix.json"
 
       - name: Confirm no protected-state writes are implemented
         shell: bash
@@ -109,11 +130,13 @@ jobs:
 
           - source identity: `read-only`
           - destination identity: `scoped restore identity`
-          - source bytes copied: `no`
+          - source bytes copied to destination: `no`
           - destination entities/files changed: `no`
           - writer activated: `no`
 
-          This preflight proves the approval-gated cross-tenant identity path only.
-          It intentionally contains no protected-state export, upload, delete, replace,
-          merge, or writer-activation command.
+          This preflight proves the approval-gated cross-tenant identity path and
+          exact destination evidence-prefix equivalence only. The source manifest is
+          ephemeral runner-local digest material and is deleted before job completion.
+          The workflow contains no protected-state upload, delete, replace, merge,
+          or writer-activation command.
           EOF
