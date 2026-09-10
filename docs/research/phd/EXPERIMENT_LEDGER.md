@@ -100,6 +100,41 @@ Passing CI is not automatically a research result. A CI test becomes research-re
 - **Existing basis:** EAQ research program.
 - **Next academic step:** execute bounded, authorized, isolated experiment series and publish negative as well as positive findings.
 
+## Prospective experiment registrations
+
+### EXP-001 — Bounded Evidence Graph reconstruction comparison
+
+- **Record type:** prospective
+- **Research questions:** RQ1, RQ2, RQ3
+- **Hypotheses:** H-C001-A, H-C002-A, H-C002-B, H-C002-C
+- **Contribution IDs:** EA-C001, EA-C002
+- **Date/time:** registered 2026-09-09; execution not yet performed
+- **Researchers/operators:** to be assigned before execution
+- **Independent variables:** representation condition:
+  1. baseline W3C PROV;
+  2. W3C PROV with domain extensions but no Evidence Architecture verification rules;
+  3. Evidence Architecture representation with bounded verification vectors, epistemic states, edge-as-claim metadata, standing separation, and consequence-stage decomposition.
+- **Dependent variables:** supported-claim precision; unsupported-inference rate; missed-contradiction rate; false-completeness assumption rate; command/result confusion rate; standing/integrity confusion rate; reconstruction time; inter-rater agreement.
+- **Controls/baselines:** matched factual scenarios and matched underlying source evidence across all three representation conditions.
+- **System boundary:** evaluator-facing evidence packages only; no claim that the representation changes real-world truth or source-system correctness.
+- **Threat/fault model:** deliberate missing evidence, contradictory evidence, stale authority/policy state, shared-source dependencies, command without confirmed consequence, and consequence observation that conflicts with intended action.
+- **Input/dataset:** frozen 12-scenario corpus in `EXP-001_SCENARIO_CORPUS.md`.
+- **Protocol:** frozen in `EXP-001_PREREGISTRATION.md`, with neutral packaging, scoring, assignment, and equivalence controls committed separately.
+- **Pre-registered expected outcome:** Condition C is expected to reduce core boundary errors relative to A and B; no effect size is claimed in advance.
+- **Actual outcome:** NOT EXECUTED
+- **Raw artifact locations:** none; no evaluator data exist
+- **Artifact hashes:** design artifact Git blob SHAs tracked in `EXP-001_ARTIFACT_MANIFEST.md`; final SHA-256 packet hashes pending final pre-execution freeze.
+- **Statistical/formal treatment:** frozen analysis skeleton; no result data present.
+- **Anomalies:** none; experiment not executed
+- **Negative results/counterexamples:** must be retained. Failure to improve predeclared metrics narrows or refutes the relevant candidate contribution.
+- **Interpretation:** pending
+- **Alternative explanations:** evaluator training effects, representation verbosity, terminology familiarity, scenario bias, and scoring-rubric bias are predeclared.
+- **Limitations:** evaluator study tests reconstruction/interpretation utility, not cryptographic novelty, real-world truth, legal admissibility, or universal superiority over PROV.
+- **Reproduction instructions:** pre-execution controls committed; final rendered artifacts and assignment set remain pending.
+- **Independent reproduction status:** not attempted
+- **Publication mapping:** candidate foundational Evidence Architecture / Evidence Graph paper.
+- **Current gate state:** NOT READY FOR CONFIRMATORY EXECUTION. Outstanding: 36 rendered packets; independent equivalence certification; seed/assignment artifacts; final SHA-256 manifest; institutional human-subjects determination before recruitment.
+
 ## Negative-result rule
 
 Negative results, failed hypotheses, anomalous runs, and counterexamples must remain in the research record. They may trigger revised hypotheses or contribution boundaries, but they must not be discarded because they weaken a product claim.
