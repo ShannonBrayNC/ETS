@@ -35,8 +35,15 @@ def test_stage1_apply_is_bound_to_approved_destination_and_name() -> None:
         "$approvedApplicationDisplayName = 'ETS Gateway SharePoint Cross-Tenant'"
         in SCRIPT
     )
-    assert "DestinationAzureTenantId must match the approved migration destination tenant exactly." in SCRIPT
-    assert "ApplicationDisplayName must match the approved Gate 2 application name exactly." in SCRIPT
+    tenant_guard = (
+        "DestinationAzureTenantId must match the approved migration destination tenant "
+        "exactly."
+    )
+    name_guard = (
+        "ApplicationDisplayName must match the approved Gate 2 application name exactly."
+    )
+    assert tenant_guard in SCRIPT
+    assert name_guard in SCRIPT
 
 
 def test_stage1_apply_fails_closed_and_revalidates_shape() -> None:
