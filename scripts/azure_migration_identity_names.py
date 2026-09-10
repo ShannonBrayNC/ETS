@@ -18,7 +18,9 @@ def read_identity_names() -> list[str]:
 
     resource_group = os.environ.get("MIGRATION_RESOURCE_GROUP", "").strip()
     if not resource_group:
-        raise MigrationControlError("Required migration variable is missing: MIGRATION_RESOURCE_GROUP")
+        raise MigrationControlError(
+            "Required migration variable is missing: MIGRATION_RESOURCE_GROUP"
+        )
 
     payload = az_json(
         [
@@ -31,21 +33,31 @@ def read_identity_names() -> list[str]:
         ]
     )
     if not isinstance(payload, list) or not payload:
-        raise MigrationControlError("Destination managed-identity inventory is empty or invalid")
+        raise MigrationControlError(
+            "Destination managed-identity inventory is empty or invalid"
+        )
 
     names: list[str] = []
     for value in payload:
         if not isinstance(value, str):
-            raise MigrationControlError("Destination managed-identity inventory has an invalid shape")
+            raise MigrationControlError(
+                "Destination managed-identity inventory has an invalid shape"
+            )
         name = value.strip()
         if not _SAFE_IDENTITY_NAME.fullmatch(name):
-            raise MigrationControlError("Destination managed-identity name is not safe for public output")
+            raise MigrationControlError(
+                "Destination managed-identity name is not safe for public output"
+            )
         names.append(name)
 
     if len(set(names)) != len(names):
-        raise MigrationControlError("Destination managed-identity inventory contains duplicate names")
+        raise MigrationControlError(
+            "Destination managed-identity inventory contains duplicate names"
+        )
     if len(names) > 32:
-        raise MigrationControlError("Destination managed-identity inventory exceeds the bounded limit")
+        raise MigrationControlError(
+            "Destination managed-identity inventory exceeds the bounded limit"
+        )
     return sorted(names, key=str.casefold)
 
 
