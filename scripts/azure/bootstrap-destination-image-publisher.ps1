@@ -32,9 +32,10 @@ function Get-ExactRoleAssignmentCount {
     )
 
     $count = az role assignment list `
+        --all `
         --scope $Scope `
         --assignee-object-id $PrincipalId `
-        --query "[?roleDefinitionName=='$RoleName'] | length(@)" `
+        --query "[?scope=='$Scope' && roleDefinitionName=='$RoleName'] | length(@)" `
         --output tsv
     Assert-AzSuccess -Message "Unable to inspect '$RoleName' at the approved ACR scope."
     return [int]$count
