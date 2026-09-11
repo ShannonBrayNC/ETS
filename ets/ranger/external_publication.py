@@ -580,6 +580,20 @@ def _publication_payload_from_record(receipt: RangerExternalPublicationReceipt) 
     )
 
 
+def external_publication_receipt_signing_payload(
+    receipt: RangerExternalPublicationReceipt,
+) -> dict[str, Any]:
+    """Return the canonical signed payload for one strict publication receipt.
+
+    This additive helper lets a key-lifecycle verifier validate an individual
+    receipt against the historically standing publisher key. It intentionally
+    does not establish the complete publication-chain or expected-head claim.
+    """
+
+    validated = RangerExternalPublicationReceipt.model_validate(receipt.model_dump())
+    return _publication_payload_from_record(validated)
+
+
 def _private_key(value: str) -> Ed25519PrivateKey:
     try:
         return Ed25519PrivateKey.from_private_bytes(bytes.fromhex(value))

@@ -171,6 +171,7 @@ Current implementation increment:
 - [R0.2 trusted-time retained receipts](trusted-time-retained-receipts.md)
 - [R0.2 external publication receipts](external-publication.md)
 - [R0.2 publication archive and retrieval audits](publication-archive.md)
+- [R0.2 publisher/custodian key lifecycle](publication-key-lifecycle.md)
 - [Epistemic identity and bounded observability](epistemic-identity.md)
 - [Cyber-Physical Observability Model](cyber-physical-observability.md)
 - [Ranger Decision Event v0.1 schema](../../../schemas/ranger/decision-event.v0.1.schema.json)
@@ -187,6 +188,7 @@ Current implementation increment:
 - [ADR 0010: trusted-time retained receipts](adr/0010-trusted-time-retained-receipts.md)
 - [ADR 0011: external publication receipts](adr/0011-external-publication-receipts.md)
 - [ADR 0012: publication archive and retrieval audits](adr/0012-publication-archive-retrieval-audits.md)
+- [ADR 0013: publication/custodian key lifecycle](adr/0013-publication-custodian-key-lifecycle.md)
 
 ### R0.1 — Mobility
 - safe rolling chassis
