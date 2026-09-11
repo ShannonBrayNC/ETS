@@ -87,6 +87,13 @@ def test_publisher_bootstrap_is_acr_scoped_and_separate() -> None:
         in BOOTSTRAP
     )
     assert "AcrPush" in BOOTSTRAP
+    assert (
+        "$count = az role assignment list `\n"
+        "        --all `\n"
+        "        --scope $Scope `"
+        in BOOTSTRAP
+    )
+    assert "scope=='$Scope' && roleDefinitionName=='$RoleName'" in BOOTSTRAP
     broad_admin_roles = (
         "Owner','Contributor','User Access Administrator',"
         "'Role Based Access Control Administrator"

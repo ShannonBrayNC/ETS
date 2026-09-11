@@ -112,6 +112,7 @@ def verify_authenticated_publisher_rbac(
             "role",
             "assignment",
             "list",
+            "--all",
             "--scope",
             registry_id,
             "--assignee-object-id",
