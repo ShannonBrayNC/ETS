@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = (ROOT / ".github/workflows/azure-migration-destination-image-publish.yml").read_text(
     encoding="utf-8"
@@ -77,7 +76,14 @@ def test_publisher_bootstrap_is_acr_scoped_and_separate() -> None:
     assert "ets-gh-dst-image-publisher" in BOOTSTRAP
     assert "github-ets-destination-image-publish" in BOOTSTRAP
     assert "LegacyRegistryPermissions" in BOOTSTRAP
-    assert "Container Registry Configuration Reader and Data Access Configuration Reader" in BOOTSTRAP
+    assert (
+        "Container Registry Configuration Reader and Data Access Configuration Reader"
+        in BOOTSTRAP
+    )
     assert "AcrPush" in BOOTSTRAP
-    assert "Owner','Contributor','User Access Administrator','Role Based Access Control Administrator" in BOOTSTRAP
+    broad_admin_roles = (
+        "Owner','Contributor','User Access Administrator',"
+        "'Role Based Access Control Administrator"
+    )
+    assert broad_admin_roles in BOOTSTRAP
     assert "ets-gh-migration-dst-restore" not in BOOTSTRAP
