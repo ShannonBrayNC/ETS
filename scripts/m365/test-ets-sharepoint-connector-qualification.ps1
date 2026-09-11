@@ -29,7 +29,7 @@ param(
 
     [string]$ExpectedDestinationOperatorAccount,
 
-    [string]$ExpectedResourceOperatorAccount
+    [string]$ExpectedResourceOperatorAccount = 'shannon.bray@echomedia.ai'
 )
 
 Set-StrictMode -Version Latest
@@ -131,6 +131,27 @@ function Assert-GraphContext {
     return $context
 }
 
+function Assert-GraphScopes {
+    param(
+        [Parameter(Mandatory = $true)][object]$Context,
+        [Parameter(Mandatory = $true)][string[]]$RequiredScopes
+    )
+
+    if ($Context.AuthType -ne 'Delegated') {
+        throw 'Microsoft Graph resource-tenant qualification requires delegated authentication.'
+    }
+    $effectiveScopes = @($Context.Scopes)
+    $missingScopes = @($RequiredScopes | Where-Object {
+        $effectiveScopes -notcontains $_
+    })
+    if ($missingScopes.Count -gt 0) {
+        throw (
+            'Microsoft Graph resource-tenant token is missing required delegated scopes: ' +
+            ($missingScopes -join ', ')
+        )
+    }
+}
+
 Assert-Command -Name 'az'
 Assert-Command -Name 'Connect-MgGraph'
 Assert-Command -Name 'Disconnect-MgGraph'
@@ -217,11 +238,13 @@ try {
         -TenantId $MicrosoftResourceTenantId `
         -Scopes $resourceScopes `
         -ContextScope Process `
+        -UseDeviceAuthentication `
         -NoWelcome
     $resourceConnected = $true
     $resourceContext = Assert-GraphContext `
         -TenantId $MicrosoftResourceTenantId `
         -ExpectedAccount $ExpectedResourceOperatorAccount
+    Assert-GraphScopes -Context $resourceContext -RequiredScopes $resourceScopes
 
     $organization = Invoke-GraphGet -Uri (
         "https://graph.microsoft.com/v1.0/organization?`$select=id,displayName,verifiedDomains"
@@ -327,8 +350,9 @@ try {
         sitesSelectedVerified = $true
         exactSharePointSiteVerified = $true
         siteReadGrantVerified = $true
+        resourceScopesVerified = $true
         destinationOperatorVerified = [bool]$ExpectedDestinationOperatorAccount
-        resourceOperatorVerified = [bool]$ExpectedResourceOperatorAccount
+        resourceOperatorVerified = $true
         reusableCredentialRetained = $false
         sourcePayloadRetained = $false
     } | ConvertTo-Json -Depth 4
