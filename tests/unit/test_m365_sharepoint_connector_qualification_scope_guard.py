@@ -11,6 +11,17 @@ def test_resource_tenant_qualification_requests_site_read_and_permission_admin_s
     assert "    'Sites.FullControl.All'" in SCRIPT_LINES
 
 
+def test_resource_operator_is_pinned_and_explicitly_authenticated():
+    assert (
+        "[string]$ExpectedResourceOperatorAccount = 'shannon.bray@echomedia.ai'"
+        in SCRIPT
+    )
+    assert "        -UseDeviceAuthentication `" in SCRIPT_LINES
+    assert "Assert-GraphScopes -Context $resourceContext -RequiredScopes $resourceScopes" in SCRIPT
+    assert "resourceScopesVerified = $true" in SCRIPT
+    assert "resourceOperatorVerified = $true" in SCRIPT
+
+
 def test_qualification_remains_read_only():
     for method in ("post", "patch", "put", "delete"):
         assert f"-method {method}" not in NORMALIZED_SCRIPT
