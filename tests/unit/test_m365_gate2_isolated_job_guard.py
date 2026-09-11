@@ -1,7 +1,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "m365" / "invoke-ets-sharepoint-workload-identity-isolated-job.ps1"
+SCRIPT = ROOT / "scripts" / "m365" / "invoke-ets-sharepoint-workload-identity-isolated-job.core.ps1"
 TEXT = SCRIPT.read_text(encoding="utf-8")
 LOWER = TEXT.lower()
 
