@@ -159,6 +159,7 @@ def test_verify_authenticated_publisher_rbac_binds_token_oid_to_direct_acrpush()
         if args[:3] == ["az", "acr", "show"]:
             stdout = registry_id
         elif args[:4] == ["az", "role", "assignment", "list"]:
+            assert "--all" in args
             assert "--assignee-object-id" in args
             assert args[args.index("--assignee-object-id") + 1] == principal_id
             stdout = json.dumps(
