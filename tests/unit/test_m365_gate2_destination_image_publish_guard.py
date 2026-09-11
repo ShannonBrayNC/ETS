@@ -16,10 +16,16 @@ def test_destination_publication_is_hard_bound() -> None:
         "5729a82b-8850-4868-b96c-96c3805cbb9d",
         "rg-ets-shared-eastus",
         "etsprod7c8ab70380",
-        "ets/hosted-q1",
     ):
         assert expected in WORKFLOW
         assert expected in BOOTSTRAP
+
+    assert "ets/hosted-q1" in WORKFLOW
+    assert (
+        "repo:ShannonBrayNC/ETS:environment:"
+        "ets-azure-migration-destination-image-publish"
+        in BOOTSTRAP
+    )
 
 
 def test_publication_uses_oidc_and_no_reusable_registry_secret() -> None:
