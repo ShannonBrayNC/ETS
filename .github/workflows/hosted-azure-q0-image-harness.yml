@@ -11,6 +11,7 @@ on:
       - "scripts/azure/grant-q0-acr-publisher-role.ps1"
       - "scripts/qualify_hosted_azure_live.py"
       - "tests/unit/test_acr_oauth_docker_login.py"
+      - "tests/unit/test_hosted_azure_q0_gate2_image_guard.py"
   workflow_dispatch:
 
 permissions:
@@ -146,8 +147,32 @@ jobs:
         run: |
           set -euo pipefail
           grep -q 'COPY scripts/qualify_hosted_azure_live.py ./scripts/qualify_hosted_azure_live.py' Dockerfile
-          docker build --pull --tag "ets-q0-harness:${GITHUB_SHA}" .
-          docker image inspect "ets-q0-harness:${GITHUB_SHA}" \
+          image="ets-q0-harness:${GITHUB_SHA}"
+          docker build --pull --tag "$image" .
+          docker image inspect "$image" \
             --format '{{json .Config.Cmd}}' \
             > q0-image-command.json
           grep -q 'ets.api.container_entrypoint' q0-image-command.json
+
+          docker run --rm -i --entrypoint python "$image" - <<'PY'
+          import json
+
+          from azure.identity import ClientAssertionCredential
+          from ets.connectors.credentials.azure_managed_identity import (
+              AzureFederatedManagedIdentityCredentialProfile,
+              AzureFederatedManagedIdentityCredentialProvider,
+          )
+
+          assert ClientAssertionCredential is not None
+          assert AzureFederatedManagedIdentityCredentialProfile is not None
+          assert AzureFederatedManagedIdentityCredentialProvider is not None
+          print(
+              json.dumps(
+                  {
+                      "gate2_federated_provider_importable": True,
+                      "client_assertion_credential_importable": True,
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
