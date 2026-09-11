@@ -17,7 +17,6 @@ from typing import Any, Protocol, cast
 
 _DOCKER_TOKEN_USERNAME = "00000000-0000-0000-0000-000000000000"
 _MIN_REFRESH_TOKEN_LENGTH = 32
-_ACR_PUSH_ROLE_ID = "8311e382-0749-4cb8-b61a-304f252e45ec"
 
 
 class UrlResponse(Protocol):
@@ -49,129 +48,58 @@ def _decode_jwt_payload(token: str) -> Mapping[str, Any]:
     return decoded
 
 
-def _run_text(
-    args: list[str],
-    *,
-    runner: CommandRunner,
-) -> str:
-    completed = runner(
-        args,
-        text=True,
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    return completed.stdout.strip()
-
-
-def _role_definition_leaf(assignment: Mapping[str, Any]) -> str:
-    definition = str(assignment.get("roleDefinitionId") or "").rstrip("/")
-    return definition.rsplit("/", 1)[-1] if definition else ""
-
-
-def verify_authenticated_publisher_rbac(
-    *,
-    registry_server: str,
-    aad_access_token: str,
-    role_assignment_mode: str,
-    runner: CommandRunner = _DEFAULT_COMMAND_RUNNER,
-) -> dict[str, object]:
-    """Verify the actual OIDC-authenticated principal owns the direct ACR writer role."""
-    server = registry_server.strip()
-    token = aad_access_token.strip()
+def _expected_writer_role(role_assignment_mode: str) -> str:
     mode = role_assignment_mode.strip()
-    if not server or "/" in server or "://" in server:
-        raise ValueError("registry_server must be an ACR login hostname")
+    if mode in {"LegacyRegistryPermissions", "rbac"}:
+        return "AcrPush"
+    if mode in {"AbacRepositoryPermissions", "rbac-abac"}:
+        return "Container Registry Repository Writer"
+    raise RuntimeError(
+        "Unsupported ACR role-assignment mode for publisher capability verification: "
+        f"{mode}"
+    )
+
+
+def validate_authenticated_publisher_token(
+    *,
+    aad_access_token: str,
+    tenant_id: str,
+    role_assignment_mode: str,
+) -> dict[str, object]:
+    """Validate the short-lived publisher token without requiring RBAC-read privilege.
+
+    Exact role-assignment topology is a control-plane bootstrap responsibility. The
+    protected publisher intentionally does not receive Microsoft.Authorization role
+    assignment read access merely to introspect its own permissions. Effective ACR
+    capability is proven by OAuth exchange, Docker authentication, and the subsequent
+    immutable registry push performed by the publication workflow.
+    """
+    token = aad_access_token.strip()
+    tenant = tenant_id.strip()
     if not token:
         raise ValueError("aad_access_token is required")
-    if not server.endswith(".azurecr.io") or not server.removesuffix(".azurecr.io"):
-        raise RuntimeError(
-            "Q0 publisher RBAC verification requires an Azure public-cloud "
-            "ACR login server"
-        )
+    if not tenant:
+        raise ValueError("tenant_id is required")
 
     payload = _decode_jwt_payload(token)
     principal_object_id = str(payload.get("oid") or "").strip()
-    tenant_id = str(payload.get("tid") or "").strip()
-    if not principal_object_id or not tenant_id:
+    token_tenant_id = str(payload.get("tid") or "").strip()
+    if not principal_object_id or not token_tenant_id:
         raise RuntimeError("ACR-scoped Entra token is missing oid/tid identity claims")
-
-    registry_name = server.removesuffix(".azurecr.io")
-    registry_id = _run_text(
-        ["az", "acr", "show", "--name", registry_name, "--query", "id", "-o", "tsv"],
-        runner=runner,
-    )
-    if not registry_id.startswith("/subscriptions/"):
-        raise RuntimeError(
-            "Unable to resolve the approved ACR resource id for publisher verification"
-        )
-
-    assignments_json = _run_text(
-        [
-            "az",
-            "role",
-            "assignment",
-            "list",
-            "--all",
-            "--scope",
-            registry_id,
-            "--assignee-object-id",
-            principal_object_id,
-            "--fill-principal-name",
-            "false",
-            "--output",
-            "json",
-        ],
-        runner=runner,
-    )
-    decoded_assignments = json.loads(assignments_json or "[]")
-    if not isinstance(decoded_assignments, list):
-        raise RuntimeError("Azure role-assignment query returned a non-list payload")
-    assignments = [item for item in decoded_assignments if isinstance(item, dict)]
-    direct = [
-        item
-        for item in assignments
-        if str(item.get("scope") or "").lower() == registry_id.lower()
-        and str(item.get("principalType") or "").lower() == "serviceprincipal"
-    ]
-
-    expected_role = ""
-    matching: list[Mapping[str, Any]] = []
-    if mode in {"LegacyRegistryPermissions", "rbac"}:
-        expected_role = "AcrPush"
-        matching = [
-            item
-            for item in direct
-            if _role_definition_leaf(item).lower() == _ACR_PUSH_ROLE_ID.lower()
-            or str(item.get("roleDefinitionName") or "").lower() == "acrpush"
-        ]
-    elif mode in {"AbacRepositoryPermissions", "rbac-abac"}:
-        expected_role = "Container Registry Repository Writer"
-        matching = [
-            item
-            for item in direct
-            if str(item.get("roleDefinitionName") or "").lower()
-            == "container registry repository writer"
-        ]
-    else:
-        raise RuntimeError(
-            "Unsupported ACR role-assignment mode for Q0 publisher verification: "
-            f"{mode}"
-        )
-
-    if len(matching) != 1:
-        raise RuntimeError(
-            "Authenticated GitHub OIDC principal does not have exactly one direct "
-            f"{expected_role} assignment at the approved ACR scope"
-        )
+    if token_tenant_id.lower() != tenant.lower():
+        raise RuntimeError("ACR-scoped Entra token tenant does not match Azure context")
 
     return {
-        "schema_version": "ets.host_az.q0_authenticated_publisher_rbac.v1",
-        "role_assignment_mode": mode,
-        "expected_writer_role": expected_role,
-        "authenticated_service_principal": True,
-        "direct_registry_scope_verified": True,
-        "authenticated_writer_role_verified": True,
+        "schema_version": "ets.m365.gate2.publisher_capability_boundary.v1",
+        "role_assignment_mode": role_assignment_mode.strip(),
+        "expected_writer_role": _expected_writer_role(role_assignment_mode),
+        "token_identity_claims_verified": True,
+        "token_tenant_verified": True,
+        "control_plane_rbac_verification": "bootstrap_operator_boundary",
+        "runtime_rbac_enumeration_performed": False,
+        "acr_oauth_exchange_verified": False,
+        "docker_login_verified": False,
+        "effective_push_verified": False,
         "customer_identifiers_retained": False,
         "reusable_credential_retained": False,
     }
@@ -277,27 +205,34 @@ def authenticate_from_environment() -> None:
     tenant = os.environ.get("ACR_TENANT_ID", "")
     access_token = os.environ.get("ACR_AAD_ACCESS_TOKEN", "")
     role_assignment_mode = os.environ.get("ROLE_ASSIGNMENT_MODE", "")
-    rbac_evidence = verify_authenticated_publisher_rbac(
-        registry_server=server,
+
+    evidence = validate_authenticated_publisher_token(
         aad_access_token=access_token,
+        tenant_id=tenant,
         role_assignment_mode=role_assignment_mode,
-    )
-    evidence_path = Path("evidence/host-az-q0-image/authenticated-publisher-rbac.json")
-    evidence_path.parent.mkdir(parents=True, exist_ok=True)
-    evidence_path.write_text(
-        json.dumps(rbac_evidence, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    print(
-        "Authenticated Q0 publisher RBAC boundary verified: "
-        f"{rbac_evidence['expected_writer_role']} at approved ACR scope."
     )
     refresh_token = exchange_refresh_token(
         registry_server=server,
         tenant_id=tenant,
         aad_access_token=access_token,
     )
+    evidence["acr_oauth_exchange_verified"] = True
     docker_login(registry_server=server, refresh_token=refresh_token)
+    evidence["docker_login_verified"] = True
+
+    evidence_dir = Path(os.environ.get("EVIDENCE_DIR", "evidence/host-az-q0-image"))
+    evidence_path = evidence_dir / "authenticated-publisher-capability.json"
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    evidence_path.write_text(
+        json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    print(
+        "Authenticated ACR publisher capability boundary verified: "
+        "token tenant, OAuth exchange, and Docker login passed; exact RBAC topology "
+        "remains bootstrap-controlled and effective push is proven by the subsequent "
+        "immutable image publication."
+    )
 
 
 if __name__ == "__main__":
