@@ -65,6 +65,12 @@ The apply path may create/reuse only:
 It creates no client secret and must stop if the publisher already has Owner,
 Contributor, User Access Administrator, or Role Based Access Control Administrator.
 
+The bootstrap/operator boundary is also the authoritative place to verify the exact
+Azure RBAC assignment topology. The protected publisher intentionally does **not** get
+`Microsoft.Authorization/roleAssignments/read` merely to inspect its own roles. Granting
+that control-plane read privilege would widen the publication identity for no runtime
+need.
+
 ## 2. Configure the protected GitHub environment
 
 Create/protect GitHub environment `ets-azure-migration-destination-image-publish`
@@ -95,14 +101,21 @@ The publication flow:
 1. checks out the exact dispatch SHA;
 2. authenticates through GitHub OIDC;
 3. verifies the destination tenant/subscription and exact ACR posture;
-4. authenticates Docker through direct ACR OAuth exchange;
-5. builds and pushes one image;
-6. requires a canonical immutable SHA-256 digest;
-7. runs the Gate 2 federated-provider import probe against the published digest;
-8. generates SPDX SBOM and HIGH/CRITICAL Trivy evidence;
-9. fails on fixable HIGH/CRITICAL findings;
-10. creates GitHub provenance and SBOM attestations;
-11. uploads non-secret publication evidence.
+4. validates the short-lived ACR token identity/tenant without enumerating Azure RBAC;
+5. authenticates Docker through direct ACR OAuth exchange;
+6. builds and pushes one image, proving effective repository write capability;
+7. requires a canonical immutable SHA-256 digest;
+8. runs the Gate 2 federated-provider import probe against the published digest;
+9. generates SPDX SBOM and HIGH/CRITICAL Trivy evidence;
+10. fails on fixable HIGH/CRITICAL findings;
+11. creates GitHub provenance and SBOM attestations;
+12. uploads non-secret publication evidence.
+
+The publication evidence must distinguish the two boundaries: exact RBAC topology is
+`bootstrap_operator_boundary`; runtime publication proves token tenant, OAuth exchange,
+Docker authentication, and the actual immutable push. A runtime publisher must never
+claim that it re-enumerated its Azure role assignments when it lacks that control-plane
+permission.
 
 The temporary build tag is not an approved deployment reference. Only the emitted
 `<registry>/<repository>@sha256:<digest>` immutable reference may be used in later
