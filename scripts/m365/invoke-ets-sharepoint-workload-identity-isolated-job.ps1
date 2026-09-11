@@ -16,27 +16,93 @@ if (-not (Test-Path $corePath -PathType Leaf)) {
     throw 'Gate 2 isolated-job core script is unavailable.'
 }
 
+function Replace-ExactlyOnce {
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$OldValue,
+        [Parameter(Mandatory = $true)][string]$NewValue,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    $first = $Source.IndexOf($OldValue, [System.StringComparison]::Ordinal)
+    if ($first -lt 0) {
+        throw "Gate 2 isolated-job hotfix target '$Name' was not found."
+    }
+    if ($Source.IndexOf($OldValue, $first + $OldValue.Length, [System.StringComparison]::Ordinal) -ge 0) {
+        throw "Gate 2 isolated-job hotfix target '$Name' is ambiguous."
+    }
+    return $Source.Replace($OldValue, $NewValue)
+}
+
 $source = Get-Content $corePath -Raw -Encoding UTF8
-$oldLine = (
+
+$oldUriLine = (
     '$jobUri = "https://management.azure.com' +
     '$jobResourceId' +
     '?api-version=' +
     '$jobApiVersion"'
 )
-$newLine = '$jobUri = "https://management.azure.com${jobResourceId}?api-version=${jobApiVersion}"'
+$newUriLine = '$jobUri = "https://management.azure.com${jobResourceId}?api-version=${jobApiVersion}"'
+$source = Replace-ExactlyOnce -Source $source -OldValue $oldUriLine -NewValue $newUriLine -Name 'ARM URI'
 
-$first = $source.IndexOf($oldLine, [System.StringComparison]::Ordinal)
-if ($first -lt 0) {
-    throw 'Gate 2 isolated-job URI hotfix target was not found.'
-}
-if ($source.IndexOf($oldLine, $first + $oldLine.Length, [System.StringComparison]::Ordinal) -ge 0) {
-    throw 'Gate 2 isolated-job URI hotfix target is ambiguous.'
-}
-$patched = $source.Replace($oldLine, $newLine)
+$oldBodyJsonLine = '$jobBodyJson = $jobBody | ConvertTo-Json -Depth 30 -Compress'
+$newBodyJsonBlock = @'
+$jobBodyJson = $jobBody | ConvertTo-Json -Depth 30 -Compress
+$jobBodyPath = Join-Path ([System.IO.Path]::GetTempPath()) (
+    'ets-g2q-body-' + [Guid]::NewGuid().ToString('N') + '.json'
+)
+[System.IO.File]::WriteAllText(
+    $jobBodyPath,
+    $jobBodyJson,
+    [System.Text.UTF8Encoding]::new($false)
+)
+$jobBodyReference = "@$jobBodyPath"
+'@
+$source = Replace-ExactlyOnce `
+    -Source $source `
+    -OldValue $oldBodyJsonLine `
+    -NewValue $newBodyJsonBlock `
+    -Name 'ARM request body file staging'
+
+$oldCreateBlock = @'
+    $createdJson = az rest `
+        --method put `
+        --uri $jobUri `
+        --headers 'Content-Type=application/json' `
+        --body $jobBodyJson `
+        --output json
+    if ($LASTEXITCODE -ne 0) {
+        throw "Temporary Gate 2 qualification job creation failed with exit code $LASTEXITCODE."
+    }
+'@
+$newCreateBlock = @'
+    $createdJson = $null
+    $jobCreateExitCode = $null
+    try {
+        $createdJson = az rest `
+            --method put `
+            --uri $jobUri `
+            --headers 'Content-Type=application/json' `
+            --body $jobBodyReference `
+            --output json
+        $jobCreateExitCode = $LASTEXITCODE
+    }
+    finally {
+        Remove-Item -LiteralPath $jobBodyPath -Force -ErrorAction SilentlyContinue
+    }
+    if ($jobCreateExitCode -ne 0) {
+        throw "Temporary Gate 2 qualification job creation failed with exit code $jobCreateExitCode."
+    }
+'@
+$source = Replace-ExactlyOnce `
+    -Source $source `
+    -OldValue $oldCreateBlock `
+    -NewValue $newCreateBlock `
+    -Name 'Windows-safe ARM request submission'
 
 $escapedRoot = $PSScriptRoot.Replace("'", "''")
 $scriptRootLiteral = "'$escapedRoot'"
-$patched = $patched.Replace('$PSScriptRoot', $scriptRootLiteral)
+$source = $source.Replace('$PSScriptRoot', $scriptRootLiteral)
 
-$scriptBlock = [scriptblock]::Create($patched)
+$scriptBlock = [scriptblock]::Create($source)
 & $scriptBlock @PSBoundParameters
