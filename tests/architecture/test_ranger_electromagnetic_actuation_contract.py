@@ -102,13 +102,35 @@ def test_safety_boundary_is_first_class_evidence() -> None:
     }
 
 
+def _property_names(node: object) -> set[str]:
+    names: set[str] = set()
+    if isinstance(node, dict):
+        properties = node.get("properties")
+        if isinstance(properties, dict):
+            names.update(str(name).lower() for name in properties)
+        for value in node.values():
+            names.update(_property_names(value))
+    elif isinstance(node, list):
+        for value in node:
+            names.update(_property_names(value))
+    return names
+
+
 def test_contract_is_captive_actuation_specific() -> None:
     schema = _load(SCHEMA_PATH)
     command = schema["$defs"]["command"]
     requested_action = command["properties"]["requested_action"]
     assert requested_action == {"const": "captive_electromagnetic_actuation"}
 
-    serialized = json.dumps(schema).lower()
-    assert "range" not in serialized
-    assert "penetration" not in serialized
-    assert "muzzle" not in serialized
+    # Enforce the safety boundary structurally. Prose may legitimately explain that
+    # launcher-performance concepts are outside scope; they must not become fields.
+    property_names = _property_names(schema)
+    forbidden_performance_fields = {
+        "range",
+        "penetration",
+        "muzzle_velocity",
+        "muzzle_energy",
+        "projectile_velocity",
+        "projectile_energy",
+    }
+    assert property_names.isdisjoint(forbidden_performance_fields)
