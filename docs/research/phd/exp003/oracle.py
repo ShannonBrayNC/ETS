@@ -6,8 +6,6 @@ NON_COLLAPSE_RULES.json. This separation prevents a condition implementation fro
 own answer key.
 """
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 
 
