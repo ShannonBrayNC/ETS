@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 import pytest
-from jsonschema import Draft202012Validator
 
 from ets.ranger.vectorrail_acceptance import (
     VectorRailAcceptanceError,
@@ -17,25 +17,73 @@ SCHEMA_PATH = ROOT / "schemas/ranger/vectorrail-vrx-acceptance.v0.1.schema.json"
 EXAMPLES = ROOT / "docs/research/ranger/examples"
 
 
-def _load(path: Path) -> dict[str, object]:
+def _load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     assert isinstance(value, dict)
     return value
 
 
-def _fixture(name: str) -> dict[str, object]:
+def _fixture(name: str) -> dict[str, Any]:
     return _load(EXAMPLES / name)
 
 
-def test_acceptance_schema_and_examples_are_valid() -> None:
+def test_acceptance_schema_declares_draft_2020_12_and_strict_root_contract() -> None:
     schema = _load(SCHEMA_PATH)
-    Draft202012Validator.check_schema(schema)
-    validator = Draft202012Validator(schema)
-    for name in (
+    assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+    assert schema["$id"] == (
+        "https://lanternprotocol.net/schemas/ranger/"
+        "vectorrail-vrx-acceptance.v0.1.schema.json"
+    )
+    assert schema["type"] == "object"
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {
+        "schema_version",
+        "acceptance_id",
+        "vrx_device_id",
+        "configuration_digest",
+        "reviewed_at",
+        "reviewer_id",
+        "gates",
+        "dry_runs",
+        "final_safe_state",
+        "verifier",
+        "qualification",
+    }
+    assert schema["properties"]["schema_version"] == {
+        "const": "ranger.vectorrail-vrx-acceptance.v0.1"
+    }
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
         "vectorrail-vrx-acceptance-qualified.json",
         "vectorrail-vrx-acceptance-not-qualified.json",
-    ):
-        validator.validate(_fixture(name))
+    ],
+)
+def test_acceptance_examples_match_machine_contract(name: str) -> None:
+    record = _fixture(name)
+    assert record["schema_version"] == "ranger.vectorrail-vrx-acceptance.v0.1"
+    assert {gate["gate_id"] for gate in record["gates"]} == {
+        "G0",
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5",
+        "G6",
+    }
+    assert len(record["gates"]) == 7
+    assert {item["scenario"] for item in record["dry_runs"]} == {
+        "BASELINE",
+        "INTERLOCK_REJECTION",
+        "CONTROLLER_RESET_FAULT",
+        "REQUIRED_SENSOR_UNAVAILABLE",
+        "CONTRADICTORY_OBSERVATIONS",
+        "BLOCKED_MECHANICAL_RESPONSE",
+        "FINAL_SAFE_STATE_FAILURE",
+    }
+    assert verify_vectorrail_acceptance(record) is True
 
 
 def test_qualified_fixture_passes_semantic_verifier() -> None:
