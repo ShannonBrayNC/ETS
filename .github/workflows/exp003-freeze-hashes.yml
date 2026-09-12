@@ -29,7 +29,23 @@ jobs:
         run: |
           set -euo pipefail
           SOURCE_COMMIT="d81a210120023be4edfb50bdf5566608ac4bf3c9"
-          git diff --exit-code "$SOURCE_COMMIT" -- docs/research/phd/exp003
+          FROZEN=(
+            docs/research/phd/exp003/BASELINE_PROFILE.json
+            docs/research/phd/exp003/CONSEQUENCE_MODEL.json
+            docs/research/phd/exp003/EPISTEMIC_STATES.json
+            docs/research/phd/exp003/EXP003NonCollapse.tla
+            docs/research/phd/exp003/FACT_GRAMMAR.json
+            docs/research/phd/exp003/INDEPENDENCE_MODEL.json
+            docs/research/phd/exp003/NON_COLLAPSE_RULES.json
+            docs/research/phd/exp003/PROPOSITION_SCHEMA.json
+            docs/research/phd/exp003/analysis_skeleton.py
+            docs/research/phd/exp003/condition_a.py
+            docs/research/phd/exp003/condition_b.py
+            docs/research/phd/exp003/condition_c_rats_plus.py
+            docs/research/phd/exp003/generator.py
+            docs/research/phd/exp003/oracle.py
+          )
+          git diff --exit-code "$SOURCE_COMMIT" -- "${FROZEN[@]}"
           echo "frozen_source_commit=$SOURCE_COMMIT"
 
       - name: Compute SHA-256 freeze manifest
