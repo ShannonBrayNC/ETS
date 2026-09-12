@@ -5,6 +5,7 @@ param(
     [string]$ResourceGroup = 'rg-ets-prod-eastus',
     [string]$ContainerAppName = 'ets-oif5r5ydprrou-gw',
     [string]$ManagedIdentityName = 'ets-oif5r5ydprrou-gw-id',
+    [string]$QualificationImage = '',
     [switch]$Apply
 )
 
@@ -35,6 +36,42 @@ function Replace-ExactlyOnce {
 }
 
 $source = Get-Content $corePath -Raw -Encoding UTF8
+
+$qualificationImage = $QualificationImage.Trim()
+if ($qualificationImage -and $qualificationImage -notmatch '^etsprod7c8ab70380\.azurecr\.io/ets/hosted-q1@sha256:[0-9a-f]{64}$') {
+    throw 'QualificationImage must be an immutable sha256 reference in the approved destination ACR ets/hosted-q1 repository.'
+}
+$qualificationImageLiteral = $qualificationImage.Replace("'", "''")
+$oldImageLine = '$image = [string]$gatewayContainer.image'
+$newImageBlock = @"
+`$gatewayConfiguredImage = [string]`$gatewayContainer.image
+if (`$gatewayConfiguredImage -notmatch '@sha256:[0-9a-fA-F]{64}$') {
+    throw 'Gateway image is not pinned by immutable sha256 digest.'
+}
+`$image = '$qualificationImageLiteral'
+`$qualificationImageOverrideUsed = -not [string]::IsNullOrWhiteSpace(`$image)
+if (-not `$qualificationImageOverrideUsed) {
+    `$image = `$gatewayConfiguredImage
+}
+"@
+$source = Replace-ExactlyOnce `
+    -Source $source `
+    -OldValue $oldImageLine `
+    -NewValue $newImageBlock `
+    -Name 'qualification image selection'
+
+$oldPreviewLine = '        immutableGatewayImageVerified = $true'
+$newPreviewBlock = @'
+        immutableGatewayImageVerified = $true
+        immutableQualificationImageVerified = $true
+        qualificationImageOverrideUsed = $qualificationImageOverrideUsed
+        productionGatewayImageMutationPlanned = $false
+'@
+$source = Replace-ExactlyOnce `
+    -Source $source `
+    -OldValue $oldPreviewLine `
+    -NewValue $newPreviewBlock `
+    -Name 'qualification image preview evidence'
 
 $oldUriLine = (
     '$jobUri = "https://management.azure.com' +
@@ -154,7 +191,7 @@ try {
         throw 'Temporary qualification job container count is unexpected.'
     }
     if ([string]$createdContainers[0].image -cne $image) {
-        throw 'Temporary qualification job image does not match the immutable Gateway image.'
+        throw 'Temporary qualification job image does not match the immutable qualification image.'
     }
 
     $startJson = az containerapp job start `
@@ -322,7 +359,10 @@ if (-not $qualificationObserved) {
     temporaryJobCreated = $true
     temporaryJobDeleted = $cleanupVerified
     productionGatewayMutationPerformed = $false
+    productionGatewayImageMutationPerformed = $false
     productionGatewayZeroRuntimeRestored = $productionGatewayZeroRuntimeRestored
+    immutableQualificationImageVerified = $true
+    qualificationImageOverrideUsed = $qualificationImageOverrideUsed
     gatewayEntrypointStarted = $false
     gatewayStateMounted = $false
     azureRbacMutationPerformed = $false
@@ -344,5 +384,12 @@ $escapedRoot = $PSScriptRoot.Replace("'", "''")
 $scriptRootLiteral = "'$escapedRoot'"
 $source = $source.Replace('$PSScriptRoot', $scriptRootLiteral)
 
+$forwardParameters = @{}
+foreach ($entry in $PSBoundParameters.GetEnumerator()) {
+    if ($entry.Key -cne 'QualificationImage') {
+        $forwardParameters[$entry.Key] = $entry.Value
+    }
+}
+
 $scriptBlock = [scriptblock]::Create($source)
-& $scriptBlock @PSBoundParameters
+& $scriptBlock @forwardParameters
