@@ -1,0 +1,127 @@
+name: Azure Migration Gateway Byte Equivalence
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gateway-byte-equivalence
+  cancel-in-progress: false
+
+jobs:
+  gateway-equivalence:
+    name: Prove dormant Gateway byte equivalence
+    runs-on: ubuntu-latest
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 20
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      SOURCE_TENANT_ID: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+      SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - name: Check out exact migration source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject missing environment identifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in \
+            SOURCE_AZURE_CLIENT_ID SOURCE_TENANT_ID SOURCE_SUBSCRIPTION_ID \
+            AZURE_CLIENT_ID DEST_TENANT_ID DEST_SUBSCRIPTION_ID; do
+            case "$name" in
+              SOURCE_AZURE_CLIENT_ID) value='${{ vars.SOURCE_AZURE_CLIENT_ID }}' ;;
+              AZURE_CLIENT_ID) value='${{ vars.AZURE_CLIENT_ID }}' ;;
+              SOURCE_TENANT_ID) value="$SOURCE_TENANT_ID" ;;
+              SOURCE_SUBSCRIPTION_ID) value="$SOURCE_SUBSCRIPTION_ID" ;;
+              DEST_TENANT_ID) value="$DEST_TENANT_ID" ;;
+              DEST_SUBSCRIPTION_ID) value="$DEST_SUBSCRIPTION_ID" ;;
+            esac
+            if [[ -z "$value" ]]; then
+              echo "Required Gateway-equivalence variable is missing: $name" >&2
+              exit 2
+            fi
+          done
+
+      - name: Azure login with dedicated source transfer identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.SOURCE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture ephemeral source Gateway digest manifest
+        shell: bash
+        env:
+          MIGRATION_RESOURCE_GROUP: rg-ets-live-eastus
+          MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gateway_equivalence \
+            --mode capture-source \
+            --manifest "$RUNNER_TEMP/ets-gateway-equivalence.json" \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
+
+      - name: Clear source Azure session
+        shell: bash
+        run: az account clear
+
+      - name: Azure login with destination restore identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Prove destination Gateway bytes equal current source capture
+        shell: bash
+        env:
+          MIGRATION_RESOURCE_GROUP: rg-ets-prod-eastus
+          MIGRATION_EVIDENCE_TABLE: ETSEvents
+          MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gateway_equivalence \
+            --mode verify-destination \
+            --manifest "$RUNNER_TEMP/ets-gateway-equivalence.json" \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID"
+
+      - name: Remove ephemeral Gateway digest manifest
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/ets-gateway-equivalence.json"
+          test ! -e "$RUNNER_TEMP/ets-gateway-equivalence.json"
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert read-only boundary
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gateway equivalence boundary
+
+          - source Gateway mutation: `not performed`
+          - destination Gateway mutation: `not performed`
+          - destination Table mutation: `not performed`
+          - replicas activated: `no`
+          - protected bytes uploaded: `no`
+          - digest manifest retained: `no`
+          - DNS/routing/cutover: `not performed`
+
+          This workflow proves path, byte-count, and SHA-256 equivalence only.
+          It does not authorize or execute Gate 4 restore writes.
+          EOF
