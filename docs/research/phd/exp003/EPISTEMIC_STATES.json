@@ -1,0 +1,16 @@
+{
+  "version": "exp003-1.0",
+  "states": [
+    {"id": "SUPPORTED", "meaning": "Sufficient frozen evidentiary support exists."},
+    {"id": "ASSERTED", "meaning": "A source asserts the proposition; support is not established."},
+    {"id": "UNKNOWN", "meaning": "Available evidence does not determine the proposition."},
+    {"id": "NOT_AVAILABLE", "meaning": "Required evidence is known not to exist or be retrievable."},
+    {"id": "NOT_OBSERVED", "meaning": "No qualifying observation covers the proposition."},
+    {"id": "INDETERMINATE", "meaning": "Evidence is insufficient to resolve among live alternatives."},
+    {"id": "CONTRADICTED", "meaning": "Materially incompatible supported propositions coexist."},
+    {"id": "NOT_APPLICABLE", "meaning": "The proposition is outside the case scope."}
+  ],
+  "closed_world_default": false,
+  "absence_rule": "Missing proposition records do not imply FALSE or EVENT_ABSENT.",
+  "promotion_rule": "Only a frozen positive rule may create a derived SUPPORTED proposition."
+}
