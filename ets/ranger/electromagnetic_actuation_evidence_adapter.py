@@ -101,6 +101,23 @@ def electromagnetic_actuation_trial_to_evidence_object(
                         )
                     )
 
+    evidence_refs = payload.get("evidence")
+    if not isinstance(evidence_refs, list):
+        raise ElectromagneticActuationEvidenceAdapterError("evidence must be an array")
+    for item in evidence_refs:
+        if not isinstance(item, Mapping):
+            raise ElectromagneticActuationEvidenceAdapterError("evidence entry must be an object")
+        evidence_id = _required_string(item, "evidence_id")
+        relationships.append(
+            Relationship(
+                relationship_id=f"rel:{trial_id}:raw-evidence:{evidence_id}",
+                relationship_type=RelationshipType.DEPENDS_ON,
+                target_evidence_ref=evidence_id,
+                observed=True,
+                confidence=None,
+            )
+        )
+
     command = payload.get("command")
     result = payload.get("result")
     if not isinstance(command, Mapping) or not isinstance(result, Mapping):
