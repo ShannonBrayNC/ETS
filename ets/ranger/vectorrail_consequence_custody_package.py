@@ -86,7 +86,8 @@ def package_preimage(package: Mapping[str, Any]) -> dict[str, Any]:
 def package_digest(package: Mapping[str, Any]) -> str:
     """Return the deterministic SHA-256 digest for a portable package."""
 
-    return f"sha256:{hashlib.sha256(canonicalize(package_preimage(package))).hexdigest()}"
+    digest = hashlib.sha256(canonicalize(package_preimage(package))).hexdigest()
+    return f"sha256:{digest}"
 
 
 def build_vectorrail_consequence_custody_package(
@@ -169,24 +170,29 @@ def verify_vectorrail_consequence_custody_package(
         == vectorrail_acceptance_digest(acceptance_record)
     )
 
-    fresh_trial_evidence = electromagnetic_actuation_trial_to_evidence_object(trial)
-    fresh_acceptance_evidence = vectorrail_acceptance_to_evidence_object(acceptance_record)
-    trial_object_hash_valid = _object_binding_valid(
-        trial_section,
-        fresh_trial_evidence,
+    fresh_trial_evidence = _try_trial_evidence(trial)
+    fresh_acceptance_evidence = _try_acceptance_evidence(acceptance_record)
+    trial_object_hash_valid = (
+        fresh_trial_evidence is not None
+        and _object_binding_valid(trial_section, fresh_trial_evidence)
     )
-    acceptance_object_hash_valid = _object_binding_valid(
-        acceptance_section,
-        fresh_acceptance_evidence,
+    acceptance_object_hash_valid = (
+        fresh_acceptance_evidence is not None
+        and _object_binding_valid(acceptance_section, fresh_acceptance_evidence)
     )
 
-    dependency_graph_valid = _normalized_edges(package.get("dependency_edges")) == _normalized_edges(
-        _dependency_edges(fresh_trial_evidence, fresh_acceptance_evidence)
-    )
+    dependency_graph_valid = False
+    if fresh_trial_evidence is not None and fresh_acceptance_evidence is not None:
+        actual_edges = _normalized_edges(package.get("dependency_edges"))
+        expected_edges = _normalized_edges(
+            _dependency_edges(fresh_trial_evidence, fresh_acceptance_evidence)
+        )
+        dependency_graph_valid = actual_edges == expected_edges
 
     receipt = package.get("verification_receipt")
-    replay_receipt_matches = isinstance(receipt, Mapping) and dict(receipt) == replay.model_dump(
-        mode="json"
+    replay_receipt_matches = (
+        isinstance(receipt, Mapping)
+        and dict(receipt) == replay.model_dump(mode="json")
     )
 
     observability = package.get("observability")
@@ -201,19 +207,12 @@ def verify_vectorrail_consequence_custody_package(
         raise VectorRailConsequenceCustodyPackageError(
             "replay_manifest.network_required must be boolean"
         )
-    manifest_valid = all(
-        (
-            replay_manifest.get("profile") == _REPLAY_PROFILE,
-            replay_manifest.get("verifier_entrypoint") == _VERIFIER_ENTRYPOINT,
-            replay_manifest.get("trial_input") == "trial.record",
-            replay_manifest.get("acceptance_input") == "acceptance.record",
-            replay_manifest.get("expected_chain_conclusion") == replay.conclusion,
-            replay_manifest.get("expected_trial_object_hash")
-            == object_hash(fresh_trial_evidence),
-            replay_manifest.get("expected_acceptance_object_hash")
-            == object_hash(fresh_acceptance_evidence),
-            network_required_value is False,
-        )
+    manifest_valid = _replay_manifest_valid(
+        replay_manifest,
+        replay,
+        fresh_trial_evidence,
+        fresh_acceptance_evidence,
+        network_required_value,
     )
     replay_receipt_matches = replay_receipt_matches and manifest_valid
 
@@ -257,6 +256,10 @@ def execute_vectorrail_replay_manifest(
         raise VectorRailConsequenceCustodyPackageError(
             f"manifest_version must be {_REPLAY_MANIFEST_SCHEMA}"
         )
+    if manifest.get("network_required") is not False:
+        raise VectorRailConsequenceCustodyPackageError(
+            "portable replay manifest must declare network_required=false"
+        )
 
     root = manifest_path.parent
     trial_path = root / _required_string(manifest, "trial_path")
@@ -299,6 +302,22 @@ def execute_vectorrail_replay_manifest(
     return result
 
 
+def _try_trial_evidence(trial: Mapping[str, Any]) -> EvidenceObject | None:
+    try:
+        return electromagnetic_actuation_trial_to_evidence_object(trial)
+    except ValueError:
+        return None
+
+
+def _try_acceptance_evidence(
+    acceptance_record: Mapping[str, Any],
+) -> EvidenceObject | None:
+    try:
+        return vectorrail_acceptance_to_evidence_object(acceptance_record)
+    except ValueError:
+        return None
+
+
 def _object_binding_valid(
     section: Mapping[str, Any],
     fresh_evidence: EvidenceObject,
@@ -313,6 +332,31 @@ def _object_binding_valid(
         return False
     expected_hash = object_hash(fresh_evidence)
     return object_hash(embedded_evidence) == expected_hash == declared_hash
+
+
+def _replay_manifest_valid(
+    replay_manifest: Mapping[str, Any],
+    replay: VectorRailConsequenceCustodyVerification,
+    trial_evidence: EvidenceObject | None,
+    acceptance_evidence: EvidenceObject | None,
+    network_required: bool,
+) -> bool:
+    if trial_evidence is None or acceptance_evidence is None:
+        return False
+    return all(
+        (
+            replay_manifest.get("profile") == _REPLAY_PROFILE,
+            replay_manifest.get("verifier_entrypoint") == _VERIFIER_ENTRYPOINT,
+            replay_manifest.get("trial_input") == "trial.record",
+            replay_manifest.get("acceptance_input") == "acceptance.record",
+            replay_manifest.get("expected_chain_conclusion") == replay.conclusion,
+            replay_manifest.get("expected_trial_object_hash")
+            == object_hash(trial_evidence),
+            replay_manifest.get("expected_acceptance_object_hash")
+            == object_hash(acceptance_evidence),
+            network_required is False,
+        )
+    )
 
 
 def _dependency_edges(
