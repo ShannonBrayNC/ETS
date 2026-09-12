@@ -25,8 +25,8 @@ from scripts.azure_migration_gate3_export import (
 )
 from scripts.azure_migration_gate4_restore import (
     _discover_storage_accounts,
-    _load_protected_workspace,
     _list_gateway_names,
+    _load_protected_workspace,
     _required_env,
     _run_az_write,
     _sha256_file,
