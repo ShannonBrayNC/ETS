@@ -34,8 +34,8 @@ from scripts.azure_migration_gate4_restore import (
 )
 from scripts.azure_migration_gateway_equivalence import _capture_file_hashes
 from scripts.azure_migration_prefix_preflight import (
-    EXPECTED_GATEWAY_FILES,
     _GATEWAY_SYNC_WAL_SIDECARS,
+    EXPECTED_GATEWAY_FILES,
     _verify_gateway_files,
     _verify_zero_replicas,
 )
