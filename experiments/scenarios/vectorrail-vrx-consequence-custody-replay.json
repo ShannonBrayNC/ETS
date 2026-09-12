@@ -1,0 +1,12 @@
+{
+  "manifest_version": "ets.vectorrail.consequence-custody-replay-manifest.v0.1",
+  "scenario_id": "vectorrail-vrx-baseline-consequence-custody",
+  "description": "Deterministic offline replay of the synthetic low-energy captive VectorRail/VRX baseline consequence-custody chain.",
+  "trial_path": "../../docs/research/ranger/examples/electromagnetic-actuation-baseline.json",
+  "acceptance_path": "../../docs/research/ranger/examples/vectorrail-vrx-acceptance-qualified.json",
+  "seal_trial_if_missing": true,
+  "expected_chain_conclusion": "VERIFIED_CONSISTENT",
+  "expected_package_conclusion": "VERIFIED_REPLAYABLE",
+  "output_path": "../../artifacts/vectorrail/vectorrail-vrx-baseline-portable-package.json",
+  "network_required": false
+}
