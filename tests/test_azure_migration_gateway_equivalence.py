@@ -82,12 +82,31 @@ def test_verify_destination_accepts_exact_bytes(
     }
 
 
-def test_verify_destination_rejects_hash_divergence(
+def test_verify_destination_rejects_size_divergence(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     source = [_file("gateway-sync.db", b"source")]
     destination = [_file("gateway-sync.db", b"changed")]
+    manifest_path = tmp_path / "manifest.json"
+    _write_manifest(manifest_path, source)
+    _set_destination_boundary(monkeypatch)
+    monkeypatch.setattr(
+        gateway_eq,
+        "_capture_file_hashes",
+        lambda *_args: destination,
+    )
+
+    with pytest.raises(MigrationControlError, match="size differs"):
+        gateway_eq.verify_destination(manifest_path, "subscription")
+
+
+def test_verify_destination_rejects_hash_divergence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = [_file("gateway-sync.db", b"source")]
+    destination = [_file("gateway-sync.db", b"target")]
     manifest_path = tmp_path / "manifest.json"
     _write_manifest(manifest_path, source)
     _set_destination_boundary(monkeypatch)
