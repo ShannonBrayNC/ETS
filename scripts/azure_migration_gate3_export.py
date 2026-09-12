@@ -62,6 +62,8 @@ def _write_private_json(path: Path, value: Any) -> None:
 
 
 def _prepare_workspace(path: Path) -> Path:
+    if shutil.which("az") is None:
+        raise MigrationControlError("Azure CLI is unavailable")
     resolved = path.expanduser().resolve()
     checkout = os.environ.get("GITHUB_WORKSPACE", "").strip()
     if checkout:
