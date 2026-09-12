@@ -135,6 +135,39 @@ Passing CI is not automatically a research result. A CI test becomes research-re
 - **Publication mapping:** candidate foundational Evidence Architecture / Evidence Graph paper.
 - **Current gate state:** NOT READY FOR CONFIRMATORY EXECUTION. Outstanding: 36 rendered packets; independent equivalence certification; seed/assignment artifacts; final SHA-256 manifest; institutional human-subjects determination before recruitment.
 
+### EXP-002 — RATS equivalence / dimensional verification falsification
+
+- **Record type:** prospective
+- **Research questions:** RQ1, RQ3, RQ5, RQ7
+- **Hypotheses:** H0 functional equivalence; H1 non-equivalence of at least one decision-relevant bounded semantic distinction
+- **Contribution IDs:** EA-C001, EA-C003; secondarily EA-C005
+- **Date/time:** registered 2026-09-12; execution not yet performed
+- **Researchers/operators:** to be assigned before execution; independent RATS/attestation challenge review required before contribution use
+- **Independent variables:** representation/profile condition:
+  1. rich RFC 9334 RATS using reasonable application-specific Claims and appraisal policies;
+  2. Evidence Architecture dimensional verification/non-collapse representation;
+  3. optional RATS+ minimum-extra-rule condition when ordinary RATS profiling is insufficient.
+- **Dependent variables:** equivalence class per semantic dimension; number of scenarios producing different bounded conclusions; unsupported semantic promotions; conclusion-to-source traceability; extra profile/rule complexity required for equivalence.
+- **Controls/baselines:** identical factual scenario content across conditions; RATS condition may use rich Attestation Results, freshness, endorsements/reference values, multiple roles, and reasonable application-specific claims/policies.
+- **System boundary:** semantic representation/appraisal capability; not a cryptographic-strength comparison and not a universal RATS-vs-ETS product benchmark.
+- **Threat/fault model:** valid integrity with false observation; stale evidence/policy; historical authorization mismatch; command without execution evidence; execution without consequence observation; contradiction; omission with/without expectations; shared-source false corroboration; verifier trust failure.
+- **Input/dataset:** prospective 16+ matched synthetic scenarios defined in `EXP-002_RATS_EQUIVALENCE_PREREGISTRATION.md`; corpus not yet frozen.
+- **Protocol:** `EXP-002_RATS_EQUIVALENCE_PREREGISTRATION.md`.
+- **Pre-registered expected outcome:** no superiority expectation is required; experiment is intentionally capable of strongly falsifying EA-C001/EA-C003 differentiation if rich RATS reproduces all material semantics without equivalent extra non-collapse rules.
+- **Actual outcome:** NOT EXECUTED
+- **Raw artifact locations:** none
+- **Artifact hashes:** pending freeze
+- **Statistical/formal treatment:** descriptive semantic-equivalence classification for representation phase; any evaluator statistics remain separate under EXP-001 or a formally amended protocol.
+- **Anomalies:** none; experiment not executed
+- **Negative results/counterexamples:** required. A successful RATS encoding that collapses a claimed ETS distinction is a reportable negative result and must narrow the contribution.
+- **Interpretation:** pending
+- **Alternative explanations:** vocabulary mismatch; investigator bias; artificially weak RATS profile; synthetic-corpus bias; subjective profile-complexity judgments.
+- **Limitations:** RATS is architecture-neutral and intentionally extensible; inability to find an encoding is not proof that none exists.
+- **Reproduction instructions:** pending schema/corpus/rubric freeze.
+- **Independent reproduction status:** not attempted; independent technical challenge is a pre-publication requirement.
+- **Publication mapping:** candidate Evidence Architecture foundations/trust-decomposition paper.
+- **Current gate state:** NOT READY FOR EXECUTION. Freeze canonical dimensions, 16+ scenarios, schemas, equivalence rubric, adversarial RATS-profile review, commit/hash manifest, and reviewers/operators first.
+
 ## Negative-result rule
 
 Negative results, failed hypotheses, anomalous runs, and counterexamples must remain in the research record. They may trigger revised hypotheses or contribution boundaries, but they must not be discarded because they weaken a product claim.
