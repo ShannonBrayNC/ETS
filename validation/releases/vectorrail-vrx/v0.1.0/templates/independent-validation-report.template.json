@@ -1,0 +1,65 @@
+{
+  "schema_version": "ranger.vectorrail-vrx-independent-validation-report.v0.1",
+  "validation_id": "REPLACE-WITH-DURABLE-VALIDATION-ID",
+  "validator": {
+    "identity": "REPLACE-WITH-VALIDATOR-IDENTITY",
+    "organization": null,
+    "role": null,
+    "conflict_disclosure": "REPLACE-WITH-CONFLICT-DISCLOSURE",
+    "independence_statement": "REPLACE-WITH-INDEPENDENCE-STATEMENT",
+    "inspected_reference_source_before_freeze": false
+  },
+  "subject": {
+    "repository": "ShannonBrayNC/ETS",
+    "source_commit": "a50720ab5ba451c6c97008da63b401fcaf28b34f",
+    "package_digest": "sha256:ae2e40b9a272f077cbe139930d353e7610212b2b1877f51e9fb1a87691b312c0",
+    "package_schema": "ranger.vectorrail-vrx-consequence-custody-package.v0.1",
+    "challenge_manifest": "ets.vectorrail.clean-room-challenges.v0.1"
+  },
+  "environment": {
+    "operating_system": "REPLACE-WITH-OS-AND-VERSION",
+    "architecture": "REPLACE-WITH-ARCHITECTURE",
+    "language": "REPLACE-WITH-LANGUAGE",
+    "runtime_version": "REPLACE-WITH-RUNTIME-VERSION",
+    "dependencies": [],
+    "network_used": false,
+    "notes": null
+  },
+  "implementation": {
+    "source_reference": "REPLACE-WITH-IMMUTABLE-SOURCE-OR-ARCHIVE-REFERENCE",
+    "copied_reference_source": false,
+    "public_materials": [
+      "README.md",
+      "RELEASE.json",
+      "docs/vectorrail-vrx-clean-room-verifier-contract.md",
+      "docs/vectorrail-vrx-external-validation-protocol.md",
+      "docs/vectorrail-vrx-portable-verification-package.md",
+      "schemas/electromagnetic-actuation-trial.v0.1.schema.json",
+      "schemas/vectorrail-vrx-acceptance.v0.1.schema.json",
+      "schemas/vectorrail-vrx-consequence-custody-package.v0.1.schema.json",
+      "schemas/evidence-object.v1.schema.json",
+      "manifests/vectorrail-vrx-clean-room-challenges.v0.1.json"
+    ],
+    "clarifications": []
+  },
+  "challenge_results": [
+    {"challenge_id": "VRX-CR-001", "observed_package_conclusion": "PENDING", "observed_chain_conclusion": null, "passed": false, "diagnostics": null},
+    {"challenge_id": "VRX-CR-002", "observed_package_conclusion": "PENDING", "observed_chain_conclusion": null, "passed": false, "diagnostics": null},
+    {"challenge_id": "VRX-CR-003", "observed_package_conclusion": "PENDING", "observed_chain_conclusion": null, "passed": false, "diagnostics": null},
+    {"challenge_id": "VRX-CR-004", "observed_package_conclusion": "PENDING", "observed_chain_conclusion": null, "passed": false, "diagnostics": null},
+    {"challenge_id": "VRX-CR-005", "observed_package_conclusion": "PENDING", "observed_chain_conclusion": null, "passed": false, "diagnostics": null},
+    {"challenge_id": "VRX-CR-006", "observed_package_conclusion": "PENDING", "observed_chain_conclusion": null, "passed": false, "diagnostics": null},
+    {"challenge_id": "VRX-CR-007", "observed_package_conclusion": "PENDING", "observed_chain_conclusion": null, "passed": false, "diagnostics": null}
+  ],
+  "summary": {
+    "all_required_challenges_passed": false,
+    "mismatches": [],
+    "limitations": [],
+    "residual_risks": []
+  },
+  "approval": {
+    "decision": "INDETERMINATE",
+    "reviewed_at": "1970-01-01T00:00:00Z",
+    "record_reference": "REPLACE-WITH-DURABLE-RECORD-REFERENCE"
+  }
+}

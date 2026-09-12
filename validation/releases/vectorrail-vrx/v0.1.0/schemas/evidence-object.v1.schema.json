@@ -1,0 +1,770 @@
+{
+  "$defs": {
+    "Assertion": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_ref": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Actor Ref",
+          "type": "string"
+        },
+        "asserted_at": {
+          "format": "date-time",
+          "title": "Asserted At",
+          "type": "string"
+        },
+        "assertion_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Assertion Id",
+          "type": "string"
+        },
+        "claim_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "policy_ref": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Policy Ref"
+        },
+        "signature_ref": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Signature Ref"
+        }
+      },
+      "required": [
+        "assertion_id",
+        "claim_id",
+        "actor_ref",
+        "asserted_at"
+      ],
+      "title": "Assertion",
+      "type": "object"
+    },
+    "Claim": {
+      "additionalProperties": false,
+      "properties": {
+        "claim_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "object": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Object"
+        },
+        "predicate": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Predicate",
+          "type": "string"
+        },
+        "source_ref": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Ref"
+        },
+        "subject": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Subject",
+          "type": "string"
+        },
+        "value": {
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "claim_id",
+        "subject",
+        "predicate"
+      ],
+      "title": "Claim",
+      "type": "object"
+    },
+    "EvidenceContext": {
+      "additionalProperties": false,
+      "properties": {
+        "attributes": {
+          "additionalProperties": true,
+          "title": "Attributes",
+          "type": "object"
+        },
+        "context_ref": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Context Ref",
+          "type": "string"
+        },
+        "context_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Context Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "context_type",
+        "context_ref"
+      ],
+      "title": "EvidenceContext",
+      "type": "object"
+    },
+    "EvidenceIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "evidence_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Evidence Type",
+          "type": "string"
+        },
+        "namespace": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Namespace",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ets.evidence-object.v1",
+          "default": "ets.evidence-object.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "version",
+        "namespace",
+        "evidence_type"
+      ],
+      "title": "EvidenceIdentity",
+      "type": "object"
+    },
+    "HashAlgorithm": {
+      "enum": [
+        "sha256"
+      ],
+      "title": "HashAlgorithm",
+      "type": "string"
+    },
+    "IntegrityBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "$ref": "#/$defs/HashAlgorithm",
+          "default": "sha256"
+        },
+        "digest": {
+          "maxLength": 64,
+          "minLength": 64,
+          "title": "Digest",
+          "type": "string"
+        },
+        "profile": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Profile",
+          "type": "string"
+        },
+        "scope": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "digest",
+        "scope",
+        "profile"
+      ],
+      "title": "IntegrityBinding",
+      "type": "object"
+    },
+    "LifecycleRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_ref": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actor Ref"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "state": {
+          "$ref": "#/$defs/LifecycleState"
+        }
+      },
+      "required": [
+        "state",
+        "occurred_at"
+      ],
+      "title": "LifecycleRecord",
+      "type": "object"
+    },
+    "LifecycleState": {
+      "enum": [
+        "created",
+        "observed",
+        "collected",
+        "registered",
+        "verified",
+        "archived",
+        "superseded",
+        "destroyed"
+      ],
+      "title": "LifecycleState",
+      "type": "string"
+    },
+    "PrivacyPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Classification",
+          "type": "string"
+        },
+        "contains_pii": {
+          "default": false,
+          "title": "Contains Pii",
+          "type": "boolean"
+        },
+        "encryption_required": {
+          "default": false,
+          "title": "Encryption Required",
+          "type": "boolean"
+        },
+        "legal_hold": {
+          "default": false,
+          "title": "Legal Hold",
+          "type": "boolean"
+        },
+        "owner_ref": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Ref"
+        },
+        "redaction_profile": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Redaction Profile"
+        },
+        "retention_policy_ref": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retention Policy Ref"
+        }
+      },
+      "required": [
+        "classification"
+      ],
+      "title": "PrivacyPolicy",
+      "type": "object"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "branch_ref": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Branch Ref"
+        },
+        "collected_by": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Collected By"
+        },
+        "commit_ref": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Commit Ref"
+        },
+        "device_ref": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Device Ref"
+        },
+        "operator_ref": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operator Ref"
+        },
+        "repository_ref": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository Ref"
+        },
+        "source_system": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source System"
+        },
+        "workflow_ref": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Ref"
+        }
+      },
+      "title": "Provenance",
+      "type": "object"
+    },
+    "Relationship": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "observed": {
+          "default": true,
+          "title": "Observed",
+          "type": "boolean"
+        },
+        "relationship_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Relationship Id",
+          "type": "string"
+        },
+        "relationship_type": {
+          "$ref": "#/$defs/RelationshipType"
+        },
+        "target_evidence_ref": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Target Evidence Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "relationship_id",
+        "relationship_type",
+        "target_evidence_ref"
+      ],
+      "title": "Relationship",
+      "type": "object"
+    },
+    "RelationshipType": {
+      "enum": [
+        "supports",
+        "refutes",
+        "corroborates",
+        "generated",
+        "observed",
+        "derived",
+        "supersedes",
+        "references",
+        "duplicates",
+        "depends_on",
+        "related_to"
+      ],
+      "title": "RelationshipType",
+      "type": "string"
+    },
+    "VerificationRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "certificate_ref": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Certificate Ref"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "method": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Method",
+          "type": "string"
+        },
+        "policy_ref": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Policy Ref"
+        },
+        "result": {
+          "$ref": "#/$defs/VerificationResult"
+        },
+        "verification_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Verification Id",
+          "type": "string"
+        },
+        "verified_at": {
+          "format": "date-time",
+          "title": "Verified At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verification_id",
+        "method",
+        "verified_at",
+        "result"
+      ],
+      "title": "VerificationRecord",
+      "type": "object"
+    },
+    "VerificationResult": {
+      "enum": [
+        "pass",
+        "fail",
+        "indeterminate"
+      ],
+      "title": "VerificationResult",
+      "type": "string"
+    }
+  },
+  "$id": "https://lanternprotocol.org/schemas/ets/evidence-object/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Normative Evidence Object v1 contract.",
+  "properties": {
+    "assertions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Assertion"
+      },
+      "title": "Assertions",
+      "type": "array"
+    },
+    "claims": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Claim"
+      },
+      "title": "Claims",
+      "type": "array"
+    },
+    "contexts": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/EvidenceContext"
+      },
+      "title": "Contexts",
+      "type": "array"
+    },
+    "corrects_ref": {
+      "anyOf": [
+        {
+          "maxLength": 2048,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Corrects Ref"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "title": "Extensions",
+      "type": "object"
+    },
+    "identity": {
+      "$ref": "#/$defs/EvidenceIdentity"
+    },
+    "integrity": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/IntegrityBinding"
+      },
+      "title": "Integrity",
+      "type": "array"
+    },
+    "lifecycle": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/LifecycleRecord"
+      },
+      "title": "Lifecycle",
+      "type": "array"
+    },
+    "policy_refs": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Policy Refs",
+      "type": "array"
+    },
+    "privacy": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PrivacyPolicy"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "provenance": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Provenance"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "relationships": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Relationship"
+      },
+      "title": "Relationships",
+      "type": "array"
+    },
+    "schema_id": {
+      "const": "https://lanternprotocol.org/schemas/ets/evidence-object/v1",
+      "default": "https://lanternprotocol.org/schemas/ets/evidence-object/v1",
+      "title": "Schema Id",
+      "type": "string"
+    },
+    "supersedes_ref": {
+      "anyOf": [
+        {
+          "maxLength": 2048,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Supersedes Ref"
+    },
+    "verifications": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/VerificationRecord"
+      },
+      "title": "Verifications",
+      "type": "array"
+    }
+  },
+  "required": [
+    "identity",
+    "created_at"
+  ],
+  "title": "EvidenceObject",
+  "type": "object"
+}

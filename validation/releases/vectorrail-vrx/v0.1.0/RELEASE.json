@@ -1,0 +1,22 @@
+{
+  "release_id": "ets-vectorrail-vrx-external-validation-v0.1.0",
+  "release_version": "0.1.0",
+  "status": "FROZEN_VALIDATION_HANDOFF",
+  "repository": "ShannonBrayNC/ETS",
+  "subject_commit": "a50720ab5ba451c6c97008da63b401fcaf28b34f",
+  "subject_pr": 724,
+  "tracking_issue": 728,
+  "canonical_package": "baseline/vectorrail-vrx-baseline-portable-package.json.gz",
+  "canonical_package_compression": "gzip",
+  "canonical_package_uncompressed_file_sha256": "a87bffbbf613ccf079b3be5eea07bc3ec0cce68aeb16976f730a29150540372c",
+  "canonical_package_digest": "sha256:ae2e40b9a272f077cbe139930d353e7610212b2b1877f51e9fb1a87691b312c0",
+  "trial_record_digest": "sha256:4253f7059b6a74f9ff3a63e686dc5fd0be3c8ed5ee222dee631f6ff17bbebbca",
+  "acceptance_record_digest": "sha256:5572b7d5d996d68c4eda10b216b5b99cdb732544cb12e87233d136f005498370",
+  "trial_object_hash": "870855a5768d417b96bbc31f3336fcd702efe94987d33c6507468d99d37215fe",
+  "acceptance_object_hash": "2a2fd82792aad532f39082756cc02fedca2f654f231112b397499d704c7243dc",
+  "expected_package_conclusion": "VERIFIED_REPLAYABLE",
+  "expected_chain_conclusion": "VERIFIED_CONSISTENT",
+  "network_required": false,
+  "truth_claim_supported": false,
+  "claim_boundary": "Passing validation supports reproducibility and bounded protocol interpretation; it does not establish sensor correctness, objective physical truth, legal admissibility, regulatory approval, or production safety certification."
+}

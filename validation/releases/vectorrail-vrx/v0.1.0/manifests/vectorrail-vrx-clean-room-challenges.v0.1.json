@@ -1,0 +1,100 @@
+{
+  "manifest_version": "ets.vectorrail.clean-room-challenges.v0.1",
+  "subject": "vectorrail-vrx-consequence-custody-package",
+  "baseline_manifest": "experiments/scenarios/vectorrail-vrx-consequence-custody-replay.json",
+  "package_schema": "schemas/ranger/vectorrail-vrx-consequence-custody-package.v0.1.schema.json",
+  "validation_report_schema": "schemas/ranger/vectorrail-vrx-independent-validation-report.v0.1.schema.json",
+  "required": true,
+  "challenges": [
+    {
+      "challenge_id": "VRX-CR-001",
+      "name": "nominal replay",
+      "mutation": {
+        "operation": "NONE",
+        "target": null,
+        "recompute_outer_package_digest": false
+      },
+      "expected_package_conclusion": "VERIFIED_REPLAYABLE",
+      "expected_chain_conclusion": "VERIFIED_CONSISTENT",
+      "purpose": "Prove the clean-room verifier reproduces the published bounded baseline result."
+    },
+    {
+      "challenge_id": "VRX-CR-002",
+      "name": "outer package digest tamper",
+      "mutation": {
+        "operation": "REPLACE_WITH_DIFFERENT_SHA256",
+        "target": "package_digest",
+        "recompute_outer_package_digest": false
+      },
+      "expected_package_conclusion": "PACKAGE_INTEGRITY_FAILURE",
+      "expected_chain_conclusion": "VERIFIED_CONSISTENT",
+      "purpose": "Demonstrate that the verifier rejects a package whose outer integrity seal does not match its contents."
+    },
+    {
+      "challenge_id": "VRX-CR-003",
+      "name": "trial record binding tamper after outer reseal",
+      "mutation": {
+        "operation": "CHANGE_VALUE",
+        "target": "trial.record.result.mechanical_response",
+        "example_value": "UNKNOWN",
+        "recompute_outer_package_digest": true,
+        "recompute_nested_record_digest": false
+      },
+      "expected_package_conclusion": "RECORD_BINDING_FAILURE",
+      "expected_chain_conclusion": "INTEGRITY_FAILURE",
+      "purpose": "Show that recomputing the outer package digest cannot conceal a changed source record with a stale record binding."
+    },
+    {
+      "challenge_id": "VRX-CR-004",
+      "name": "embedded trial Evidence Object tamper after outer reseal",
+      "mutation": {
+        "operation": "CHANGE_VALUE",
+        "target": "trial.evidence_object.identity.evidence_type",
+        "example_value": "tampered-type",
+        "recompute_outer_package_digest": true
+      },
+      "expected_package_conclusion": "OBJECT_BINDING_FAILURE",
+      "expected_chain_conclusion": "VERIFIED_CONSISTENT",
+      "purpose": "Require the verifier to compare the embedded Evidence Object with an independently reconstructed projection rather than trusting the outer seal."
+    },
+    {
+      "challenge_id": "VRX-CR-005",
+      "name": "dependency edge removal after outer reseal",
+      "mutation": {
+        "operation": "REMOVE_ONE_ELEMENT",
+        "target": "dependency_edges",
+        "selection_rule": "remove any existing edge and preserve all other package content",
+        "recompute_outer_package_digest": true
+      },
+      "expected_package_conclusion": "DEPENDENCY_GRAPH_FAILURE",
+      "expected_chain_conclusion": "VERIFIED_CONSISTENT",
+      "purpose": "Demonstrate exact reconstruction of evidence dependencies, including raw evidence and acceptance-to-trial relationships."
+    },
+    {
+      "challenge_id": "VRX-CR-006",
+      "name": "verification receipt mutation after outer reseal",
+      "mutation": {
+        "operation": "CHANGE_VALUE",
+        "target": "verification_receipt.conclusion",
+        "example_value": "VERIFIED_FAIL_CLOSED",
+        "recompute_outer_package_digest": true
+      },
+      "expected_package_conclusion": "REPLAY_MISMATCH",
+      "expected_chain_conclusion": "VERIFIED_CONSISTENT",
+      "purpose": "Require independent consequence-custody replay rather than acceptance of the package's stored verifier receipt."
+    },
+    {
+      "challenge_id": "VRX-CR-007",
+      "name": "observability claim strengthening after outer reseal",
+      "mutation": {
+        "operation": "CHANGE_VALUE",
+        "target": "observability.truth_claim_supported",
+        "example_value": true,
+        "recompute_outer_package_digest": true
+      },
+      "expected_package_conclusion": "OBSERVABILITY_BOUNDARY_FAILURE",
+      "expected_chain_conclusion": "VERIFIED_CONSISTENT",
+      "purpose": "Prove that a package cannot promote bounded recorded observations into an objective physical-truth claim."
+    }
+  ]
+}
