@@ -15,12 +15,12 @@ from typing import Any
 from scripts.azure_migration_control import MigrationControlError
 from scripts.azure_migration_gate4_gateway_writer import (
     AUTHORIZATION_PHRASE as GATEWAY_AUTHORIZATION_PHRASE,
-    apply_gateway_snapshot,
 )
+from scripts.azure_migration_gate4_gateway_writer import apply_gateway_snapshot
 from scripts.azure_migration_gate4_suffix_writer import (
     AUTHORIZATION_PHRASE as SUFFIX_AUTHORIZATION_PHRASE,
-    apply_resumable_suffix,
 )
+from scripts.azure_migration_gate4_suffix_writer import apply_resumable_suffix
 
 AUTHORIZATION_PHRASE = "GATE4_PROTECTED_TRANSFER_AUTHORIZED"
 
