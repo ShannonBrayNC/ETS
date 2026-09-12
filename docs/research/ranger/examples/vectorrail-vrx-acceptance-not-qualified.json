@@ -1,0 +1,35 @@
+{
+  "schema_version": "ranger.vectorrail-vrx-acceptance.v0.1",
+  "acceptance_id": "vrx-acceptance-002",
+  "vrx_device_id": "vrx-r-001",
+  "configuration_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "reviewed_at": "2026-09-12T05:25:00Z",
+  "reviewer_id": "reviewer-lab-001",
+  "gates": [
+    {"gate_id": "G0", "status": "PASS", "checks": [{"check_id": "configuration-identity", "status": "PASS", "evidence_ref": "artifact:g0", "note": null}]},
+    {"gate_id": "G1", "status": "PASS", "checks": [{"check_id": "mechanical-captivity", "status": "PASS", "evidence_ref": "artifact:g1", "note": null}]},
+    {"gate_id": "G2", "status": "PASS", "checks": [{"check_id": "electrical-safe-state", "status": "PASS", "evidence_ref": "artifact:g2", "note": null}]},
+    {"gate_id": "G3", "status": "PASS", "checks": [{"check_id": "interlock-fail-closed", "status": "PASS", "evidence_ref": "artifact:g3", "note": null}]},
+    {"gate_id": "G4", "status": "FAIL", "checks": [{"check_id": "instrumentation-readiness", "status": "FAIL", "evidence_ref": "artifact:g4", "note": "Required final-state observation channel unavailable."}]},
+    {"gate_id": "G5", "status": "PASS", "checks": [{"check_id": "thermal-envelope", "status": "PASS", "evidence_ref": "artifact:g5", "note": null}]},
+    {"gate_id": "G6", "status": "PASS", "checks": [{"check_id": "evidence-integrity", "status": "PASS", "evidence_ref": "artifact:g6", "note": null}]}
+  ],
+  "dry_runs": [
+    {"scenario": "BASELINE", "status": "PASS", "trial_ref": "em-trial-baseline-001", "note": null},
+    {"scenario": "INTERLOCK_REJECTION", "status": "PASS", "trial_ref": "em-trial-reject-001", "note": null},
+    {"scenario": "CONTROLLER_RESET_FAULT", "status": "PASS", "trial_ref": "em-trial-reset-001", "note": null},
+    {"scenario": "REQUIRED_SENSOR_UNAVAILABLE", "status": "FAIL", "trial_ref": "em-trial-degraded-002", "note": "Required safety observation did not remain verifiable."},
+    {"scenario": "CONTRADICTORY_OBSERVATIONS", "status": "PASS", "trial_ref": "em-trial-contradicted-001", "note": null},
+    {"scenario": "BLOCKED_MECHANICAL_RESPONSE", "status": "PASS", "trial_ref": "em-trial-blocked-001", "note": null},
+    {"scenario": "FINAL_SAFE_STATE_FAILURE", "status": "PASS", "trial_ref": "em-trial-safe-state-failure-001", "note": null}
+  ],
+  "final_safe_state": "UNKNOWN",
+  "verifier": {
+    "profile": "ets.vectorrail.acceptance-verifier.v0.1",
+    "status": "FAILED",
+    "evidence_package_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "reason": "Qualification evidence cannot establish final safe state."
+  },
+  "qualification": "NOT_QUALIFIED",
+  "notes": "Fail closed; no energized laboratory release under this configuration."
+}
