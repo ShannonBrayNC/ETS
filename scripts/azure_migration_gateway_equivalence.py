@@ -26,6 +26,18 @@ from scripts.azure_migration_prefix_preflight import (
     _verify_zero_replicas,
 )
 
+_FAILURE_PREFIX = "Gateway equivalence stage failed: "
+_SAFE_FAILURE_STAGES = {
+    "manifest",
+    "replica_fence",
+    "storage_discovery",
+    "restore_identity_scope",
+    "destination_capture",
+    "file_set",
+    "size",
+    "sha256",
+}
+
 
 def _required_env(name: str) -> str:
     value = os.environ.get(name, "").strip()
@@ -142,39 +154,67 @@ def capture_source_manifest(path: Path) -> dict[str, int]:
     return {"file_count": len(files), "total_bytes": total_bytes}
 
 
+def _stage_failure(stage: str, exc: MigrationControlError) -> MigrationControlError:
+    return MigrationControlError(f"{_FAILURE_PREFIX}{stage}")
+
+
+def _safe_failure_stage(exc: BaseException) -> str:
+    message = str(exc)
+    if message.startswith(_FAILURE_PREFIX):
+        stage = message[len(_FAILURE_PREFIX) :]
+        if stage in _SAFE_FAILURE_STAGES:
+            return stage
+    return "unspecified"
+
+
 def verify_destination(path: Path, expected_subscription: str) -> dict[str, int]:
-    manifest = _read_manifest(path)
+    try:
+        manifest = _read_manifest(path)
+    except MigrationControlError as exc:
+        raise _stage_failure("manifest", exc) from exc
+
     resource_group = _required_env("MIGRATION_RESOURCE_GROUP")
     table_name = _required_env("MIGRATION_EVIDENCE_TABLE")
     share_name = _required_env("MIGRATION_GATEWAY_SHARE")
 
-    _verify_zero_replicas(resource_group)
-    core_account, gateway_account = _discover_storage_accounts(resource_group)
-    _verify_restore_identity_scopes(
-        expected_subscription,
-        resource_group,
-        core_account,
-        gateway_account,
-        table_name,
-        share_name,
-    )
+    try:
+        _verify_zero_replicas(resource_group)
+    except MigrationControlError as exc:
+        raise _stage_failure("replica_fence", exc) from exc
 
-    destination_files = _capture_file_hashes(gateway_account, share_name)
+    try:
+        core_account, gateway_account = _discover_storage_accounts(resource_group)
+    except MigrationControlError as exc:
+        raise _stage_failure("storage_discovery", exc) from exc
+
+    try:
+        _verify_restore_identity_scopes(
+            expected_subscription,
+            resource_group,
+            core_account,
+            gateway_account,
+            table_name,
+            share_name,
+        )
+    except MigrationControlError as exc:
+        raise _stage_failure("restore_identity_scope", exc) from exc
+
+    try:
+        destination_files = _capture_file_hashes(gateway_account, share_name)
+    except MigrationControlError as exc:
+        raise _stage_failure("destination_capture", exc) from exc
+
     source_files = manifest["files"]
     if [item["name"] for item in destination_files] != [
         item["name"] for item in source_files
     ]:
-        raise MigrationControlError("Destination Gateway file set differs from source")
+        raise MigrationControlError(f"{_FAILURE_PREFIX}file_set")
 
     for source, destination in zip(source_files, destination_files, strict=True):
         if destination["size"] != source["size"]:
-            raise MigrationControlError(
-                f"Destination Gateway size differs for {source['name']}"
-            )
+            raise MigrationControlError(f"{_FAILURE_PREFIX}size")
         if destination["sha256"] != source["sha256"]:
-            raise MigrationControlError(
-                f"Destination Gateway SHA-256 differs for {source['name']}"
-            )
+            raise MigrationControlError(f"{_FAILURE_PREFIX}sha256")
 
     return {
         "file_count": len(destination_files),
@@ -240,7 +280,10 @@ def main() -> int:
         subprocess.TimeoutExpired,
         ValueError,
     ) as exc:
-        print(f"Gateway equivalence proof blocked: {type(exc).__name__}")
+        print(
+            "Gateway equivalence proof blocked: "
+            f"{type(exc).__name__} stage={_safe_failure_stage(exc)}"
+        )
         return 2
     return 0
 

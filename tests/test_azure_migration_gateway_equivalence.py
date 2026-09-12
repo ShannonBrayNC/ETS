@@ -97,7 +97,7 @@ def test_verify_destination_rejects_size_divergence(
         lambda *_args: destination,
     )
 
-    with pytest.raises(MigrationControlError, match="size differs"):
+    with pytest.raises(MigrationControlError, match="stage failed: size"):
         gateway_eq.verify_destination(manifest_path, "subscription")
 
 
@@ -116,7 +116,7 @@ def test_verify_destination_rejects_hash_divergence(
         lambda *_args: destination,
     )
 
-    with pytest.raises(MigrationControlError, match="SHA-256 differs"):
+    with pytest.raises(MigrationControlError, match="stage failed: sha256"):
         gateway_eq.verify_destination(manifest_path, "subscription")
 
 
@@ -135,8 +135,65 @@ def test_verify_destination_rejects_file_set_divergence(
         lambda *_args: destination,
     )
 
-    with pytest.raises(MigrationControlError, match="file set differs"):
+    with pytest.raises(MigrationControlError, match="stage failed: file_set"):
         gateway_eq.verify_destination(manifest_path, "subscription")
+
+
+def test_replica_failure_is_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    files = [_file("gateway-sync.db", b"source")]
+    manifest_path = tmp_path / "manifest.json"
+    _write_manifest(manifest_path, files)
+    _set_destination_boundary(monkeypatch)
+
+    def fail_replica(_resource_group: str) -> None:
+        raise MigrationControlError("private replica detail")
+
+    monkeypatch.setattr(gateway_eq, "_verify_zero_replicas", fail_replica)
+
+    with pytest.raises(MigrationControlError) as caught:
+        gateway_eq.verify_destination(manifest_path, "subscription")
+
+    assert str(caught.value) == "Gateway equivalence stage failed: replica_fence"
+    assert "private replica detail" not in str(caught.value)
+
+
+def test_restore_scope_failure_is_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    files = [_file("gateway-sync.db", b"source")]
+    manifest_path = tmp_path / "manifest.json"
+    _write_manifest(manifest_path, files)
+    _set_destination_boundary(monkeypatch)
+
+    def fail_scope(*_args: object) -> None:
+        raise MigrationControlError("private RBAC detail")
+
+    monkeypatch.setattr(gateway_eq, "_verify_restore_identity_scopes", fail_scope)
+
+    with pytest.raises(MigrationControlError) as caught:
+        gateway_eq.verify_destination(manifest_path, "subscription")
+
+    assert str(caught.value) == (
+        "Gateway equivalence stage failed: restore_identity_scope"
+    )
+    assert "private RBAC detail" not in str(caught.value)
+
+
+def test_safe_failure_stage_never_echoes_unknown_detail() -> None:
+    assert (
+        gateway_eq._safe_failure_stage(
+            MigrationControlError("Gateway equivalence stage failed: file_set")
+        )
+        == "file_set"
+    )
+    assert (
+        gateway_eq._safe_failure_stage(MigrationControlError("secret value"))
+        == "unspecified"
+    )
 
 
 def test_capture_source_manifest_records_only_hash_metadata(
