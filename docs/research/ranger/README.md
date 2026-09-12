@@ -4,6 +4,8 @@
 **Program:** Lantern Protocol — Evidence Transparency System (ETS)  
 **Purpose:** Extend ETS evidence architecture from digital systems into autonomous physical systems.
 
+> **Research expansion:** See [Captive Electromagnetic Actuation Evidence Demonstrator](captive-electromagnetic-actuation-demonstrator.md) for the non-weaponized, low-energy benchtop experiment that exercises authority → command → electrical response → captive motion → thermal response → resulting-state evidence and consequence custody.
+
 ## Thesis
 
 As autonomous systems increasingly sense, decide, and act in the physical world, recording only the resulting video, telemetry, or action is insufficient. ETS Ranger is a compact unmanned ATV-class research platform intended to demonstrate that the decision process participating in a physical action can be captured, cryptographically bound, preserved, and independently verified.
@@ -172,6 +174,7 @@ Current implementation increment:
 - [R0.2 external publication receipts](external-publication.md)
 - [R0.2 publication archive and retrieval audits](publication-archive.md)
 - [R0.2 publisher/custodian key lifecycle](publication-key-lifecycle.md)
+- [Captive electromagnetic actuation evidence demonstrator](captive-electromagnetic-actuation-demonstrator.md)
 - [Epistemic identity and bounded observability](epistemic-identity.md)
 - [Cyber-Physical Observability Model](cyber-physical-observability.md)
 - [Ranger Decision Event v0.1 schema](../../../schemas/ranger/decision-event.v0.1.schema.json)
@@ -288,6 +291,7 @@ The verifier must not infer from successful reconstruction alone that Ranger's p
 10. Document threat model including sensor spoofing, payload substitution, compromised compute, evidence deletion/tampering, clock/location manipulation, calibration manipulation, stale evidence, sensor/data loss, operator-command repudiation, biometric spoofing, identity-claim poisoning, false corroboration, common-source amplification, and interpretation laundering.
 11. Evaluate funding and government research pathways after the non-weaponized R0 architecture is demonstrated.
 12. Maintain patent/IP notes around autonomous decision provenance, payload attestation, evidence binding, cross-platform custody, independently verifiable physical-action reconstruction, bounded claims, epistemic absence, capability-state preservation, source independence, interpretation provenance, and consequence custody.
+13. Develop the captive electromagnetic actuation demonstrator evidence profile, synthetic fixtures, verifier tests, and laboratory acceptance checklist before physical implementation.
 
 ## Research rule
 
