@@ -8,9 +8,9 @@ This utility does not modify the experiment artifacts.
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
@@ -61,7 +61,8 @@ def main() -> int:
 
     if worktree not in ("", "UNAVAILABLE"):
         print(
-            "WARNING: working tree is not clean; do not use these values as the final execution freeze.",
+            "WARNING: working tree is not clean; do not use these values "
+            "as the final execution freeze.",
             file=sys.stderr,
         )
         return 3
