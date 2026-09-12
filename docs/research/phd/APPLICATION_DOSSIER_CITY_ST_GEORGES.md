@@ -3,321 +3,320 @@
 **Candidate:** Shannon Bray  
 **Research programme:** Evidence Architecture / Evidence Transparency System (ETS)  
 **Primary route:** PhD in Computer Science by Prospective Publication  
-**Primary research fit:** Software Reliability; dependable and trustworthy systems; formal methods; AI/system assurance; cyber-physical provenance  
-**Status:** application/supervisor-contact draft  
-**Prepared:** 2026-09-10
+**Primary research fit:** Software Reliability; dependable/trustworthy systems; formal methods; AI/system assurance; cyber-physical evidence  
+**Status:** supervisor-contact/application-development draft  
+**Originally prepared:** 2026-09-10  
+**Updated:** 2026-09-12
 
 ## 1. Route decision
 
-City St George's, University of London is the strongest immediate doctoral-home target identified so far for ETS because its Computer Science programme explicitly offers a **PhD by Prospective Publication** alongside the major-thesis and prior-publication routes.
+City St George's, University of London remains the strongest immediate doctoral-home target identified for ETS because its Computer Science programme explicitly offers a **PhD by Prospective Publication** alongside major-thesis and prior-publication routes.
 
-This is materially better aligned to the current ETS state than a PhD by prior/public works route. ETS already has a substantial architecture, implementation, formal-analysis and experimental foundation, but its strongest doctoral claims still require systematic literature qualification, prospective experiment protocols, peer-reviewed publication, external replication and independent scholarly scrutiny. Those are appropriate doctoral activities rather than prerequisites that should be completed before registration.
+This route is especially well aligned to the current research state. ETS already provides a substantial preliminary architecture, implementation, formal-analysis and experimental platform, but the decisive scholarly contributions remain prospective: literature qualification, formal refinement, preregistered experiments, peer-reviewed publications, independent challenge and final synthesis.
 
-Current university guidance states that the prospective-publication route:
+That is preferable to treating the existing engineering corpus as if the doctorate were already complete.
 
-- uses the same entrance requirements as the major-thesis PhD;
-- requires a coherent plan of related projects leading to publications;
-- normally includes between three and six research outputs published or submitted during registration;
-- does not permit pre-registration publications to be examined as part of the prospective-publication thesis;
-- requires the thesis to integrate the outputs into a coherent whole with an overarching hypothesis and sufficient literature/contextual analysis;
-- is offered by the Computer Science programme, whose research areas include Software Reliability and Artificial Intelligence/Machine Learning;
-- allows consideration, in addition to the normal academic route, of applicants with extensive professional experience in the proposed research area.
+Current public guidance indicates that the prospective-publication route uses the same entrance requirements as the major-thesis PhD, expects a coherent series of related projects leading to publications produced during registration, and culminates in a thesis integrating those outputs into an overarching scholarly argument.
 
-Official sources:
+Official sources to revalidate before formal submission:
 
 - https://www.citystgeorges.ac.uk/prospective-students/courses/research/computer-science
 - https://www.citystgeorges.ac.uk/__data/assets/pdf_file/0006/797172/PhD-by-Prospective-Publications-Guidance-July-2025.pdf
 - https://www.citystgeorges.ac.uk/research/centres/software-reliability
 
-### Strategic implication
+## 2. Current working title
 
-Do **not** wait for ETS to accumulate a completed doctoral dataset or external institutional adoption before approaching supervisors. Use the existing corpus to establish feasibility, research maturity and candidate capability. Reserve the decisive literature qualification, prospective experimental evidence, peer-reviewed publications, independent reproduction and thesis-level synthesis for the registered research programme.
+**Bounded Evidence for Consequential Machine Actions: Formal Non-Collapse Semantics and Consequence Custody Across Distributed, AI and Cyber-Physical Systems**
 
-## 2. Working doctoral title
+Continuity title retained for broader framing:
 
 **Independent Verification of Consequential Machine Actions: An Evidence Architecture for Distributed, AI and Cyber-Physical Systems**
 
-Alternative concise title:
+## 3. Research questions
 
-**Evidence Architecture for Independently Verifiable Machine Action**
-
-## 3. Proposed overarching research question
+### Canonical overarching question — RQ0
 
 **Can a distributed system produce independently verifiable evidence sufficient for an independent verifier to reconstruct and evaluate the provenance, identity, authority, policy context, decision, action and resulting state of a consequential event without requiring trust in the originating system?**
 
-This is the canonical ETS `RQ0` and remains deliberately unanswered.
+### Narrowed doctoral question
 
-Supporting questions are maintained in `RESEARCH_QUESTIONS.md` and cover evidence representation, evidence relationships, trust decomposition, offline/asynchronous evidence, AI decision evidence, cyber-physical provenance, adversarial robustness and consequence custody.
+**Does a formal, substrate-independent non-collapse semantics reduce unsupported evidentiary conclusions while preserving supported conclusions across distributed, AI-mediated and cyber-physical machine-action scenarios, and what additional evidence is required to support bounded consequence attribution?**
 
-## 4. Research problem
+The supporting RQ1–RQ8 remain canonical in `RESEARCH_QUESTIONS.md`.
 
-Modern digital, AI and autonomous systems increasingly make or execute consequential decisions, yet the evidence available after an event is commonly produced by the same systems whose behavior is under examination. Conventional logs, signed records, audit trails and provenance graphs can establish useful properties, but they do not automatically establish completeness, semantic truth, correct authority, actual execution or resulting physical/digital consequence.
+## 4. Why the thesis has narrowed
 
-The research problem is therefore not simply how to make logs tamper-evident. It is how to construct and evaluate an evidence architecture in which an independent verifier can distinguish:
+The preliminary research has already produced a useful negative result: existing provenance and attestation systems can express more of the Evidence Architecture surface than a weak comparator would suggest.
 
-- what was observed from what was inferred;
-- what was asserted from what was independently checkable;
-- identity and integrity from semantic truth;
-- authority from capability;
-- command issuance from execution;
-- intended consequence from independently observed resulting state;
-- cryptographic guarantees from external trust assumptions;
-- absence of evidence from evidence of absence.
+W3C PROV already provides rich provenance modeling and qualified relations. RFC 9334 RATS already provides Evidence, Attesters, Verifiers, appraisal policy, Attestation Results, Relying Parties, freshness and explicit trust assumptions. Rich profiles can add domain-specific claims, event time, policy versions, source dependence, uncertainty, authority, action and outcome information. Current 2026 RATS work further explores behavioral evidence, application-layer action/authority/outcome composition and attested inference receipts.
 
-The work investigates whether these distinctions can be represented, preserved and verified across distributed software, AI-mediated action and cyber-physical systems using a common bounded evidentiary model.
+For EXP-002, the internal red-team deliberately constructed the strongest reasonable RATS baseline. Its provisional adverse finding was that all twenty frozen scenarios could be represented through direct RATS semantics or an ordinary rich application profile; no scenario was internally classified `NOT_EQUIVALENT`, and no mandatory R+ extra rule was identified.
 
-## 5. Candidate contribution to knowledge
+That is **not** an independent or confirmatory result. An independent RATS/attestation challenge has been requested from Ned Smith. However, the internal result and emerging prior art are already sufficient to narrow the doctoral contribution away from claims that an evidence envelope, verifier role, graph, rich claim model or attested action/outcome receipt is itself original.
 
-The research does **not** claim novelty for hashing, digital signatures, Merkle structures, transparency logs, provenance graphs, W3C PROV, event histories, chain-of-custody records, attestation or append-only storage individually. Those are established mechanisms.
+This is a methodological strength of the proposed doctorate: the engineering platform has already exposed a smaller and more falsifiable scientific question.
 
-The candidate contribution is the formal and empirical investigation of a compositional **Evidence Architecture** that treats evidentiary properties and trust boundaries as separately inspectable claims and carries those claims across the full machine-action chain.
+## 5. Revised candidate contribution to knowledge
 
-The strongest candidate contributions currently are:
+The current highest-value candidate contribution is a formal and empirical **non-collapse semantics** for consequential machine-action evidence.
 
-1. **Evidence Object and Evidence Graph semantics** that separate identity, integrity, provenance, custody, authority, verification context, epistemic state and consequence evidence without promoting graph membership or cryptographic integrity into a claim of truth.
-2. **Explicit trust/claim-boundary decomposition** so verifier output can preserve useful guarantees while retaining unsupported assumptions and uncertainty.
-3. **Machine-action provenance** for AI-assisted or nondeterministic systems that captures externally inspectable inputs, runtime/model identity, policy, declared decision, authority, action and result without claiming access to hidden reasoning.
-4. **Cyber-physical provenance and consequence custody** that separates sensor observation, inference, decision, command, actuator behavior and resulting physical state.
-5. **Distributed/offline continuity and adversarial qualification** establishing the conditions under which evidentiary properties survive partitions, reordering, asynchronous synchronization, omission, manipulation and bounded component compromise.
+The proposed semantics keeps independently supported propositions separate and prevents unsupported promotion across boundaries such as:
 
-All remain candidate contributions until prior art, method, experimental evidence, limitations and independent scrutiny support them. `CONTRIBUTION_LEDGER.md` is the canonical contribution-control record.
+- integrity -> semantic truth;
+- identity -> authority;
+- current authority -> historical standing;
+- evidence freshness -> policy/reference freshness;
+- request -> execution;
+- execution -> result observation;
+- result observation -> causal consequence;
+- agreement -> independent corroboration;
+- missing evidence -> event absence;
+- unknown/unavailable/contradicted -> unsupported positive or negative fact;
+- source-evidence validity -> verifier trust;
+- provenance/temporal sequence -> causal proof.
+
+A second tightly related candidate is **consequence custody**: the evidence/provenance discipline required to keep requested action, execution evidence, resulting-state observation and bounded consequence attribution separate until the required premises are actually present.
+
+The contribution is intentionally framed as substrate-independent. If the same rules can be implemented through a strong RATS+ profile with materially equivalent results, the correct interpretation is that the semantic rule set—not an ETS-specific container—is the research contribution.
+
+`CONTRIBUTION_LEDGER.md` is the canonical contribution-control record and must remain authoritative over application marketing language.
 
 ## 6. Current preliminary research base
 
-The existing ETS corpus is intended to demonstrate research feasibility rather than complete the doctoral proof. It presently includes:
+The existing ETS corpus demonstrates feasibility and research maturity. It includes:
 
-- canonical research questions and hypotheses (`RESEARCH_QUESTIONS.md`);
-- a candidate contribution ledger (`CONTRIBUTION_LEDGER.md`);
-- a doctoral experiment ledger (`EXPERIMENT_LEDGER.md`);
-- formal Evidence Architecture and evidence-theory material (`docs/dissertation/FORMAL_ARCHITECTURE.md`, `docs/dissertation/EVIDENCE_THEORY.md`);
-- first-pass prior-art work for Evidence Objects and Evidence Graphs (`WP1_EVIDENCE_OBJECT_GRAPH_PRIOR_ART.md`);
-- implemented Edge/Gateway/Verifier and evidence-processing contracts;
-- formal specifications and bounded-model work, including TLA+/Alloy artifacts for selected properties;
-- offline/asynchronous transport and reconciliation work;
+- canonical RQ0–RQ8;
+- a contribution ledger that records narrowed and adverse findings;
+- a doctoral experiment ledger;
+- formal Evidence Architecture and evidence-theory material;
+- W3C PROV relation mapping and closest-work analysis;
+- RATS equivalence preregistration and a 20-scenario frozen corpus;
+- strongest-RATS internal red-team and external reviewer package;
+- 2026 emerging RATS/action-evidence prior-art qualification;
+- prospectively registered EXP-001, EXP-002 and EXP-003;
+- implemented Edge/Gateway/Verifier evidence-processing contracts;
+- TLA+/Alloy/formal artifacts for selected bounded properties;
+- offline/asynchronous transport and reconciliation research;
 - AI Witness and Black Box architecture;
-- Ranger R0 as a cyber-physical reference research platform;
+- Ranger R0 and VRX as cyber-physical research platforms;
 - reproducibility, simulation, failure and adversarial-test infrastructure.
 
-The presence of these artifacts is preliminary evidence that the proposed research programme is technically executable. Passing implementation tests is not treated as proof that a research hypothesis is true.
+Passing implementation tests is not treated as proof of a doctoral hypothesis.
 
 ## 7. Proposed methodology
 
-The doctorate should use a mixed computer-science methodology combining systematic scholarship, formal methods, experimental systems research and adversarial evaluation.
+The doctorate should combine systematic scholarship, formal methods, machine-checkable experiments, systems research and adversarial evaluation.
 
 ### Phase A — Literature and novelty qualification
 
-Conduct a systematic literature review and closest-work analysis spanning:
+Continue structured closest-work analysis across:
 
-- W3C PROV and provenance models;
-- secure/tamper-evident logging and transparency systems;
+- W3C PROV and provenance;
+- secure/tamper-evident logs and transparency systems;
 - digital forensics and chain of custody;
-- event sourcing and distributed histories;
-- software supply-chain provenance;
-- remote attestation and trusted execution environments;
-- assurance cases and dependable systems;
-- AI accountability/provenance;
+- supply-chain provenance;
+- RATS, attestation and TEEs;
+- behavioral evidence and AI inference/action receipts;
+- dependable systems and assurance cases;
 - autonomous/cyber-physical assurance;
-- formal verification and distributed-systems fault models.
+- causal/consequence evidence;
+- distributed-systems fault models.
 
-Each candidate contribution will be narrowed, revised or rejected against the literature rather than defended as a product feature.
+Claims that collapse into established practice must be narrowed or retired.
 
-### Phase B — Formalization
+### Phase B — Formal non-collapse semantics
 
-Define the Evidence Object, Evidence Graph, trust-boundary taxonomy, verification vector/state model and consequence-custody model formally enough to establish explicit invariants, assumptions and nonclaims.
+Define proposition types, epistemic states, positive inference rules, prohibited cross-dimensional promotions, contradiction/defeater semantics, source independence and machine-checkable support traces.
 
-Use suitable formal techniques such as state-transition modeling, temporal logic/model checking and relational specification for bounded properties. Formal claims will be kept separate from empirical and operational claims.
+The rule system must be capable of implementation outside the ETS object model.
 
-### Phase C — Prospective digital/distributed experiments
+### Phase C — EXP-003 machine-checkable falsification
 
-Create preregistered or otherwise prospectively recorded protocols for:
+EXP-003 is the highest-priority executable doctoral experiment because it directly tests the narrowed thesis without human-subject dependency.
 
-- canonicalization and cross-implementation identity/integrity;
-- evidence reconstruction under asynchronous transport;
-- partition, delay, reordering, duplication and later synchronization;
-- omission and tampering cases;
-- independent-verifier reconstruction;
-- disagreement between origin records and independent observations.
+Identical atomic facts will be evaluated under:
 
-### Phase D — AI machine-action experiments
+1. a rich profile without the frozen mandatory non-collapse calculus;
+2. the formal non-collapse calculus;
+3. a RATS+ implementation of the same rules.
 
-Use AI Witness/reference workloads to evaluate whether an independent verifier can reconstruct externally observable machine-action context without relying on hidden chain-of-thought or unverifiable internal reasoning.
+Primary outcomes include unsupported semantic-promotion rate and supported-conclusion recall. The study will also measure historical-standing error, command/execution/result/consequence collapse, source-independence collapse and epistemic-state collapse.
 
-Experimental variables should include model/runtime identity, input/context capture, policy/authority changes, nondeterministic outputs, tool execution, omitted records and independent consequence observation.
+A RATS+ result equal to the Evidence Architecture implementation is an expected and academically useful outcome because it supports substrate independence while narrowing ETS-specific novelty.
 
-### Phase E — Cyber-physical experiments
+### Phase D — EXP-001 evaluator study
 
-Use Ranger R0 or an equivalent instrumented cyber-physical platform to evaluate the chain:
+The preregistered human evaluator comparison remains important for determining whether formal semantics improve practical reconstruction behavior. It must proceed only after institutional ethics/IRB determination and packet-equivalence review.
 
-`Observation -> Inference -> Decision -> Authority -> Action -> Resulting State`
+### Phase E — Distributed and AI experiments
 
-The experimental design should explicitly separate:
+Convert asynchronous/offline implementation work into publication-grade experiments and use AI Witness/reference workloads to compare self-reported machine action with independently observable external effect. Hidden chain-of-thought is not required or treated as evidence.
 
-- command evidence;
-- actuator-execution evidence;
-- independent physical-result evidence;
-- sensor trust and uncertainty.
+### Phase F — Ranger/VRX consequence-custody experiments
 
-Controlled fault injection should include dropped/altered telemetry, stale sensor information, command rejection, actuator non-execution, delayed observation, contradictory observers and bounded identity/authority faults.
+Instrument the chain:
 
-### Phase F — Adversarial qualification and independent reproduction
+`Observation -> Inference -> Decision -> Authority/Standing -> Requested Action -> Execution -> Result Observation -> Consequence Attribution`
 
-Evaluate which ETS claims remain sound, degrade detectably or fail under defined attacker capabilities and system faults. Negative results are first-class outputs.
+Use controlled mismatch/fault cases to determine exactly where evidence permits or forbids an independent-verifier conclusion.
 
-Release reproducible experiment packages and seek independent reproduction by another researcher or laboratory where practical.
+### Phase G — Adversarial qualification and independent reproduction
+
+External reviewers should be invited to construct stronger standards-based encodings and counterexamples. Negative results, null results and successful challenges remain first-class research outputs.
 
 ## 8. Data and evidence plan
 
-The initial programme does not require a pre-existing external institutional dataset.
+The initial programme does not require a proprietary institutional dataset.
 
-The core data can be generated prospectively from controlled research systems and consists primarily of:
+Core research data can be generated prospectively and includes:
 
-- canonical Evidence Objects and graph relationships;
-- signed/anchored verification metadata;
-- system and observer telemetry;
+- synthetic atomic evidence propositions and dependency graphs;
+- formal proof/counterexample traces;
+- matched Evidence Architecture and RATS+ outputs;
+- system and independent-observer telemetry;
 - policy/authority state;
-- AI model/runtime and tool-action records;
-- Ranger sensor, command, actuator and resulting-state observations;
+- AI model/runtime and tool-action evidence;
+- Ranger/VRX command, actuator and resulting-state observations;
 - injected-fault ground truth;
-- verifier outputs and reconstruction results;
+- verifier conclusions and support traces;
 - performance/resource measurements.
 
-External organizational datasets can later strengthen ecological validity but are not required to establish the initial research design. Human-subject and personal-data collection should be avoided unless a later research question requires it and receives the appropriate ethics approval.
+External organizational datasets may later strengthen ecological validity but are not admission prerequisites for this research design.
 
 ## 9. Evaluation criteria
 
-Candidate quantitative and qualitative measures include:
+Primary evaluation criteria include:
 
-- independent reconstruction completeness;
-- correct separation of verified, asserted, contradicted and unknown claims;
-- manipulation/fault detection rate within declared trust boundaries;
-- false attribution or false-confidence rate;
-- provenance continuity through partition/reconciliation;
-- verifier agreement across independent implementations;
-- ability to distinguish command from observed execution/consequence;
-- performance, storage and latency overhead;
-- robustness as independent observation channels are removed or compromised;
-- reproducibility by a third party.
+- unsupported semantic-promotion rate;
+- supported-conclusion recall;
+- standing-collapse rate;
+- command/execution/result/consequence collapse rate;
+- independence-collapse rate;
+- false-completeness/omission error;
+- contradiction preservation;
+- conclusion-to-source/policy trace completeness;
+- cross-domain consistency;
+- formal invariant counterexamples;
+- operational overhead;
+- external reproduction/challenge.
 
-The research should explicitly report where verification is impossible from available evidence.
+The research should explicitly report when verification is impossible from available evidence.
 
-## 10. Prospective-publication thesis plan
+## 10. Revised prospective-publication plan
 
-The working publication sequence is intentionally aligned to a prospective-publication doctorate. Final count and venues should be set with supervisors and discipline expectations.
+The current preferred sequence is:
 
-### Paper 1 — Evidence Architecture foundations
+1. **Formal non-collapse semantics for bounded machine-action evidence.**
+2. **Consequence custody and independent result observation.**
+3. **Distributed/offline evidence continuity under explicit assumptions.**
+4. **Cross-domain evaluation of non-collapse semantics.**
+5. **AI machine-action evidence: attested self-report versus independent observation.**
+6. **Ranger/VRX cyber-physical consequence evidence and adversarial qualification.**
 
-Formal problem definition, trust decomposition, evidence/nonclaim semantics and the relationship to existing provenance, forensic and assurance approaches.
-
-### Paper 2 — Evidence Objects and Evidence Graphs
-
-Minimum-sufficiency investigation, typed evidentiary relationships, contradiction/uncertainty treatment and comparison with W3C PROV and adjacent models.
-
-### Paper 3 — Independent verification in distributed/offline systems
-
-Formal and experimental evaluation of asynchronous transport, partition, reconciliation, omission and verifier reconstruction.
-
-### Paper 4 — Evidence for AI-mediated machine action
-
-Evaluation of externally inspectable AI action evidence without dependency on hidden reasoning traces.
-
-### Paper 5 — Cyber-physical provenance and consequence custody
-
-Ranger-based experiments distinguishing observation, decision, authority, command, actuator execution and independently observed resulting state.
-
-### Paper 6 — Adversarial qualification and evidence-of-evidence
-
-Fault/attacker model, negative results, boundary failures, reproducibility and evidence generated about the qualification process itself.
-
-A thesis commentary/synthesis would establish the overarching hypothesis, integrate results, provide literature context and explain which candidate contributions survived scrutiny.
+The Evidence Object and Evidence Graph should be described as implementation/research substrates unless later evidence justifies restoring a stronger originality claim.
 
 ## 11. What remains doctoral work
 
-The following should **not** be treated as admission blockers unless a specific university requires them:
+The following are intentionally **not** complete and should remain part of the doctorate rather than admission prerequisites unless City says otherwise:
 
 - final systematic literature review;
-- final novelty determination;
-- completed prospective datasets;
-- all Ranger physical experiments;
+- final originality determination;
+- final non-collapse calculus;
+- EXP-003 execution;
+- EXP-001 human evaluator study;
+- Ranger/VRX physical consequence-custody datasets;
 - AI nondeterministic replication studies;
 - full adversarial campaign;
-- external reproduction;
+- independent reproduction;
 - peer-reviewed prospective publications;
-- final statistical analysis;
 - final supported/refuted contribution set;
 - thesis synthesis.
 
-These are principal outputs of the proposed doctorate.
+## 12. Candidate academic profile relevant to entry
 
-## 12. Immediate supervisor targets
+The application is not dependent solely on a professional-experience exception. Current records indicate:
+
+- B.S. Information Technology, Colorado State University Global Campus;
+- M.S. Cybersecurity, University of Delaware;
+- prior Computer Science doctoral study at Missouri University of Science and Technology;
+- extensive senior engineering/architecture experience;
+- published technical books and Microsoft curriculum authorship;
+- substantial professional speaking/training and advanced Microsoft credentials.
+
+Official transcripts and the exact Missouri S&T status wording must be verified before formal application.
+
+## 13. Supervisor targets and outreach status
 
 ### Primary — Professor Ilir Gashi
 
-Director, Centre for Software Reliability. His current role and research environment align strongly with software reliability, security, dependability and empirical assessment.
+Director, Centre for Software Reliability. Strong fit for software reliability, security, dependability and empirical assessment.
+
+**Status:** initial doctoral-fit/supervision email sent. Response pending.
 
 Profile: https://www.citystgeorges.ac.uk/about/people/academics/ilir-gashi
 
-### Strong co-supervision/alternate fit — Professor Robin Bloomfield
+### Strong alternate/co-supervision — Professor Robin Bloomfield
 
-Research interests include software/system dependability, safety and assurance cases, security-informed safety, critical infrastructure and trustworthiness of software-based systems.
+Fit: software/system dependability, safety and assurance cases, security-informed safety, critical infrastructure and trustworthy software-based systems.
 
 Profile: https://www.citystgeorges.ac.uk/about/people/academics/robin-bloomfield
 
-### Strong co-supervision/alternate fit — Professor Peter Bishop
+### Strong alternate/co-supervision — Professor Peter Bishop
 
-Research includes software/system dependability, system safety and security, assurance-case methodology and assurance strategies for autonomous vehicles.
+Fit: software/system dependability, system safety/security, assurance-case methodology and assurance of autonomous systems.
 
 Profile: https://www.citystgeorges.ac.uk/about/people/academics/peter-bishop
 
-## 13. Initial supervisor outreach draft
+## 14. Independent technical challenge status
 
-**Subject:** Prospective PhD research — independently verifiable evidence for AI and cyber-physical systems
+A request has been sent to Ned Smith for independent adversarial review of the RATS equivalence analysis.
 
-Professor Gashi,
+The request explicitly reports the adverse internal red-team finding and asks the reviewer to defeat remaining ETS differentiation rather than endorse the project.
 
-I am preparing a Computer Science PhD proposal around a research programme I have been developing on independently verifiable evidence for consequential machine actions.
+No validation is claimed until a substantive external response is received.
 
-The central question is whether a distributed system can produce sufficient evidence for an independent verifier to reconstruct and evaluate the provenance, identity, authority, policy context, decision, action and resulting state of an event without requiring trust in the originating system.
+## 15. Admission/application questions still to resolve
 
-I have already developed a substantial preliminary research platform, Evidence Architecture / ETS, including formal models, implementation and verifier work, distributed/offline evidence experiments, AI-action provenance work, and a cyber-physical reference platform called Ranger. I am deliberately not treating those implementations as proof of the research claims. The remaining work includes systematic literature and novelty qualification, prospective experimental protocols, formal refinement, adversarial testing, independent reproduction and peer-reviewed publication.
+1. Confirm the project may use the Computer Science PhD by Prospective Publication route for the next viable intake.
+2. Confirm the next application/start window.
+3. Confirm attendance/residency expectations and part-time/remote feasibility for a U.S.-based candidate.
+4. Confirm publication expectations for Computer Science: number/type of outputs, venue expectations, authorship rules and handling of collaborative papers.
+5. Confirm supervisory team and Centre for Software Reliability fit.
+6. Confirm final transcript/qualification treatment.
 
-City St George's PhD by Prospective Publication route appears particularly well matched because I want the decisive experiments and publications to occur under doctoral supervision rather than attempting to present the existing engineering corpus as a completed PhD.
+## 16. Application artifacts — current status
 
-The Centre for Software Reliability's work on rigorous dependability assessment, security, formal methods and assurance is especially close to the methodological direction I believe this research requires.
+Already created:
 
-Would you be willing to assess whether this topic could fit the Centre and whether you, or another member of the group, might be appropriate to discuss potential supervision with? I can provide a concise research prospectus, the canonical research questions/contribution ledger and links to the public research repository.
+- academic CV draft;
+- City St George's application dossier;
+- university-neutral doctoral proposal;
+- contribution ledger;
+- experiment ledger;
+- literature map/bibliography/gap analysis;
+- W3C PROV and RATS closest-work qualification;
+- external technical-review package.
 
-Regards,
-Shannon Bray
+Still required:
 
-## 14. Questions to resolve with City St George's before formal application
+- official transcripts;
+- exact prior-doctoral-study wording;
+- 2–3 referees;
+- selected immutable public portfolio;
+- 1–2 page final contribution summary synchronized with external review;
+- route-specific final proposal after supervisor feedback;
+- confirmed intake/attendance requirements.
 
-These are admissions/supervisory questions, not research prerequisites:
+## 17. Current supervisor pitch
 
-1. Confirm that the Department of Computer Science will accept this project specifically under the PhD by Prospective Publication route for the intended intake.
-2. Confirm whether the candidate's professional/research record is sufficient under the programme's provision for applicants with extensive professional experience, based on the candidate's exact academic transcript/degree history.
-3. Establish the supervisory team and whether the Centre for Software Reliability is the appropriate home.
-4. Confirm the publication expectations for Computer Science: expected number/type of outputs, venue standards, first-authorship expectations and handling of collaborative papers.
-5. Confirm the next viable application/start window because the published 2026 Computer Science deadlines have passed for the October 2026 start.
-6. Confirm residence/attendance requirements and whether part-time or remote-compatible study is feasible for a US-based candidate.
+A concise current framing is:
 
-## 15. Application dossier still to build
+> I began with a broad evidence-architecture implementation and have already used prior-art mapping and an adversarial RATS comparison to narrow the research question. Existing standards can encode more of the evidence surface than a weak comparison suggests. The proposed doctorate therefore asks whether a formal non-collapse semantics and consequence-custody discipline provides a measurable, cross-domain verification benefit beyond equally informative rich standards profiles, and under what conditions that benefit disappears. ETS, AI Witness and Ranger/VRX provide the implementation and experimental platforms, but the contribution is allowed to become substrate independent—or to fail.
 
-The next application artifacts should be produced from this prospectus and the existing research corpus:
+## 18. Decision rule
 
-- research-focused academic CV;
-- 1,000–2,000 word university-neutral research proposal;
-- 1–2 page contribution summary;
-- selected public research/engineering portfolio with immutable links;
-- qualification/transcript inventory;
-- professional/research achievements relevant to exceptional-entry consideration;
-- referee strategy;
-- literature map and bibliography sufficient to demonstrate current field awareness;
-- route-specific application wrapper for City St George's.
+Supervisor engagement should continue now.
 
-## 16. Decision rule
+Do not delay doctoral-home selection for completed empirical datasets, institutional adoption, Ranger hardware completion or peer-reviewed ETS publications. Those are prospective research outputs.
 
-Supervisor contact can begin now.
-
-Formal submission should follow once the qualification/entry route, supervisory fit and next intake are confirmed and the academic CV plus concise proposal are complete.
-
-Do not delay supervisor contact for completed empirical data, external commercial adoption, Ranger hardware completion, peer-reviewed ETS publications or institutional buy-in. Those items may strengthen the case later, but for the prospective-publication route the decisive research should remain prospective and academically supervised.
+Formal submission should follow once supervisory fit, next intake, attendance feasibility, transcripts and referees are sufficiently resolved.
