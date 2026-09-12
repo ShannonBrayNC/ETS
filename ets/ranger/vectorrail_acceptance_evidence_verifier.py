@@ -57,7 +57,9 @@ def verify_vectorrail_acceptance_evidence_object(
         raise VectorRailAcceptanceEvidenceVerificationError("VRX acceptance extension is missing")
     record = extension.get("acceptance_record")
     if not isinstance(record, Mapping):
-        raise VectorRailAcceptanceEvidenceVerificationError("acceptance_record extension is invalid")
+        raise VectorRailAcceptanceEvidenceVerificationError(
+            "acceptance_record extension is invalid"
+        )
 
     try:
         semantic_valid = verify_vectorrail_acceptance(record)
