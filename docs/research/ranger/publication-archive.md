@@ -74,6 +74,8 @@ from a provider name or successful API response.
 
 The [publisher/custodian key-lifecycle profile](publication-key-lifecycle.md) now preserves
 historical source-key standing across rotation and revocation without treating an old key as
-currently authorized. Next, qualify a separately administered immutable publication backend with
-retained latest-head custody, backend configuration evidence, retrieval audits, and
-deletion-negative tests.
+currently authorized. The
+[immutable-publication qualification profile](immutable-publication-qualification.md) now defines
+the provider-neutral evidence and deletion-negative test boundary. A provider-specific artifact
+verifier and controlled live run remain required before any backend is described as qualified or
+immutable.
