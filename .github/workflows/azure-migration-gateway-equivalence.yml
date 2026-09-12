@@ -23,7 +23,6 @@ jobs:
       SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
       DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      GATEWAY_EQ_MANIFEST: ${{ runner.temp }}/ets-gateway-equivalence.json
     steps:
       - name: Check out exact migration source
         uses: actions/checkout@v4
@@ -67,7 +66,7 @@ jobs:
           set -euo pipefail
           python -m scripts.azure_migration_gateway_equivalence \
             --mode capture-source \
-            --manifest "$GATEWAY_EQ_MANIFEST" \
+            --manifest "$RUNNER_TEMP/ets-gateway-equivalence.json" \
             --expected-tenant "$SOURCE_TENANT_ID" \
             --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
 
@@ -92,7 +91,7 @@ jobs:
           set -euo pipefail
           python -m scripts.azure_migration_gateway_equivalence \
             --mode verify-destination \
-            --manifest "$GATEWAY_EQ_MANIFEST" \
+            --manifest "$RUNNER_TEMP/ets-gateway-equivalence.json" \
             --expected-tenant "$DEST_TENANT_ID" \
             --expected-subscription "$DEST_SUBSCRIPTION_ID"
 
@@ -100,8 +99,8 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -f "$GATEWAY_EQ_MANIFEST"
-          test ! -e "$GATEWAY_EQ_MANIFEST"
+          rm -f "$RUNNER_TEMP/ets-gateway-equivalence.json"
+          test ! -e "$RUNNER_TEMP/ets-gateway-equivalence.json"
 
       - name: Clear destination Azure session
         if: always()
