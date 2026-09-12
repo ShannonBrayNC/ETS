@@ -29,7 +29,11 @@ def test_override_only_changes_temporary_job_image_selection() -> None:
     assert "$gatewayConfiguredImage = [string]$gatewayContainer.image" in TEXT
     assert "$image = '$qualificationImageLiteral'" in TEXT
     assert "$image = $gatewayConfiguredImage" in TEXT
-    assert "Temporary qualification job image does not match the immutable qualification image" in TEXT
+    assert (
+        "Temporary qualification job image does not match the immutable "
+        "qualification image"
+        in TEXT
+    )
     assert "productionGatewayImageMutationPlanned = $false" in TEXT
     assert "productionGatewayImageMutationPerformed = $false" in TEXT
 
@@ -55,4 +59,8 @@ def test_runbook_pins_successful_publication_digest_for_gate2() -> None:
     assert "34662606609" in DOC
     assert APPROVED_PREFIX + PUBLISHED_DIGEST in DOC
     assert "-QualificationImage $image" in DOC
-    assert "production Gateway must **not** be scaled up or have its configured image changed" in DOC
+    assert (
+        "production Gateway must **not** be scaled up or have its configured "
+        "image changed"
+        in DOC
+    )
