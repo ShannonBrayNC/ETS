@@ -1,0 +1,29 @@
+{
+  "version": "exp003-1.0",
+  "status": "FROZEN_PRE_EXECUTION",
+  "principle": "Execution, resulting-state observation, and consequence attribution are distinct propositions.",
+  "window": {
+    "basis": "scenario-declared bounded interval",
+    "required_fields": ["start", "end"],
+    "default": null
+  },
+  "requires": [
+    "supported execution proposition",
+    "supported resulting-state observation within the declared window",
+    "required provenance-root independence for the scenario family",
+    "no unresolved material contradiction",
+    "no active alternative-explanation defeater",
+    "scenario-specific sufficiency rule"
+  ],
+  "defeaters": [
+    "result observation predates execution",
+    "result falls outside the declared consequence window",
+    "result source is disallowed self-report where independence is required",
+    "supported contradictory result remains unresolved",
+    "declared alternative cause remains live",
+    "execution itself is unsupported"
+  ],
+  "failure_state": "INDETERMINATE",
+  "rule_id": "R-CONSEQ-01",
+  "nonclaim": "This model does not establish universal scientific or legal causation."
+}
