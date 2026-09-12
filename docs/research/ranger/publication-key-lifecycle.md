@@ -118,7 +118,8 @@ API request, or a software database setting is not enough to make those claims.
 
 ## Next sequential slice
 
-Qualify a separately administered immutable publication backend (for example an object-lock/WORM
-adapter) with retained latest-head custody, backend configuration evidence, publisher/custodian
-key-lifecycle composition, retrieval auditing, and deletion-negative tests. Do not label a backend
-immutable or independent until the produced evidence supports those claims.
+The [immutable-publication qualification profile](immutable-publication-qualification.md) now
+composes this lifecycle with retained latest-head custody, raw backend evidence, retrieval auditing,
+and deletion-negative tests. The next slice is one provider-specific artifact verifier and a
+controlled live qualification run. Do not label a backend immutable or independent until the
+produced evidence supports those claims.

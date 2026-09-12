@@ -174,6 +174,7 @@ Current implementation increment:
 - [R0.2 external publication receipts](external-publication.md)
 - [R0.2 publication archive and retrieval audits](publication-archive.md)
 - [R0.2 publisher/custodian key lifecycle](publication-key-lifecycle.md)
+- [R0.2 immutable-publication qualification evidence](immutable-publication-qualification.md)
 - [Captive electromagnetic actuation evidence demonstrator](captive-electromagnetic-actuation-demonstrator.md)
 - [Epistemic identity and bounded observability](epistemic-identity.md)
 - [Cyber-Physical Observability Model](cyber-physical-observability.md)
@@ -192,6 +193,7 @@ Current implementation increment:
 - [ADR 0011: external publication receipts](adr/0011-external-publication-receipts.md)
 - [ADR 0012: publication archive and retrieval audits](adr/0012-publication-archive-retrieval-audits.md)
 - [ADR 0013: publication/custodian key lifecycle](adr/0013-publication-custodian-key-lifecycle.md)
+- [ADR 0014: immutable-publication qualification evidence](adr/0014-immutable-publication-qualification-evidence.md)
 
 ### R0.1 — Mobility
 - safe rolling chassis
