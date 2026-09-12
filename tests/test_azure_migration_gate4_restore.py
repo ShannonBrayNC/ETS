@@ -235,7 +235,62 @@ def test_entity_args_preserve_app_odata_and_strip_server_fields() -> None:
     assert all(not item.startswith("@odata.etag=") for item in args)
 
 
-def test_verify_restore_identity_requires_exact_three_scopes(
+def test_verify_restore_identity_requires_exact_four_scopes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    subscription = "sub"
+    rg = "rg-ets-prod-eastus"
+    core = "etscore"
+    gateway = "etsgwstate"
+    table = "ETSEvents"
+    share = "ets-gateway-state-q1-v2"
+    base = f"/subscriptions/{subscription}/resourceGroups/{rg}"
+    table_scope = (
+        f"{base}/providers/Microsoft.Storage/storageAccounts/{core}"
+        f"/tableServices/default/tables/{table}"
+    )
+    gateway_scope = (
+        f"{base}/providers/Microsoft.Storage/storageAccounts/{gateway}"
+    )
+    share_scope = (
+        f"{gateway_scope}/fileServices/default/shares/{share}"
+    )
+    responses = iter(
+        [
+            {"user": {"name": "restore-principal"}},
+            [
+                {"role": "Reader", "scope": base},
+                {
+                    "role": "Storage Table Data Contributor",
+                    "scope": table_scope,
+                },
+                {
+                    "role": "Storage File Data Privileged Reader",
+                    "scope": gateway_scope,
+                },
+                {
+                    "role": "Storage File Data Privileged Contributor",
+                    "scope": share_scope,
+                },
+            ],
+        ]
+    )
+    monkeypatch.setattr(
+        "scripts.azure_migration_gate4_restore.az_json",
+        lambda _args: next(responses),
+    )
+
+    _verify_restore_identity_scopes(
+        subscription,
+        rg,
+        core,
+        gateway,
+        table,
+        share,
+    )
+
+
+def test_verify_restore_identity_rejects_missing_gateway_account_reader(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     subscription = "sub"
@@ -274,14 +329,18 @@ def test_verify_restore_identity_requires_exact_three_scopes(
         lambda _args: next(responses),
     )
 
-    _verify_restore_identity_scopes(
-        subscription,
-        rg,
-        core,
-        gateway,
-        table,
-        share,
-    )
+    with pytest.raises(
+        MigrationControlError,
+        match="exact approved Gate-4 scopes",
+    ):
+        _verify_restore_identity_scopes(
+            subscription,
+            rg,
+            core,
+            gateway,
+            table,
+            share,
+        )
 
 
 def test_verify_restore_identity_rejects_broad_role(
