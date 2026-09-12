@@ -7,6 +7,7 @@ WORKFLOW = (ROOT / ".github/workflows/azure-migration-destination-image-publish.
 BOOTSTRAP = (ROOT / "scripts/azure/bootstrap-destination-image-publisher.ps1").read_text(
     encoding="utf-8"
 )
+AUTH_HELPER = (ROOT / "scripts/acr_oauth_docker_login.py").read_text(encoding="utf-8")
 
 
 def test_destination_publication_is_hard_bound() -> None:
@@ -38,6 +39,13 @@ def test_publication_uses_oidc_and_no_reusable_registry_secret() -> None:
     assert "registry-password" not in WORKFLOW
     assert "listCredentials" not in WORKFLOW
     assert "clientSecretCreated = $false" in BOOTSTRAP
+
+
+def test_runtime_publisher_does_not_require_control_plane_rbac_read() -> None:
+    assert "az role assignment list" not in AUTH_HELPER
+    assert '"control_plane_rbac_verification": "bootstrap_operator_boundary"' in AUTH_HELPER
+    assert '"runtime_rbac_enumeration_performed": False' in AUTH_HELPER
+    assert "authenticated-publisher-capability.json" in AUTH_HELPER
 
 
 def test_publication_proves_gate2_image_capability() -> None:

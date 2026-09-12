@@ -15,7 +15,7 @@ import pytest
 from scripts.acr_oauth_docker_login import (
     docker_login,
     exchange_refresh_token,
-    verify_authenticated_publisher_rbac,
+    validate_authenticated_publisher_token,
 )
 
 
@@ -143,75 +143,54 @@ def test_exchange_refresh_token_surfaces_only_sanitized_acr_error_code() -> None
     assert "sensitive-token-value" not in message
 
 
-def test_verify_authenticated_publisher_rbac_binds_token_oid_to_direct_acrpush() -> None:
-    registry_id = (
-        "/subscriptions/sub/resourceGroups/rg/providers/"
-        "Microsoft.ContainerRegistry/registries/example"
-    )
+def test_validate_authenticated_publisher_token_defers_rbac_to_bootstrap() -> None:
     principal_id = "11111111-2222-3333-4444-555555555555"
     token = _jwt({"oid": principal_id, "tid": "tenant-test"})
-    calls: list[list[str]] = []
 
-    def _runner(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        calls.append(args)
-        assert kwargs["text"] is True
-        assert kwargs["check"] is True
-        if args[:3] == ["az", "acr", "show"]:
-            stdout = registry_id
-        elif args[:4] == ["az", "role", "assignment", "list"]:
-            assert "--all" in args
-            assert "--assignee-object-id" in args
-            assert args[args.index("--assignee-object-id") + 1] == principal_id
-            stdout = json.dumps(
-                [
-                    {
-                        "scope": registry_id,
-                        "principalType": "ServicePrincipal",
-                        "roleDefinitionName": "AcrPush",
-                        "roleDefinitionId": (
-                            "/subscriptions/sub/providers/Microsoft.Authorization/roleDefinitions/"
-                            "8311e382-0749-4cb8-b61a-304f252e45ec"
-                        ),
-                    }
-                ]
-            )
-        else:
-            raise AssertionError(args)
-        return subprocess.CompletedProcess(args=args, returncode=0, stdout=stdout, stderr="")
-
-    evidence = verify_authenticated_publisher_rbac(
-        registry_server="example.azurecr.io",
+    evidence = validate_authenticated_publisher_token(
         aad_access_token=token,
+        tenant_id="TENANT-TEST",
         role_assignment_mode="LegacyRegistryPermissions",
-        runner=_runner,
     )
 
     assert evidence["expected_writer_role"] == "AcrPush"
-    assert evidence["authenticated_writer_role_verified"] is True
-    assert evidence["direct_registry_scope_verified"] is True
+    assert evidence["token_identity_claims_verified"] is True
+    assert evidence["token_tenant_verified"] is True
+    assert evidence["control_plane_rbac_verification"] == "bootstrap_operator_boundary"
+    assert evidence["runtime_rbac_enumeration_performed"] is False
+    assert evidence["acr_oauth_exchange_verified"] is False
+    assert evidence["docker_login_verified"] is False
+    assert evidence["effective_push_verified"] is False
     assert principal_id not in json.dumps(evidence)
-    assert len(calls) == 2
 
 
-def test_verify_authenticated_publisher_rbac_fails_if_actual_oid_lacks_writer_role() -> None:
-    registry_id = (
-        "/subscriptions/sub/resourceGroups/rg/providers/"
-        "Microsoft.ContainerRegistry/registries/example"
+def test_validate_authenticated_publisher_token_rejects_wrong_tenant() -> None:
+    token = _jwt(
+        {
+            "oid": "11111111-2222-3333-4444-555555555555",
+            "tid": "tenant-a",
+        }
     )
-    principal_id = "11111111-2222-3333-4444-555555555555"
-    token = _jwt({"oid": principal_id, "tid": "tenant-test"})
-
-    def _runner(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        del kwargs
-        stdout = registry_id if args[:3] == ["az", "acr", "show"] else "[]"
-        return subprocess.CompletedProcess(args=args, returncode=0, stdout=stdout, stderr="")
-
-    with pytest.raises(RuntimeError, match="Authenticated GitHub OIDC principal"):
-        verify_authenticated_publisher_rbac(
-            registry_server="example.azurecr.io",
+    with pytest.raises(RuntimeError, match="tenant does not match"):
+        validate_authenticated_publisher_token(
             aad_access_token=token,
+            tenant_id="tenant-b",
             role_assignment_mode="LegacyRegistryPermissions",
-            runner=_runner,
+        )
+
+
+def test_validate_authenticated_publisher_token_rejects_unknown_role_mode() -> None:
+    token = _jwt(
+        {
+            "oid": "11111111-2222-3333-4444-555555555555",
+            "tid": "tenant-test",
+        }
+    )
+    with pytest.raises(RuntimeError, match="Unsupported ACR role-assignment mode"):
+        validate_authenticated_publisher_token(
+            aad_access_token=token,
+            tenant_id="tenant-test",
+            role_assignment_mode="unexpected",
         )
 
 
