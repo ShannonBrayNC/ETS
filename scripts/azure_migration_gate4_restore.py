@@ -20,10 +20,8 @@ from typing import Any
 
 from scripts.azure_migration_control import MigrationControlError, az_json, verify_context
 from scripts.azure_migration_prefix_preflight import _validated_state
-from scripts.azure_migration_restore_preflight import (
-    _discover_storage_accounts,
-    preflight as destination_preflight,
-)
+from scripts.azure_migration_restore_preflight import _discover_storage_accounts
+from scripts.azure_migration_restore_preflight import preflight as destination_preflight
 
 AUTHORIZATION_PHRASE = "GATE4_DESTINATION_WRITE_AUTHORIZED"
 SERVER_MANAGED_ENTITY_FIELDS = {
