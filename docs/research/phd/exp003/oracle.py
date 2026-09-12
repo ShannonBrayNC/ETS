@@ -6,9 +6,6 @@ NON_COLLAPSE_RULES.json. This separation prevents a condition implementation fro
 own answer key.
 """
 
-from collections.abc import Mapping
-
-
 SUPPORTED_TYPES = {
     "INTEGRITY_VALID",
     "PRODUCER_IDENTIFIED",
@@ -23,11 +20,11 @@ SUPPORTED_TYPES = {
 }
 
 
-def supported_conclusions(case: Mapping[str, object]) -> set[str]:
+def supported_conclusions(case: dict[str, object]) -> set[str]:
     """Return proposition types supportable from the case's atomic facts."""
     facts = case["facts"]
-    if not isinstance(facts, Mapping):
-        raise TypeError("case['facts'] must be a mapping")
+    if not isinstance(facts, dict):
+        raise TypeError("case['facts'] must be a dict")
 
     out: set[str] = set()
     if facts.get("signature_valid"):
