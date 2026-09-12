@@ -400,6 +400,14 @@ def _verify_restore_identity_scopes(
             f"{core_account}/tableServices/default/tables/{table_name}"
         ),
     )
+    gateway_account_scope = _scope(
+        subscription,
+        resource_group,
+        (
+            "/providers/Microsoft.Storage/storageAccounts/"
+            f"{gateway_account}"
+        ),
+    )
     share_scope = _scope(
         subscription,
         resource_group,
@@ -411,6 +419,10 @@ def _verify_restore_identity_scopes(
     expected = {
         ("reader", rg_scope.lower()),
         ("storage table data contributor", table_scope.lower()),
+        (
+            "storage file data privileged reader",
+            gateway_account_scope.lower(),
+        ),
         (
             "storage file data privileged contributor",
             share_scope.lower(),
