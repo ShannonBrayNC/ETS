@@ -326,12 +326,9 @@ def _object_binding_valid(
     declared_hash = _optional_string(section.get("object_hash"))
     if not isinstance(embedded, Mapping) or declared_hash is None:
         return False
-    try:
-        embedded_evidence = EvidenceObject.model_validate(dict(embedded))
-    except ValueError:
-        return False
+    expected_payload = fresh_evidence.model_dump(mode="json", exclude_none=True)
     expected_hash = object_hash(fresh_evidence)
-    return object_hash(embedded_evidence) == expected_hash == declared_hash
+    return dict(embedded) == expected_payload and declared_hash == expected_hash
 
 
 def _replay_manifest_valid(
