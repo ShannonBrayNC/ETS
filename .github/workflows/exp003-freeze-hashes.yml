@@ -1,0 +1,66 @@
+name: EXP-003 Freeze Hashes
+
+on:
+  pull_request:
+    paths:
+      - "docs/research/phd/exp003/**"
+      - ".github/workflows/exp003-freeze-hashes.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  freeze-hashes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify frozen source bytes are unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_COMMIT="d81a210120023be4edfb50bdf5566608ac4bf3c9"
+          FROZEN=(
+            docs/research/phd/exp003/BASELINE_PROFILE.json
+            docs/research/phd/exp003/CONSEQUENCE_MODEL.json
+            docs/research/phd/exp003/EPISTEMIC_STATES.json
+            docs/research/phd/exp003/EXP003NonCollapse.tla
+            docs/research/phd/exp003/FACT_GRAMMAR.json
+            docs/research/phd/exp003/INDEPENDENCE_MODEL.json
+            docs/research/phd/exp003/NON_COLLAPSE_RULES.json
+            docs/research/phd/exp003/PROPOSITION_SCHEMA.json
+            docs/research/phd/exp003/analysis_skeleton.py
+            docs/research/phd/exp003/condition_a.py
+            docs/research/phd/exp003/condition_b.py
+            docs/research/phd/exp003/condition_c_rats_plus.py
+            docs/research/phd/exp003/generator.py
+            docs/research/phd/exp003/oracle.py
+          )
+          git diff --exit-code "$SOURCE_COMMIT" -- "${FROZEN[@]}"
+          echo "frozen_source_commit=$SOURCE_COMMIT"
+
+      - name: Compute SHA-256 freeze manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/exp003-freeze-hashes.txt"
+          {
+            echo "frozen_source_commit=d81a210120023be4edfb50bdf5566608ac4bf3c9"
+            python docs/research/phd/exp003/compute_freeze_hashes.py
+          } | tee "$OUT"
+
+      - name: Upload freeze-hash artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: exp003-freeze-hashes
+          path: ${{ runner.temp }}/exp003-freeze-hashes.txt
+          if-no-files-found: error
