@@ -1,0 +1,137 @@
+name: Azure Migration Gate 4 Prepare Protected Source
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: Exact reviewed main commit to prepare from
+        required: true
+        type: string
+      snapshot_tag:
+        description: Operator snapshot tag (letters, digits, dot, underscore, dash)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate4-protected-source
+  cancel-in-progress: false
+
+jobs:
+  prepare-source:
+    name: Prepare retained protected Gate 4 source snapshot
+    runs-on: [self-hosted, linux, x64, ets-migration-gate4]
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 30
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      SOURCE_TENANT_ID: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+      SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+      GATE4_OPERATOR_ROOT: ${{ vars.GATE4_OPERATOR_ROOT }}
+      SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+
+    steps:
+      - name: Check out exact reviewed migration source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head or unsafe operator path
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$SNAPSHOT_TAG" =~ ^[A-Za-z0-9._-]+$ ]]
+          [[ -n "$GATE4_OPERATOR_ROOT" ]]
+          [[ "$GATE4_OPERATOR_ROOT" = /* ]]
+          [[ -d "$GATE4_OPERATOR_ROOT" ]]
+          case "$GATE4_OPERATOR_ROOT" in
+            "$GITHUB_WORKSPACE"|"$GITHUB_WORKSPACE"/*|"$RUNNER_TEMP"|"$RUNNER_TEMP"/*)
+              echo "Gate 4 operator root must be persistent and outside checkout/runner temp" >&2
+              exit 2
+              ;;
+          esac
+          for name in SOURCE_AZURE_CLIENT_ID SOURCE_TENANT_ID SOURCE_SUBSCRIPTION_ID; do
+            case "$name" in
+              SOURCE_AZURE_CLIENT_ID) value='${{ vars.SOURCE_AZURE_CLIENT_ID }}' ;;
+              SOURCE_TENANT_ID) value="$SOURCE_TENANT_ID" ;;
+              SOURCE_SUBSCRIPTION_ID) value="$SOURCE_SUBSCRIPTION_ID" ;;
+            esac
+            [[ -n "$value" ]] || { echo "Missing Gate 4 source variable: $name" >&2; exit 2; }
+          done
+          SOURCE_PARENT="$GATE4_OPERATOR_ROOT/source-snapshots"
+          SOURCE_WORKSPACE="$SOURCE_PARENT/$SNAPSHOT_TAG"
+          mkdir -p -- "$SOURCE_PARENT"
+          [[ ! -e "$SOURCE_WORKSPACE" ]]
+          echo "SOURCE_WORKSPACE=$SOURCE_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Azure login with dedicated source transfer identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.SOURCE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Re-prove protected source read path
+        shell: bash
+        env:
+          MIGRATION_RESOURCE_GROUP: rg-ets-live-eastus
+          MIGRATION_EVIDENCE_TABLE: ETSEvents
+          MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_control \
+            --target source \
+            --operation inventory \
+            --require-data-plane \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
+
+      - name: Capture protected source snapshot into retained operator workspace
+        shell: bash
+        env:
+          MIGRATION_RESOURCE_GROUP: rg-ets-live-eastus
+          MIGRATION_EVIDENCE_TABLE: ETSEvents
+          MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate3_export \
+            --workspace "$SOURCE_WORKSPACE" \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
+          MANIFEST_SHA="$(sha256sum "$SOURCE_WORKSPACE/gate3-manifest.json" | awk '{print $1}')"
+          echo "MANIFEST_SHA=$MANIFEST_SHA" >> "$GITHUB_ENV"
+          printf '%s\n' "- retained snapshot tag: \`$SNAPSHOT_TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "- protected manifest SHA-256: \`$MANIFEST_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clear source Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert preparation boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 4 protected-source preparation boundary
+
+          - destination Azure login: `not performed`
+          - destination write: `not performed`
+          - source mutation: `not performed`
+          - source fenced: `false`
+          - final copy: `false`
+          - protected GitHub artifact: `not created`
+          - protected source workspace: `retained on operator-controlled runner storage`
+          - writer activation: `not performed`
+          - DNS/routing/cutover: `not performed`
+
+          Record the snapshot tag and manifest SHA-256 in the protected migration
+          record before authorizing the separate Gate 4 restore workflow.
+          EOF
