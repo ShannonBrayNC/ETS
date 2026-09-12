@@ -176,6 +176,7 @@ Current implementation increment:
 - [R0.2 publisher/custodian key lifecycle](publication-key-lifecycle.md)
 - [R0.2 immutable-publication qualification evidence](immutable-publication-qualification.md)
 - [R0.2 AWS S3 Object Lock artifact verification](aws-s3-object-lock-qualification.md)
+- [R0.2 credential-isolated AWS qualification capture adapter](aws-s3-object-lock-qualification.md#credential-isolated-capture-adapter)
 - [Captive electromagnetic actuation evidence demonstrator](captive-electromagnetic-actuation-demonstrator.md)
 - [Epistemic identity and bounded observability](epistemic-identity.md)
 - [Cyber-Physical Observability Model](cyber-physical-observability.md)
