@@ -26,9 +26,9 @@ def test_qualification_override_cannot_escape_approved_registry_or_repository() 
 
 
 def test_override_only_changes_temporary_job_image_selection() -> None:
-    assert "$gatewayConfiguredImage = [string]$gatewayContainer.image" in TEXT
+    assert "`$gatewayConfiguredImage = [string]`$gatewayContainer.image" in TEXT
     assert "$image = '$qualificationImageLiteral'" in TEXT
-    assert "$image = $gatewayConfiguredImage" in TEXT
+    assert "`$image = `$gatewayConfiguredImage" in TEXT
     assert (
         "Temporary qualification job image does not match the immutable "
         "qualification image"
