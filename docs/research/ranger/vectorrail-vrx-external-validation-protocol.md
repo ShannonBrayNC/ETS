@@ -122,4 +122,4 @@ After the independent result is frozen, the reviewer may compare the clean-room 
 
 A completed validation packet can support claims that the ETS experiment is independently reproducible and that the published contract is sufficiently precise for an external implementation to reach the same bounded result.
 
-It cannot support claims that the physical observations were objectively true, that the device was safe for arbitrary use, or that the evidence has legal sufficiency in a specific proceeding.
+It cannot support claims of sensor correctness, objective physical truth, arbitrary-use device safety, or legal sufficiency in a specific proceeding.
