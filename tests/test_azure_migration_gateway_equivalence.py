@@ -151,3 +151,19 @@ def test_module_contains_no_gateway_write_path() -> None:
     assert "storage file delete" not in source
     assert "_run_az_write" not in source
     assert "destination_write_performed" not in source
+
+
+def test_workflow_is_manual_and_read_only() -> None:
+    workflow = Path(
+        ".github/workflows/azure-migration-gateway-equivalence.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "workflow_dispatch:" in workflow
+    assert "\n  push:" not in workflow
+    assert "az storage file upload" not in workflow
+    assert "az storage file delete" not in workflow
+    assert "az storage entity insert" not in workflow
+    assert "az containerapp update" not in workflow
+    assert "actions/upload-artifact" not in workflow
+    assert "${{ runner.temp }}" not in workflow
+    assert "$RUNNER_TEMP/ets-gateway-equivalence.json" in workflow
