@@ -1,0 +1,50 @@
+name: EXP-003 Freeze Hashes
+
+on:
+  pull_request:
+    paths:
+      - "docs/research/phd/exp003/**"
+      - ".github/workflows/exp003-freeze-hashes.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  freeze-hashes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify frozen source bytes are unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_COMMIT="d81a210120023be4edfb50bdf5566608ac4bf3c9"
+          git diff --exit-code "$SOURCE_COMMIT" -- docs/research/phd/exp003
+          echo "frozen_source_commit=$SOURCE_COMMIT"
+
+      - name: Compute SHA-256 freeze manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/exp003-freeze-hashes.txt"
+          {
+            echo "frozen_source_commit=d81a210120023be4edfb50bdf5566608ac4bf3c9"
+            python docs/research/phd/exp003/compute_freeze_hashes.py
+          } | tee "$OUT"
+
+      - name: Upload freeze-hash artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: exp003-freeze-hashes
+          path: ${{ runner.temp }}/exp003-freeze-hashes.txt
+          if-no-files-found: error
