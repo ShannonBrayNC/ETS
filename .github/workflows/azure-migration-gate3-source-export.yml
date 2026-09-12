@@ -1,0 +1,120 @@
+name: Azure Migration Gate 3 Source Export Integrity
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate3-source-export
+  cancel-in-progress: false
+
+jobs:
+  gate3:
+    name: Prove non-final protected source export integrity
+    runs-on: ubuntu-latest
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 30
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      SOURCE_TENANT_ID: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+      SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+      GATE3_WORKSPACE: ${{ runner.temp }}/ets-gate3-source
+    steps:
+      - name: Check out exact migration source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject missing source identity configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in SOURCE_AZURE_CLIENT_ID SOURCE_TENANT_ID SOURCE_SUBSCRIPTION_ID; do
+            case "$name" in
+              SOURCE_AZURE_CLIENT_ID) value='${{ vars.SOURCE_AZURE_CLIENT_ID }}' ;;
+              SOURCE_TENANT_ID) value="$SOURCE_TENANT_ID" ;;
+              SOURCE_SUBSCRIPTION_ID) value="$SOURCE_SUBSCRIPTION_ID" ;;
+            esac
+            if [[ -z "$value" ]]; then
+              echo "Required Gate 3 source identity variable is missing: $name" >&2
+              exit 2
+            fi
+          done
+
+      - name: Azure login with dedicated source transfer identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.SOURCE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Re-prove protected source read path
+        shell: bash
+        env:
+          MIGRATION_RESOURCE_GROUP: rg-ets-live-eastus
+          MIGRATION_EVIDENCE_TABLE: ETSEvents
+          MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_control \
+            --target source \
+            --operation inventory \
+            --require-data-plane \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
+
+      - name: Capture and hash protected source state locally
+        shell: bash
+        env:
+          MIGRATION_RESOURCE_GROUP: rg-ets-live-eastus
+          MIGRATION_EVIDENCE_TABLE: ETSEvents
+          MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate3_export \
+            --workspace "$GATE3_WORKSPACE" \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
+
+      - name: Remove protected Gate 3 workspace
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf -- "$GATE3_WORKSPACE"
+          if [[ -e "$GATE3_WORKSPACE" ]]; then
+            echo "Protected Gate 3 workspace cleanup could not be verified" >&2
+            exit 2
+          fi
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          - protected workspace cleanup verified: `true`
+          EOF
+
+      - name: Clear Azure session
+        if: always()
+        shell: bash
+        run: az account clear
+
+      - name: Reassert Gate 3 boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 3 boundary
+
+          - source fenced: `false`
+          - final copy: `false`
+          - destination Azure login: `not performed`
+          - destination write: `not performed`
+          - source mutation: `not performed`
+          - protected GitHub artifact: `not created`
+          - writer activation: `not performed`
+          - DNS/cutover: `not performed`
+
+          Gate 3 proves source exportability and integrity mechanics only. It does
+          not authorize or imply Gate 4 destination restore or a final migration copy.
+          EOF
