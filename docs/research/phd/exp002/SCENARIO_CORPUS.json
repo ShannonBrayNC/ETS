@@ -1,0 +1,149 @@
+{
+  "experiment": "EXP-002",
+  "status": "FROZEN_PRE_EXECUTION_CORPUS",
+  "freeze_date": "2026-09-12",
+  "corpus_version": "1.0",
+  "design_rule": "The same source facts must be represented in Condition R and Condition E. No condition may receive additional observations unavailable to the other.",
+  "scenarios": [
+    {
+      "id": "S01",
+      "title": "Integrity-valid false observation",
+      "facts": ["sensor-A signs observation temperature=95", "signature is valid", "independent calibrated sensor-B records temperature=70", "sensor-A is later found miscalibrated"],
+      "target_dimensions": ["CRYPTOGRAPHIC_INTEGRITY", "PRODUCER_IDENTITY", "RESULT_OBSERVATION", "NONCLAIM_DISCIPLINE"],
+      "required_boundary": "Cryptographic validity must not promote the source observation to semantic truth."
+    },
+    {
+      "id": "S02",
+      "title": "Identified but unauthorized actor",
+      "facts": ["operator identity is strongly authenticated", "operator issues command C", "operator role lacks permission for C at event time", "command is logged and signed"],
+      "target_dimensions": ["PRODUCER_IDENTITY", "AUTHORITY_POLICY", "HISTORICAL_STANDING", "REQUESTED_ACTION"],
+      "required_boundary": "Identity must remain separate from historical standing."
+    },
+    {
+      "id": "S03",
+      "title": "Authorization valid now but not then",
+      "facts": ["actor currently holds role-R", "role-R was granted after event time", "historical policy snapshot excludes actor at event time", "current directory query includes actor"],
+      "target_dimensions": ["AUTHORITY_POLICY", "HISTORICAL_STANDING", "POLICY_FRESHNESS"],
+      "required_boundary": "Current authority must not retroactively establish action-time standing."
+    },
+    {
+      "id": "S04",
+      "title": "Stale but integrity-valid evidence",
+      "facts": ["attestation evidence is correctly signed", "nonce/freshness window is expired", "reference values are otherwise valid"],
+      "target_dimensions": ["CRYPTOGRAPHIC_INTEGRITY", "FRESHNESS_CURRENTNESS"],
+      "required_boundary": "Integrity success must not imply freshness."
+    },
+    {
+      "id": "S05",
+      "title": "Signed command without execution evidence",
+      "facts": ["controller signs command OPEN", "gateway accepts message", "no actuator execution record exists", "no independent physical observation exists"],
+      "target_dimensions": ["REQUESTED_ACTION", "EXECUTED_ACTION", "RESULT_OBSERVATION", "CONSEQUENCE_LINKAGE"],
+      "required_boundary": "Command evidence must not imply execution or consequence."
+    },
+    {
+      "id": "S06",
+      "title": "Accepted command with contradictory result",
+      "facts": ["command CLOSE is accepted", "actuator reports execution success", "independent limit switch reports OPEN state after execution window"],
+      "target_dimensions": ["EXECUTED_ACTION", "RESULT_OBSERVATION", "CONSEQUENCE_LINKAGE"],
+      "required_boundary": "Execution claim and resulting-state observation must remain distinct and contradiction must be preserved."
+    },
+    {
+      "id": "S07",
+      "title": "Execution claim without independent consequence observation",
+      "facts": ["actuator signs executed=true", "no external observer covers the consequence", "originating device controls both command and execution logs"],
+      "target_dimensions": ["EXECUTED_ACTION", "RESULT_OBSERVATION", "VERIFIER_TRUST"],
+      "required_boundary": "Self-authored execution evidence must not become independently observed consequence."
+    },
+    {
+      "id": "S08",
+      "title": "Omitted event without expectation model",
+      "facts": ["event X occurred in generator ground truth", "origin log omits X", "no independent witness or completeness expectation exists"],
+      "target_dimensions": ["SCOPED_COMPLETENESS", "NONCLAIM_DISCIPLINE"],
+      "required_boundary": "Undetectable omission must remain unknown rather than be declared absent."
+    },
+    {
+      "id": "S09",
+      "title": "Omitted event detected by expectation evidence",
+      "facts": ["sequence policy requires events A,B,C", "A and C are present", "B is absent", "independent sequence counter confirms a missing slot"],
+      "target_dimensions": ["SCOPED_COMPLETENESS", "PROVENANCE_DERIVATION"],
+      "required_boundary": "Expectation evidence may support a bounded omission conclusion."
+    },
+    {
+      "id": "S10",
+      "title": "False corroboration from shared source",
+      "facts": ["claim-1 and claim-2 agree", "both derive from the same upstream sensor-A reading", "no independent source exists"],
+      "target_dimensions": ["PROVENANCE_DERIVATION", "NONCLAIM_DISCIPLINE"],
+      "required_boundary": "Shared-source agreement must not be counted as independent corroboration."
+    },
+    {
+      "id": "S11",
+      "title": "Conflicting independent witnesses",
+      "facts": ["witness-A independently reports state=ON", "witness-B independently reports state=OFF", "both identities and signatures validate", "no tie-break evidence exists"],
+      "target_dimensions": ["RESULT_OBSERVATION", "CRYPTOGRAPHIC_INTEGRITY", "PRODUCER_IDENTITY"],
+      "required_boundary": "Valid conflicting witnesses require CONTRADICTED or INDETERMINATE rather than arbitrary promotion."
+    },
+    {
+      "id": "S12",
+      "title": "Verifier used stale appraisal policy",
+      "facts": ["evidence is fresh", "verifier uses policy-v3", "policy-v4 was effective at event time", "v4 rejects a reference value accepted by v3"],
+      "target_dimensions": ["POLICY_FRESHNESS", "VERIFIER_TRUST", "HISTORICAL_STANDING"],
+      "required_boundary": "A trusted verifier using stale policy must not yield an unqualified trusted conclusion."
+    },
+    {
+      "id": "S13",
+      "title": "Trusted attester, untrusted verifier",
+      "facts": ["attester evidence validates", "verifier certificate chains to an untrusted root", "verifier returns PASS"],
+      "target_dimensions": ["PRODUCER_IDENTITY", "VERIFIER_TRUST"],
+      "required_boundary": "Valid source evidence must remain separable from trust in the verifier result."
+    },
+    {
+      "id": "S14",
+      "title": "Integrity-valid but semantically indeterminate result",
+      "facts": ["all records are signed and schema-valid", "two policy rules conflict", "no precedence rule resolves the conflict"],
+      "target_dimensions": ["STRUCTURAL_INTEGRITY", "CRYPTOGRAPHIC_INTEGRITY", "AUTHORITY_POLICY"],
+      "required_boundary": "Structural/cryptographic validity must coexist with INDETERMINATE semantics."
+    },
+    {
+      "id": "S15",
+      "title": "Known unavailable evidence",
+      "facts": ["required camera stream is known to have failed before the event", "camera evidence does not exist", "failure telemetry is present"],
+      "target_dimensions": ["SCOPED_COMPLETENESS", "RESULT_OBSERVATION"],
+      "required_boundary": "Known unavailability must be represented as NOT_AVAILABLE, not false or NOT_OBSERVED."
+    },
+    {
+      "id": "S16",
+      "title": "Complete command path, wrong physical consequence",
+      "facts": ["decision requests LEFT", "command transmission succeeds", "actuator controller acknowledges LEFT", "independent pose sensor records vehicle turned RIGHT"],
+      "target_dimensions": ["REQUESTED_ACTION", "EXECUTED_ACTION", "RESULT_OBSERVATION", "CONSEQUENCE_LINKAGE"],
+      "required_boundary": "Intent and command-path completeness must not imply intended physical consequence."
+    },
+    {
+      "id": "S17",
+      "title": "Delegated authority expired before action",
+      "facts": ["principal delegates permission to agent until T1", "agent action occurs at T2 where T2>T1", "delegation artifact is authentic"],
+      "target_dimensions": ["PRODUCER_IDENTITY", "AUTHORITY_POLICY", "HISTORICAL_STANDING", "FRESHNESS_CURRENTNESS"],
+      "required_boundary": "Authentic delegation artifact must not imply unexpired standing."
+    },
+    {
+      "id": "S18",
+      "title": "Fresh result based on stale reference values",
+      "facts": ["nonce proves attestation message freshness", "reference-value set predates a revoked software version", "attested software matches revoked version"],
+      "target_dimensions": ["FRESHNESS_CURRENTNESS", "POLICY_FRESHNESS", "VERIFIER_TRUST"],
+      "required_boundary": "Message freshness and reference-policy freshness must remain distinct."
+    },
+    {
+      "id": "S19",
+      "title": "Action executed under valid standing, consequence unobserved",
+      "facts": ["actor standing is valid", "command and actuator execution are independently evidenced", "result sensor is offline", "no alternate result observer exists"],
+      "target_dimensions": ["HISTORICAL_STANDING", "EXECUTED_ACTION", "RESULT_OBSERVATION", "CONSEQUENCE_LINKAGE"],
+      "required_boundary": "Standing and execution must not fill an observation gap."
+    },
+    {
+      "id": "S20",
+      "title": "Contradiction resolved by source dependence",
+      "facts": ["witness-A and witness-B report ON", "witness-C reports OFF", "A and B are derived from the same camera analytics feed", "C is an independent physical switch"],
+      "target_dimensions": ["PROVENANCE_DERIVATION", "RESULT_OBSERVATION", "NONCLAIM_DISCIPLINE"],
+      "required_boundary": "Two dependent agreeing reports must not automatically outweigh one independent conflicting observation."
+    }
+  ]
+}

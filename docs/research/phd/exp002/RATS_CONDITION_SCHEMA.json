@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/research/exp002/rats-condition.schema.json",
+  "title": "EXP-002 Condition R — Rich RFC 9334 RATS Representation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scenario_id", "attesters", "evidence", "appraisal_policy_for_evidence", "attestation_results", "relying_party_policy", "normalized_output"],
+  "properties": {
+    "scenario_id": {"type": "string", "pattern": "^S[0-9]{2}$"},
+    "attesters": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "identity_claims"],
+        "properties": {
+          "id": {"type": "string"},
+          "identity_claims": {"type": "object"},
+          "trust_anchor_refs": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "attester_id", "claims"],
+        "properties": {
+          "id": {"type": "string"},
+          "attester_id": {"type": "string"},
+          "claims": {"type": "object"},
+          "freshness": {"type": ["object", "null"]},
+          "source_refs": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "endorsements": {"type": "array", "items": {"type": "object"}},
+    "reference_values": {"type": "array", "items": {"type": "object"}},
+    "appraisal_policy_for_evidence": {
+      "type": "object",
+      "required": ["id", "version", "effective_interval", "rules"],
+      "properties": {
+        "id": {"type": "string"},
+        "version": {"type": "string"},
+        "effective_interval": {"type": "object"},
+        "rules": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "verifiers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "trust_basis"],
+        "properties": {
+          "id": {"type": "string"},
+          "trust_basis": {"type": "object"}
+        }
+      }
+    },
+    "attestation_results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "verifier_id", "claims", "source_evidence_refs", "policy_ref"],
+        "properties": {
+          "id": {"type": "string"},
+          "verifier_id": {"type": "string"},
+          "claims": {"type": "object"},
+          "source_evidence_refs": {"type": "array", "items": {"type": "string"}},
+          "policy_ref": {"type": "string"},
+          "freshness": {"type": ["object", "null"]},
+          "nonclaims": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "relying_party_policy": {
+      "type": "object",
+      "required": ["id", "version", "rules"],
+      "properties": {
+        "id": {"type": "string"},
+        "version": {"type": "string"},
+        "rules": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "application_specific_claim_namespace": {
+      "type": "object",
+      "description": "Condition R may use rich application-specific claims. This field documents them so equivalence is not artificially constrained."
+    },
+    "extra_normative_rules": {
+      "type": "array",
+      "description": "Must remain empty for Condition R. If non-empty, representation is classified as R_PLUS and every rule must be justified independently.",
+      "items": {"type": "string"},
+      "maxItems": 0
+    },
+    "normalized_output": {
+      "$ref": "NORMALIZED_CONCLUSION_SCHEMA.json"
+    }
+  }
+}

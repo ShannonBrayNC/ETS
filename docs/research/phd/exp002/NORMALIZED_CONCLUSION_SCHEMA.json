@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/research/exp002/normalized-conclusion.schema.json",
+  "title": "EXP-002 Normalized Bounded Conclusion",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scenario_id", "condition", "conclusions", "trust_assumptions", "policy_refs"],
+  "properties": {
+    "scenario_id": {"type": "string", "pattern": "^S[0-9]{2}$"},
+    "condition": {"enum": ["R", "R_PLUS", "E"]},
+    "trust_assumptions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "policy_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "conclusions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "dimension", "state", "statement", "source_refs", "unsupported_dependencies"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "dimension": {
+            "enum": [
+              "STRUCTURAL_INTEGRITY",
+              "CRYPTOGRAPHIC_INTEGRITY",
+              "PRODUCER_IDENTITY",
+              "PROVENANCE_DERIVATION",
+              "CUSTODY_CONTINUITY",
+              "FRESHNESS_CURRENTNESS",
+              "AUTHORITY_POLICY",
+              "HISTORICAL_STANDING",
+              "SCOPED_COMPLETENESS",
+              "REQUESTED_ACTION",
+              "EXECUTED_ACTION",
+              "RESULT_OBSERVATION",
+              "CONSEQUENCE_LINKAGE",
+              "VERIFIER_TRUST",
+              "POLICY_FRESHNESS",
+              "NONCLAIM_DISCIPLINE"
+            ]
+          },
+          "state": {
+            "enum": ["SUPPORTED", "ASSERTED", "UNKNOWN", "NOT_AVAILABLE", "INDETERMINATE", "CONTRADICTED", "NOT_OBSERVED", "NOT_APPLICABLE"]
+          },
+          "statement": {"type": "string", "minLength": 1},
+          "source_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+          "policy_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+          "trust_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+          "event_time": {"type": ["string", "null"]},
+          "unsupported_dependencies": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+          "trace": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "ref"],
+              "properties": {
+                "kind": {"enum": ["evidence", "claim", "policy", "endorsement", "reference_value", "verifier_result", "observation", "nonclaim"]},
+                "ref": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
