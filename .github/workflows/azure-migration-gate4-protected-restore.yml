@@ -1,0 +1,188 @@
+name: Azure Migration Gate 4 Protected Restore
+
+on:
+  workflow_dispatch:
+    inputs:
+      authorization:
+        description: Type GATE4_PROTECTED_TRANSFER_AUTHORIZED exactly
+        required: true
+        type: string
+      expected_commit:
+        description: Exact reviewed main commit authorized for Gate 4
+        required: true
+        type: string
+      snapshot_tag:
+        description: Retained protected-source snapshot tag
+        required: true
+        type: string
+      expected_manifest_sha256:
+        description: Independently recorded SHA-256 of gate3-manifest.json
+        required: true
+        type: string
+      rollback_tag:
+        description: New retained rollback tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate4-protected-restore
+  cancel-in-progress: false
+
+jobs:
+  gate4-restore:
+    name: Apply isolated Gate 4 protected restore
+    runs-on: [self-hosted, linux, x64, ets-migration-gate4]
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 30
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      GATE4_OPERATOR_ROOT: ${{ vars.GATE4_OPERATOR_ROOT }}
+      GATE4_AUTHORIZATION: ${{ inputs.authorization }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
+      EXPECTED_MANIFEST_SHA256: ${{ inputs.expected_manifest_sha256 }}
+      ROLLBACK_TAG: ${{ inputs.rollback_tag }}
+      MIGRATION_RESOURCE_GROUP: rg-ets-prod-eastus
+      MIGRATION_EVIDENCE_TABLE: ETSEvents
+      MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+
+    steps:
+      - name: Check out exact reviewed migration source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head, missing authorization, or unsafe paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$GATE4_AUTHORIZATION" == "GATE4_PROTECTED_TRANSFER_AUTHORIZED" ]]
+          [[ "$SNAPSHOT_TAG" =~ ^[A-Za-z0-9._-]+$ ]]
+          [[ "$ROLLBACK_TAG" =~ ^[A-Za-z0-9._-]+$ ]]
+          [[ "$EXPECTED_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ -n "$GATE4_OPERATOR_ROOT" ]]
+          [[ "$GATE4_OPERATOR_ROOT" = /* ]]
+          [[ -d "$GATE4_OPERATOR_ROOT" ]]
+          case "$GATE4_OPERATOR_ROOT" in
+            "$GITHUB_WORKSPACE"|"$GITHUB_WORKSPACE"/*|"$RUNNER_TEMP"|"$RUNNER_TEMP"/*)
+              echo "Gate 4 operator root must be persistent and outside checkout/runner temp" >&2
+              exit 2
+              ;;
+          esac
+          for name in AZURE_CLIENT_ID DEST_TENANT_ID DEST_SUBSCRIPTION_ID; do
+            case "$name" in
+              AZURE_CLIENT_ID) value='${{ vars.AZURE_CLIENT_ID }}' ;;
+              DEST_TENANT_ID) value="$DEST_TENANT_ID" ;;
+              DEST_SUBSCRIPTION_ID) value="$DEST_SUBSCRIPTION_ID" ;;
+            esac
+            [[ -n "$value" ]] || { echo "Missing Gate 4 destination variable: $name" >&2; exit 2; }
+          done
+          SOURCE_WORKSPACE="$GATE4_OPERATOR_ROOT/source-snapshots/$SNAPSHOT_TAG"
+          ROLLBACK_PARENT="$GATE4_OPERATOR_ROOT/rollback-snapshots"
+          ROLLBACK_WORKSPACE="$ROLLBACK_PARENT/$ROLLBACK_TAG"
+          [[ -d "$SOURCE_WORKSPACE" ]]
+          [[ -f "$SOURCE_WORKSPACE/gate3-manifest.json" ]]
+          mkdir -p -- "$ROLLBACK_PARENT"
+          [[ ! -e "$ROLLBACK_WORKSPACE" ]]
+          ACTUAL_MANIFEST_SHA="$(sha256sum "$SOURCE_WORKSPACE/gate3-manifest.json" | awk '{print $1}')"
+          [[ "$ACTUAL_MANIFEST_SHA" == "$EXPECTED_MANIFEST_SHA256" ]]
+          echo "SOURCE_WORKSPACE=$SOURCE_WORKSPACE" >> "$GITHUB_ENV"
+          echo "ROLLBACK_WORKSPACE=$ROLLBACK_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Azure login with destination restore identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Apply reviewed resumable Table suffix and rollback-first Gateway snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from scripts.azure_migration_gate4_execute import execute_gate4_restore
+
+          result = execute_gate4_restore(
+              workspace=Path(os.environ["SOURCE_WORKSPACE"]),
+              expected_manifest_sha256=os.environ["EXPECTED_MANIFEST_SHA256"],
+              expected_subscription=os.environ["DEST_SUBSCRIPTION_ID"],
+              rollback_workspace=Path(os.environ["ROLLBACK_WORKSPACE"]),
+              authorization=os.environ["GATE4_AUTHORIZATION"],
+          )
+          print(json.dumps(result, sort_keys=True))
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a", encoding="utf-8") as stream:
+                  stream.write("\n## Gate 4 protected restore result\n\n")
+                  stream.write(
+                      f"- Table start next_index: `{result['table_destination_start_next_index']}`\n"
+                  )
+                  stream.write(
+                      f"- Table source next_index: `{result['table_source_next_index']}`\n"
+                  )
+                  stream.write(
+                      f"- suffix entities inserted: `{result['table_suffix_entities_inserted']}`\n"
+                  )
+                  stream.write(
+                      f"- Gateway durable files overwritten: `{result['gateway_durable_files_overwritten']}`\n"
+                  )
+                  stream.write(
+                      f"- Gateway sidecars removed: `{result['gateway_sidecars_removed']}`\n"
+                  )
+                  stream.write(
+                      f"- rollback files retained: `{result['gateway_rollback_files_captured']}`\n"
+                  )
+          PY
+
+      - name: Re-prove destination replicas remain fenced
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from scripts.azure_migration_prefix_preflight import _verify_zero_replicas
+
+          _verify_zero_replicas(os.environ["MIGRATION_RESOURCE_GROUP"])
+          PY
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert Gate 4 boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+
+          ## Gate 4 boundary
+
+          - protected source snapshot tag: \`$SNAPSHOT_TAG\`
+          - rollback snapshot tag: \`$ROLLBACK_TAG\`
+          - protected GitHub artifact: \`not created\`
+          - source mutation: \`not performed\`
+          - source fenced: \`false\`
+          - final copy: \`false\`
+          - destination replicas activated: \`no\`
+          - RBAC change: \`not performed\`
+          - DNS/routing/cutover: \`not performed\`
+          - retained rollback workspace: \`required; not deleted by workflow\`
+
+          Gate 4 restores an isolated dormant destination only. A successful run does
+          not authorize writer activation or cutover. Gate 5 read-only equivalence is
+          required next.
+          EOF
