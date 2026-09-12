@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/ranger/electromagnetic-actuation-trial.v0.1.schema.json",
+  "title": "ETS Captive Electromagnetic Actuation Trial v0.1",
+  "description": "Research evidence profile for a low-energy captive electromagnetic actuator experiment. The contract distinguishes authority, command, electrical response, captive motion, thermal response, and resulting state without representing the apparatus as a projectile launcher.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "trial_id", "apparatus_id", "occurred_at", "authority", "safety_state", "command", "observations", "result", "evidence"],
+  "properties": {
+    "schema_version": {"const": "ranger.electromagnetic-actuation-trial.v0.1"},
+    "trial_id": {"type": "string", "minLength": 1},
+    "apparatus_id": {"type": "string", "minLength": 1},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "authority": {"$ref": "#/$defs/authority"},
+    "safety_state": {"$ref": "#/$defs/safetyState"},
+    "command": {"$ref": "#/$defs/command"},
+    "observations": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/observation"}},
+    "result": {"$ref": "#/$defs/result"},
+    "previous_trial_digest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "trial_digest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "evidence": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evidenceRef"}},
+    "signature": {"$ref": "#/$defs/signature"}
+  },
+  "$defs": {
+    "epistemicState": {"type": "string", "enum": ["KNOWN", "NOT_OBSERVED", "NOT_AVAILABLE", "UNKNOWN", "INDETERMINATE", "CONTRADICTED"]},
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["principal_id", "authorization_state", "policy_id"],
+      "properties": {
+        "principal_id": {"type": "string", "minLength": 1},
+        "authorization_state": {"type": "string", "enum": ["AUTHORIZED", "DENIED", "UNKNOWN"]},
+        "policy_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "safetyState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enclosure_state", "interlock_state", "hardware_limit_state", "safe_to_actuate"],
+      "properties": {
+        "enclosure_state": {"type": "string", "enum": ["CLOSED", "OPEN", "UNKNOWN"]},
+        "interlock_state": {"type": "string", "enum": ["SATISFIED", "OPEN", "FAULT", "UNKNOWN"]},
+        "hardware_limit_state": {"type": "string", "enum": ["READY", "LIMITED", "FAULT", "UNKNOWN"]},
+        "safe_to_actuate": {"type": "boolean"},
+        "reason": {"type": ["string", "null"]}
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command_id", "requested_action", "command_state"],
+      "properties": {
+        "command_id": {"type": "string", "minLength": 1},
+        "requested_action": {"const": "captive_electromagnetic_actuation"},
+        "command_state": {"type": "string", "enum": ["REQUESTED", "ISSUED", "REJECTED", "ABORTED"]},
+        "issued_at": {"type": ["string", "null"], "format": "date-time"},
+        "reason": {"type": ["string", "null"]}
+      }
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "unit"],
+      "properties": {
+        "state": {"$ref": "#/$defs/epistemicState"},
+        "value": {"type": ["number", "null"]},
+        "unit": {"type": "string", "minLength": 1},
+        "uncertainty": {"type": ["number", "null"], "minimum": 0},
+        "reason": {"type": ["string", "null"]}
+      },
+      "allOf": [
+        {"if": {"properties": {"state": {"const": "KNOWN"}}}, "then": {"required": ["value"]}},
+        {"if": {"properties": {"state": {"enum": ["NOT_OBSERVED", "NOT_AVAILABLE", "UNKNOWN", "INDETERMINATE", "CONTRADICTED"]}}}, "then": {"required": ["reason"]}}
+      ]
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observation_id", "kind", "source_id", "captured_at", "measurement"],
+      "properties": {
+        "observation_id": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "enum": ["SUPPLY_VOLTAGE", "ACTUATION_CURRENT", "ARMATURE_POSITION", "TEMPERATURE", "INTERLOCK_STATE", "FAULT_STATE", "OTHER"]},
+        "source_id": {"type": "string", "minLength": 1},
+        "captured_at": {"type": "string", "format": "date-time"},
+        "measurement": {"$ref": "#/$defs/measurement"},
+        "source_ancestry": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "independence_group": {"type": ["string", "null"]},
+        "quality": {"type": ["string", "null"], "enum": ["NOMINAL", "DEGRADED", "INVALID", null]}
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["electrical_response", "mechanical_response", "thermal_response", "final_safe_state"],
+      "properties": {
+        "electrical_response": {"type": "string", "enum": ["OBSERVED", "NOT_OBSERVED", "UNKNOWN"]},
+        "mechanical_response": {"type": "string", "enum": ["OBSERVED", "BLOCKED", "NOT_OBSERVED", "UNKNOWN"]},
+        "thermal_response": {"type": "string", "enum": ["OBSERVED", "NOT_OBSERVED", "UNKNOWN"]},
+        "final_safe_state": {"type": "string", "enum": ["CONFIRMED", "NOT_CONFIRMED", "UNKNOWN"]},
+        "interpretation": {"type": ["string", "null"]}
+      }
+    },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_id", "evidence_type", "source_id", "digest"],
+      "properties": {
+        "evidence_id": {"type": "string", "minLength": 1},
+        "evidence_type": {"type": "string", "minLength": 1},
+        "source_id": {"type": "string", "minLength": 1},
+        "captured_at": {"type": ["string", "null"], "format": "date-time"},
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "uri": {"type": ["string", "null"]}
+      }
+    },
+    "signature": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["algorithm", "key_id", "value"],
+      "properties": {
+        "algorithm": {"type": "string", "minLength": 1},
+        "key_id": {"type": "string", "minLength": 1},
+        "value": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

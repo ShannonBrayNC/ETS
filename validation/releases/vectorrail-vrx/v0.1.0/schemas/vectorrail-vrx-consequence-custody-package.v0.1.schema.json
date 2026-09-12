@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/ranger/vectorrail-vrx-consequence-custody-package.v0.1.schema.json",
+  "title": "ETS VectorRail VRX Consequence-Custody Portable Verification Package v0.1",
+  "description": "Self-contained offline-replay package binding a sealed captive-actuation trial, its Evidence Object, the VRX acceptance record and Evidence Object, dependency edges, bounded verification receipt, observability limits, and replay manifest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "package_id",
+    "trial",
+    "acceptance",
+    "dependency_edges",
+    "verification_receipt",
+    "observability",
+    "replay_manifest",
+    "package_digest"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "ranger.vectorrail-vrx-consequence-custody-package.v0.1"
+    },
+    "package_id": {"type": "string", "minLength": 1},
+    "trial": {"$ref": "#/$defs/boundObject"},
+    "acceptance": {"$ref": "#/$defs/boundObject"},
+    "dependency_edges": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/dependencyEdge"}
+    },
+    "verification_receipt": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "conclusion",
+        "trial_id",
+        "acceptance_id",
+        "truth_claim_supported",
+        "truth_claim_boundary"
+      ]
+    },
+    "observability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "independent_observation_groups",
+        "truth_claim_supported",
+        "truth_claim_boundary"
+      ],
+      "properties": {
+        "independent_observation_groups": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "truth_claim_supported": {"const": false},
+        "truth_claim_boundary": {"type": "string", "minLength": 1}
+      }
+    },
+    "replay_manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "verifier_entrypoint",
+        "trial_input",
+        "acceptance_input",
+        "expected_chain_conclusion",
+        "expected_trial_object_hash",
+        "expected_acceptance_object_hash",
+        "network_required"
+      ],
+      "properties": {
+        "profile": {"const": "ets.vectorrail.consequence-custody-replay.v0.1"},
+        "verifier_entrypoint": {
+          "const": "ets.ranger.vectorrail_consequence_custody.verify_vectorrail_consequence_custody"
+        },
+        "trial_input": {"const": "trial.record"},
+        "acceptance_input": {"const": "acceptance.record"},
+        "expected_chain_conclusion": {"type": "string", "minLength": 1},
+        "expected_trial_object_hash": {"$ref": "#/$defs/sha256"},
+        "expected_acceptance_object_hash": {"$ref": "#/$defs/sha256"},
+        "network_required": {"const": false}
+      }
+    },
+    "package_digest": {"$ref": "#/$defs/prefixedSha256"}
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "prefixedSha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "boundObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_digest", "object_hash", "record", "evidence_object"],
+      "properties": {
+        "record_digest": {"$ref": "#/$defs/prefixedSha256"},
+        "object_hash": {"$ref": "#/$defs/sha256"},
+        "record": {"type": "object"},
+        "evidence_object": {"type": "object"}
+      }
+    },
+    "dependencyEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_evidence_id", "relationship_type", "target_evidence_ref"],
+      "properties": {
+        "source_evidence_id": {"type": "string", "minLength": 1},
+        "relationship_type": {"type": "string", "minLength": 1},
+        "target_evidence_ref": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}
