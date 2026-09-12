@@ -22,6 +22,7 @@ from scripts.azure_migration_gate3_export import (
 )
 from scripts.azure_migration_gate4_restore import _verify_restore_identity_scopes
 from scripts.azure_migration_prefix_preflight import (
+    _GATEWAY_SYNC_WAL_SIDECARS,
     _discover_storage_accounts,
     _verify_zero_replicas,
 )
@@ -34,6 +35,7 @@ _SAFE_FAILURE_STAGES = {
     "restore_identity_scope",
     "destination_capture",
     "file_set",
+    "wal_state",
     "size",
     "sha256",
 }
@@ -167,6 +169,40 @@ def _safe_failure_stage(exc: BaseException) -> str:
     return "unspecified"
 
 
+def _durable_destination_files(
+    source_files: list[dict[str, Any]],
+    destination_files: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    source_names = {str(item["name"]) for item in source_files}
+    destination_by_name = {
+        str(item["name"]): item for item in destination_files
+    }
+    destination_names = set(destination_by_name)
+
+    if destination_names == source_names:
+        return destination_files
+
+    missing = source_names - destination_names
+    unexpected = destination_names - source_names
+    if (
+        missing
+        or unexpected != _GATEWAY_SYNC_WAL_SIDECARS
+        or "gateway-sync.db" not in source_names
+        or source_names & _GATEWAY_SYNC_WAL_SIDECARS
+    ):
+        raise MigrationControlError(f"{_FAILURE_PREFIX}file_set")
+
+    wal = destination_by_name.get("gateway-sync.db-wal")
+    if wal is None or int(wal["size"]) != 0:
+        raise MigrationControlError(f"{_FAILURE_PREFIX}wal_state")
+
+    return [
+        item
+        for item in destination_files
+        if str(item["name"]) not in _GATEWAY_SYNC_WAL_SIDECARS
+    ]
+
+
 def verify_destination(path: Path, expected_subscription: str) -> dict[str, int]:
     try:
         manifest = _read_manifest(path)
@@ -205,20 +241,30 @@ def verify_destination(path: Path, expected_subscription: str) -> dict[str, int]
         raise _stage_failure("destination_capture", exc) from exc
 
     source_files = manifest["files"]
-    if [item["name"] for item in destination_files] != [
+    durable_destination = _durable_destination_files(
+        source_files,
+        destination_files,
+    )
+    if [item["name"] for item in durable_destination] != [
         item["name"] for item in source_files
     ]:
         raise MigrationControlError(f"{_FAILURE_PREFIX}file_set")
 
-    for source, destination in zip(source_files, destination_files, strict=True):
+    for source, destination in zip(
+        source_files,
+        durable_destination,
+        strict=True,
+    ):
         if destination["size"] != source["size"]:
             raise MigrationControlError(f"{_FAILURE_PREFIX}size")
         if destination["sha256"] != source["sha256"]:
             raise MigrationControlError(f"{_FAILURE_PREFIX}sha256")
 
     return {
-        "file_count": len(destination_files),
-        "total_bytes": sum(int(item["size"]) for item in destination_files),
+        "file_count": len(durable_destination),
+        "total_bytes": sum(
+            int(item["size"]) for item in durable_destination
+        ),
     }
 
 
@@ -237,9 +283,13 @@ def _write_summary(mode: str, result: dict[str, int]) -> None:
             "## Azure migration Gateway byte-equivalence proof",
             "",
             "- qualification: `pass`",
-            f"- Gateway files: `{result['file_count']}`",
-            f"- Gateway bytes: `{result['total_bytes']}`",
-            "- path/size/SHA-256 equivalence: `exact`",
+            f"- durable Gateway files compared: `{result['file_count']}`",
+            f"- durable Gateway bytes compared: `{result['total_bytes']}`",
+            "- durable path/size/SHA-256 equivalence: `exact`",
+            (
+                "- SQLite WAL sidecars: `absent or approved inert pair "
+                "with zero-byte WAL`"
+            ),
             "- active destination replicas: `0`",
             "- destination write: `not performed`",
             "- Gateway write: `not performed`",
