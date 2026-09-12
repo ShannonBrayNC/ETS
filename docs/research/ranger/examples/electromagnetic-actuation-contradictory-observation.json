@@ -1,0 +1,97 @@
+{
+  "schema_version": "ranger.electromagnetic-actuation-trial.v0.1",
+  "trial_id": "em-trial-contradicted-position-001",
+  "apparatus_id": "ets-em-captive-demo-001",
+  "occurred_at": "2026-09-12T04:30:00Z",
+  "authority": {
+    "principal_id": "operator-research-001",
+    "authorization_state": "AUTHORIZED",
+    "policy_id": "policy-em-demo-safe-v0.1"
+  },
+  "safety_state": {
+    "enclosure_state": "CLOSED",
+    "interlock_state": "SATISFIED",
+    "hardware_limit_state": "READY",
+    "safe_to_actuate": true,
+    "reason": null
+  },
+  "command": {
+    "command_id": "cmd-em-contradicted-001",
+    "requested_action": "captive_electromagnetic_actuation",
+    "command_state": "ISSUED",
+    "issued_at": "2026-09-12T04:30:00.100Z",
+    "reason": null
+  },
+  "observations": [
+    {
+      "observation_id": "obs-current-contradicted-001",
+      "kind": "ACTUATION_CURRENT",
+      "source_id": "sensor-current-001",
+      "captured_at": "2026-09-12T04:30:00.105Z",
+      "measurement": {"state": "KNOWN", "value": 3.1, "unit": "A", "uncertainty": 0.1, "reason": null},
+      "source_ancestry": ["sensor-current-001"],
+      "independence_group": "electrical-b",
+      "quality": "NOMINAL"
+    },
+    {
+      "observation_id": "obs-position-encoder-001",
+      "kind": "ARMATURE_POSITION",
+      "source_id": "sensor-position-encoder-001",
+      "captured_at": "2026-09-12T04:30:00.120Z",
+      "measurement": {"state": "KNOWN", "value": 8.1, "unit": "mm", "uncertainty": 0.2, "reason": null},
+      "source_ancestry": ["sensor-position-encoder-001"],
+      "independence_group": "motion-encoder",
+      "quality": "NOMINAL"
+    },
+    {
+      "observation_id": "obs-position-optical-001",
+      "kind": "ARMATURE_POSITION",
+      "source_id": "sensor-position-optical-001",
+      "captured_at": "2026-09-12T04:30:00.121Z",
+      "measurement": {"state": "KNOWN", "value": 1.0, "unit": "mm", "uncertainty": 0.2, "reason": null},
+      "source_ancestry": ["sensor-position-optical-001"],
+      "independence_group": "motion-optical",
+      "quality": "NOMINAL"
+    },
+    {
+      "observation_id": "obs-position-derived-001",
+      "kind": "ARMATURE_POSITION",
+      "source_id": "ets-observation-reconciler-001",
+      "captured_at": "2026-09-12T04:30:00.130Z",
+      "measurement": {"state": "CONTRADICTED", "unit": "mm", "uncertainty": null, "reason": "Independent encoder and optical observations disagree beyond their declared uncertainty."},
+      "source_ancestry": ["obs-position-encoder-001", "obs-position-optical-001"],
+      "independence_group": "derived-position",
+      "quality": "INVALID"
+    },
+    {
+      "observation_id": "obs-temp-contradicted-001",
+      "kind": "TEMPERATURE",
+      "source_id": "sensor-temp-rail-a",
+      "captured_at": "2026-09-12T04:30:00.500Z",
+      "measurement": {"state": "KNOWN", "value": 24.9, "unit": "degC", "uncertainty": 0.5, "reason": null},
+      "source_ancestry": ["sensor-temp-rail-a"],
+      "independence_group": "thermal-a",
+      "quality": "NOMINAL"
+    }
+  ],
+  "result": {
+    "electrical_response": "OBSERVED",
+    "mechanical_response": "UNKNOWN",
+    "thermal_response": "OBSERVED",
+    "final_safe_state": "CONFIRMED",
+    "interpretation": "Electrical and thermal responses were observed, but final displacement is indeterminate because independent position observations materially disagree."
+  },
+  "previous_trial_digest": null,
+  "trial_digest": null,
+  "evidence": [
+    {
+      "evidence_id": "artifact-em-contradicted-001",
+      "evidence_type": "timeseries",
+      "source_id": "daq-001",
+      "captured_at": "2026-09-12T04:30:00.500Z",
+      "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "uri": null
+    }
+  ],
+  "signature": null
+}
