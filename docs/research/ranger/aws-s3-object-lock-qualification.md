@@ -100,6 +100,8 @@ response, or physical outcome.
 | Content/version substitution on retrieval | Different bytes survive while the intended archive is lost | Body and provider full-object SHA-256 plus exact version must match the archive digest | Independent re-retrieval and replication | Get response and body digest | Mutate checksum, body digest, checksum type, or version |
 | Replayed or mixed trial artifacts | Old evidence passes a new challenge | Challenge, qualification/resource identity, exact times, distinct request IDs, and signed content digests | Trusted-time attestations and protected live-run identity | All five artifacts and verifier policy | Replay request ID or change challenge/time |
 | Evidence deletion/modification | Qualification cannot be reconstructed | Complete five-kind set, strict schemas, canonical bytes, and signed digest binding | Separate immutable custody of the evidence package | All artifact bytes | Missing, malformed, duplicate-member, extra-field, and noncanonical JSON tests |
+| Overprivileged or substituted live client | Capture code writes or probes an unintended resource | Caller injects minimal S3/IAM capabilities; plan pins account, bucket, key, principal, and exact generated version; no client construction or credential discovery | Separate workload identity, resource policies, and non-production account controls | Client provenance and live-run authorization record | Stub records required parameters; future controlled negative run |
+| Archive-body or credential retention by capture code | Sensitive material leaks into evidence output | Result contains only normalized metadata and SHA-256 bindings; credentials are never accepted; CI asserts archive bytes are absent from artifacts | Secret scanning and protected evidence-export path | Secret-free output inventory | Stubbed artifact serialization and repository scans |
 | Compromised evidence issuer | Fabricated captures receive a valid ETS signature | Separate issuer key and explicit provider-authenticity nonclaim | Hardware-backed key, lifecycle, workload attestation, independent capture | Key attestation and signer history | Future live negative/control run |
 | Clock manipulation | Retention interval is misstated | Exact ordered artifact/qualification timestamps; trusted-time remains false | Provider and external trusted-time attestations | Time-bearing provider responses and attestations | Substitute or reorder times |
 
@@ -109,6 +111,29 @@ Ordinary CI constructs the exact five versioned structures intended for a future
 their digests through the provider-neutral record, and deterministically exercises positive and
 mutation cases. It does not import `boto3`, use credentials, contact AWS, or fabricate a live-run
 claim.
+
+## Credential-isolated capture adapter
+
+[`ets.ranger.aws_s3_object_lock_capture`](../../../ets/ranger/aws_s3_object_lock_capture.py)
+now supplies the first live-run-facing boundary while remaining suitable for stubbed CI. It accepts
+only caller-injected minimal S3 and IAM capabilities; it does not import an AWS SDK, read
+environment variables, resolve profiles, construct clients, select endpoints, or retain
+credentials. It accepts a pre-authorized, size-bounded synthetic archive and returns only the five
+canonical, secret-free artifact types consumed by the verifier. The supplied archive bytes are
+used for the put and retrieval digest check but never appear in the result.
+
+The fixed sequence is: read bucket controls, put a synthetic COMPLIANCE-retained object version,
+read its retention, simulate `s3:DeleteObjectVersion` for the pinned test principal, attempt an
+exact-version delete with governance bypass disabled, and retrieve that exact version with checksum
+mode enabled. A successful delete, missing/malformed response metadata, unbounded body, changed
+retrieved bytes, stale retention deadline, or out-of-order observation plan fails before an
+artifact package is returned.
+
+This adapter does not make a cloud call by itself and is not an authorization mechanism. A future
+controlled run must provide separately authorized, least-privilege clients from an isolated
+non-production environment. The returned version ID is an observation for the run record; an
+independent verifier policy must still pin the exact resource identity rather than trusting the
+adapter result as its own authority.
 
 A controlled live trial remains separate work. It must run in an explicitly authorized,
 non-production qualification account/namespace with a fresh verifier challenge, a small synthetic

@@ -41,6 +41,14 @@ from ets.ranger.aws_s3_object_lock import (
     aws_s3_object_lock_artifact_bytes,
     verify_aws_s3_object_lock_qualification,
 )
+from ets.ranger.aws_s3_object_lock_capture import (
+    RangerAwsS3ObjectLockCaptureError,
+    RangerAwsS3ObjectLockCapturePlan,
+    RangerAwsS3ObjectLockCaptureResult,
+    RangerAwsS3ObjectLockIamClient,
+    RangerAwsS3ObjectLockS3Client,
+    capture_aws_s3_object_lock_qualification,
+)
 from ets.ranger.consequence_verifier import (
     RangerConsequenceVerification,
     RangerConsequenceVerificationError,
@@ -251,6 +259,11 @@ __all__ = [
     "RangerAwsS3ObjectLockQualificationVerification",
     "RangerAwsS3ObjectLockRetentionPutArtifact",
     "RangerAwsS3ObjectLockVerificationPolicy",
+    "RangerAwsS3ObjectLockCaptureError",
+    "RangerAwsS3ObjectLockCapturePlan",
+    "RangerAwsS3ObjectLockCaptureResult",
+    "RangerAwsS3ObjectLockIamClient",
+    "RangerAwsS3ObjectLockS3Client",
     "RangerAwsS3PostDenialRetrievalArtifact",
     "RangerAwsS3PutObjectObservation",
     "RangerAwsS3ResponseMetadata",
@@ -368,6 +381,7 @@ __all__ = [
     "build_publication_key_binding_request",
     "build_key_binding_request",
     "aws_s3_object_lock_artifact_bytes",
+    "capture_aws_s3_object_lock_qualification",
     "decision_event_canonical_bytes",
     "decision_event_digest",
     "decision_event_preimage",
