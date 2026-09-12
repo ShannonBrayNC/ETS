@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Manifest-driven Gate 4 restore for the fenced ETS destination.
 
-This module intentionally has no GitHub Actions workflow.  It can validate a protected
-Gate-3 workspace and destination restore boundary in plan mode.  Destination writes
-require both ``--apply`` and the exact one-time authorization phrase.  A separately
-reviewed, approval-gated workflow is required before this code may be used in Actions.
+The module has no GitHub Actions workflow. It validates the protected Gate-3
+workspace and destination boundary in plan mode. Destination writes require
+both ``--apply`` and the exact one-time authorization phrase.
 """
 
 from __future__ import annotations
@@ -27,7 +26,12 @@ from scripts.azure_migration_restore_preflight import (
 )
 
 AUTHORIZATION_PHRASE = "GATE4_DESTINATION_WRITE_AUTHORIZED"
-SERVER_MANAGED_ENTITY_FIELDS = {"Timestamp", "etag", "odata.etag"}
+SERVER_MANAGED_ENTITY_FIELDS = {
+    "Timestamp",
+    "etag",
+    "odata.etag",
+    "@odata.etag",
+}
 BROAD_ROLES = {
     "owner",
     "contributor",
@@ -60,23 +64,31 @@ def _safe_root_name(value: object) -> str:
         or "\\" in name
         or Path(name).name != name
     ):
-        raise MigrationControlError("Protected Gateway manifest contains an unsafe file name")
+        raise MigrationControlError(
+            "Protected Gateway manifest contains an unsafe file name"
+        )
     return name
 
 
 def _prepare_workspace(path: Path) -> Path:
     if shutil.which("az") is None:
         raise MigrationControlError("Azure CLI is unavailable")
-    resolved = path.expanduser().resolve()
+
+    expanded = path.expanduser()
+    if expanded.is_symlink():
+        raise MigrationControlError(
+            "Gate 4 protected workspace must not be a symlink"
+        )
+    resolved = expanded.resolve()
     checkout = os.environ.get("GITHUB_WORKSPACE", "").strip()
     if checkout:
         checkout_path = Path(checkout).resolve()
         if resolved == checkout_path or checkout_path in resolved.parents:
-            raise MigrationControlError("Gate 4 protected workspace must be outside the repository checkout")
+            raise MigrationControlError(
+                "Gate 4 protected workspace must be outside the repository checkout"
+            )
     if not resolved.is_dir():
         raise MigrationControlError("Gate 4 protected workspace does not exist")
-    if resolved.is_symlink():
-        raise MigrationControlError("Gate 4 protected workspace must not be a symlink")
     return resolved
 
 
@@ -89,34 +101,192 @@ def _read_json_file(path: Path, label: str) -> Any:
         raise MigrationControlError(f"Protected {label} is invalid") from exc
 
 
+def _is_server_managed_entity_field(key: str) -> bool:
+    if key in SERVER_MANAGED_ENTITY_FIELDS:
+        return True
+    suffix = "@odata.type"
+    if key.endswith(suffix):
+        return key[: -len(suffix)] in SERVER_MANAGED_ENTITY_FIELDS
+    return False
+
+
 def _canonical_entity(entity: dict[str, Any]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in entity.items():
-        if key in SERVER_MANAGED_ENTITY_FIELDS:
-            continue
         if not isinstance(key, str) or not key:
-            raise MigrationControlError("Protected Table entity contains an invalid property name")
+            raise MigrationControlError(
+                "Protected Table entity contains an invalid property name"
+            )
+        if _is_server_managed_entity_field(key):
+            continue
         if isinstance(value, (dict, list)) or value is None:
-            raise MigrationControlError("Protected Table entity contains an unsupported property value")
+            raise MigrationControlError(
+                "Protected Table entity contains an unsupported property value"
+            )
         if not isinstance(value, (str, bool, int, float)):
-            raise MigrationControlError("Protected Table entity contains an unsupported property type")
+            raise MigrationControlError(
+                "Protected Table entity contains an unsupported property type"
+            )
         result[key] = value
 
     partition = result.get("PartitionKey")
     row = result.get("RowKey")
     if not isinstance(partition, str) or not partition:
-        raise MigrationControlError("Protected Table entity PartitionKey is invalid")
+        raise MigrationControlError(
+            "Protected Table entity PartitionKey is invalid"
+        )
     if not isinstance(row, str) or not row:
         raise MigrationControlError("Protected Table entity RowKey is invalid")
     return result
 
 
-def _canonical_entities(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _canonical_entities(
+    entities: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     normalized = [_canonical_entity(entity) for entity in entities]
     keys = [(item["PartitionKey"], item["RowKey"]) for item in normalized]
     if len(set(keys)) != len(keys):
-        raise MigrationControlError("Protected Table payload contains duplicate entity keys")
-    return sorted(normalized, key=lambda item: (item["PartitionKey"], item["RowKey"]))
+        raise MigrationControlError(
+            "Protected Table payload contains duplicate entity keys"
+        )
+    return sorted(
+        normalized,
+        key=lambda item: (item["PartitionKey"], item["RowKey"]),
+    )
+
+
+def _require_regular_file(path: Path, label: str) -> None:
+    if path.is_symlink() or not path.is_file():
+        raise MigrationControlError(f"Protected {label} is unavailable")
+
+
+def _validate_manifest_header(manifest: dict[str, Any]) -> None:
+    if manifest.get("manifest_version") != 1 or manifest.get("gate") != 3:
+        raise MigrationControlError(
+            "Protected Gate-3 manifest version/gate is invalid"
+        )
+    if (
+        manifest.get("source_fenced") is not False
+        or manifest.get("final_copy") is not False
+    ):
+        raise MigrationControlError(
+            "Gate-3 manifest finality flags are inconsistent"
+        )
+    no_write_flags = (
+        "destination_write_performed",
+        "source_mutation_performed",
+        "protected_bytes_uploaded",
+    )
+    for field in no_write_flags:
+        if manifest.get(field) is not False:
+            raise MigrationControlError(
+                f"Gate-3 manifest unexpectedly records {field}"
+            )
+
+
+def _load_entities(
+    workspace: Path,
+    evidence: dict[str, Any],
+) -> list[dict[str, Any]]:
+    entities_path = workspace / "ETSEvents.full.json"
+    _require_regular_file(entities_path, "Table payload")
+    actual_digest = _sha256_file(entities_path)
+    expected_digest = str(evidence.get("payload_sha256", "")).lower()
+    if actual_digest != expected_digest:
+        raise MigrationControlError("Protected Table payload SHA-256 mismatch")
+
+    raw_entities = _read_json_file(entities_path, "Table payload")
+    if not isinstance(raw_entities, list) or any(
+        not isinstance(item, dict) for item in raw_entities
+    ):
+        raise MigrationControlError("Protected Table payload shape is invalid")
+
+    entities = _canonical_entities(raw_entities)
+    state = _validated_state(entities)
+    checks = (
+        ("entity_count", "entity count"),
+        ("next_index", "high-water mark"),
+        ("metadata_digest", "metadata digest"),
+        ("pair_digests", "pair digests"),
+    )
+    for field, label in checks:
+        if state[field] != evidence.get(field):
+            raise MigrationControlError(
+                f"Protected Table {label} does not match manifest"
+            )
+    return entities
+
+
+def _load_gateway_files(
+    workspace: Path,
+    gateway: dict[str, Any],
+) -> list[dict[str, Any]]:
+    files = gateway.get("files")
+    if not isinstance(files, list) or any(
+        not isinstance(item, dict) for item in files
+    ):
+        raise MigrationControlError(
+            "Protected Gateway manifest file list is invalid"
+        )
+    if gateway.get("file_count") != len(files):
+        raise MigrationControlError(
+            "Protected Gateway file count does not match manifest"
+        )
+
+    gateway_dir = workspace / "gateway"
+    if gateway_dir.is_symlink() or not gateway_dir.is_dir():
+        raise MigrationControlError("Protected Gateway workspace is unavailable")
+
+    names: set[str] = set()
+    total_bytes = 0
+    normalized: list[dict[str, Any]] = []
+    for item in files:
+        name = _safe_root_name(item.get("name"))
+        if name in names:
+            raise MigrationControlError(
+                "Protected Gateway manifest contains duplicate file names"
+            )
+
+        size = item.get("size")
+        digest = str(item.get("sha256", "")).lower()
+        if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+            raise MigrationControlError(
+                "Protected Gateway manifest contains an invalid file size"
+            )
+        if len(digest) != 64 or any(
+            ch not in "0123456789abcdef" for ch in digest
+        ):
+            raise MigrationControlError(
+                "Protected Gateway manifest contains an invalid SHA-256"
+            )
+
+        source = gateway_dir / name
+        _require_regular_file(source, "Gateway snapshot file")
+        if source.stat().st_size != size or _sha256_file(source) != digest:
+            raise MigrationControlError(
+                "Protected Gateway snapshot file does not match manifest"
+            )
+
+        names.add(name)
+        total_bytes += size
+        normalized.append(
+            {"name": name, "size": size, "sha256": digest}
+        )
+
+    entries = list(gateway_dir.iterdir())
+    if any(path.is_symlink() or not path.is_file() for path in entries):
+        raise MigrationControlError(
+            "Protected Gateway workspace contains an invalid out-of-manifest entry"
+        )
+    if {path.name for path in entries} != names:
+        raise MigrationControlError(
+            "Protected Gateway workspace contains out-of-manifest files"
+        )
+    if gateway.get("total_bytes") != total_bytes:
+        raise MigrationControlError(
+            "Protected Gateway byte count does not match manifest"
+        )
+    return sorted(normalized, key=lambda item: item["name"])
 
 
 def _load_protected_workspace(
@@ -124,89 +294,44 @@ def _load_protected_workspace(
     expected_manifest_sha256: str,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     manifest_path = workspace / "gate3-manifest.json"
+    _require_regular_file(manifest_path, "Gate-3 manifest")
+
     expected_digest = expected_manifest_sha256.strip().lower()
-    if len(expected_digest) != 64 or any(ch not in "0123456789abcdef" for ch in expected_digest):
-        raise MigrationControlError("Expected Gate-3 manifest SHA-256 is invalid")
-    actual_digest = _sha256_file(manifest_path)
-    if actual_digest != expected_digest:
-        raise MigrationControlError("Protected Gate-3 manifest SHA-256 mismatch")
+    if len(expected_digest) != 64 or any(
+        ch not in "0123456789abcdef" for ch in expected_digest
+    ):
+        raise MigrationControlError(
+            "Expected Gate-3 manifest SHA-256 is invalid"
+        )
+    if _sha256_file(manifest_path) != expected_digest:
+        raise MigrationControlError(
+            "Protected Gate-3 manifest SHA-256 mismatch"
+        )
 
     manifest = _read_json_file(manifest_path, "Gate-3 manifest")
     if not isinstance(manifest, dict):
-        raise MigrationControlError("Protected Gate-3 manifest shape is invalid")
-    if manifest.get("manifest_version") != 1 or manifest.get("gate") != 3:
-        raise MigrationControlError("Protected Gate-3 manifest version/gate is invalid")
-    if manifest.get("source_fenced") is not False or manifest.get("final_copy") is not False:
-        raise MigrationControlError("Gate-3 manifest finality flags are inconsistent")
-    if manifest.get("destination_write_performed") is not False:
-        raise MigrationControlError("Gate-3 manifest unexpectedly records a destination write")
-    if manifest.get("source_mutation_performed") is not False:
-        raise MigrationControlError("Gate-3 manifest unexpectedly records a source mutation")
-    if manifest.get("protected_bytes_uploaded") is not False:
-        raise MigrationControlError("Gate-3 manifest unexpectedly records protected-byte upload")
+        raise MigrationControlError(
+            "Protected Gate-3 manifest shape is invalid"
+        )
+    _validate_manifest_header(manifest)
 
     evidence = manifest.get("evidence")
     gateway = manifest.get("gateway")
     if not isinstance(evidence, dict) or not isinstance(gateway, dict):
-        raise MigrationControlError("Protected Gate-3 manifest is missing restore sections")
+        raise MigrationControlError(
+            "Protected Gate-3 manifest is missing restore sections"
+        )
 
-    entities_path = workspace / "ETSEvents.full.json"
-    if _sha256_file(entities_path) != str(evidence.get("payload_sha256", "")).lower():
-        raise MigrationControlError("Protected Table payload SHA-256 mismatch")
-    raw_entities = _read_json_file(entities_path, "Table payload")
-    if not isinstance(raw_entities, list) or any(not isinstance(item, dict) for item in raw_entities):
-        raise MigrationControlError("Protected Table payload shape is invalid")
-    entities = _canonical_entities(raw_entities)
-    state = _validated_state(entities)
-    if state["entity_count"] != evidence.get("entity_count"):
-        raise MigrationControlError("Protected Table entity count does not match manifest")
-    if state["next_index"] != evidence.get("next_index"):
-        raise MigrationControlError("Protected Table high-water mark does not match manifest")
-    if state["metadata_digest"] != evidence.get("metadata_digest"):
-        raise MigrationControlError("Protected Table metadata digest does not match manifest")
-    if state["pair_digests"] != evidence.get("pair_digests"):
-        raise MigrationControlError("Protected Table pair digests do not match manifest")
-
-    files = gateway.get("files")
-    if not isinstance(files, list) or any(not isinstance(item, dict) for item in files):
-        raise MigrationControlError("Protected Gateway manifest file list is invalid")
-    if gateway.get("file_count") != len(files):
-        raise MigrationControlError("Protected Gateway file count does not match manifest")
-
-    total_bytes = 0
-    normalized_files: list[dict[str, Any]] = []
-    names: set[str] = set()
-    gateway_dir = workspace / "gateway"
-    if not gateway_dir.is_dir() or gateway_dir.is_symlink():
-        raise MigrationControlError("Protected Gateway workspace is unavailable")
-    for item in files:
-        name = _safe_root_name(item.get("name"))
-        if name in names:
-            raise MigrationControlError("Protected Gateway manifest contains duplicate file names")
-        size = item.get("size")
-        digest = str(item.get("sha256", "")).lower()
-        if not isinstance(size, int) or isinstance(size, bool) or size < 0:
-            raise MigrationControlError("Protected Gateway manifest contains an invalid file size")
-        if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
-            raise MigrationControlError("Protected Gateway manifest contains an invalid SHA-256")
-        source = gateway_dir / name
-        if not source.is_file() or source.is_symlink():
-            raise MigrationControlError("Protected Gateway snapshot file is unavailable")
-        if source.stat().st_size != size or _sha256_file(source) != digest:
-            raise MigrationControlError("Protected Gateway snapshot file does not match manifest")
-        total_bytes += size
-        names.add(name)
-        normalized_files.append({"name": name, "size": size, "sha256": digest})
-
-    actual_names = {path.name for path in gateway_dir.iterdir() if path.is_file()}
-    if actual_names != names:
-        raise MigrationControlError("Protected Gateway workspace contains out-of-manifest files")
-    if gateway.get("total_bytes") != total_bytes:
-        raise MigrationControlError("Protected Gateway byte count does not match manifest")
-    return manifest, entities, sorted(normalized_files, key=lambda item: item["name"])
+    entities = _load_entities(workspace, evidence)
+    gateway_files = _load_gateway_files(workspace, gateway)
+    return manifest, entities, gateway_files
 
 
-def _scope(subscription: str, resource_group: str, suffix: str = "") -> str:
+def _scope(
+    subscription: str,
+    resource_group: str,
+    suffix: str = "",
+) -> str:
     base = f"/subscriptions/{subscription}/resourceGroups/{resource_group}"
     return f"{base}{suffix}".rstrip("/")
 
@@ -220,11 +345,19 @@ def _verify_restore_identity_scopes(
     share_name: str,
 ) -> None:
     account = az_json(["account", "show"])
-    if not isinstance(account, dict) or not isinstance(account.get("user"), dict):
-        raise MigrationControlError("Restore identity could not be identified")
+    if not isinstance(account, dict) or not isinstance(
+        account.get("user"), dict
+    ):
+        raise MigrationControlError(
+            "Restore identity could not be identified"
+        )
+
     principal = str(account["user"].get("name", "")).strip()
     if not principal:
-        raise MigrationControlError("Restore identity principal is missing")
+        raise MigrationControlError(
+            "Restore identity principal is missing"
+        )
+
     assignments = az_json(
         [
             "role",
@@ -238,38 +371,57 @@ def _verify_restore_identity_scopes(
         ]
     )
     if not isinstance(assignments, list):
-        raise MigrationControlError("Restore identity RBAC inventory is invalid")
+        raise MigrationControlError(
+            "Restore identity RBAC inventory is invalid"
+        )
 
     actual: set[tuple[str, str]] = set()
     for item in assignments:
         if not isinstance(item, dict):
-            raise MigrationControlError("Restore identity RBAC inventory is invalid")
+            raise MigrationControlError(
+                "Restore identity RBAC inventory is invalid"
+            )
         role = str(item.get("role", "")).strip()
         scope = str(item.get("scope", "")).rstrip("/")
         if not role or not scope:
-            raise MigrationControlError("Restore identity RBAC assignment is incomplete")
+            raise MigrationControlError(
+                "Restore identity RBAC assignment is incomplete"
+            )
         if role.lower() in BROAD_ROLES:
-            raise MigrationControlError("Restore identity holds a forbidden broad administrative role")
+            raise MigrationControlError(
+                "Restore identity holds a forbidden broad administrative role"
+            )
         actual.add((role.lower(), scope.lower()))
 
     rg_scope = _scope(subscription, resource_group)
     table_scope = _scope(
         subscription,
         resource_group,
-        f"/providers/Microsoft.Storage/storageAccounts/{core_account}/tableServices/default/tables/{table_name}",
+        (
+            "/providers/Microsoft.Storage/storageAccounts/"
+            f"{core_account}/tableServices/default/tables/{table_name}"
+        ),
     )
     share_scope = _scope(
         subscription,
         resource_group,
-        f"/providers/Microsoft.Storage/storageAccounts/{gateway_account}/fileServices/default/shares/{share_name}",
+        (
+            "/providers/Microsoft.Storage/storageAccounts/"
+            f"{gateway_account}/fileServices/default/shares/{share_name}"
+        ),
     )
     expected = {
         ("reader", rg_scope.lower()),
         ("storage table data contributor", table_scope.lower()),
-        ("storage file data privileged contributor", share_scope.lower()),
+        (
+            "storage file data privileged contributor",
+            share_scope.lower(),
+        ),
     }
     if actual != expected:
-        raise MigrationControlError("Restore identity RBAC does not match the exact approved Gate-4 scopes")
+        raise MigrationControlError(
+            "Restore identity RBAC does not match the exact approved Gate-4 scopes"
+        )
 
 
 def _value_token(value: Any) -> str:
@@ -281,15 +433,24 @@ def _value_token(value: Any) -> str:
         return repr(value)
     if isinstance(value, str):
         return value
-    raise MigrationControlError("Unsupported Table value reached restore writer")
+    raise MigrationControlError(
+        "Unsupported Table value reached restore writer"
+    )
 
 
 def _entity_args(entity: dict[str, Any]) -> list[str]:
     canonical = _canonical_entity(entity)
-    return [f"{key}={_value_token(canonical[key])}" for key in sorted(canonical)]
+    return [
+        f"{key}={_value_token(canonical[key])}"
+        for key in sorted(canonical)
+    ]
 
 
-def _run_az_write(args: list[str], label: str, timeout: int = 300) -> None:
+def _run_az_write(
+    args: list[str],
+    label: str,
+    timeout: int = 300,
+) -> None:
     result = subprocess.run(
         ["az", *args, "--only-show-errors", "--output", "none"],
         capture_output=True,
@@ -298,10 +459,15 @@ def _run_az_write(args: list[str], label: str, timeout: int = 300) -> None:
         timeout=timeout,
     )
     if result.returncode:
-        raise MigrationControlError(f"Gate 4 {label} failed; inspect protected operator logs")
+        raise MigrationControlError(
+            f"Gate 4 {label} failed; inspect protected operator logs"
+        )
 
 
-def _query_full_entities(account: str, table_name: str) -> list[dict[str, Any]]:
+def _query_full_entities(
+    account: str,
+    table_name: str,
+) -> list[dict[str, Any]]:
     payload = az_json(
         [
             "storage",
@@ -317,16 +483,26 @@ def _query_full_entities(account: str, table_name: str) -> list[dict[str, Any]]:
     )
     if isinstance(payload, list):
         entities = payload
-    elif isinstance(payload, dict) and isinstance(payload.get("items"), list):
+    elif isinstance(payload, dict) and isinstance(
+        payload.get("items"), list
+    ):
         entities = payload["items"]
     else:
-        raise MigrationControlError("Destination Table response has an unexpected shape")
+        raise MigrationControlError(
+            "Destination Table response has an unexpected shape"
+        )
     if any(not isinstance(item, dict) for item in entities):
-        raise MigrationControlError("Destination Table response contains an invalid entity")
+        raise MigrationControlError(
+            "Destination Table response contains an invalid entity"
+        )
     return _canonical_entities(entities)
 
 
-def _restore_table(account: str, table_name: str, entities: list[dict[str, Any]]) -> None:
+def _restore_table(
+    account: str,
+    table_name: str,
+    entities: list[dict[str, Any]],
+) -> None:
     for entity in entities:
         _run_az_write(
             [
@@ -348,7 +524,10 @@ def _restore_table(account: str, table_name: str, entities: list[dict[str, Any]]
         )
 
 
-def _list_gateway_names(account: str, share_name: str) -> set[str]:
+def _list_gateway_names(
+    account: str,
+    share_name: str,
+) -> set[str]:
     payload = az_json(
         [
             "storage",
@@ -366,10 +545,19 @@ def _list_gateway_names(account: str, share_name: str) -> set[str]:
         ]
     )
     if not isinstance(payload, list):
-        raise MigrationControlError("Destination Gateway file inventory is invalid")
-    names = {_safe_root_name(item.get("name")) for item in payload if isinstance(item, dict)}
+        raise MigrationControlError(
+            "Destination Gateway file inventory is invalid"
+        )
+
+    names = {
+        _safe_root_name(item.get("name"))
+        for item in payload
+        if isinstance(item, dict)
+    }
     if len(names) != len(payload):
-        raise MigrationControlError("Destination Gateway file inventory is invalid")
+        raise MigrationControlError(
+            "Destination Gateway file inventory is invalid"
+        )
     return names
 
 
@@ -381,9 +569,15 @@ def _restore_gateway(
 ) -> None:
     expected_names = {str(item["name"]) for item in files}
     initial_names = _list_gateway_names(account, share_name)
-    approved_initial = {"connector-runtime.db", "gateway-events.db", "gateway-sync.db"}
+    approved_initial = {
+        "connector-runtime.db",
+        "gateway-events.db",
+        "gateway-sync.db",
+    }
     if initial_names != approved_initial:
-        raise MigrationControlError("Destination Gateway initialization file set changed before restore")
+        raise MigrationControlError(
+            "Destination Gateway initialization file set changed before restore"
+        )
 
     for item in files:
         name = str(item["name"])
@@ -438,9 +632,14 @@ def _verify_gateway(
 ) -> None:
     expected_names = {str(item["name"]) for item in files}
     if _list_gateway_names(account, share_name) != expected_names:
-        raise MigrationControlError("Restored Gateway file set does not match manifest")
+        raise MigrationControlError(
+            "Restored Gateway file set does not match manifest"
+        )
 
-    with tempfile.TemporaryDirectory(prefix=".gate4-verify-", dir=workspace) as temp_dir:
+    with tempfile.TemporaryDirectory(
+        prefix=".gate4-verify-",
+        dir=workspace,
+    ) as temp_dir:
         verify_dir = Path(temp_dir)
         for item in files:
             name = str(item["name"])
@@ -466,9 +665,13 @@ def _verify_gateway(
                 "Gateway post-restore verification read",
             )
             if destination.stat().st_size != item["size"]:
-                raise MigrationControlError("Restored Gateway file size does not match manifest")
+                raise MigrationControlError(
+                    "Restored Gateway file size does not match manifest"
+                )
             if _sha256_file(destination) != item["sha256"]:
-                raise MigrationControlError("Restored Gateway file SHA-256 does not match manifest")
+                raise MigrationControlError(
+                    "Restored Gateway file SHA-256 does not match manifest"
+                )
 
 
 def _verify_restored_table(
@@ -479,13 +682,23 @@ def _verify_restored_table(
 ) -> None:
     actual_entities = _query_full_entities(account, table_name)
     if actual_entities != expected_entities:
-        raise MigrationControlError("Restored Table representation differs from protected source payload")
+        raise MigrationControlError(
+            "Restored Table representation differs from protected source payload"
+        )
+
     state = _validated_state(actual_entities)
     evidence = manifest["evidence"]
-    if state["entity_count"] != evidence["entity_count"] or state["next_index"] != evidence["next_index"]:
-        raise MigrationControlError("Restored Table count/high-water mark differs from manifest")
-    if state["metadata_digest"] != evidence["metadata_digest"] or state["pair_digests"] != evidence["pair_digests"]:
-        raise MigrationControlError("Restored Table cryptographic structure differs from manifest")
+    checks = (
+        ("entity_count", "count"),
+        ("next_index", "high-water mark"),
+        ("metadata_digest", "metadata digest"),
+        ("pair_digests", "pair digests"),
+    )
+    for field, label in checks:
+        if state[field] != evidence[field]:
+            raise MigrationControlError(
+                f"Restored Table {label} differs from manifest"
+            )
 
 
 def _write_summary(result: dict[str, Any]) -> None:
@@ -500,7 +713,10 @@ def _write_summary(result: dict[str, Any]) -> None:
         f"- expected evidence entities: `{result['entity_count']}`",
         f"- expected next_index: `{result['next_index']}`",
         f"- expected Gateway files: `{result['gateway_file_count']}`",
-        f"- destination write performed: `{str(result['destination_write_performed']).lower()}`",
+        (
+            "- destination write performed: "
+            f"`{str(result['destination_write_performed']).lower()}`"
+        ),
         "- source mutation performed: `false`",
         "- writer activation performed: `false`",
         "- DNS/routing change performed: `false`",
@@ -543,11 +759,28 @@ def gate4(
 
     if apply:
         if authorization != AUTHORIZATION_PHRASE:
-            raise MigrationControlError("Gate 4 destination write authorization phrase is missing")
+            raise MigrationControlError(
+                "Gate 4 destination write authorization phrase is missing"
+            )
         _restore_table(core_account, table_name, entities)
-        _restore_gateway(workspace, gateway_account, share_name, gateway_files)
-        _verify_restored_table(core_account, table_name, entities, manifest)
-        _verify_gateway(workspace, gateway_account, share_name, gateway_files)
+        _restore_gateway(
+            workspace,
+            gateway_account,
+            share_name,
+            gateway_files,
+        )
+        _verify_restored_table(
+            core_account,
+            table_name,
+            entities,
+            manifest,
+        )
+        _verify_gateway(
+            workspace,
+            gateway_account,
+            share_name,
+            gateway_files,
+        )
 
     return {
         "mode": "apply" if apply else "plan-only",
