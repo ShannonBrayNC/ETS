@@ -21,7 +21,6 @@ jobs:
       AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
       SOURCE_TENANT_ID: ${{ vars.SOURCE_AZURE_TENANT_ID }}
       SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
-      GATE3_WORKSPACE: ${{ runner.temp }}/ets-gate3-source
     steps:
       - name: Check out exact migration source
         uses: actions/checkout@v4
@@ -75,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m scripts.azure_migration_gate3_export \
-            --workspace "$GATE3_WORKSPACE" \
+            --workspace "$RUNNER_TEMP/ets-gate3-source" \
             --expected-tenant "$SOURCE_TENANT_ID" \
             --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
 
@@ -84,6 +83,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          GATE3_WORKSPACE="$RUNNER_TEMP/ets-gate3-source"
           rm -rf -- "$GATE3_WORKSPACE"
           if [[ -e "$GATE3_WORKSPACE" ]]; then
             echo "Protected Gate 3 workspace cleanup could not be verified" >&2
