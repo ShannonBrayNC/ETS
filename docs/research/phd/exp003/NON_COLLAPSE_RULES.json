@@ -1,0 +1,58 @@
+{
+  "version": "exp003-1.0",
+  "status": "FROZEN_PRE_EXECUTION",
+  "prohibitions": [
+    {"id": "NC-01", "from": ["INTEGRITY_VALID"], "to": "SEMANTIC_TRUE"},
+    {"id": "NC-02", "from": ["PRODUCER_IDENTIFIED"], "to": "AUTHORITY_VALID"},
+    {"id": "NC-03", "from": ["AUTHORITY_VALID"], "to": "STANDING_VALID", "constraint": "current authority alone is insufficient for historical standing"},
+    {"id": "NC-04", "from": ["FRESH_AT"], "to": "POLICY_APPLICABLE", "constraint": "message freshness is not policy freshness"},
+    {"id": "NC-05", "from": ["REQUESTED"], "to": "EXECUTED"},
+    {"id": "NC-06", "from": ["EXECUTED"], "to": "RESULT_OBSERVED"},
+    {"id": "NC-07", "from": ["RESULT_OBSERVED"], "to": "CONSEQUENCE_SUPPORTED"},
+    {"id": "NC-08", "from": ["DERIVED_FROM"], "to": "INDEPENDENT_SOURCE", "constraint": "agreement or distinct report IDs are insufficient"},
+    {"id": "NC-09", "from": [], "to": "EVENT_ABSENT", "constraint": "missing evidence requires expectation or coverage support"},
+    {"id": "NC-10", "from_states": ["UNKNOWN", "NOT_AVAILABLE", "NOT_OBSERVED", "INDETERMINATE", "CONTRADICTED"], "to_state": "SUPPORTED", "constraint": "epistemic states may not be silently collapsed into a positive or negative fact"},
+    {"id": "NC-11", "from": ["INTEGRITY_VALID", "PRODUCER_IDENTIFIED"], "to": "VERIFIER_TRUSTED"},
+    {"id": "NC-12", "from": ["DERIVED_FROM"], "to": "CONSEQUENCE_SUPPORTED", "constraint": "provenance or temporal sequence alone is not causality"}
+  ],
+  "positive_rules": [
+    {
+      "id": "R-AUTH-01",
+      "conclusion": "STANDING_VALID",
+      "requires": ["PRODUCER_IDENTIFIED", "AUTHORITY_VALID", "POLICY_APPLICABLE", "REQUESTED"],
+      "constraints": ["authority and policy effective at event time", "requested action within scope", "no active revocation or higher-priority contradiction"]
+    },
+    {
+      "id": "R-EXEC-01",
+      "conclusion": "EXECUTED",
+      "requires": ["EXECUTION_EVIDENCE"],
+      "constraints": ["execution-specific source satisfies frozen profile trust checks"]
+    },
+    {
+      "id": "R-RESULT-01",
+      "conclusion": "RESULT_OBSERVED",
+      "requires": ["RESULT_EVIDENCE"],
+      "constraints": ["observation-specific source satisfies frozen identity, integrity and time checks"]
+    },
+    {
+      "id": "R-OMISSION-01",
+      "conclusion": "OMISSION_SUPPORTED",
+      "requires": ["EXPECTATION", "COVERAGE_GAP_EVIDENCE"],
+      "constraints": ["expectation applies to case scope and time"]
+    },
+    {
+      "id": "R-INDEP-01",
+      "conclusion": "INDEPENDENT_SOURCE",
+      "requires": ["SOURCE_PROVENANCE"],
+      "constraints": ["provenance roots satisfy INDEPENDENCE_MODEL.json"]
+    },
+    {
+      "id": "R-CONSEQ-01",
+      "conclusion": "CONSEQUENCE_SUPPORTED",
+      "requires": ["EXECUTED", "RESULT_OBSERVED"],
+      "constraints": ["result inside frozen consequence window", "required source independence satisfied", "no unresolved contradiction", "no active alternative-explanation defeater", "domain sufficiency rule satisfied"]
+    }
+  ],
+  "derived_support_trace_required": true,
+  "rule_addition_after_holdout_observation": "forbidden for confirmatory analysis"
+}

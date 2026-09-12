@@ -1,0 +1,57 @@
+{
+  "version": "exp003-1.0",
+  "status": "FROZEN_PRE_EXECUTION",
+  "purpose": "Strong rich-profile baseline without importing the named non-collapse calculus.",
+  "direct_support": [
+    "INTEGRITY_VALID",
+    "PRODUCER_IDENTIFIED",
+    "REQUESTED",
+    "VERIFIER_TRUSTED"
+  ],
+  "application_rules": [
+    {
+      "id": "A-STANDING",
+      "conclusion": "STANDING_VALID",
+      "requires_atoms": ["producer_identified", "authority_event_time", "policy_event_time", "request_present"]
+    },
+    {
+      "id": "A-EXECUTION",
+      "conclusion": "EXECUTED",
+      "requires_atoms": ["execution_evidence_present"]
+    },
+    {
+      "id": "A-RESULT",
+      "conclusion": "RESULT_OBSERVED",
+      "requires_atoms": ["result_evidence_present", "observation_qualifies"]
+    },
+    {
+      "id": "A-OMISSION",
+      "conclusion": "OMISSION_SUPPORTED",
+      "requires_atoms": ["expectation_present", "coverage_gap_present"]
+    },
+    {
+      "id": "A-INDEPENDENCE",
+      "conclusion": "INDEPENDENT_SOURCE",
+      "requires_atoms": ["source_roots_independent"],
+      "forbids_atoms": ["shared_upstream_root"]
+    },
+    {
+      "id": "A-CONSEQUENCE",
+      "conclusion": "CONSEQUENCE_SUPPORTED",
+      "requires_atoms": ["execution_evidence_present", "result_evidence_present", "result_inside_window", "observation_qualifies"],
+      "forbids_atoms": ["contradiction_present", "alternative_cause_present"]
+    }
+  ],
+  "explicit_shortcuts_disabled": [
+    "integrity_to_truth",
+    "identity_to_authority",
+    "current_authority_to_historical_standing",
+    "request_to_execution",
+    "execution_to_result",
+    "result_to_consequence_without_bounded_premises",
+    "agreement_to_independence",
+    "missing_record_to_event_absence",
+    "source_validity_to_verifier_trust"
+  ],
+  "interpretation": "A match between this baseline and B/C is a valid adverse result for EA-C003."
+}

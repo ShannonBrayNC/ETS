@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/research/exp003/proposition.schema.json",
+  "title": "EXP-003 Proposition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "type", "state", "args", "source_refs"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "type": {
+      "enum": [
+        "STRUCTURAL_VALID",
+        "INTEGRITY_VALID",
+        "PRODUCER_IDENTIFIED",
+        "SOURCE_PROVENANCE",
+        "FRESH_AT",
+        "AUTHORITY_VALID",
+        "STANDING_VALID",
+        "REQUESTED",
+        "EXECUTED",
+        "RESULT_OBSERVED",
+        "CONSEQUENCE_SUPPORTED",
+        "EXPECTATION",
+        "OMISSION_SUPPORTED",
+        "INDEPENDENT_SOURCE",
+        "VERIFIER_TRUSTED",
+        "POLICY_APPLICABLE",
+        "DERIVED_FROM",
+        "CONTRADICTS",
+        "SEMANTIC_TRUE",
+        "EVENT_ABSENT"
+      ]
+    },
+    "state": {
+      "enum": [
+        "SUPPORTED",
+        "ASSERTED",
+        "UNKNOWN",
+        "NOT_AVAILABLE",
+        "NOT_OBSERVED",
+        "INDETERMINATE",
+        "CONTRADICTED",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "args": {"type": "object"},
+    "source_refs": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "policy_refs": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "event_time": {"type": ["string", "null"]},
+    "trust_assumptions": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "support_trace": {
+      "type": ["object", "null"],
+      "properties": {
+        "rule_id": {"type": "string"},
+        "premise_ids": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "source_roots": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "limitations": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      },
+      "required": ["rule_id", "premise_ids", "source_roots", "limitations"]
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "version": "exp003-1.0",
+  "status": "FROZEN_PRE_EXECUTION",
+  "principle": "Independence is a provenance property, not a count of agreeing reports.",
+  "independent_when": [
+    "claims terminate in distinct frozen provenance roots",
+    "no declared upstream producer, sensor, model inference, dataset event, or capture channel is shared before the independence boundary",
+    "shared downstream transport or storage does not by itself destroy independence"
+  ],
+  "dependent_when": [
+    "claims derive from the same sensor observation",
+    "claims derive from the same model output or common upstream inference",
+    "one claim is copied, transformed, summarized, or re-signed from the other",
+    "the frozen scenario declares a shared root before the independence boundary"
+  ],
+  "unknown_when": [
+    "provenance roots are missing",
+    "source lineage cannot establish or refute a shared upstream root"
+  ],
+  "unknown_state": "UNKNOWN",
+  "rule_id": "R-INDEP-01"
+}

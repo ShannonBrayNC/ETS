@@ -1,0 +1,49 @@
+{
+  "version": "exp003-1.0",
+  "status": "FROZEN_PRE_EXECUTION",
+  "families": [
+    "digital_authority",
+    "distributed_omission",
+    "ai_tool_action",
+    "cyber_physical_action",
+    "consequence_custody"
+  ],
+  "atoms": [
+    "signature_valid",
+    "producer_identified",
+    "authority_current",
+    "authority_event_time",
+    "policy_current",
+    "policy_event_time",
+    "request_present",
+    "execution_evidence_present",
+    "result_evidence_present",
+    "result_inside_window",
+    "expectation_present",
+    "coverage_gap_present",
+    "verifier_trusted",
+    "source_roots_independent",
+    "shared_upstream_root",
+    "contradiction_present",
+    "alternative_cause_present",
+    "evidence_available",
+    "observation_qualifies",
+    "message_fresh",
+    "reference_values_fresh"
+  ],
+  "generation_constraints": [
+    "each case belongs to exactly one primary family",
+    "each case activates at least one non-collapse boundary",
+    "at least 30 percent of cases activate two or more boundaries",
+    "positive and negative support examples must exist for every positive rule",
+    "every family must include supported, unsupported, contradicted, and unknown outcomes",
+    "all conditions consume exactly the same atomic fact record",
+    "oracle metadata is stored separately from condition inputs"
+  ],
+  "minimum_confirmatory_cases": 1000,
+  "minimum_holdout_fraction": 0.2,
+  "tuning_seed": 39054063,
+  "holdout_seed": 177813580,
+  "holdout_assignment": "sha256(case_id + ':' + holdout_seed) interpreted as unsigned integer; lowest 20 percent by normalized value are holdout",
+  "execution_boundary": "This grammar may be validated before freeze, but confirmatory cases must not be generated or scored before the final artifact manifest is committed."
+}
