@@ -132,6 +132,8 @@ administered replicated option for policy semantics, API compatibility, region/a
 retention escape paths, evidence export, availability, and cost. The cheapest first experiment is
 the deterministic simulator and mutation suite in ordinary CI.
 
-The next live slice should implement one provider-specific artifact parser and run the contract in
-a protected, non-production qualification namespace. Only produced evidence may advance the
-corresponding bounded provider claim.
+The [AWS S3 Object Lock artifact verifier](aws-s3-object-lock-qualification.md) now implements one
+provider-specific parser over deterministic captures without selecting AWS or claiming a live run.
+The next deployment slice is a separately reviewed adapter and controlled execution in a protected,
+non-production qualification namespace. Only produced evidence may advance the corresponding
+bounded provider claim.

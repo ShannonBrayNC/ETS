@@ -76,6 +76,7 @@ The [publisher/custodian key-lifecycle profile](publication-key-lifecycle.md) no
 historical source-key standing across rotation and revocation without treating an old key as
 currently authorized. The
 [immutable-publication qualification profile](immutable-publication-qualification.md) now defines
-the provider-neutral evidence and deletion-negative test boundary. A provider-specific artifact
-verifier and controlled live run remain required before any backend is described as qualified or
-immutable.
+the provider-neutral evidence and deletion-negative test boundary. The
+[AWS S3 Object Lock artifact verifier](aws-s3-object-lock-qualification.md) adds one deterministic
+provider-specific verification path. A protected adapter execution and controlled live run remain
+required before any backend is described as qualified or immutable.
