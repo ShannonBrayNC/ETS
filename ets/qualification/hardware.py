@@ -16,9 +16,9 @@ from ets.core.canonical_json import canonical_sha256
 
 _SHA256_RE = r"^[0-9a-f]{64}$"
 _COMMIT_RE = r"^[0-9a-f]{40,64}$"
-_CLAIM_BOUNDARY = (
+_CLAIM_BOUNDARY: Literal[
     "bounded_hqp_execution_evidence_not_complete_observation_truth_compliance_safety_or_ga_proof"
-)
+] = "bounded_hqp_execution_evidence_not_complete_observation_truth_compliance_safety_or_ga_proof"
 
 
 class StrictModel(BaseModel):
