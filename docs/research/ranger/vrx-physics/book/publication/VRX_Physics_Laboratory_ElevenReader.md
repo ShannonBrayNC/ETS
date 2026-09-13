@@ -2,18 +2,10 @@
 
 **A Spoken Course in Verifiable Electromechanical Systems**
 
-Shannon Bray
-
-Lantern Protocol Research Edition
-
-**VRX Physics Laboratory**
-
-**A Spoken Course in Verifiable Electromechanical Systems**
-
 **Measurement, Mechanics, Electromagnetism, Thermal State, Vibration, and Evidence Architecture**
 
 **Shannon Bray**
-**Lantern Protocol Research Edition**
+**Lantern Protocol ElevenReader Edition**
 **2026**
 
 **Copyright**
@@ -22,9 +14,9 @@ Copyright © 2026 Shannon Bray. All rights reserved.
 
 Prepared as part of the Lantern Protocol research program.
 
-This research edition is written for technical education, laboratory study, Evidence Architecture research, and spoken delivery through ElevenReader or comparable narration systems.
+This ElevenReader edition is written for technical education, laboratory study, Evidence Architecture research, and spoken delivery through ElevenReader or comparable narration systems.
 
-No ISBN has been assigned to this research edition.
+No ISBN has been assigned to this edition.
 
 **Safety and scope notice**
 
