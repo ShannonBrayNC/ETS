@@ -15,9 +15,10 @@ import os
 import stat
 import subprocess
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from scripts.azure_migration_control import MigrationControlError, az_json, verify_context
 from scripts.azure_migration_gate6_fence_preflight import capture_preflight
