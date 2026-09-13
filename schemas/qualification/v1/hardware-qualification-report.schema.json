@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/qualification/v1/hardware-qualification-report.schema.json",
+  "title": "ETS Hardware Qualification Report v1",
+  "description": "Deterministic projection of a sealed ETS hardware qualification run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "report_id",
+    "run_id",
+    "run_digest_sha256",
+    "profile",
+    "device_id",
+    "hardware_revision",
+    "commit_sha",
+    "required_case_ids",
+    "passed_case_ids",
+    "failed_case_ids",
+    "invalid_case_ids",
+    "waived_case_ids",
+    "not_run_case_ids",
+    "deviation_ids",
+    "evidence_object_ids",
+    "artifact_ids",
+    "verifier_status",
+    "verifier_result_digest_sha256",
+    "final_disposition",
+    "report_digest_sha256",
+    "claim_boundary"
+  ],
+  "properties": {
+    "schema_version": {"const": "ets.hardware-qualification-report.v1"},
+    "report_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "run_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "run_digest_sha256": {"$ref": "#/$defs/sha256"},
+    "profile": {"$ref": "#/$defs/profileBinding"},
+    "device_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "hardware_revision": {"type": "string", "minLength": 1, "maxLength": 256},
+    "commit_sha": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "required_case_ids": {"$ref": "#/$defs/stringArray"},
+    "passed_case_ids": {"$ref": "#/$defs/stringArray"},
+    "failed_case_ids": {"$ref": "#/$defs/stringArray"},
+    "invalid_case_ids": {"$ref": "#/$defs/stringArray"},
+    "waived_case_ids": {"$ref": "#/$defs/stringArray"},
+    "not_run_case_ids": {"$ref": "#/$defs/stringArray"},
+    "deviation_ids": {"$ref": "#/$defs/stringArray"},
+    "evidence_object_ids": {"$ref": "#/$defs/stringArray"},
+    "artifact_ids": {"$ref": "#/$defs/stringArray"},
+    "verifier_status": {"enum": ["not_run", "valid", "invalid"]},
+    "verifier_result_digest_sha256": {"$ref": "#/$defs/sha256"},
+    "final_disposition": {
+      "enum": ["invalid", "failed", "lab_tested", "qualified", "qualified_with_deviation"]
+    },
+    "report_digest_sha256": {"$ref": "#/$defs/sha256"},
+    "claim_boundary": {
+      "const": "bounded_hqp_execution_evidence_not_complete_observation_truth_compliance_safety_or_ga_proof"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "profileBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "profile_version", "profile_digest_sha256"],
+      "properties": {
+        "profile_id": {"type": "string", "minLength": 3, "maxLength": 256},
+        "profile_version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "profile_digest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "stringArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 512}
+    }
+  }
+}
