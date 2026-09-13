@@ -18,8 +18,8 @@ from scripts.azure_migration_gate8_cutover_preflight import _dns_json
 from scripts.lantern_destination_staging_verify import (
     StagingVerificationError,
     _site_manifest,
-    verify as verify_staging,
 )
+from scripts.lantern_destination_staging_verify import verify as verify_staging
 
 AUTHORIZATION_PHRASE = "GATE8_LANTERN_DOMAIN_TLS_PREPARATION_AUTHORIZED"
 _SCHEMA = "ets.azure-migration.gate8b-lantern-domain-tls.v1"
@@ -115,7 +115,9 @@ def _validate_staging(payload: dict[str, Any], site_root: Path) -> None:
             raise MigrationControlError(f"Lantern staging prerequisite is invalid: {key}")
     _manifest, aggregate, _total_bytes = _site_manifest(site_root)
     if aggregate != payload.get("site_manifest_sha256"):
-        raise MigrationControlError("Checked-in Lantern content differs from qualified staging bytes")
+        raise MigrationControlError(
+            "Checked-in Lantern content differs from qualified staging bytes"
+        )
 
 
 def _routing_dns() -> dict[str, list[str]]:
