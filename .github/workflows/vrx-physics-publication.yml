@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - research/vrx-physics-publication
+      - research/vrx-physics-vibration
     paths:
       - 'docs/research/ranger/vrx-physics/book/**'
       - '!docs/research/ranger/vrx-physics/book/publication/**'
