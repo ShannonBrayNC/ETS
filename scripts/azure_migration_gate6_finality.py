@@ -13,7 +13,10 @@ from typing import Any
 from scripts.azure_migration_control import MigrationControlError, verify_context
 from scripts.azure_migration_gate3_export import _read_full_entities
 from scripts.azure_migration_gate4_restore import _canonical_entities
-from scripts.azure_migration_gate6_final_capture import _verify_source_dark
+from scripts.azure_migration_gate6_final_capture import (
+    _verify_source_dark,
+    durable_gateway_inventory,
+)
 from scripts.azure_migration_gate6_final_reconcile import load_final_workspace
 from scripts.azure_migration_gateway_equivalence import _capture_file_hashes
 from scripts.azure_migration_prefix_preflight import _discover_storage_accounts
@@ -43,7 +46,9 @@ def _read_json(path: Path, label: str) -> dict[str, Any]:
     return payload
 
 
-def _file_identity(files: list[dict[str, Any]]) -> tuple[tuple[str, int, str], ...]:
+def _file_identity(
+    files: list[dict[str, Any]],
+) -> tuple[tuple[str, int, str], ...]:
     return tuple(
         sorted(
             (
@@ -80,7 +85,8 @@ def verify_source_snapshot(
     if current_entities != protected_entities:
         raise MigrationControlError("Fenced source Table changed after final capture")
 
-    current_files = _capture_file_hashes(gateway_account, share_name)
+    raw_current_files = _capture_file_hashes(gateway_account, share_name)
+    current_files = durable_gateway_inventory(raw_current_files)
     if _file_identity(current_files) != _file_identity(protected_files):
         raise MigrationControlError("Fenced source Gateway changed after final capture")
 
