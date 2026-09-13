@@ -6,7 +6,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import os
 import time
 import uuid
 from datetime import UTC, datetime
@@ -60,7 +59,7 @@ def _request_json(
     data: bytes | None = None
     if payload is not None:
         headers["Content-Type"] = "application/json"
-        data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        data = json.dumps(payload, separators=(",", ":")).encode()
     request = Request(f"{base}{path}", data=data, method=method, headers=headers)
     opener = build_opener(_RejectRedirects())
     try:
@@ -75,7 +74,7 @@ def _request_json(
     if len(body) > _MAX_RESPONSE_BYTES:
         raise RuntimeError("Gate 7C Core response exceeded the qualified byte bound")
     try:
-        decoded = json.loads(body.decode("utf-8")) if body else {}
+        decoded = json.loads(body.decode()) if body else {}
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RuntimeError("Gate 7C Core response was not valid JSON") from exc
     if not isinstance(decoded, dict):
@@ -127,8 +126,9 @@ def _synthetic_event(settings: HostedMicrosoftGatewaySettings) -> dict[str, Any]
     nonce = uuid.uuid4().hex
     instant = datetime.now(UTC)
     marker = (
-        f"gate7c:{nonce}:{settings.tenant_id}:{settings.workspace_id}:{instant.isoformat()}"
-    ).encode("utf-8")
+        f"gate7c:{nonce}:{settings.tenant_id}:"
+        f"{settings.workspace_id}:{instant.isoformat()}"
+    ).encode()
     return {
         "event_id": f"gate7c-{nonce}",
         "tenant_id": settings.tenant_id,
@@ -197,7 +197,9 @@ def run_probe() -> dict[str, Any]:
             if not isinstance(event_hash, str) or len(event_hash) != 64:
                 raise RuntimeError("Gate 7C append omitted a valid event hash")
             if not isinstance(log_index, int) or log_index < pre_head.tree_size:
-                raise RuntimeError("Gate 7C append did not continue after the observed tree head")
+                raise RuntimeError(
+                    "Gate 7C append did not continue after the observed tree head"
+                )
             append_head = _require_signed_head(append.get("tree_head"))
             proof_payload = _request_json(
                 "GET",
@@ -208,7 +210,9 @@ def run_probe() -> dict[str, Any]:
             proof = InclusionProof.model_validate(proof_payload)
             local = verify_inclusion_proof(proof)
             if not local.valid:
-                raise RuntimeError("Gate 7C local inclusion verifier rejected the new event")
+                raise RuntimeError(
+                    "Gate 7C local inclusion verifier rejected the new event"
+                )
             api_verification = _request_json(
                 "POST",
                 settings.core_base_url,
@@ -225,7 +229,9 @@ def run_probe() -> dict[str, Any]:
                 bearer=bearer,
             )
             if readback.get("event_hash") != event_hash:
-                raise RuntimeError("Gate 7C event readback hash differs from append acknowledgement")
+                raise RuntimeError(
+                    "Gate 7C event readback hash differs from append acknowledgement"
+                )
             post_head = _require_signed_head(
                 _request_json(
                     "GET",
@@ -240,9 +246,13 @@ def run_probe() -> dict[str, Any]:
     if post_head.tree_size <= pre_head.tree_size:
         raise RuntimeError("Gate 7C Core tree did not grow after the controlled append")
     if post_head.tree_size <= log_index:
-        raise RuntimeError("Gate 7C post-append tree head does not contain the synthetic event")
+        raise RuntimeError(
+            "Gate 7C post-append tree head does not contain the synthetic event"
+        )
     if append_head.tree_size <= log_index:
-        raise RuntimeError("Gate 7C append tree head does not contain the synthetic event")
+        raise RuntimeError(
+            "Gate 7C append tree head does not contain the synthetic event"
+        )
 
     return {
         "schema_version": "ets.azure-migration.gate7c-active-gateway-probe.v1",
@@ -261,7 +271,7 @@ def run_probe() -> dict[str, Any]:
         "event_readback_verified": True,
         "destination_tree_head_ps256": True,
         "destination_public_key_id_sha256": hashlib.sha256(
-            post_head.public_key_id.encode("utf-8")
+            post_head.public_key_id.encode()
         ).hexdigest(),
         "core_identity_source": "production_gateway_managed_identity",
         "core_api_path": "/api/v1/events",
@@ -273,7 +283,7 @@ def main() -> int:
     try:
         result = run_probe()
         encoded = base64.b64encode(
-            json.dumps(result, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            json.dumps(result, sort_keys=True, separators=(",", ":")).encode()
         ).decode("ascii")
         print(f"{_RESULT_PREFIX}{encoded}")
     except Exception as exc:
