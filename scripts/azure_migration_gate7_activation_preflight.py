@@ -24,8 +24,8 @@ _GATEWAY_APP = "ets-oif5r5ydprrou-gw"
 _MANAGED_ENVIRONMENT = "ets-v5j37z3xe76tm-cae"
 _CORE_STORAGE = "etsv5j37z3xe76tm"
 _GATEWAY_STORAGE = "etsgwoif5r5ydprrou"
-_CORE_KEY_VAULT = "ets-v5j37z3xe76tm-kv"
-_GATEWAY_KEY_VAULT = "ets-oif5r5ydprrou-gkv"
+_CORE_VAULT_RESOURCE = "ets-v5j37z3xe76tm-kv"
+_GATEWAY_VAULT_RESOURCE = "ets-oif5r5ydprrou-gkv"
 _DEST_ACR = "etsprod7c8ab70380.azurecr.io"
 _TABLE_NAME = "ETSEvents"
 _EXPECTED_IDENTITIES = {
@@ -238,8 +238,8 @@ def capture_preflight(resource_group: str) -> dict[str, Any]:
         ("Microsoft.App/managedEnvironments", _MANAGED_ENVIRONMENT),
         ("Microsoft.Storage/storageAccounts", _CORE_STORAGE),
         ("Microsoft.Storage/storageAccounts", _GATEWAY_STORAGE),
-        ("Microsoft.KeyVault/vaults", _CORE_KEY_VAULT),
-        ("Microsoft.KeyVault/vaults", _GATEWAY_KEY_VAULT),
+        ("Microsoft.KeyVault/vaults", _CORE_VAULT_RESOURCE),
+        ("Microsoft.KeyVault/vaults", _GATEWAY_VAULT_RESOURCE),
     ):
         _resource_exists(resource_group, resource_type, name)
 
@@ -263,8 +263,8 @@ def capture_preflight(resource_group: str) -> dict[str, Any]:
             "managed_environment": _MANAGED_ENVIRONMENT,
             "core_storage": _CORE_STORAGE,
             "gateway_storage": _GATEWAY_STORAGE,
-            "core_key_vault": _CORE_KEY_VAULT,
-            "gateway_key_vault": _GATEWAY_KEY_VAULT,
+            "core_vault_resource": _CORE_VAULT_RESOURCE,
+            "gateway_vault_resource": _GATEWAY_VAULT_RESOURCE,
             "destination_acr": _DEST_ACR,
         },
         "source_dependency_detected": False,
