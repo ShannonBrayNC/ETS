@@ -168,7 +168,8 @@ def test_capture_workflow_retains_protected_bytes_only_on_operator_storage() -> 
     assert "workflow_dispatch:" in text
     assert "GATE6_FINAL_CAPTURE_AUTHORIZED" in text
     assert "runs-on: [self-hosted, linux, x64, ets-migration-gate4]" in text
-    assert "final-source-snapshots/$SNAPSHOT_TAG" in text
+    assert 'SNAPSHOT_PARENT="$GATE4_OPERATOR_ROOT/final-source-snapshots"' in text
+    assert 'SOURCE_WORKSPACE="$SNAPSHOT_PARENT/$SNAPSHOT_TAG"' in text
     assert "actions/upload-artifact" not in lowered
     assert '[[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]' in text
 
