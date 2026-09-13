@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 import scripts.lantern_destination_staging_verify as staging
 
 WORKFLOW = Path(".github/workflows/lantern-destination-staging.yml")
+APPLY = Path("scripts/lantern_destination_staging_apply.sh")
 
 
 def _site(root: Path) -> None:
@@ -102,25 +104,32 @@ def test_verifier_rejects_frontdoor_byte_drift(
         )
 
 
-def test_workflow_is_destination_only_and_has_no_production_domain_cutover() -> None:
-    text = WORKFLOW.read_text(encoding="utf-8")
-    lowered = text.casefold()
+def test_apply_script_has_valid_bash_syntax() -> None:
+    subprocess.run(["bash", "-n", str(APPLY)], check=True)
 
-    assert "workflow_dispatch:" in text
-    assert "LANTERN_DESTINATION_STAGING_AUTHORIZED" in text
-    assert "environment: ets-azure-migration-destination-restore" in text
-    assert "RESOURCE_GROUP: rg-ets-prod-eastus" in text
-    assert "scripts.lantern_content_dependency_sweep" in text
-    assert "scripts.lantern_destination_staging_verify" in text
-    assert "az storage account create" in text
-    assert "az afd profile create" in text
-    assert "az afd endpoint create" in text
-    assert "az afd origin-group create" in text
-    assert "az afd origin create" in text
-    assert "az afd route create" in text
-    assert "tenant_exit_ready: `false`" in text
-    assert "rg-ets-live-eastus" not in text
-    assert "environment: ets-azure-q1" not in text
+
+def test_workflow_and_apply_are_destination_only_without_domain_cutover() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    apply = APPLY.read_text(encoding="utf-8")
+    combined = f"{workflow}\n{apply}"
+    lowered = combined.casefold()
+
+    assert "workflow_dispatch:" in workflow
+    assert "LANTERN_DESTINATION_STAGING_AUTHORIZED" in workflow
+    assert "environment: ets-azure-migration-destination-restore" in workflow
+    assert "RESOURCE_GROUP: rg-ets-prod-eastus" in workflow
+    assert "scripts.lantern_content_dependency_sweep" in workflow
+    assert "scripts/lantern_destination_staging_apply.sh" in workflow
+    assert "scripts.lantern_destination_staging_verify" in apply
+    assert "az storage account create" in apply
+    assert "az afd profile create" in apply
+    assert "az afd endpoint create" in apply
+    assert "az afd origin-group create" in apply
+    assert "az afd origin create" in apply
+    assert "az afd route create" in apply
+    assert "tenant_exit_ready: `false`" in workflow
+    assert "rg-ets-live-eastus" not in combined
+    assert "environment: ets-azure-q1" not in combined
     for forbidden in (
         "az afd custom-domain",
         "az network dns",
