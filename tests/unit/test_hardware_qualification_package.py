@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -40,7 +40,7 @@ _SIX = "6" * 64
 _SEVEN = "7" * 64
 _EIGHT = "8" * 64
 _NINE = "9" * 64
-_START = datetime(2026, 9, 13, 20, 0, tzinfo=timezone.utc)
+_START = datetime(2026, 9, 13, 20, 0, tzinfo=UTC)
 _END = _START + timedelta(minutes=5)
 
 
