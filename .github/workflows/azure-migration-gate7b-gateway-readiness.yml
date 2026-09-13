@@ -1,0 +1,208 @@
+name: Azure Migration Gate 7B Gateway Readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      authorization:
+        description: Exact Gate 7B readiness authorization phrase
+        required: true
+        type: string
+      expected_commit:
+        description: Exact reviewed main commit authorized for Gate 7B
+        required: true
+        type: string
+      gate7a_run_id:
+        description: Successful Gate 7A Core activation workflow run ID
+        required: true
+        type: string
+      manifest_sha256:
+        description: Exact fenced-source manifest SHA-256 bound by Gate 6 finality
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate7b-gateway-readiness
+  cancel-in-progress: false
+
+jobs:
+  prove-readiness:
+    name: Prove Gateway readiness without activating production polling
+    runs-on: [self-hosted, linux, x64, ets-migration-gate4]
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 40
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      GATE7A_RUN_ID: ${{ inputs.gate7a_run_id }}
+      EXPECTED_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+      AUTHORIZATION: ${{ inputs.authorization }}
+      GATE7A_DIR: ${{ runner.temp }}/gate7a
+      GATE7A_REPORT: ${{ runner.temp }}/gate7a/ets-gate7-core-activation.json
+      BEFORE_REPORT: ${{ runner.temp }}/ets-gate7b-before.json
+      AFTER_REPORT: ${{ runner.temp }}/ets-gate7b-after.json
+      M365_MARKER: ${{ runner.temp }}/ets-gate7b-m365-marker.json
+      FINAL_REPORT: ${{ runner.temp }}/ets-gate7b-gateway-readiness.json
+      MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+
+    steps:
+      - name: Check out exact reviewed migration source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head or missing authorization before Azure login
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$AUTHORIZATION" == "GATE7B_GATEWAY_READINESS_AUTHORIZED" ]]
+          [[ "$GATE7A_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$EXPECTED_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ -n '${{ vars.AZURE_CLIENT_ID }}' ]]
+          [[ -n "$DEST_TENANT_ID" ]]
+          [[ -n "$DEST_SUBSCRIPTION_ID" ]]
+
+      - name: Download exact Gate 7A Core activation evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate7-core-activation
+          path: ${{ runner.temp }}/gate7a
+          run-id: ${{ inputs.gate7a_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Require Gate 7A artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -f "$GATE7A_REPORT" ]]
+
+      - name: Azure login with destination restore identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Capture pre-qualification destination state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate7b_gateway_readiness capture \
+            --gate7a "$GATE7A_REPORT" \
+            --manifest-sha256 "$EXPECTED_MANIFEST_SHA256" \
+            --resource-group rg-ets-prod-eastus \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID" \
+            --authorization "$AUTHORIZATION" \
+            --output "$BEFORE_REPORT"
+
+      - name: Requalify Gateway UAMI against EchoMedia in isolated job
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $resultJson = & ./scripts/m365/invoke-ets-sharepoint-workload-identity-isolated-job.ps1 -Apply | Out-String
+          $result = $resultJson | ConvertFrom-Json
+          if ($result.qualification -cne 'pass') { throw 'Isolated M365 qualification did not pass.' }
+          if ($result.mode -cne 'gateway_uami_isolated_container_apps_job') { throw 'Unexpected isolated qualification mode.' }
+          if ($result.exactSharePointSiteVerified -ne $true) { throw 'Exact SharePoint site was not verified.' }
+          if ($result.defaultDriveRootReadVerified -ne $true) { throw 'Default drive root read was not verified.' }
+          if ($result.temporaryJobDeleted -ne $true) { throw 'Temporary qualification job cleanup was not verified.' }
+          if ($result.productionGatewayMutationPerformed -ne $false) { throw 'Production Gateway mutation was reported.' }
+          if ($result.productionGatewayZeroRuntimeRestored -ne $true) { throw 'Production Gateway is not dormant after qualification.' }
+          if ($result.gatewayStateMounted -ne $false) { throw 'Qualification unexpectedly mounted Gateway state.' }
+          if ($result.gatewayEntrypointStarted -ne $false) { throw 'Qualification unexpectedly started the Gateway entrypoint.' }
+          $marker = [ordered]@{
+            qualification = 'pass'
+            mode = 'gateway_uami_isolated_container_apps_job'
+            m365_isolated_runtime_read = $true
+            exact_sharepoint_site_verified = $true
+            default_drive_root_read_verified = $true
+            temporary_job_deleted = $true
+            production_gateway_mutation_performed = $false
+            production_gateway_zero_runtime_restored = $true
+            gateway_state_mounted = $false
+            gateway_entrypoint_started = $false
+          }
+          $marker | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $env:M365_MARKER -Encoding utf8NoBOM
+
+      - name: Capture post-qualification destination state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate7b_gateway_readiness capture \
+            --gate7a "$GATE7A_REPORT" \
+            --manifest-sha256 "$EXPECTED_MANIFEST_SHA256" \
+            --resource-group rg-ets-prod-eastus \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID" \
+            --authorization "$AUTHORIZATION" \
+            --output "$AFTER_REPORT"
+
+      - name: Attest Gate 7B readiness from independent evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate7b_gateway_readiness attest \
+            --before "$BEFORE_REPORT" \
+            --after "$AFTER_REPORT" \
+            --m365-marker "$M365_MARKER" \
+            --gate7a "$GATE7A_REPORT" \
+            --manifest-sha256 "$EXPECTED_MANIFEST_SHA256" \
+            --output "$FINAL_REPORT"
+
+      - name: Retain sanitized Gate 7B readiness evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-migration-gate7b-gateway-readiness
+          path: ${{ runner.temp }}/ets-gate7b-gateway-readiness.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove runner-local evidence copies
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$GATE7A_DIR"
+          rm -f "$BEFORE_REPORT" "$AFTER_REPORT" "$M365_MARKER" "$FINAL_REPORT"
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert Gate 7B boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 7B boundary
+
+          - Gate 6 final_copy / source fencing: `required through Gate 7A evidence`
+          - destination Core: `active`
+          - production Gateway: `still dormant`
+          - isolated Gateway UAMI → EchoMedia `/sites/ETS` read: `passed`
+          - production Gateway state mounted by qualification: `false`
+          - migrated destination state mutation during qualification: `none`
+          - destination authoritative: `false`
+          - synthetic ETS write: `not performed`
+          - DNS / Front Door / routing mutation: `not performed`
+          - source login or reactivation: `not performed`
+
+          Gate 7C remains the separate authority-transfer boundary. Production Gateway startup
+          itself begins polling/relay work and therefore must not occur before that boundary.
+          EOF
