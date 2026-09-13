@@ -28,6 +28,8 @@ from scripts.azure_migration_gate6_fence_apply import (
 )
 from scripts.azure_migration_gate6_fence_preflight import _identify_apps
 from scripts.azure_migration_prefix_preflight import (
+    _GATEWAY_SYNC_WAL_SIDECARS,
+    EXPECTED_GATEWAY_FILES,
     _discover_storage_accounts,
     _validated_state,
 )
@@ -47,12 +49,52 @@ def _verify_source_dark(resource_group: str) -> tuple[str, str]:
     return core_name, gateway_name
 
 
-def _gateway_identity(files: list[dict[str, Any]]) -> tuple[tuple[str, int, str], ...]:
+def _gateway_identity(
+    files: list[dict[str, Any]],
+) -> tuple[tuple[str, int, str], ...]:
     normalized: list[tuple[str, int, str]] = []
     for item in files:
         name = str(item.get("name", item.get("path", "")))
         normalized.append((name, int(item["size"]), str(item["sha256"])))
     return tuple(sorted(normalized))
+
+
+def _canonicalize_gateway_capture(
+    workspace: Path,
+    files: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
+    """Retain only durable Gateway files, tolerating one inert SQLite sidecar pair."""
+    by_name = {str(item["name"]): item for item in files}
+    if len(by_name) != len(files):
+        raise MigrationControlError("Final Gateway capture contains duplicate names")
+    names = set(by_name)
+    if names == EXPECTED_GATEWAY_FILES:
+        durable = files
+    elif names == EXPECTED_GATEWAY_FILES | _GATEWAY_SYNC_WAL_SIDECARS:
+        wal = by_name.get("gateway-sync.db-wal")
+        if wal is None or int(wal["size"]) != 0:
+            raise MigrationControlError(
+                "Fenced Gateway WAL sidecar is not inert at final capture"
+            )
+        for name in _GATEWAY_SYNC_WAL_SIDECARS:
+            local_sidecar = workspace / "gateway" / name
+            if not local_sidecar.is_file() or local_sidecar.is_symlink():
+                raise MigrationControlError(
+                    "Protected Gateway sidecar capture is unavailable"
+                )
+            local_sidecar.unlink()
+        durable = [
+            item
+            for item in files
+            if str(item["name"]) not in _GATEWAY_SYNC_WAL_SIDECARS
+        ]
+    else:
+        raise MigrationControlError(
+            "Fenced Gateway capture does not contain the approved durable file set"
+        )
+
+    durable = sorted(durable, key=lambda item: str(item["name"]))
+    return durable, sum(int(item["size"]) for item in durable)
 
 
 def capture_fenced_source(
@@ -77,7 +119,7 @@ def capture_fenced_source(
     _write_private_json(table_path, entities)
     table_digest = _sha256_file(table_path)
 
-    gateway_files, gateway_total_bytes = _capture_gateway(
+    raw_gateway_files, _raw_gateway_total_bytes = _capture_gateway(
         target,
         gateway_account,
         gateway_share,
@@ -96,8 +138,15 @@ def capture_fenced_source(
         raise MigrationControlError("Final Table metadata capture is inconsistent")
     if list(state_after["table"]["pair_digests"]) != list(state["pair_digests"]):
         raise MigrationControlError("Final Table digest capture is inconsistent")
-    if _gateway_identity(gateway_files) != _gateway_identity(state_after["gateway"]["files"]):
+    if _gateway_identity(raw_gateway_files) != _gateway_identity(
+        state_after["gateway"]["files"]
+    ):
         raise MigrationControlError("Final Gateway capture is inconsistent")
+
+    gateway_files, gateway_total_bytes = _canonicalize_gateway_capture(
+        target,
+        raw_gateway_files,
+    )
 
     manifest = {
         "manifest_version": 1,
@@ -122,7 +171,7 @@ def capture_fenced_source(
             "pair_digests": state["pair_digests"],
         },
         "gateway": {
-            "consistency": "source_fenced_stable_capture",
+            "consistency": "source_fenced_stable_durable_capture",
             "file_count": len(gateway_files),
             "total_bytes": gateway_total_bytes,
             "files": gateway_files,
@@ -160,9 +209,10 @@ def _write_summary(result: dict[str, Any]) -> None:
         "- qualification: `pass`",
         f"- evidence entities: `{result['entity_count']}`",
         f"- source next_index: `{result['next_index']}`",
-        f"- Gateway files captured: `{result['gateway_file_count']}`",
-        f"- Gateway bytes captured: `{result['gateway_total_bytes']}`",
+        f"- durable Gateway files captured: `{result['gateway_file_count']}`",
+        f"- durable Gateway bytes captured: `{result['gateway_total_bytes']}`",
         f"- protected manifest SHA-256: `{result['manifest_sha256']}`",
+        "- approved inert SQLite sidecars: `canonicalized out of protected copy`",
         "- source fenced: `true`",
         "- final copy: `false`",
         "- source mutation: `not performed`",
