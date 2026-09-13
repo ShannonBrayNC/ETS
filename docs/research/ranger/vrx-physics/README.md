@@ -48,13 +48,16 @@ The student should be able to separate prediction, observation, calibrated measu
    - trajectory reconstruction
    - sampling and derivatives
    - overshoot and abnormal paths
+   - resulting state vs event history
 
 4. **Episode 4 — Where Did the Energy Go?**
    - work
    - power
    - kinetic energy
+   - system boundaries
    - energy accounting
    - efficiency
+   - residuals and physical consistency
 
 5. **Episode 5 — The Physics of Stopping**
    - momentum
@@ -122,12 +125,20 @@ docs/research/ranger/vrx-physics/
 ├── README.md
 ├── lecture-plan.md
 ├── lab-notebook.md
-└── episodes/
-    ├── 01-how-do-we-know-anything-happened.md
-    └── 02-why-does-vrx-move.md
+├── episodes/
+│   ├── 01-how-do-we-know-anything-happened.md
+│   ├── 02-why-does-vrx-move.md
+│   ├── 03-motion-has-a-history.md
+│   └── 04-where-did-the-energy-go.md
+├── experiments/
+│   ├── 003-reconstruct-the-motion.md
+│   └── 004-follow-the-energy.md
+└── phases/
+    ├── 02-kinematics-review.md
+    └── 03-energy-accounting-review.md
 ```
 
-Future phases should add Episodes 03–12 one at a time so each can be reviewed before the next is drafted.
+Later episodes should continue one lecture/experiment pair at a time so each physics layer and its evidence claims can be reviewed before the next is added.
 
 ## Review workflow
 
@@ -143,7 +154,7 @@ For every episode:
 
 ## Related VRX artifacts
 
-This curriculum is intended to complement the existing VRX laboratory acceptance, Evidence Object, verifier, external-validation, and consequence-custody documentation already in `docs/research/ranger/` and `validation/releases/vectorrail-vrx/`.
+This curriculum complements the existing VRX laboratory acceptance, Evidence Object, verifier, external-validation, and consequence-custody documentation already in `docs/research/ranger/` and `validation/releases/vectorrail-vrx/`.
 
 ## Phase status
 
@@ -151,8 +162,10 @@ This curriculum is intended to complement the existing VRX laboratory acceptance
 - [x] Lab notebook architecture
 - [x] Episode 1 draft
 - [x] Episode 2 draft
-- [ ] Episode 3
-- [ ] Episode 4
+- [x] Episode 3 draft
+- [x] Experiment 003 protocol
+- [x] Episode 4 draft
+- [x] Experiment 004 protocol
 - [ ] Episode 5
 - [ ] Episode 6
 - [ ] Episode 7
@@ -165,3 +178,9 @@ This curriculum is intended to complement the existing VRX laboratory acceptance
 - [ ] Experimental data templates
 - [ ] VRX-R0 hardware commissioning record
 - [ ] Independent-review package
+
+## Current review gate
+
+**Phase 3 — Energy Accounting**
+
+Review `episodes/04-where-did-the-energy-go.md`, `experiments/004-follow-the-energy.md`, and `phases/03-energy-accounting-review.md` before proceeding to momentum, impulse, and stopping-force characterization.
