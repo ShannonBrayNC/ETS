@@ -177,23 +177,6 @@ def _resource_inventory(resource_group: str) -> dict[str, dict[str, Any]]:
             raise MigrationControlError(f"Lantern dependency read failed: {key}")
         candidates[key] = _sanitize_resource(detail)
 
-    dns_zones = az_json(
-        [
-            "resource",
-            "list",
-            "--resource-type",
-            "Microsoft.Network/dnszones",
-            "--query",
-            "[?name=='lanternprotocol.net'].{id:id,name:name,type:type,location:location,tags:tags}",
-        ]
-    )
-    if not isinstance(dns_zones, list):
-        raise MigrationControlError("Lantern DNS-zone inventory response is invalid")
-    if len(dns_zones) > 1:
-        raise MigrationControlError("Lantern Azure DNS zone is ambiguous")
-    if dns_zones and "dns_zone" not in candidates:
-        candidates["dns_zone"] = _sanitize_resource(dns_zones[0])
-
     return dict(sorted(candidates.items()))
 
 
