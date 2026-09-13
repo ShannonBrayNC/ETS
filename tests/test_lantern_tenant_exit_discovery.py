@@ -67,11 +67,16 @@ def test_sanitizer_drops_tokens_keys_and_unapproved_tags() -> None:
     sanitized = discovery._sanitize_resource(
         _resource("lantern-continuity-fd", "Microsoft.Cdn/profiles")
     )
-    rendered = repr(sanitized)
+    properties = sanitized.get("properties")
+    assert isinstance(properties, dict)
+    validation_properties = properties.get("validationProperties")
+    assert isinstance(validation_properties, dict)
 
-    assert "example.azurefd.net" in rendered
-    assert "Approved" in rendered
-    assert "2026-09-20T00:00:00Z" in rendered
+    assert properties["hostName"] == "example.azurefd.net"
+    assert properties["domainValidationState"] == "Approved"
+    assert validation_properties["expirationDate"] == "2026-09-20T00:00:00Z"
+
+    rendered = repr(sanitized)
     assert "do-not-retain" not in rendered
     assert "accessKey" not in rendered
     assert "validationToken" not in rendered
