@@ -1,0 +1,160 @@
+{
+  "schema_version": "1.0",
+  "base_profile": "ets.hardware-qualification.v1",
+  "profile_id": "ets.edge.hardware-qualification.v1",
+  "profile_version": "0.1.0-draft",
+  "title": "ETS Edge Hardware Qualification Profile — Draft Example",
+  "purpose": "Demonstrate how an Edge hardware qualification profile derives from the common HQP contract. This example is non-authoritative and does not itself qualify hardware.",
+  "product_scope": [
+    "ETS Edge"
+  ],
+  "parent_profiles": [
+    {
+      "profile_id": "ets.hardware-qualification.v1",
+      "profile_version": "1.0",
+      "override_review_required": true
+    }
+  ],
+  "capability_boundary": {
+    "capability_states_are_independent": true,
+    "qualification_states": [
+      "not_tested",
+      "simulated",
+      "lab_tested",
+      "qualification_in_progress",
+      "qualified",
+      "qualified_with_deviation",
+      "failed",
+      "expired",
+      "superseded"
+    ],
+    "claim_statement": "Qualification applies only to the named Edge DUT/revision/build/profile combination and does not establish production readiness or qualification of other hardware revisions."
+  },
+  "device_constraints": {
+    "claim_critical_fields": [
+      "manufacturer",
+      "model",
+      "hardware_revision",
+      "boot_firmware",
+      "storage_model_firmware",
+      "tpm_or_signer_profile"
+    ],
+    "cross_revision_qualification_allowed": false,
+    "equivalence_profile_required": true,
+    "notes": "Hardware equivalence requires a separately reviewed equivalence profile."
+  },
+  "environment_dimensions": [
+    "power_source",
+    "network_topology",
+    "storage_filesystem",
+    "os_kernel_runtime",
+    "time_source",
+    "upstream_verifier_endpoint"
+  ],
+  "evidence_requirements": {
+    "evidence_object_binding_required": true,
+    "required_classes": [
+      "dut_identity",
+      "environment",
+      "build_identity",
+      "observer_identity",
+      "starting_state",
+      "stimulus",
+      "observations",
+      "resulting_state",
+      "verifier_output",
+      "qualification_report"
+    ],
+    "missing_required_evidence_policy": "invalid",
+    "external_artifacts_allowed": true,
+    "raw_artifact_digest_required": true
+  },
+  "verifier_requirements": {
+    "independent_verification_required_for": [
+      "qualified",
+      "qualified_with_deviation"
+    ],
+    "immutable_verifier_identity_required": true,
+    "checks": [
+      "schema_conformance",
+      "artifact_presence",
+      "digest_validity",
+      "signature_validity",
+      "evidence_object_binding",
+      "test_case_completion",
+      "observation_result_linkage",
+      "deviation_policy",
+      "disposition_policy"
+    ],
+    "dut_runtime_may_be_trusted": false
+  },
+  "test_cases": [
+    {
+      "test_id": "EDGE-HQP-DUR-001",
+      "title": "Committed evidence survives abrupt restart",
+      "purpose": "Prove that a record acknowledged as committed remains recoverable and independently verifiable after a bounded restart/power interruption scenario.",
+      "required": true,
+      "stimulus_class": "power_or_process_interruption",
+      "required_observations": [
+        "pre_interruption_commit_acknowledgement",
+        "restart_or_recovery_event",
+        "post_restart_record_presence",
+        "post_restart_checkpoint"
+      ],
+      "required_resulting_state": [
+        "committed_record_recoverable",
+        "proof_bundle_exportable",
+        "independent_verification_succeeds"
+      ],
+      "pass_criteria": [
+        "No acknowledged committed record is lost.",
+        "Recovered record/proof identifiers match retained pre-interruption evidence.",
+        "Independent verification succeeds without trusting the DUT runtime."
+      ],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Use approved power-control/recovery procedures and preserve storage before destructive diagnostics."
+    }
+  ],
+  "disposition_policy": {
+    "allowed_final_states": [
+      "lab_tested",
+      "qualified",
+      "qualified_with_deviation",
+      "failed",
+      "expired",
+      "superseded"
+    ],
+    "missing_required_case_policy": "invalid",
+    "deviation_state": "qualified_with_deviation",
+    "non_waivable_failure_blocks_qualification": true
+  },
+  "validity_policy": {
+    "requalify_on_claim_critical_change": true,
+    "supersession_must_be_explicit": true,
+    "historical_results_immutable": true,
+    "maximum_validity_days": null,
+    "additional_requalification_triggers": [
+      "change_to_edge_profile_requirements",
+      "change_to_verifier_contract",
+      "change_to_evidence_object_semantics"
+    ]
+  },
+  "non_claims": [
+    "general_availability",
+    "legal_admissibility",
+    "regulatory_compliance",
+    "complete_observation",
+    "semantic_truth_of_source_assertions",
+    "qualification_of_untested_hardware_revisions"
+  ],
+  "traceability": {
+    "tracking_issue": "#790",
+    "source_requirements": [
+      "#140",
+      "#145"
+    ],
+    "authoritative_roadmap": "docs/PUBLIC_ROADMAP_STATUS.md",
+    "review_references": []
+  }
+}
