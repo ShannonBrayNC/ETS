@@ -107,11 +107,16 @@ The student should be able to separate prediction, observation, calibrated measu
    - strict out-of-domain handling
 
 9. **Episode 9 — Why Current Doesn't Change Instantly**
-   - inductance
-   - RL transients
-   - time constants
-   - stored magnetic energy
-   - flyback physics
+   - inductance and flux linkage
+   - Faraday/Lenz intuition
+   - series-RL current rise
+   - electrical time constant
+   - current-onset latency
+   - position- and temperature-dependent effective inductance
+   - residual/model-fit analysis
+   - stored magnetic energy as a model-derived quantity
+   - protected turn-off/flyback behavior
+   - transient sampling, bandwidth, and timing provenance
 
 ### Phase 3 — thermal, vibration, and evidence closure
 
@@ -151,21 +156,24 @@ docs/research/ranger/vrx-physics/
 │   ├── 05-the-physics-of-stopping.md
 │   ├── 06-electricity-before-magnetism.md
 │   ├── 07-turning-current-into-force.md
-│   └── 08-build-the-vrx-force-map.md
+│   ├── 08-build-the-vrx-force-map.md
+│   └── 09-why-current-doesnt-change-instantly.md
 ├── experiments/
 │   ├── 003-reconstruct-the-motion.md
 │   ├── 004-follow-the-energy.md
 │   ├── 005-the-physics-of-shock.md
 │   ├── 006-electricity-before-magnetism.md
 │   ├── 007-current-becomes-force.md
-│   └── 008-build-the-vrx-force-map.md
+│   ├── 008-build-the-vrx-force-map.md
+│   └── 009-inductance-and-current-rise.md
 └── phases/
     ├── 02-kinematics-review.md
     ├── 03-energy-accounting-review.md
     ├── 04-impulse-shock-review.md
     ├── 05-electricity-review.md
     ├── 06-magnetism-force-review.md
-    └── 07-force-map-review.md
+    ├── 07-force-map-review.md
+    └── 08-inductance-transients-review.md
 ```
 
 Later episodes should continue one lecture/experiment pair at a time so each physics layer and its evidence claims can be reviewed before the next is added.
@@ -204,7 +212,8 @@ This curriculum complements the existing VRX laboratory acceptance, Evidence Obj
 - [x] Experiment 007 protocol
 - [x] Episode 8 draft
 - [x] Experiment 008 protocol
-- [ ] Episode 9
+- [x] Episode 9 draft
+- [x] Experiment 009 protocol
 - [ ] Episode 10
 - [ ] Episode 11
 - [ ] Episode 12
@@ -215,28 +224,42 @@ This curriculum complements the existing VRX laboratory acceptance, Evidence Obj
 
 ## Current review gate
 
-**Phase 7 — Empirical Force-Surface Identification**
+**Phase 8 — Inductance, RL Transients, and Magnetic-Energy Evidence**
 
-Review `episodes/08-build-the-vrx-force-map.md`, `experiments/008-build-the-vrx-force-map.md`, and `phases/07-force-map-review.md` before proceeding to inductance and RL transient characterization.
+Review `episodes/09-why-current-doesnt-change-instantly.md`, `experiments/009-inductance-and-current-rise.md`, and `phases/08-inductance-transients-review.md` before proceeding to thermal-state characterization.
 
-The central force-map propositions are:
+The central transient-evidence propositions are:
 
 \[
-\boxed{Measured\ calibration\ point\neq Interpolated\ model\ point}
+\boxed{Command\ edge\neq Current\ edge}
 \]
 
 \[
-\boxed{In\ numeric\ range\neq In\ validated\ domain}
+\boxed{Same\ pulse\ width\not\Rightarrow Same\ current\ history}
 \]
 
 \[
-\boxed{Model\ prediction\neq Runtime\ direct\ observation}
+\boxed{Inductance\ estimate\neq Direct\ inductance\ observation}
 \]
 
 and:
 
 \[
-\boxed{Unsupported\ inference\ should\ fail\ closed}
+\boxed{Calculated\ magnetic\ energy\neq Direct\ energy\ observation}
 \]
 
-The resulting calibration artifact should have a stable identity such as `VRX-R0-FMAP-0001`, preserve its raw dataset and calibration lineage, expose its local support and uncertainty, and return `OUT_OF_DOMAIN` or `INSUFFICIENT_LOCAL_SUPPORT` rather than silently extrapolating.
+The primary experiment characterizes the normal, protected current-rise waveform. Installed inductive suppression remains in place; the curriculum does not require open-circuit spike tests or deliberate generation of high-voltage flyback events.
+
+Where a local first-order series-RL model is supported, the evidence package may estimate:
+
+\[
+\tau=\frac{L}{R}
+\]
+
+and:
+
+\[
+L_{est}=\tau R
+\]
+
+but only with retained waveform data, temperature/resistance context, fit provenance, residuals, uncertainty, and explicit model-support classification.
