@@ -322,7 +322,7 @@ def test_workflow_is_post_provider_verification_not_dns_mutation() -> None:
     assert "azure-migration-gate7-authority-transfer" in text
     assert "azure-migration-gate6-finality" in text
     assert "SOURCE_AZURE_CLIENT_ID" in text
-    assert "scripts.azure_migration_gate7c_active_gateway_probe" in text
+    assert "scripts/azure_migration_gate7c_active_gateway_probe.py" in text
     assert "source decommission authorized: `false`" in lowered
     for forbidden in (
         "az network dns",
