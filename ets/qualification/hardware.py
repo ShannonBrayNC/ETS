@@ -341,10 +341,19 @@ class HardwareQualificationReport(StrictModel):
         return self
 
 
-def seal_qualification_run(run: HardwareQualificationRun) -> HardwareQualificationRun:
-    """Return a run with its canonical SHA-256 digest populated and validated."""
+def seal_qualification_run(
+    run: HardwareQualificationRun,
+    *,
+    final_disposition: QualificationDisposition | None = None,
+    completed_at: datetime | None = None,
+) -> HardwareQualificationRun:
+    """Seal a draft run, optionally applying its terminal disposition and completion time."""
 
     payload = run.model_dump(mode="json", exclude={"run_digest_sha256"})
+    if final_disposition is not None:
+        payload["final_disposition"] = final_disposition.value
+    if completed_at is not None:
+        payload["completed_at"] = completed_at.isoformat()
     payload["run_digest_sha256"] = canonical_sha256(payload)
     return HardwareQualificationRun.model_validate(payload)
 
