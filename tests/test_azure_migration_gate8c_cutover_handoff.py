@@ -44,11 +44,38 @@ def test_index_follow_fails_if_robots_transition_is_ambiguous(tmp_path: Path) ->
 
 
 def test_provider_hint_is_bounded_and_provider_neutral() -> None:
-    assert gate8c._provider_hint(["ns1-01.azure-dns.com"]) == "azure-dns"
-    assert gate8c._provider_hint(["amy.ns.cloudflare.com"]) == "cloudflare"
-    assert gate8c._provider_hint(["ns1.domaincontrol.com"]) == "godaddy"
-    assert gate8c._provider_hint(["dns1.registrar-servers.com"]) == "namecheap"
+    assert gate8c._provider_hint(["ns1-01.azure-dns.com."]) == "azure-dns"
+    assert gate8c._provider_hint(["amy.ns.cloudflare.com."]) == "cloudflare"
+    assert gate8c._provider_hint(["ns1.domaincontrol.com."]) == "godaddy"
+    assert gate8c._provider_hint(["dns1.registrar-servers.com."]) == "namecheap"
     assert gate8c._provider_hint(["ns.example.invalid"]) == "external-unknown"
+
+
+def test_provider_hint_rejects_domain_lookalikes_and_embedded_suffixes() -> None:
+    lookalikes = [
+        "cloudflare.com.attacker.example",
+        "evilcloudflare.com",
+        "domaincontrol.com.attacker.example",
+        "evildomaincontrol.com",
+        "registrar-servers.com.attacker.example",
+        "evilregistrar-servers.com",
+        "azure-dns.com.attacker.example",
+        "evilazure-dns.com",
+    ]
+    for value in lookalikes:
+        assert gate8c._provider_hint([value]) == "external-unknown"
+
+
+def test_provider_hint_rejects_malformed_dns_names() -> None:
+    malformed = [
+        "https://amy.ns.cloudflare.com/path",
+        "amy.ns.cloudflare.com:443",
+        "amy..ns.cloudflare.com",
+        "-bad.cloudflare.com",
+        "bad-.cloudflare.com",
+    ]
+    for value in malformed:
+        assert gate8c._provider_hint([value]) == "external-unknown"
 
 
 def test_gate8b_requires_every_production_hostname_tls_ready() -> None:
