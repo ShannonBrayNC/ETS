@@ -10,10 +10,19 @@ from scripts.azure_migration_control import MigrationControlError
 
 
 def _app(name: str) -> dict[str, object]:
+    managed_environment_id = (
+        "/subscriptions/s/resourceGroups/rg/providers/"
+        "Microsoft.App/managedEnvironments/ets-live"
+    )
+    identity_id = (
+        "/subscriptions/s/resourceGroups/rg/providers/"
+        f"Microsoft.ManagedIdentity/userAssignedIdentities/{name}-id"
+    )
+    image = "example.azurecr.io/ets@sha256:" + "a" * 64
     return {
         "name": name,
         "properties": {
-            "managedEnvironmentId": "/subscriptions/s/resourceGroups/rg/providers/Microsoft.App/managedEnvironments/ets-live",
+            "managedEnvironmentId": managed_environment_id,
             "provisioningState": "Succeeded",
             "runningStatus": "Running",
             "configuration": {
@@ -28,19 +37,19 @@ def _app(name: str) -> dict[str, object]:
             },
             "template": {
                 "scale": {"minReplicas": 1, "maxReplicas": 1},
-                "containers": [{"name": "main", "image": "example.azurecr.io/ets@sha256:" + "a" * 64}],
+                "containers": [{"name": "main", "image": image}],
             },
         },
         "identity": {
             "type": "UserAssigned",
-            "userAssignedIdentities": {
-                f"/subscriptions/s/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{name}-id": {}
-            },
+            "userAssignedIdentities": {identity_id: {}},
         },
     }
 
 
-def test_identify_apps_ignores_unrelated_container_apps(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_identify_apps_ignores_unrelated_container_apps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
         gate6,
         "az_json",
@@ -69,7 +78,9 @@ def test_identify_apps_fails_on_ambiguous_core(monkeypatch: pytest.MonkeyPatch) 
         gate6._identify_apps("rg")
 
 
-def test_app_detail_requires_single_active_revision(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_app_detail_requires_single_active_revision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def fake_az(args: list[str]) -> object:
         if args[:2] == ["containerapp", "show"]:
             return _app("ets-abc123-api")
@@ -103,24 +114,43 @@ def test_capture_preflight_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> None
         "running_status": "Running",
         "min_replicas": 1,
         "max_replicas": 1,
-        "active_revisions": [{"name": "rev", "traffic_weight": 100, "created_time": "now"}],
+        "active_revisions": [
+            {"name": "rev", "traffic_weight": 100, "created_time": "now"}
+        ],
         "active_replica_count": 1,
-        "ingress": {"external": False, "fqdn": "internal", "target_port": 8000, "transport": "auto", "allow_insecure": False},
+        "ingress": {
+            "external": False,
+            "fqdn": "internal",
+            "target_port": 8000,
+            "transport": "auto",
+            "allow_insecure": False,
+        },
         "images": ["registry/repo@sha256:" + "a" * 64],
         "managed_identities": ["identity"],
     }
     monkeypatch.setattr(gate6, "_app_detail", lambda _rg, _name: dict(safe_app))
-    monkeypatch.setattr(gate6, "_discover_storage_accounts", lambda _rg: ("core", "gateway"))
+    monkeypatch.setattr(
+        gate6,
+        "_discover_storage_accounts",
+        lambda _rg: ("core", "gateway"),
+    )
     monkeypatch.setattr(gate6, "_read_evidence_entities", lambda *_args: [])
     monkeypatch.setattr(
         gate6,
         "_validated_state",
-        lambda _items: {"next_index": 4, "entity_count": 9, "metadata_digest": "digest", "pair_digests": ["a"] * 4},
+        lambda _items: {
+            "next_index": 4,
+            "entity_count": 9,
+            "metadata_digest": "digest",
+            "pair_digests": ["a"] * 4,
+        },
     )
     monkeypatch.setattr(
         gate6,
         "_capture_file_hashes",
-        lambda *_args: [{"name": "gateway-sync.db", "size": 3, "sha256": "b" * 64}],
+        lambda *_args: [
+            {"name": "gateway-sync.db", "size": 3, "sha256": "b" * 64}
+        ],
     )
 
     result = gate6.capture_preflight("rg-source")
