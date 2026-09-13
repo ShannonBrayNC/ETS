@@ -8,12 +8,18 @@ on:
     paths:
       - 'docs/research/ranger/vrx-physics/book/**'
       - '!docs/research/ranger/vrx-physics/book/publication/**'
+  pull_request:
+    branches:
+      - research/vrx-physics-vibration
+    paths:
+      - 'docs/research/ranger/vrx-physics/book/**'
+      - '!docs/research/ranger/vrx-physics/book/publication/**'
 
 permissions:
   contents: write
 
 concurrency:
-  group: vrx-physics-publication-${{ github.ref }}
+  group: vrx-physics-publication-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -22,10 +28,13 @@ jobs:
     name: Assemble ElevenReader and research editions
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
     steps:
-      - name: Check out publication branch
+      - name: Check out publication source branch
         uses: actions/checkout@v4
         with:
+          ref: ${{ env.TARGET_BRANCH }}
           persist-credentials: true
           fetch-depth: 1
 
@@ -41,6 +50,14 @@ jobs:
           python docs/research/ranger/vrx-physics/book/tools/build_publication.py
           python docs/research/ranger/vrx-physics/book/tools/build_publication.py --check
 
+      - name: Upload generated manuscripts for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: vrx-physics-publication
+          path: docs/research/ranger/vrx-physics/book/publication/
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Commit generated publication artifacts
         shell: bash
         run: |
@@ -53,4 +70,4 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'Generate VRX Physics publication artifacts'
-          git push
+          git push origin "HEAD:${TARGET_BRANCH}"
