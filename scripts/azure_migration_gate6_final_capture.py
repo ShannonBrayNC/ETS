@@ -59,14 +59,13 @@ def _gateway_identity(
     return tuple(sorted(normalized))
 
 
-def _canonicalize_gateway_capture(
-    workspace: Path,
+def durable_gateway_inventory(
     files: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], int]:
-    """Retain only durable Gateway files, tolerating one inert SQLite sidecar pair."""
+) -> list[dict[str, Any]]:
+    """Return authoritative durable Gateway files under the approved WAL policy."""
     by_name = {str(item["name"]): item for item in files}
     if len(by_name) != len(files):
-        raise MigrationControlError("Final Gateway capture contains duplicate names")
+        raise MigrationControlError("Final Gateway inventory contains duplicate names")
     names = set(by_name)
     if names == EXPECTED_GATEWAY_FILES:
         durable = files
@@ -76,13 +75,6 @@ def _canonicalize_gateway_capture(
             raise MigrationControlError(
                 "Fenced Gateway WAL sidecar is not inert at final capture"
             )
-        for name in _GATEWAY_SYNC_WAL_SIDECARS:
-            local_sidecar = workspace / "gateway" / name
-            if not local_sidecar.is_file() or local_sidecar.is_symlink():
-                raise MigrationControlError(
-                    "Protected Gateway sidecar capture is unavailable"
-                )
-            local_sidecar.unlink()
         durable = [
             item
             for item in files
@@ -90,10 +82,26 @@ def _canonicalize_gateway_capture(
         ]
     else:
         raise MigrationControlError(
-            "Fenced Gateway capture does not contain the approved durable file set"
+            "Fenced Gateway inventory does not contain the approved durable file set"
         )
+    return sorted(durable, key=lambda item: str(item["name"]))
 
-    durable = sorted(durable, key=lambda item: str(item["name"]))
+
+def _canonicalize_gateway_capture(
+    workspace: Path,
+    files: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
+    """Normalize operator-local capture bytes without mutating the fenced source."""
+    durable = durable_gateway_inventory(files)
+    names = {str(item["name"]) for item in files}
+    if _GATEWAY_SYNC_WAL_SIDECARS.issubset(names):
+        for name in _GATEWAY_SYNC_WAL_SIDECARS:
+            local_sidecar = workspace / "gateway" / name
+            if not local_sidecar.is_file() or local_sidecar.is_symlink():
+                raise MigrationControlError(
+                    "Protected Gateway sidecar capture is unavailable"
+                )
+            local_sidecar.unlink()
     return durable, sum(int(item["size"]) for item in durable)
 
 
