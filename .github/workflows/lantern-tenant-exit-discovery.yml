@@ -1,0 +1,142 @@
+name: Lantern Tenant Exit Discovery
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: lantern-tenant-exit-discovery
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    name: Discover Lantern source and destination dependencies
+    runs-on: ubuntu-latest
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 20
+    env:
+      SOURCE_TENANT_ID: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+      SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      SOURCE_RESOURCE_GROUP: rg-ets-live-eastus
+      DEST_RESOURCE_GROUP: rg-ets-prod-eastus
+      SOURCE_CAPTURE: ${{ runner.temp }}/lantern-source.json
+      DEST_CAPTURE: ${{ runner.temp }}/lantern-destination.json
+      REPORT_PATH: ${{ runner.temp }}/lantern-tenant-exit-report.json
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject missing migration identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in \
+            SOURCE_AZURE_CLIENT_ID SOURCE_TENANT_ID SOURCE_SUBSCRIPTION_ID \
+            AZURE_CLIENT_ID DEST_TENANT_ID DEST_SUBSCRIPTION_ID; do
+            case "$name" in
+              SOURCE_AZURE_CLIENT_ID) value='${{ vars.SOURCE_AZURE_CLIENT_ID }}' ;;
+              AZURE_CLIENT_ID) value='${{ vars.AZURE_CLIENT_ID }}' ;;
+              SOURCE_TENANT_ID) value="$SOURCE_TENANT_ID" ;;
+              SOURCE_SUBSCRIPTION_ID) value="$SOURCE_SUBSCRIPTION_ID" ;;
+              DEST_TENANT_ID) value="$DEST_TENANT_ID" ;;
+              DEST_SUBSCRIPTION_ID) value="$DEST_SUBSCRIPTION_ID" ;;
+            esac
+            test -n "$value" || { echo "Required Lantern discovery variable is missing: $name" >&2; exit 2; }
+          done
+
+      - name: Azure login with dedicated source transfer identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.SOURCE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture sanitized source Lantern dependency inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.lantern_tenant_exit_discovery capture \
+            --role source \
+            --resource-group "$SOURCE_RESOURCE_GROUP" \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID" \
+            --output "$SOURCE_CAPTURE"
+
+      - name: Clear source Azure session
+        shell: bash
+        run: az account clear
+
+      - name: Azure login with destination restore identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture sanitized destination Lantern dependency inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.lantern_tenant_exit_discovery capture \
+            --role destination \
+            --resource-group "$DEST_RESOURCE_GROUP" \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID" \
+            --output "$DEST_CAPTURE"
+
+      - name: Build source to destination dependency matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.lantern_tenant_exit_discovery compare \
+            --source "$SOURCE_CAPTURE" \
+            --destination "$DEST_CAPTURE" \
+            --output "$REPORT_PATH"
+
+      - name: Retain only sanitized machine-readable report
+        uses: actions/upload-artifact@v4
+        with:
+          name: lantern-tenant-exit-discovery
+          path: ${{ runner.temp }}/lantern-tenant-exit-report.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove ephemeral context captures
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$SOURCE_CAPTURE" "$DEST_CAPTURE"
+          test ! -e "$SOURCE_CAPTURE"
+          test ! -e "$DEST_CAPTURE"
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert discovery-only boundary
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Tenant-exit discovery boundary
+
+          - source Azure mutation: `not performed`
+          - destination Azure mutation: `not performed`
+          - DNS mutation: `not performed`
+          - Front Door/custom-domain/TLS mutation: `not performed`
+          - ETS writer/source-fence mutation: `not performed`
+          - protected ETS state accessed: `no`
+          - retained artifact: `sanitized dependency report only`
+
+          This workflow is discovery evidence only. It does not authorize destination provisioning,
+          production DNS changes, ETS Gate 4 writes, source fencing, writer activation, cutover, or
+          old-tenant decommission.
+          EOF
