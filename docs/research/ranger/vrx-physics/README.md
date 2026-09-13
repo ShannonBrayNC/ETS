@@ -73,11 +73,15 @@ The student should be able to separate prediction, observation, calibrated measu
 ### Phase 2 — Electricity and electromagnetism
 
 6. **Episode 6 — Electricity Before Magnetism**
-   - voltage
-   - current
-   - resistance
-   - power
+   - voltage as a measured potential difference
+   - current as measured branch flow
+   - resistance and appropriate use of Ohm's law
+   - electrical power and energy
    - Joule heating
+   - measurement boundaries
+   - cold vs warm electrical state
+   - resistance-versus-temperature characterization
+   - commanded vs observed electrical state
 
 7. **Episode 7 — Turning Current Into Force**
    - magnetic fields
@@ -134,15 +138,18 @@ docs/research/ranger/vrx-physics/
 │   ├── 02-why-does-vrx-move.md
 │   ├── 03-motion-has-a-history.md
 │   ├── 04-where-did-the-energy-go.md
-│   └── 05-the-physics-of-stopping.md
+│   ├── 05-the-physics-of-stopping.md
+│   └── 06-electricity-before-magnetism.md
 ├── experiments/
 │   ├── 003-reconstruct-the-motion.md
 │   ├── 004-follow-the-energy.md
-│   └── 005-the-physics-of-shock.md
+│   ├── 005-the-physics-of-shock.md
+│   └── 006-electricity-before-magnetism.md
 └── phases/
     ├── 02-kinematics-review.md
     ├── 03-energy-accounting-review.md
-    └── 04-impulse-shock-review.md
+    ├── 04-impulse-shock-review.md
+    └── 05-electricity-review.md
 ```
 
 Later episodes should continue one lecture/experiment pair at a time so each physics layer and its evidence claims can be reviewed before the next is added.
@@ -175,7 +182,8 @@ This curriculum complements the existing VRX laboratory acceptance, Evidence Obj
 - [x] Experiment 004 protocol
 - [x] Episode 5 draft
 - [x] Experiment 005 protocol
-- [ ] Episode 6
+- [x] Episode 6 draft
+- [x] Experiment 006 protocol
 - [ ] Episode 7
 - [ ] Episode 8
 - [ ] Episode 9
@@ -189,24 +197,36 @@ This curriculum complements the existing VRX laboratory acceptance, Evidence Obj
 
 ## Current review gate
 
-**Phase 4 — Momentum, Impulse, and Bounded Shock Characterization**
+**Phase 5 — Electricity Before Magnetism**
 
-Review `episodes/05-the-physics-of-stopping.md`, `experiments/005-the-physics-of-shock.md`, and `phases/04-impulse-shock-review.md` before proceeding to electricity, resistance, power, and Joule heating.
+Review `episodes/06-electricity-before-magnetism.md`, `experiments/006-electricity-before-magnetism.md`, and `phases/05-electricity-review.md` before proceeding to magnetic field and force generation.
 
-The central cross-check in this phase is:
-
-\[
-J_F=\int Fdt
-\]
-
-versus:
+The central electrical evidence propositions are:
 
 \[
-J_p=m(v_{after}-v_{before})
+\boxed{Commanded\ electrical\ state\neq Observed\ electrical\ state}
 \]
-
-The central consequence-custody proposition is:
 
 \[
-\boxed{Same\ final\ state\not\Rightarrow Same\ mechanical\ consequence}
+\boxed{Electrical\ energization\neq Mechanical\ consequence}
 \]
+
+and:
+
+\[
+\boxed{Same\ command\not\Rightarrow Same\ electrical\ history\ when\ physical\ pre-state\ differs}
+\]
+
+The central measurement requirement is that voltage and current be tied to a defined physical boundary so an independent verifier can reconstruct:
+
+\[
+P(t)=V(t)I(t)
+\]
+
+and:
+
+\[
+E_{elec}=\int V(t)I(t)dt
+\]
+
+from retained raw observations rather than controller assertions.
