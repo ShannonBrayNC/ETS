@@ -1,6 +1,6 @@
 # ETS Qualification Program
 
-This directory contains cross-product qualification contracts and traceability artifacts.
+This directory contains cross-product qualification contracts, execution packages, conformance fixtures, and roadmap traceability artifacts.
 
 ## Authoritative rule
 
@@ -12,16 +12,7 @@ Roadmap status describes capability maturity. Qualification artifacts describe w
 
 Historical issue checkboxes are requirements inputs and traceability records; they are not authoritative proof of current implementation or qualification state.
 
-## Wave 0 — Hardware Qualification Baseline
-
-Tracking issue: #790
-
-The common normative contract is:
-
-- [`ETS_HARDWARE_QUALIFICATION_PROFILE_V1.md`](ETS_HARDWARE_QUALIFICATION_PROFILE_V1.md)
-- schema: `schemas/qualification/v1/hardware-qualification-profile.schema.json`
-
-Canonical qualification chain:
+## Canonical qualification chain
 
 ```text
 device-under-test
@@ -38,23 +29,69 @@ device-under-test
 → qualification report
 ```
 
+## Wave 0 — Hardware Qualification Baseline
+
+### HQP-0 — common normative profile — complete
+
+Tracking issue: #790  
+Merged by PR #793.
+
+- [`ETS_HARDWARE_QUALIFICATION_PROFILE_V1.md`](ETS_HARDWARE_QUALIFICATION_PROFILE_V1.md)
+- schema: `schemas/qualification/v1/hardware-qualification-profile.schema.json`
+
+HQP-0 defines the product-neutral claim boundary, qualification states, required evidence classes, verifier requirements, requalification, supersession, and non-claims.
+
+### HQP-1 — execution package and deterministic report — active
+
+Tracking issue: #794.
+
+- [`ETS_HARDWARE_QUALIFICATION_EXECUTION_PACKAGE_V1.md`](ETS_HARDWARE_QUALIFICATION_EXECUTION_PACKAGE_V1.md)
+- run schema: `schemas/qualification/v1/hardware-qualification-run.schema.json`
+- report schema: `schemas/qualification/v1/hardware-qualification-report.schema.json`
+- executable contract: `ets/qualification/hardware.py`
+- valid conformance fixtures: `docs/qualification/fixtures/hqp1/valid/`
+- negative mutation vectors: `docs/qualification/fixtures/hqp1/invalid/mutations.json`
+
+HQP-1 binds a concrete test execution to the exact DUT, environment, build, observer chain, starting state, stimulus, observations, resulting state, retained artifacts, Evidence Objects, verifier result, deviations, and final disposition. Completed run/report digests reuse `ets.core.canonical_json`.
+
+### HQP-2 — independent verifier
+
+Tracking issue: #795.
+
+HQP-2 consumes the HQP-1 run/report/fixture contract from a clean environment and determines structural completeness, digest integrity, Evidence Object bindings, reference integrity, deviation handling, and eligibility for the claimed disposition without trusting the DUT runtime.
+
+### HQP-3 — Edge executable corpus
+
+Tracking issue: #796.  
+Parent: #140.  
+First source corpus: #145.
+
+HQP-3 converts still-applicable Edge requirements into executable starting-state/stimulus/observation/result assertions for named hardware targets.
+
+### HQP-4 — Provenance Android and legacy hardware reuse
+
+Tracking issue: #797.
+
+Android Phase 1A and selected legacy devices reuse the same HQP run/report/verifier semantics rather than define separate hardware evidence methodologies.
+
+### HQP-5 — qualification index and roadmap governance
+
+Tracking issue: #798.
+
+Publishes bounded claims tied to exact profile, DUT revision, immutable build, retained evidence, verifier result, limitations, expiry, and supersession state.
+
 ## Initial product traceability
 
 | Product / program | Qualification role | Current Wave 0 relationship |
 |---|---|---|
-| ETS Edge | First HQP specialization | Issue #140 is the Edge qualification/pilot-readiness parent. Issue #145 is the source corpus for the first Edge hardware qualification cases. |
-| Provenance / ETS Mobile | Second physical target | Android Phase 1A will consume the common HQP contract rather than define a separate evidence methodology. |
-| Legacy hardware lab | Third physical target | Legacy devices/adapters will use the same DUT/build/stimulus/observation/result/verifier/report chain. |
+| ETS Edge | First HQP specialization | #140 is the Edge qualification/pilot-readiness parent. #145 is the source corpus for the first Edge hardware qualification cases. |
+| Provenance / ETS Mobile | Second physical target | Android Phase 1A consumes the common HQP contract rather than defining a separate evidence methodology. |
+| Legacy hardware lab | Third physical target | Legacy devices/adapters use the same DUT/build/stimulus/observation/result/verifier/report chain. |
 | Ranger / VRX | Cyber-physical research consumer | Physical experiments inherit HQP while adding motion, actuator, measurement, uncertainty, safety, and consequence-custody requirements. |
 | AI Witness / Black Box / Fleet | Later appliance consumers | Product-specific profiles may add stricter controls but may not silently weaken common HQP evidence requirements. |
 
-## Planned sequence
+## Governance and claim boundary
 
-- **HQP-0** — normative profile, schema, terminology, lifecycle, traceability.
-- **HQP-1** — machine-readable execution/evidence package and deterministic qualification report.
-- **HQP-2** — independent qualification verifier.
-- **HQP-3** — Edge hardware qualification corpus derived from #145 and retained #140 outcomes.
-- **HQP-4** — Provenance Android Phase 1A and legacy-hardware reuse of the same profile.
-- **HQP-5** — roadmap/governance qualification index and publication rules.
+No later wave may treat successful software CI alone as physical qualification evidence. No hardware qualification may silently inherit across a hardware revision, software build, profile version, or claim-critical environment change.
 
-No later wave may treat successful software CI alone as physical qualification evidence.
+HQP packages reuse ETS Evidence Object semantics rather than create a second provenance model. Qualification evidence may support a bounded claim about what was tested and observed; it does not by itself prove complete observation, semantic truth, legal admissibility, regulatory compliance, safety certification, general availability, or production readiness.
