@@ -22,7 +22,9 @@ _FORBIDDEN_LITERALS = {
     "etsq1a352eb89": "source_acr",
     "etsgwo23bf2d6oq44s": "source_gateway_storage",
     "lanternbkpd1283bda7c363": "source_lantern_storage",
-    "lantern-azure-d1283bda7c363-hjb5gze4a4esbjb7.z03.azurefd.net": "source_frontdoor_host",
+    "lantern-azure-d1283bda7c363-hjb5gze4a4esbjb7.z03.azurefd.net": (
+        "source_frontdoor_host"
+    ),
 }
 _FORBIDDEN_HOST_SUFFIXES = (
     ".azurefd.net",
@@ -84,13 +86,17 @@ def sweep(root: Path) -> dict[str, Any]:
         try:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError as exc:
-            raise ValueError(f"Lantern text asset is not UTF-8: {_relative(path, root)}") from exc
+            raise ValueError(
+                f"Lantern text asset is not UTF-8: {_relative(path, root)}"
+            ) from exc
         lowered = text.casefold()
         relative = _relative(path, root)
 
         for literal, category in _FORBIDDEN_LITERALS.items():
             if literal.casefold() in lowered:
-                blockers.append({"file": relative, "category": category, "value": literal})
+                blockers.append(
+                    {"file": relative, "category": category, "value": literal}
+                )
 
         for raw_url in _URL_PATTERN.findall(text):
             cleaned = raw_url.rstrip(".,;:")
@@ -102,11 +108,20 @@ def sweep(root: Path) -> dict[str, Any]:
             host = (parsed.hostname or "").casefold()
             if host:
                 hosts.add(host)
-                if any(host.endswith(suffix) for suffix in _FORBIDDEN_HOST_SUFFIXES):
+                if any(
+                    host.endswith(suffix) for suffix in _FORBIDDEN_HOST_SUFFIXES
+                ):
                     blockers.append(
-                        {"file": relative, "category": "direct_azure_provider_endpoint", "value": host}
+                        {
+                            "file": relative,
+                            "category": "direct_azure_provider_endpoint",
+                            "value": host,
+                        }
                     )
-                if parsed.scheme.casefold() == "http" and host not in {"localhost", "127.0.0.1"}:
+                if parsed.scheme.casefold() == "http" and host not in {
+                    "localhost",
+                    "127.0.0.1",
+                }:
                     insecure_external.append({"file": relative, "url": cleaned})
 
         if path.suffix.casefold() == ".html":
