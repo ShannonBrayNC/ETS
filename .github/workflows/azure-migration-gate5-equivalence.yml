@@ -1,0 +1,141 @@
+name: Azure Migration Gate 5 Exact Equivalence
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate5-exact-equivalence
+  cancel-in-progress: false
+
+jobs:
+  prove:
+    name: Prove exact Table and Gateway equivalence
+    runs-on: ubuntu-latest
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 30
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      SOURCE_TENANT_ID: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+      SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TABLE_MANIFEST: ${{ runner.temp }}/ets-gate5-table.json
+      GATEWAY_MANIFEST: ${{ runner.temp }}/ets-gate5-gateway.json
+      MIGRATION_EVIDENCE_TABLE: ETSEvents
+      MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject missing migration identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          for name in \
+            SOURCE_AZURE_CLIENT_ID SOURCE_TENANT_ID SOURCE_SUBSCRIPTION_ID \
+            AZURE_CLIENT_ID DEST_TENANT_ID DEST_SUBSCRIPTION_ID; do
+            case "$name" in
+              SOURCE_AZURE_CLIENT_ID) value='${{ vars.SOURCE_AZURE_CLIENT_ID }}' ;;
+              AZURE_CLIENT_ID) value='${{ vars.AZURE_CLIENT_ID }}' ;;
+              SOURCE_TENANT_ID) value="$SOURCE_TENANT_ID" ;;
+              SOURCE_SUBSCRIPTION_ID) value="$SOURCE_SUBSCRIPTION_ID" ;;
+              DEST_TENANT_ID) value="$DEST_TENANT_ID" ;;
+              DEST_SUBSCRIPTION_ID) value="$DEST_SUBSCRIPTION_ID" ;;
+            esac
+            test -n "$value" || { echo "Required Gate 5 variable is missing: $name" >&2; exit 2; }
+          done
+
+      - name: Azure login with dedicated source transfer identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.SOURCE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture ephemeral source Table digest manifest
+        shell: bash
+        env:
+          MIGRATION_RESOURCE_GROUP: rg-ets-live-eastus
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_prefix_preflight \
+            --mode capture-source \
+            --manifest "$TABLE_MANIFEST" \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
+
+      - name: Capture ephemeral source Gateway digest manifest
+        shell: bash
+        env:
+          MIGRATION_RESOURCE_GROUP: rg-ets-live-eastus
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gateway_equivalence \
+            --mode capture-source \
+            --manifest "$GATEWAY_MANIFEST" \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
+
+      - name: Clear source Azure session
+        shell: bash
+        run: az account clear
+
+      - name: Azure login with destination restore identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Prove exact destination Table and Gateway equivalence
+        shell: bash
+        env:
+          MIGRATION_RESOURCE_GROUP: rg-ets-prod-eastus
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate5_equivalence \
+            --table-manifest "$TABLE_MANIFEST" \
+            --gateway-manifest "$GATEWAY_MANIFEST" \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID"
+
+      - name: Remove ephemeral digest manifests
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$TABLE_MANIFEST" "$GATEWAY_MANIFEST"
+          test ! -e "$TABLE_MANIFEST"
+          test ! -e "$GATEWAY_MANIFEST"
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert Gate 5 boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 5 boundary
+
+          - source mutation: `not performed`
+          - destination mutation: `not performed`
+          - protected payload artifact upload: `not performed`
+          - source fence: `not performed or proven here`
+          - destination writer activation: `not performed`
+          - DNS/routing/cutover: `not performed`
+
+          A successful run proves point-in-time exact Table/Gateway equivalence only.
+          A final-copy claim requires a separately proven source fence followed by another
+          successful Gate 5 run against the fenced source state.
+          EOF
