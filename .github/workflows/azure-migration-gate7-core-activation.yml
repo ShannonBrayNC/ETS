@@ -1,0 +1,150 @@
+name: Azure Migration Gate 7A Core Activation
+
+on:
+  workflow_dispatch:
+    inputs:
+      authorization:
+        description: Exact Gate 7A authorization phrase
+        required: true
+        type: string
+      expected_commit:
+        description: Exact reviewed main commit authorized for Core activation
+        required: true
+        type: string
+      gate6_run_id:
+        description: Successful Gate 6 final-equivalence workflow run ID
+        required: true
+        type: string
+      manifest_sha256:
+        description: Exact fenced-source manifest SHA-256 bound by Gate 6 finality
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate7-core-activation
+  cancel-in-progress: false
+
+jobs:
+  activate-core:
+    name: Activate destination Core without transferring writer authority
+    runs-on: [self-hosted, linux, x64, ets-migration-gate4]
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 30
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      GATE6_RUN_ID: ${{ inputs.gate6_run_id }}
+      EXPECTED_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+      AUTHORIZATION: ${{ inputs.authorization }}
+      FINALITY_DIR: ${{ runner.temp }}/gate6-finality
+      FINALITY_REPORT: ${{ runner.temp }}/gate6-finality/ets-gate6-finality.json
+      CORE_REPORT: ${{ runner.temp }}/ets-gate7-core-activation.json
+      MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+
+    steps:
+      - name: Check out exact reviewed migration source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head or missing authorization before Azure login
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$AUTHORIZATION" == "GATE7_DESTINATION_CORE_ACTIVATION_AUTHORIZED" ]]
+          [[ "$GATE6_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$EXPECTED_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ -n '${{ vars.AZURE_CLIENT_ID }}' ]]
+          [[ -n "$DEST_TENANT_ID" ]]
+          [[ -n "$DEST_SUBSCRIPTION_ID" ]]
+
+      - name: Download exact Gate 6 finality evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate6-finality
+          path: ${{ runner.temp }}/gate6-finality
+          run-id: ${{ inputs.gate6_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Require Gate 6 finality artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -f "$FINALITY_REPORT" ]]
+
+      - name: Azure login with destination restore identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Activate only destination Core under Gate 6 finality
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate7_core_activation \
+            --gate6-finality "$FINALITY_REPORT" \
+            --manifest-sha256 "$EXPECTED_MANIFEST_SHA256" \
+            --resource-group rg-ets-prod-eastus \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID" \
+            --authorization "$AUTHORIZATION" \
+            --output "$CORE_REPORT"
+
+      - name: Retain sanitized Gate 7A Core activation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-migration-gate7-core-activation
+          path: ${{ runner.temp }}/ets-gate7-core-activation.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove runner-local evidence copies
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$FINALITY_DIR"
+          rm -f "$CORE_REPORT"
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert Gate 7A boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 7A boundary
+
+          - source_fenced / Gate 6 final_copy: `required and independently evidenced`
+          - destination Core: `activated`
+          - destination Gateway: `still dormant`
+          - migrated state through Core startup: `unchanged`
+          - synthetic ETS write: `not performed`
+          - M365 production Gateway read: `not performed`
+          - destination authoritative: `false`
+          - DNS / Front Door / routing mutation: `not performed`
+          - source login or reactivation: `not performed`
+
+          Gate 7 is not complete. Gateway activation and post-activation qualification require
+          a separate reviewed and explicitly authorized phase.
+          EOF
