@@ -7,8 +7,6 @@ import gzip
 import hashlib
 import json
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
-from unittest.mock import patch
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519, padding, rsa
@@ -16,8 +14,12 @@ from cryptography.hazmat.primitives.asymmetric import ed25519, padding, rsa
 from ets.ranger.aws_cloudtrail_capture import (
     RangerAwsCloudTrailCaptureError,
     RangerAwsCloudTrailCapturePlan,
+    RangerAwsCloudTrailReadAuthorization,
+    RangerAwsCloudTrailReadAuthorizationPolicy,
+    build_aws_cloudtrail_read_authorization,
     capture_and_verify_aws_cloudtrail_provider_evidence,
     capture_aws_cloudtrail_provider_evidence,
+    verify_aws_cloudtrail_read_authorization,
 )
 from ets.ranger.aws_cloudtrail_provider_evidence import (
     RangerAwsCloudTrailVerificationPolicy,
@@ -44,6 +46,7 @@ KEY = "r0.2/cloudtrail-archive.json"
 PRINCIPAL = "arn:aws:iam::123456789012:role/ranger-delete-probe"
 AUTH_PRIVATE_HEX = "31" * 32
 RECORDER_PRIVATE_HEX = "41" * 32
+READ_SCOPE_PRIVATE_HEX = "51" * 32
 AUTH_PUBLIC_HEX = (
     ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex(AUTH_PRIVATE_HEX))
     .public_key()
@@ -51,9 +54,13 @@ AUTH_PUBLIC_HEX = (
     .hex()
 )
 RECORDER_PUBLIC_HEX = (
-    ed25519.Ed25519PrivateKey.from_private_bytes(
-        bytes.fromhex(RECORDER_PRIVATE_HEX)
-    )
+    ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex(RECORDER_PRIVATE_HEX))
+    .public_key()
+    .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    .hex()
+)
+READ_SCOPE_PUBLIC_HEX = (
+    ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex(READ_SCOPE_PRIVATE_HEX))
     .public_key()
     .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
     .hex()
@@ -183,23 +190,29 @@ def _plan() -> RangerAwsS3ObjectLockCapturePlan:
     )
 
 
-def _package_bundle() -> tuple[
+def _package_bundle(
+    *,
+    execution_environment: RangerAwsS3ExecutionEnvironment = (
+        RangerAwsS3ExecutionEnvironment.SIMULATION
+    ),
+) -> tuple[
     RangerAwsS3ExecutionPackage,
     RangerAwsS3ExecutionAuthorization,
     RangerAwsS3ObjectLockCapturePlan,
     RangerAwsS3ExecutionReceiptPolicy,
 ]:
     plan = _plan()
+    live = execution_environment is RangerAwsS3ExecutionEnvironment.AUTHORIZED_NON_PRODUCTION
     authorization = build_aws_s3_execution_authorization(
         plan,
         authorization_id="authorization-cloudtrail",
-        execution_environment=RangerAwsS3ExecutionEnvironment.SIMULATION,
+        execution_environment=execution_environment,
         issued_at_utc=NOW - timedelta(minutes=2),
         not_before_utc=NOW - timedelta(minutes=1),
         expires_at_utc=NOW + timedelta(minutes=30),
-        approved_cost_ceiling_usd_cents=0,
-        cloud_execution_authorized=False,
-        spending_authorized=False,
+        approved_cost_ceiling_usd_cents=25 if live else 0,
+        cloud_execution_authorized=live,
+        spending_authorized=live,
         authorizer_id="ets-ranger:test-authorizer",
         authorizer_signing_key_id="auth-key-1",
         authorizer_private_key_hex=AUTH_PRIVATE_HEX,
@@ -208,12 +221,12 @@ def _package_bundle() -> tuple[
         expected_authorization_id="authorization-cloudtrail",
         expected_qualification_id=plan.qualification_id,
         expected_verifier_challenge_nonce_hex=plan.verifier_challenge_nonce_hex,
-        expected_execution_environment=RangerAwsS3ExecutionEnvironment.SIMULATION,
+        expected_execution_environment=execution_environment,
         expected_authorizer_id="ets-ranger:test-authorizer",
         expected_authorizer_signing_key_id="auth-key-1",
         authorizer_public_key_hex=AUTH_PUBLIC_HEX,
         verification_time_utc=NOW,
-        maximum_cost_ceiling_usd_cents=0,
+        maximum_cost_ceiling_usd_cents=25 if live else 0,
         maximum_authorization_lifetime_seconds=3600,
     )
     package = capture_aws_s3_object_lock_qualification_with_receipt(
@@ -258,9 +271,7 @@ def _event(
     if version:
         parameters["versionId"] = "version-123"
     event: dict[str, object] = {
-        "eventTime": (
-            NOW + timedelta(minutes=minute)
-        ).isoformat().replace("+00:00", "Z"),
+        "eventTime": (NOW + timedelta(minutes=minute)).isoformat().replace("+00:00", "Z"),
         "eventSource": source,
         "eventName": name,
         "awsRegion": "us-east-1",
@@ -410,9 +421,7 @@ def _cloudtrail_evidence(
 
 def test_cloudtrail_digest_and_events_bind_to_verified_execution_receipt() -> None:
     package, authorization, plan, receipt_policy = _package_bundle()
-    digest, signature, public_key, logs, cloudtrail_policy = (
-        _cloudtrail_evidence(package)
-    )
+    digest, signature, public_key, logs, cloudtrail_policy = _cloudtrail_evidence(package)
 
     result = verify_aws_cloudtrail_provider_evidence(
         package,
@@ -440,9 +449,7 @@ def test_cloudtrail_digest_and_events_bind_to_verified_execution_receipt() -> No
 
 def test_cloudtrail_verifier_rejects_log_mutation_and_unpinned_key() -> None:
     package, authorization, plan, receipt_policy = _package_bundle()
-    digest, signature, public_key, logs, cloudtrail_policy = (
-        _cloudtrail_evidence(package)
-    )
+    digest, signature, public_key, logs, cloudtrail_policy = _cloudtrail_evidence(package)
     log_path = next(iter(logs))
     mutated_logs = {log_path: logs[log_path] + b" "}
 
@@ -598,9 +605,63 @@ def _capture_plan(public_key: bytes) -> RangerAwsCloudTrailCapturePlan:
     )
 
 
+def _read_scope(
+    package: RangerAwsS3ExecutionPackage,
+    authorization: RangerAwsS3ExecutionAuthorization,
+    plan: RangerAwsS3ObjectLockCapturePlan,
+    public_key: bytes,
+    *,
+    capture_plan: RangerAwsCloudTrailCapturePlan | None = None,
+    authorization_id: str = "cloudtrail-read-authorization-1",
+) -> tuple[
+    RangerAwsCloudTrailCapturePlan,
+    RangerAwsCloudTrailReadAuthorization,
+    RangerAwsCloudTrailReadAuthorizationPolicy,
+]:
+    capture = capture_plan or _capture_plan(public_key)
+    live = (
+        authorization.execution_environment
+        is RangerAwsS3ExecutionEnvironment.AUTHORIZED_NON_PRODUCTION
+    )
+    read_authorization = build_aws_cloudtrail_read_authorization(
+        package,
+        authorization,
+        plan,
+        capture,
+        authorization_id=authorization_id,
+        issued_at_utc=NOW + timedelta(minutes=5),
+        not_before_utc=NOW + timedelta(minutes=5),
+        expires_at_utc=NOW + timedelta(minutes=15),
+        approved_cost_ceiling_usd_cents=25 if live else 0,
+        cloud_read_authorized=live,
+        spending_authorized=live,
+        authorizer_id="ets-ranger:test-cloudtrail-authorizer",
+        authorizer_signing_key_id="cloudtrail-auth-key-1",
+        authorizer_private_key_hex=READ_SCOPE_PRIVATE_HEX,
+    )
+    policy = RangerAwsCloudTrailReadAuthorizationPolicy(
+        expected_authorization_id=authorization_id,
+        expected_base_execution_authorization_id=authorization.authorization_id,
+        expected_execution_receipt_id=package.execution_receipt.receipt_id,
+        expected_qualification_id=plan.qualification_id,
+        expected_verifier_challenge_nonce_hex=plan.verifier_challenge_nonce_hex,
+        expected_execution_environment=authorization.execution_environment,
+        expected_authorizer_id="ets-ranger:test-cloudtrail-authorizer",
+        expected_authorizer_signing_key_id="cloudtrail-auth-key-1",
+        authorizer_public_key_hex=READ_SCOPE_PUBLIC_HEX,
+        verification_time_utc=NOW + timedelta(minutes=5),
+        maximum_cost_ceiling_usd_cents=25 if live else 0,
+        maximum_authorization_lifetime_seconds=3600,
+    )
+    return capture, read_authorization, policy
+
+
 def test_cloudtrail_capture_uses_injected_clients_and_composes_with_verifier() -> None:
     package, authorization, plan, receipt_policy = _package_bundle()
     digest, signature, public_key, logs, _ = _cloudtrail_evidence(package)
+    capture_plan, read_authorization, read_policy = _read_scope(
+        package, authorization, plan, public_key
+    )
     cloudtrail = _CloudTrailCaptureStub(public_key)
     s3 = _CloudTrailS3CaptureStub(digest, signature, logs)
 
@@ -609,15 +670,19 @@ def test_cloudtrail_capture_uses_injected_clients_and_composes_with_verifier() -
         authorization,
         plan,
         receipt_policy=receipt_policy,
-        capture_plan=_capture_plan(public_key),
+        capture_plan=capture_plan,
+        read_authorization=read_authorization,
+        read_authorization_policy=read_policy,
         cloudtrail_client=cloudtrail,
         s3_client=s3,
     )
 
     assert verification.valid
+    assert bundle.schema_version == "ets.ranger.aws-cloudtrail-capture.v2"
     assert bundle.execution_receipt_verified_before_calls
     assert bundle.injected_client_boundary_enforced
-    assert not bundle.capture_scope_independently_signed
+    assert bundle.configured_read_scope_signature_verified
+    assert not bundle.read_scope_authorizer_independence_proven
     assert not bundle.aws_public_key_provenance_independently_verified
     assert len(bundle.uncompressed_log_files) == 1
     assert [name for name, _ in cloudtrail.calls] == [
@@ -631,11 +696,12 @@ def test_cloudtrail_capture_uses_injected_clients_and_composes_with_verifier() -
 def test_cloudtrail_capture_rejects_invalid_receipt_before_client_calls() -> None:
     package, authorization, plan, receipt_policy = _package_bundle()
     digest, signature, public_key, logs, _ = _cloudtrail_evidence(package)
+    capture_plan, read_authorization, read_policy = _read_scope(
+        package, authorization, plan, public_key
+    )
     cloudtrail = _CloudTrailCaptureStub(public_key)
     s3 = _CloudTrailS3CaptureStub(digest, signature, logs)
-    wrong_policy = receipt_policy.model_copy(
-        update={"expected_receipt_id": "wrong-receipt"}
-    )
+    wrong_policy = receipt_policy.model_copy(update={"expected_receipt_id": "wrong-receipt"})
 
     try:
         capture_aws_cloudtrail_provider_evidence(
@@ -643,7 +709,9 @@ def test_cloudtrail_capture_rejects_invalid_receipt_before_client_calls() -> Non
             authorization,
             plan,
             receipt_policy=wrong_policy,
-            capture_plan=_capture_plan(public_key),
+            capture_plan=capture_plan,
+            read_authorization=read_authorization,
+            read_authorization_policy=read_policy,
             cloudtrail_client=cloudtrail,
             s3_client=s3,
         )
@@ -658,6 +726,9 @@ def test_cloudtrail_capture_rejects_invalid_receipt_before_client_calls() -> Non
 def test_cloudtrail_capture_rejects_unmarked_simulation_clients_before_calls() -> None:
     package, authorization, plan, receipt_policy = _package_bundle()
     digest, signature, public_key, logs, _ = _cloudtrail_evidence(package)
+    capture_plan, read_authorization, read_policy = _read_scope(
+        package, authorization, plan, public_key
+    )
     cloudtrail = _CloudTrailCaptureStub(public_key)
     s3 = _CloudTrailS3CaptureStub(digest, signature, logs)
     cloudtrail.ets_ranger_simulation = False
@@ -668,7 +739,9 @@ def test_cloudtrail_capture_rejects_unmarked_simulation_clients_before_calls() -
             authorization,
             plan,
             receipt_policy=receipt_policy,
-            capture_plan=_capture_plan(public_key),
+            capture_plan=capture_plan,
+            read_authorization=read_authorization,
+            read_authorization_policy=read_policy,
             cloudtrail_client=cloudtrail,
             s3_client=s3,
         )
@@ -683,14 +756,19 @@ def test_cloudtrail_capture_rejects_unmarked_simulation_clients_before_calls() -
 def test_cloudtrail_capture_rejects_substituted_key_before_s3_reads() -> None:
     package, authorization, plan, receipt_policy = _package_bundle()
     digest, signature, public_key, logs, _ = _cloudtrail_evidence(package)
-    substituted = rsa.generate_private_key(
-        public_exponent=65537, key_size=2048
-    ).public_key().public_bytes(
-        serialization.Encoding.DER,
-        serialization.PublicFormat.PKCS1,
+    substituted = (
+        rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        .public_key()
+        .public_bytes(
+            serialization.Encoding.DER,
+            serialization.PublicFormat.PKCS1,
+        )
     )
     cloudtrail = _CloudTrailCaptureStub(substituted)
     s3 = _CloudTrailS3CaptureStub(digest, signature, logs)
+    capture_plan, read_authorization, read_policy = _read_scope(
+        package, authorization, plan, public_key
+    )
 
     try:
         capture_aws_cloudtrail_provider_evidence(
@@ -698,7 +776,9 @@ def test_cloudtrail_capture_rejects_substituted_key_before_s3_reads() -> None:
             authorization,
             plan,
             receipt_policy=receipt_policy,
-            capture_plan=_capture_plan(public_key),
+            capture_plan=capture_plan,
+            read_authorization=read_authorization,
+            read_authorization_policy=read_policy,
             cloudtrail_client=cloudtrail,
             s3_client=s3,
         )
@@ -714,8 +794,9 @@ def test_cloudtrail_capture_requires_digest_signature_metadata() -> None:
     package, authorization, plan, receipt_policy = _package_bundle()
     digest, signature, public_key, logs, _ = _cloudtrail_evidence(package)
     cloudtrail = _CloudTrailCaptureStub(public_key)
-    s3 = _CloudTrailS3CaptureStub(
-        digest, signature, logs, include_signature=False
+    s3 = _CloudTrailS3CaptureStub(digest, signature, logs, include_signature=False)
+    capture_plan, read_authorization, read_policy = _read_scope(
+        package, authorization, plan, public_key
     )
 
     try:
@@ -724,7 +805,9 @@ def test_cloudtrail_capture_requires_digest_signature_metadata() -> None:
             authorization,
             plan,
             receipt_policy=receipt_policy,
-            capture_plan=_capture_plan(public_key),
+            capture_plan=capture_plan,
+            read_authorization=read_authorization,
+            read_authorization_policy=read_policy,
             cloudtrail_client=cloudtrail,
             s3_client=s3,
         )
@@ -734,41 +817,135 @@ def test_cloudtrail_capture_requires_digest_signature_metadata() -> None:
         raise AssertionError("unsigned digest metadata was accepted")
 
 
-def test_cloudtrail_capture_rejects_live_scope_before_client_calls() -> None:
-    package, authorization, plan, receipt_policy = _package_bundle()
+def test_cloudtrail_capture_accepts_separately_signed_controlled_live_scope() -> None:
+    package, authorization, plan, receipt_policy = _package_bundle(
+        execution_environment=RangerAwsS3ExecutionEnvironment.AUTHORIZED_NON_PRODUCTION
+    )
     digest, signature, public_key, logs, _ = _cloudtrail_evidence(package)
     cloudtrail = _CloudTrailCaptureStub(public_key)
     s3 = _CloudTrailS3CaptureStub(digest, signature, logs)
-    live_authorization = authorization.model_copy(
-        update={
-            "execution_environment": (
-                RangerAwsS3ExecutionEnvironment.AUTHORIZED_NON_PRODUCTION
-            ),
-            "cloud_execution_authorized": True,
-            "spending_authorized": True,
-        }
+    cloudtrail.ets_ranger_simulation = False
+    s3.ets_ranger_simulation = False
+    capture_plan, read_authorization, read_policy = _read_scope(
+        package, authorization, plan, public_key
     )
 
-    with patch(
-        "ets.ranger.aws_cloudtrail_capture.verify_aws_s3_execution_receipt",
-        return_value=SimpleNamespace(valid=True, reason="verified"),
-    ):
-        try:
-            capture_aws_cloudtrail_provider_evidence(
-                package,
-                live_authorization,
-                plan,
-                receipt_policy=receipt_policy,
-                capture_plan=_capture_plan(public_key),
-                cloudtrail_client=cloudtrail,
-                s3_client=s3,
-            )
-        except RangerAwsCloudTrailCaptureError as exc:
-            assert "separately signed capture-scope" in str(exc)
-        else:
-            raise AssertionError("unsigned live CloudTrail read scope was accepted")
+    bundle = capture_aws_cloudtrail_provider_evidence(
+        package,
+        authorization,
+        plan,
+        receipt_policy=receipt_policy,
+        capture_plan=capture_plan,
+        read_authorization=read_authorization,
+        read_authorization_policy=read_policy,
+        cloudtrail_client=cloudtrail,
+        s3_client=s3,
+    )
+
+    assert bundle.read_scope_authorization_id == read_authorization.authorization_id
+    assert len(cloudtrail.calls) == 2
+    assert len(s3.calls) == 2
+
+
+def test_cloudtrail_capture_rejects_plan_substitution_before_client_calls() -> None:
+    package, authorization, plan, receipt_policy = _package_bundle()
+    digest, signature, public_key, logs, _ = _cloudtrail_evidence(package)
+    capture_plan = _capture_plan(public_key)
+    _, read_authorization, read_policy = _read_scope(
+        package,
+        authorization,
+        plan,
+        public_key,
+        capture_plan=capture_plan.model_copy(update={"trail_name": "substituted-trail"}),
+    )
+    cloudtrail = _CloudTrailCaptureStub(public_key)
+    s3 = _CloudTrailS3CaptureStub(digest, signature, logs)
+
+    try:
+        capture_aws_cloudtrail_provider_evidence(
+            package,
+            authorization,
+            plan,
+            receipt_policy=receipt_policy,
+            capture_plan=capture_plan,
+            read_authorization=read_authorization,
+            read_authorization_policy=read_policy,
+            cloudtrail_client=cloudtrail,
+            s3_client=s3,
+        )
+    except RangerAwsCloudTrailCaptureError as exc:
+        assert "prior-evidence or capture-plan binding mismatch" in str(exc)
+    else:
+        raise AssertionError("substituted CloudTrail plan was accepted")
     assert cloudtrail.calls == []
     assert s3.calls == []
+
+
+def test_cloudtrail_read_authorization_rejects_signature_and_pre_receipt_start() -> None:
+    package, authorization, plan, _ = _package_bundle()
+    _, _, public_key, _, _ = _cloudtrail_evidence(package)
+    capture_plan, read_authorization, read_policy = _read_scope(
+        package, authorization, plan, public_key
+    )
+
+    forged = read_authorization.model_copy(update={"authorizer_signature_hex": "00" * 64})
+    verification = verify_aws_cloudtrail_read_authorization(
+        forged,
+        package,
+        authorization,
+        plan,
+        capture_plan,
+        policy=read_policy,
+    )
+    assert not verification.valid
+    assert "signature invalid" in verification.reason
+
+    expired_policy = read_policy.model_copy(
+        update={"verification_time_utc": NOW + timedelta(minutes=16)}
+    )
+    verification = verify_aws_cloudtrail_read_authorization(
+        read_authorization,
+        package,
+        authorization,
+        plan,
+        capture_plan,
+        policy=expired_policy,
+    )
+    assert not verification.valid
+    assert "not currently valid" in verification.reason
+
+    early = build_aws_cloudtrail_read_authorization(
+        package,
+        authorization,
+        plan,
+        capture_plan,
+        authorization_id="cloudtrail-read-authorization-early",
+        issued_at_utc=NOW,
+        not_before_utc=NOW,
+        expires_at_utc=NOW + timedelta(minutes=10),
+        approved_cost_ceiling_usd_cents=0,
+        cloud_read_authorized=False,
+        spending_authorized=False,
+        authorizer_id="ets-ranger:test-cloudtrail-authorizer",
+        authorizer_signing_key_id="cloudtrail-auth-key-1",
+        authorizer_private_key_hex=READ_SCOPE_PRIVATE_HEX,
+    )
+    early_policy = read_policy.model_copy(
+        update={
+            "expected_authorization_id": "cloudtrail-read-authorization-early",
+            "verification_time_utc": NOW,
+        }
+    )
+    verification = verify_aws_cloudtrail_read_authorization(
+        early,
+        package,
+        authorization,
+        plan,
+        capture_plan,
+        policy=early_policy,
+    )
+    assert not verification.valid
+    assert "begins before the bound execution receipt" in verification.reason
 
 
 def test_cloudtrail_capture_bounds_gzip_expansion() -> None:
@@ -777,6 +954,9 @@ def test_cloudtrail_capture_bounds_gzip_expansion() -> None:
     oversized_logs = {path: b"x" * (1024 * 1024 + 1) for path in logs}
     cloudtrail = _CloudTrailCaptureStub(public_key)
     s3 = _CloudTrailS3CaptureStub(digest, signature, oversized_logs)
+    capture_plan, read_authorization, read_policy = _read_scope(
+        package, authorization, plan, public_key
+    )
 
     try:
         capture_aws_cloudtrail_provider_evidence(
@@ -784,7 +964,9 @@ def test_cloudtrail_capture_bounds_gzip_expansion() -> None:
             authorization,
             plan,
             receipt_policy=receipt_policy,
-            capture_plan=_capture_plan(public_key),
+            capture_plan=capture_plan,
+            read_authorization=read_authorization,
+            read_authorization_policy=read_policy,
             cloudtrail_client=cloudtrail,
             s3_client=s3,
         )

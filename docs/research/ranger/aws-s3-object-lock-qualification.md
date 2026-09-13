@@ -190,10 +190,8 @@ simulation even though both configured signatures verify.
 [`ets.ranger.aws_cloudtrail_capture`](../../../ets/ranger/aws_cloudtrail_capture.py) passively
 collects the inputs required by the CloudTrail provider-boundary verifier through caller-injected
 CloudTrail and S3 clients. It does not import an AWS SDK, resolve credentials or profiles, select
-endpoints, or construct clients. The signed AWS execution package is verified before either client
-can be invoked. This increment accepts only simulation authorization and explicitly marked test
-doubles. A non-production authorization fails before any call because the existing signed manifest
-does not cover the additional CloudTrail and digest/log read scope.
+endpoints, or construct clients. The signed AWS execution package and a separately signed
+CloudTrail read scope are verified before either client can be invoked.
 
 The capture plan independently pins the account, Region, trail, exact digest object, CloudTrail
 public-key fingerprint and DER SHA-256, UTC window, maximum file count, maximum uncompressed file
@@ -213,11 +211,34 @@ than reconstructing or normalizing signed content.
 The adapter records the provider request IDs for key and selector lookups, but does not retain
 credentials or raw response envelopes. Selector-array digests establish what the injected client
 returned; they do not prove the selectors were continuously effective or complete. Likewise,
-`ListPublicKeys` capture does not independently authenticate AWS as the key source. The capture plan
-is an independent runtime constraint but is not yet a separately signed scope extension, so
-`capture_scope_independently_signed`, public-key provenance, complete coverage, and provider
-execution all remain false. Live use requires a separately signed scope extension before this guard
-can be relaxed.
+`ListPublicKeys` capture does not independently authenticate AWS as the key source. Public-key
+provenance, complete coverage, and provider execution remain false even when the read-scope
+signature verifies.
+
+## Signed CloudTrail read scope
+
+`ets.ranger.aws-cloudtrail-read-authorization.v1` is a dedicated Ed25519 manifest that binds the
+complete base execution authorization and execution receipt, both exact plan digests,
+qualification/challenge, account/Region/trail/digest/key pins, historical evidence window, and
+file/count/byte bounds. Its sole provider profile permits exactly two CloudTrail calls
+(`ListPublicKeys`, `GetEventSelectors`) and at most one digest plus the signed maximum number of
+referenced S3 log reads. It also binds validity, configured signer identity/key, a cost ceiling,
+and explicit read/spending flags.
+
+An independently supplied policy pins the expected scope and base identities, configured signer,
+verification time, maximum lifetime, environment, and cost limit. The scope must begin no earlier
+than the bound execution receipt. Missing, stale, forged, over-budget, wrong-environment,
+wrong-key, changed receipt, changed plan, altered resource, or expanded read scope fails before any
+injected client call. The capture result retains the scope ID and complete signed-record digest; the
+complete signed scope remains a separately retained authorization artifact.
+
+The capture bundle is therefore `ets.ranger.aws-cloudtrail-capture.v2`; v1's unsigned-scope
+nonclaim is not silently reinterpreted as evidence of this new authorization boundary.
+
+Simulation scopes retain false cloud-read/spending flags and require marked test doubles. For a
+controlled `authorized_non_production` qualification, both flags must be true and the caller may
+inject a least-privilege client. This code does not supply credentials, choose an account, create a
+provider client, run a live trial, or establish effective AWS permission. See [ADR 0020](adr/0020-signed-cloudtrail-read-scope.md).
 
 A controlled live trial remains separate work. It must run in an explicitly authorized,
 non-production qualification account/namespace with a fresh verifier challenge, a small synthetic
