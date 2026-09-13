@@ -1,0 +1,119 @@
+name: Azure Migration Gate 6 Source Writer Fence
+
+on:
+  workflow_dispatch:
+    inputs:
+      authorization:
+        description: Type GATE6_SOURCE_WRITER_FENCE_AUTHORIZED exactly
+        required: true
+        type: string
+      expected_commit:
+        description: Exact reviewed main commit authorized for Gate 6 source fencing
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate6-source-writer-fence
+  cancel-in-progress: false
+
+jobs:
+  fence:
+    name: Fence exact source Core and Gateway writers
+    runs-on: [self-hosted, linux, x64, ets-migration-gate4]
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 25
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      SOURCE_TENANT_ID: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+      SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+      GATE6_AUTHORIZATION: ${{ inputs.authorization }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      REPORT_PATH: ${{ runner.temp }}/ets-gate6-source-writer-fence.json
+      MIGRATION_RESOURCE_GROUP: rg-ets-live-eastus
+      MIGRATION_EVIDENCE_TABLE: ETSEvents
+      MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+
+    steps:
+      - name: Check out exact reviewed migration source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head or missing independent authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$GATE6_AUTHORIZATION" == "GATE6_SOURCE_WRITER_FENCE_AUTHORIZED" ]]
+          [[ -n '${{ vars.SOURCE_FENCE_AZURE_CLIENT_ID }}' ]]
+          [[ -n "$SOURCE_TENANT_ID" ]]
+          [[ -n "$SOURCE_SUBSCRIPTION_ID" ]]
+          if [[ -n '${{ vars.SOURCE_AZURE_CLIENT_ID }}' ]]; then
+            [[ '${{ vars.SOURCE_FENCE_AZURE_CLIENT_ID }}' != '${{ vars.SOURCE_AZURE_CLIENT_ID }}' ]]
+          fi
+
+      - name: Azure login with dedicated source-fence identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.SOURCE_FENCE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Apply reviewed source writer fence and prove stability
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate6_fence_apply \
+            --resource-group "$MIGRATION_RESOURCE_GROUP" \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID" \
+            --authorization "$GATE6_AUTHORIZATION" \
+            --output "$REPORT_PATH"
+
+      - name: Retain sanitized source-fence evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-migration-gate6-source-writer-fence
+          path: ${{ runner.temp }}/ets-gate6-source-writer-fence.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Clear source Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert Gate 6 boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 6 source-fence boundary
+
+          - source Core/Gateway ingress: `disabled`
+          - source active revisions: `0`
+          - source active replicas: `0`
+          - post-fence protected state: `stable across repeated reads`
+          - source_fenced: `true`
+          - final_copy: `false`
+          - destination Azure login/write: `not performed`
+          - RBAC mutation: `not performed`
+          - DNS/Front Door/routing mutation: `not performed`
+          - source decommission: `not performed`
+
+          A pass establishes the source writer fence only. The next authorized sequence is final
+          protected source capture/delta application to the still-dormant destination, followed by
+          a repeated Gate 5 exact-equivalence PASS before Gate 7 writer activation is considered.
+          EOF
