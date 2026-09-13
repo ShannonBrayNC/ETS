@@ -60,17 +60,24 @@ The student should be able to separate prediction, observation, calibrated measu
 
 10. **Episode 10 — Heat Remembers What Electricity Did**
     - thermal energy and temperature
-    - resistive heating and energy pathways
-    - heating/cooling curves
-    - effective thermal time constants
-    - duty cycle and pulse-history effects
+    - heating/cooling curves and thermal time constants
+    - duty-cycle and pulse-history effects
     - resistance-temperature coupling
-    - sensor placement and lag
-    - thermal pre-state as consequence context
-    - state lineage across sequential events
+    - sensor placement/lag
+    - thermal pre-state and state lineage
 
 11. **Episode 11 — Why Machines Shake**
-    - springs, damping, natural frequency, resonance, transmissibility, structural excitation, Ranger mounting implications
+    - mass-spring-damper model
+    - natural frequency and damping
+    - resonance and ring-down
+    - source-event normalization
+    - three-axis acceleration and coordinate frames
+    - empirical transmissibility
+    - FFT/PSD/coherence processing provenance
+    - aliasing, clipping, bandwidth, and timing limits
+    - rigid vs compliant vs isolated/floating mounting
+    - Ranger sensor/compute mounting implications
+    - structural path as consequence provenance
 
 12. **Episode 12 — Can We Prove What Happened?**
     - experimental design, model validation, fault injection, consequence custody, independent verification
@@ -92,7 +99,8 @@ docs/research/ranger/vrx-physics/
 │   ├── 07-turning-current-into-force.md
 │   ├── 08-build-the-vrx-force-map.md
 │   ├── 09-why-current-doesnt-change-instantly.md
-│   └── 10-heat-remembers-what-electricity-did.md
+│   ├── 10-heat-remembers-what-electricity-did.md
+│   └── 11-why-machines-shake.md
 ├── experiments/
 │   ├── 003-reconstruct-the-motion.md
 │   ├── 004-follow-the-energy.md
@@ -101,7 +109,8 @@ docs/research/ranger/vrx-physics/
 │   ├── 007-current-becomes-force.md
 │   ├── 008-build-the-vrx-force-map.md
 │   ├── 009-inductance-and-current-rise.md
-│   └── 010-heat-remembers.md
+│   ├── 010-heat-remembers.md
+│   └── 011-vibration-and-transmissibility.md
 └── phases/
     ├── 02-kinematics-review.md
     ├── 03-energy-accounting-review.md
@@ -110,7 +119,8 @@ docs/research/ranger/vrx-physics/
     ├── 06-magnetism-force-review.md
     ├── 07-force-map-review.md
     ├── 08-inductance-transients-review.md
-    └── 09-thermal-state-review.md
+    ├── 09-thermal-state-review.md
+    └── 10-vibration-transmissibility-review.md
 ```
 
 ## Review workflow
@@ -151,7 +161,8 @@ This curriculum complements the existing VRX laboratory acceptance, Evidence Obj
 - [x] Experiment 009 protocol
 - [x] Episode 10 draft
 - [x] Experiment 010 protocol
-- [ ] Episode 11
+- [x] Episode 11 draft
+- [x] Experiment 011 protocol
 - [ ] Episode 12
 - [ ] ElevenLabs production pass
 - [ ] Experimental data templates
@@ -160,32 +171,34 @@ This curriculum complements the existing VRX laboratory acceptance, Evidence Obj
 
 ## Current review gate
 
-**Phase 9 — Thermal State, Duty Cycle, and Consequence Context**
+**Phase 10 — Vibration, Resonance, and Transmissibility**
 
-Review `episodes/10-heat-remembers-what-electricity-did.md`, `experiments/010-heat-remembers.md`, and `phases/09-thermal-state-review.md` before proceeding to vibration and transmissibility characterization.
+Review `episodes/11-why-machines-shake.md`, `experiments/011-vibration-and-transmissibility.md`, and `phases/10-vibration-transmissibility-review.md` before proceeding to the final evidence-closure phase.
 
-The central thermal-evidence propositions are:
+The central vibration-evidence propositions are:
 
 \[
-\boxed{Same\ command\not\Rightarrow Same\ consequence\ when\ thermal\ pre-state\ differs}
+\boxed{Same\ actuator\ command\neq Same\ source\ mechanical\ event}
 \]
 
 \[
-\boxed{Same\ duty\ cycle\not\Rightarrow Same\ thermal\ history}
+\boxed{Same\ source\ event\neq Same\ transmitted\ structural\ consequence}
 \]
 
 \[
-\boxed{Sensor\ temperature\neq Unobserved\ internal\ temperature}
+\boxed{Lower\ acceleration\ at\ one\ sensor\neq Lower\ vibration\ everywhere}
 \]
 
 \[
-\boxed{Residual\ temperature\ rise\neq Unique\ proof\ of\ prior\ action}
+\boxed{Spectral\ peak\neq Proven\ structural\ mode}
 \]
 
 and:
 
 \[
-\boxed{Physical\ pre-state\ is\ part\ of\ consequence\ context}
+\boxed{Sensor\ frame\ and\ attachment\ are\ part\ of\ observation\ provenance}
 \]
 
-The primary experiment characterizes bounded heating/cooling behavior and cold-versus-warm pre-state effects without approaching thermal limits. Where supported, a first-order cooling model may estimate `tau_th`; unsupported records retain an explicit model classification rather than receiving a forced numeric parameter.
+The primary experiment compares mechanically secured mount configurations only after source-event equivalence is demonstrated. It preserves synchronized source/receiver acceleration, coordinate frames, sensor range/bandwidth/sample-rate limits, processing provenance, mount geometry, preload/torque where controlled, thermal context, and independent-verifier recomputability.
+
+After this gate, proceed to Episode 12 + Experiment 012 for full-chain consequence custody, controlled fault injection, and independent verification.
