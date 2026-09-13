@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any, Literal
 
 from pydantic import Field, ValidationError, model_validator
@@ -33,7 +33,7 @@ from ets.ranger.aws_s3_object_lock_capture import (
 from ets.ranger.aws_s3_object_lock_execution import RangerAwsS3ExecutionReceiptPolicy
 
 
-class RangerAwsQualificationArtifactKind(str, Enum):
+class RangerAwsQualificationArtifactKind(StrEnum):
     """Required, separately retained artifact roles for one qualification package."""
 
     EXECUTION_AUTHORIZATION = "execution_authorization"
