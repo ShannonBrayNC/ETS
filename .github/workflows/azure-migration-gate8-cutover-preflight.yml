@@ -1,0 +1,236 @@
+name: Azure Migration Gate 8 Cutover Preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: Exact reviewed main commit authorized for Gate 8 preflight
+        required: true
+        type: string
+      gate7c_run_id:
+        description: Successful Gate 7C authority-transfer workflow run ID
+        required: true
+        type: string
+      lantern_staging_run_id:
+        description: Successful Lantern destination staging workflow run ID
+        required: true
+        type: string
+      lantern_discovery_run_id:
+        description: Successful post-staging Lantern tenant-exit discovery run ID
+        required: true
+        type: string
+      production_robots_policy:
+        description: Intentional production search-index policy
+        required: true
+        type: choice
+        options:
+          - index-follow
+          - noindex-nofollow
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate8-cutover-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Prove ETS authority and Lantern routing readiness without mutation
+    runs-on: ubuntu-latest
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 20
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      GATE7C_RUN_ID: ${{ inputs.gate7c_run_id }}
+      STAGING_RUN_ID: ${{ inputs.lantern_staging_run_id }}
+      DISCOVERY_RUN_ID: ${{ inputs.lantern_discovery_run_id }}
+      PRODUCTION_ROBOTS_POLICY: ${{ inputs.production_robots_policy }}
+      GATE7C_DIR: ${{ runner.temp }}/gate7c
+      STAGING_DIR: ${{ runner.temp }}/lantern-staging
+      DISCOVERY_DIR: ${{ runner.temp }}/lantern-discovery
+      GATE7C_REPORT: ${{ runner.temp }}/gate7c/ets-gate7-authority-transfer.json
+      STAGING_REPORT: ${{ runner.temp }}/lantern-staging/lantern-destination-staging.json
+      DISCOVERY_REPORT: ${{ runner.temp }}/lantern-discovery/lantern-tenant-exit-report.json
+      FINAL_REPORT: ${{ runner.temp }}/ets-gate8-cutover-preflight.json
+      RESOURCE_GROUP: rg-ets-prod-eastus
+
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head or malformed prerequisite references
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$GATE7C_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$STAGING_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$DISCOVERY_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$PRODUCTION_ROBOTS_POLICY" == "index-follow" || \
+             "$PRODUCTION_ROBOTS_POLICY" == "noindex-nofollow" ]]
+          [[ -n '${{ vars.AZURE_CLIENT_ID }}' ]]
+          [[ "${DEST_TENANT_ID,,}" == "0d20cf0f-3498-46c1-a0db-69b09c634cc2" ]]
+          [[ "${DEST_SUBSCRIPTION_ID,,}" == "5729a82b-8850-4868-b96c-96c3805cbb9d" ]]
+
+      - name: Validate prerequisite workflow identities before Azure login
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from urllib.request import Request, urlopen
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GITHUB_TOKEN"]
+          checks = (
+              (
+                  os.environ["GATE7C_RUN_ID"],
+                  "Azure Migration Gate 7C Destination Authority Transfer",
+                  ".github/workflows/azure-migration-gate7c-authority-transfer.yml",
+              ),
+              (
+                  os.environ["STAGING_RUN_ID"],
+                  "Lantern Destination Staging Qualification",
+                  ".github/workflows/lantern-destination-staging.yml",
+              ),
+              (
+                  os.environ["DISCOVERY_RUN_ID"],
+                  "Lantern Tenant Exit Discovery",
+                  ".github/workflows/lantern-tenant-exit-discovery.yml",
+              ),
+          )
+          for run_id, expected_name, expected_path in checks:
+              request = Request(
+                  f"https://api.github.com/repos/{repo}/actions/runs/{run_id}",
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urlopen(request, timeout=20) as response:
+                  run = json.load(response)
+              required = {
+                  "name": expected_name,
+                  "path": expected_path,
+                  "status": "completed",
+                  "conclusion": "success",
+                  "event": "workflow_dispatch",
+                  "head_branch": "main",
+              }
+              for key, expected in required.items():
+                  if run.get(key) != expected:
+                      raise SystemExit(
+                          f"prerequisite workflow run {run_id} failed {key} validation"
+                      )
+          PY
+
+      - name: Download exact Gate 7C authority evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate7-destination-authority
+          path: ${{ runner.temp }}/gate7c
+          run-id: ${{ inputs.gate7c_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download exact Lantern staging evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: lantern-destination-staging-readiness
+          path: ${{ runner.temp }}/lantern-staging
+          run-id: ${{ inputs.lantern_staging_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download exact Lantern dependency discovery evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: lantern-tenant-exit-discovery
+          path: ${{ runner.temp }}/lantern-discovery
+          run-id: ${{ inputs.lantern_discovery_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Require prerequisite artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -f "$GATE7C_REPORT" ]]
+          [[ -f "$STAGING_REPORT" ]]
+          [[ -f "$DISCOVERY_REPORT" ]]
+
+      - name: Azure login to destination only
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Front Door CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name cdn --upgrade --yes --only-show-errors
+
+      - name: Build sanitized read-only Gate 8 preflight report
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate8_cutover_preflight \
+            --gate7c "$GATE7C_REPORT" \
+            --staging "$STAGING_REPORT" \
+            --discovery "$DISCOVERY_REPORT" \
+            --resource-group "$RESOURCE_GROUP" \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID" \
+            --production-robots-policy "$PRODUCTION_ROBOTS_POLICY" \
+            --output "$FINAL_REPORT"
+
+      - name: Retain sanitized Gate 8 preflight evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-migration-gate8-cutover-preflight
+          path: ${{ runner.temp }}/ets-gate8-cutover-preflight.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove runner-local prerequisite copies
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$GATE7C_DIR" "$STAGING_DIR" "$DISCOVERY_DIR"
+          rm -f "$FINAL_REPORT"
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert Gate 8 preflight boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 8 preflight boundary
+
+          - source writer state: `not modified`
+          - destination ETS writer state: `not modified`
+          - Front Door/custom-domain state: `read only`
+          - DNS records: `read only`
+          - TLS/certificate state: `read only`
+          - public routing: `unchanged`
+
+          A green report authorizes design/review of the cutover mutation only. It does not itself
+          authorize DNS, Front Door, custom-domain, TLS, or source-decommission changes.
+          EOF
