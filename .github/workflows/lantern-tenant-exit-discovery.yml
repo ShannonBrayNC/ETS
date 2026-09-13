@@ -24,14 +24,21 @@ jobs:
       DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       SOURCE_RESOURCE_GROUP: rg-ets-live-eastus
       DEST_RESOURCE_GROUP: rg-ets-prod-eastus
-      SOURCE_CAPTURE: ${{ runner.temp }}/lantern-source.json
-      DEST_CAPTURE: ${{ runner.temp }}/lantern-destination.json
-      REPORT_PATH: ${{ runner.temp }}/lantern-tenant-exit-report.json
     steps:
       - name: Check out exact reviewed source
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Set ephemeral discovery paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "SOURCE_CAPTURE=$RUNNER_TEMP/lantern-source.json"
+            echo "DEST_CAPTURE=$RUNNER_TEMP/lantern-destination.json"
+            echo "REPORT_PATH=$RUNNER_TEMP/lantern-tenant-exit-report.json"
+          } >> "$GITHUB_ENV"
 
       - name: Reject missing migration identities
         shell: bash
