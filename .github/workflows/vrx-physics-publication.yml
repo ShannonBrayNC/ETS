@@ -1,0 +1,74 @@
+name: Build VRX Physics Publication
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/vrx-physics-publication
+      - research/vrx-physics-vibration
+    paths:
+      - 'docs/research/ranger/vrx-physics/book/**'
+      - '!docs/research/ranger/vrx-physics/book/publication/**'
+  pull_request:
+    branches:
+      - research/vrx-physics-vibration
+    paths:
+      - 'docs/research/ranger/vrx-physics/book/**'
+      - '!docs/research/ranger/vrx-physics/book/publication/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vrx-physics-publication-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    name: Assemble ElevenReader and research editions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
+    steps:
+      - name: Check out publication source branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          persist-credentials: true
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Build manuscripts from canonical source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python docs/research/ranger/vrx-physics/book/tools/build_publication.py
+          python docs/research/ranger/vrx-physics/book/tools/build_publication.py --check
+
+      - name: Upload generated manuscripts for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: vrx-physics-publication
+          path: docs/research/ranger/vrx-physics/book/publication/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Commit generated publication artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add docs/research/ranger/vrx-physics/book/publication/
+          if git diff --cached --quiet; then
+            echo 'Publication artifacts already current.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Generate VRX Physics publication artifacts'
+          git push origin "HEAD:${TARGET_BRANCH}"

@@ -16,9 +16,39 @@ The central book proposition is:
 
 > **A machine assertion is not the same thing as an independently supported physical claim.**
 
+## Canonical source and generated editions
+
+`book-manifest.json` defines the canonical source order. Hand editing is permitted only in the canonical files listed by that manifest:
+
+- `front-matter.md`
+- `chapters/*.md`
+- `back-matter/glossary.md`
+- `back-matter/references-and-further-reading.md`
+- `technical-review.md` for the research appendix
+
+The files under `publication/` are generated artifacts and must not be edited by hand.
+
+`tools/build_publication.py` creates two outputs from the same canonical source:
+
+- `publication/VRX_Physics_Laboratory_ElevenReader.md`
+- `publication/VRX_Physics_Laboratory_Research_Edition.md`
+
+The ElevenReader build removes display-only LaTeX after the concept has already been explained in narration, removes raw URLs and low-value Markdown syntax, converts common mathematical symbols into spoken words, normalizes tables and headings, and keeps the book/chapter structure visibly bold for rich-text import.
+
+The research edition preserves equations, technical Markdown, glossary, references, and the technical-review appendix.
+
+The dedicated `vrx-physics-publication.yml` workflow rebuilds and commits both generated files whenever canonical source changes on the publication branch. Generated-file commits do not retrigger the workflow.
+
+To build locally:
+
+```bash
+python docs/research/ranger/vrx-physics/book/tools/build_publication.py
+python docs/research/ranger/vrx-physics/book/tools/build_publication.py --check
+```
+
 ## Production order
 
-For a single ElevenReader manuscript, concatenate the files in exactly this order:
+The canonical order is:
 
 1. `front-matter.md`
 2. `chapters/01-how-do-we-know-anything-happened.md`
@@ -33,8 +63,10 @@ For a single ElevenReader manuscript, concatenate the files in exactly this orde
 11. `chapters/10-heat-remembers-what-electricity-did.md`
 12. `chapters/11-why-machines-shake.md`
 13. `chapters/12-can-we-prove-what-happened.md`
+14. `back-matter/glossary.md`
+15. `back-matter/references-and-further-reading.md`
 
-`technical-review.md` is editorial/reviewer material and is **not** part of the narrated manuscript.
+`technical-review.md` is appended only to the generated research edition.
 
 ## Spoken-math production rule
 
@@ -50,6 +82,20 @@ Every important equation in the book edition follows this pattern:
 8. explain what claim the equation can and cannot support.
 
 The printed equation is a compact reference. It is never the sole explanation.
+
+## Narration pacing rules
+
+For ElevenReader production:
+
+- title and chapter headings remain bold and are separated by blank lines;
+- deep Markdown heading syntax is converted to simple spoken section headings;
+- display equations are omitted only from the audio-oriented generated edition because their physical meaning has already been narrated;
+- speaker labels remain intact so the Instructor, Investigator, and Independent Verifier structure is understandable;
+- raw URLs are omitted from narration and retained in the research edition;
+- tables become semicolon-delimited spoken rows rather than pipe-delimited Markdown;
+- symbolic arrows and common mathematical symbols are converted into words;
+- pauses are created with paragraph spacing rather than artificial stage directions;
+- no generated audio manuscript should be edited independently of canonical source.
 
 ## Technical corrections incorporated in the book edition
 
