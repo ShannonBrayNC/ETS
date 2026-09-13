@@ -1,0 +1,99 @@
+name: Azure Migration Gate 7 Activation Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate7-activation-preflight
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: Inspect dormant destination activation boundary
+    runs-on: ubuntu-latest
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 25
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      REPORT_PATH: ${{ runner.temp }}/ets-gate7-activation-preflight.json
+
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject missing destination identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test -n '${{ vars.AZURE_CLIENT_ID }}'
+          test -n "$DEST_TENANT_ID"
+          test -n "$DEST_SUBSCRIPTION_ID"
+
+      - name: Azure login with destination restore identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Capture sanitized dormant destination activation preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate7_activation_preflight \
+            --resource-group rg-ets-prod-eastus \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID" \
+            --output "$REPORT_PATH"
+
+      - name: Retain sanitized destination report
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-migration-gate7-activation-preflight
+          path: ${{ runner.temp }}/ets-gate7-activation-preflight.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove runner-local report
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$REPORT_PATH"
+          test ! -e "$REPORT_PATH"
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert preflight-only boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 7 preflight boundary
+
+          - destination configuration mutation: `not performed`
+          - destination replica activation: `not performed`
+          - source Azure login: `not performed`
+          - DNS/Front Door/routing mutation: `not performed`
+          - retained artifact: `sanitized destination activation report only`
+
+          Gate 7 remains blocked until Gate 6 source fencing and a final post-fence Gate 5 PASS.
+          EOF
