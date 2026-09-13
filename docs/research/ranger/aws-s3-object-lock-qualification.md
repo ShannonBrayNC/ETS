@@ -281,6 +281,33 @@ for each verified boundary and explicit false claims for permissions, provider e
 completeness, signer independence, physical WORM custody, and physical outcome. See
 [ADR 0022](adr/0022-offline-aws-qualification-run-verification.md).
 
+## Secret-free qualification evidence manifest
+
+[`ets.ranger.aws_qualification_evidence_manifest`](../../../ets/ranger/aws_qualification_evidence_manifest.py)
+defines `ets.ranger.aws-qualification-evidence-manifest.v1`, a portable inventory for controlled
+qualification evidence. The manifest carries only the package, qualification, challenge, and
+authorization/receipt identifiers plus canonical SHA-256 digests for eight separately retained
+artifacts:
+
+1. complete signed execution authorization;
+2. exact S3 capture plan;
+3. execution-receipt policy and configured public trust anchors;
+4. exact CloudTrail capture plan;
+5. complete signed CloudTrail read authorization;
+6. CloudTrail read-authorization policy and configured public trust anchor;
+7. qualification run with captured provider-evidence bytes; and
+8. independently replayed qualification-run verification.
+
+The manifest does not copy credentials, private keys, archive contents, provider-evidence bytes,
+or trust material. Verification requires the caller to supply all eight originals, reruns the
+offline qualification verifier, recomputes every role-tagged canonical digest, and requires an
+exact manifest match. Missing, duplicate, reordered, or substituted roles fail closed.
+
+The manifest's self-digest detects mutation only when compared with a retained expected value; it
+is not a signature and does not establish provenance or authenticity. Effective permission,
+provider execution, completeness, physical WORM custody, and physical outcome remain unproven.
+See [ADR 0023](adr/0023-secret-free-aws-qualification-evidence-manifest.md).
+
 A controlled live trial remains separate work. It must run in an explicitly authorized,
 non-production qualification account/namespace with a fresh verifier challenge, a small synthetic
 archive bundle, minimum approved retention, exact versioned delete, post-denial retrieval, and
