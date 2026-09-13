@@ -28,118 +28,52 @@ The student should be able to separate prediction, observation, calibrated measu
 ### Phase 1 — Measurement and mechanics
 
 1. **Episode 1 — How Do We Know Anything Happened?**
-   - measurement
-   - accuracy vs precision
-   - uncertainty
-   - calibration
-   - repeatability/reproducibility
-   - raw observation vs inference
+   - measurement, uncertainty, calibration, repeatability, raw observation vs inference
 
 2. **Episode 2 — Why Does VRX Move?**
-   - Newton's laws
-   - free-body diagrams
-   - force balance
-   - mass and inertia
-   - friction and breakaway force
-   - direct vs indirect force measurement
+   - Newton's laws, free-body diagrams, mass, net force, friction, direct vs indirect force measurement
 
 3. **Episode 3 — Motion Has a History**
-   - position, velocity, acceleration
-   - trajectory reconstruction
-   - sampling and derivatives
-   - overshoot and abnormal paths
-   - resulting state vs event history
+   - position, velocity, acceleration, sampling, derivatives, overshoot, event history vs final state
 
 4. **Episode 4 — Where Did the Energy Go?**
-   - work
-   - power
-   - kinetic energy
-   - system boundaries
-   - energy accounting
-   - efficiency
-   - residuals and physical consistency
+   - work, power, kinetic energy, system boundaries, energy accounting, efficiency, residuals
 
 5. **Episode 5 — The Physics of Stopping**
-   - momentum
-   - impulse
-   - force-time curves
-   - average vs peak force
-   - rebound and momentum change
-   - compliant vs stiff stopping
-   - transient sensor bandwidth and clipping
-   - shock transfer
-   - force-impulse vs momentum-change consistency
+   - momentum, impulse, force-time curves, average vs peak force, rebound, compliant vs stiff stopping, shock transfer
 
 ### Phase 2 — Electricity and electromagnetism
 
 6. **Episode 6 — Electricity Before Magnetism**
-   - voltage as a measured potential difference
-   - current as measured branch flow
-   - resistance and appropriate use of Ohm's law
-   - electrical power and energy
-   - Joule heating
-   - measurement boundaries
-   - cold vs warm electrical state
-   - resistance-versus-temperature characterization
-   - commanded vs observed electrical state
+   - voltage, current, resistance, power, energy, Joule heating, temperature-dependent resistance, measurement boundaries
 
 7. **Episode 7 — Turning Current Into Force**
-   - magnetic field and magnetic flux
-   - permeability and magnetic-circuit intuition
-   - air-gap effects
-   - ferromagnetic behavior
-   - saturation and hysteresis
-   - position-dependent force
-   - measured current vs modeled magnetic state
-   - interface force observation
-   - model residuals and provenance
+   - magnetic field, flux, permeability, air gaps, ferromagnetic behavior, saturation, hysteresis, position-dependent force
 
 8. **Episode 8 — Build the VRX Force Map**
-   - empirical `F(I,x)` characterization
-   - repeated grid observations
-   - interpolation versus direct observation
-   - explicit measured domain
-   - local-support rules
-   - repeatability and uncertainty
-   - residual and holdout validation
-   - thermal/history context
-   - immutable versioned force-map artifacts
-   - strict out-of-domain handling
+   - empirical `F(I,x)` surface, repeated grid observations, interpolation, validated domain, uncertainty, residuals, holdout validation, fail-closed out-of-domain handling
 
 9. **Episode 9 — Why Current Doesn't Change Instantly**
-   - inductance and flux linkage
-   - Faraday/Lenz intuition
-   - series-RL current rise
-   - electrical time constant
-   - current-onset latency
-   - position- and temperature-dependent effective inductance
-   - residual/model-fit analysis
-   - stored magnetic energy as a model-derived quantity
-   - protected turn-off/flyback behavior
-   - transient sampling, bandwidth, and timing provenance
+   - inductance, flux linkage, RL current rise, time constant, current-onset latency, effective inductance, stored magnetic energy, protected turn-off behavior
 
-### Phase 3 — thermal, vibration, and evidence closure
+### Phase 3 — Thermal, vibration, and evidence closure
 
 10. **Episode 10 — Heat Remembers What Electricity Did**
-    - thermal energy
-    - heat capacity
-    - equilibrium
-    - thermal time constants
+    - thermal energy and temperature
+    - resistive heating and energy pathways
+    - heating/cooling curves
+    - effective thermal time constants
+    - duty cycle and pulse-history effects
+    - resistance-temperature coupling
+    - sensor placement and lag
+    - thermal pre-state as consequence context
+    - state lineage across sequential events
 
 11. **Episode 11 — Why Machines Shake**
-    - springs
-    - damping
-    - natural frequency
-    - resonance
-    - transmissibility
-    - Ranger mounting implications
+    - springs, damping, natural frequency, resonance, transmissibility, structural excitation, Ranger mounting implications
 
 12. **Episode 12 — Can We Prove What Happened?**
-    - experimental design
-    - model validation
-    - fault injection
-    - consequence custody
-    - independent verification
+    - experimental design, model validation, fault injection, consequence custody, independent verification
 
 ## Repository layout
 
@@ -157,7 +91,8 @@ docs/research/ranger/vrx-physics/
 │   ├── 06-electricity-before-magnetism.md
 │   ├── 07-turning-current-into-force.md
 │   ├── 08-build-the-vrx-force-map.md
-│   └── 09-why-current-doesnt-change-instantly.md
+│   ├── 09-why-current-doesnt-change-instantly.md
+│   └── 10-heat-remembers-what-electricity-did.md
 ├── experiments/
 │   ├── 003-reconstruct-the-motion.md
 │   ├── 004-follow-the-energy.md
@@ -165,7 +100,8 @@ docs/research/ranger/vrx-physics/
 │   ├── 006-electricity-before-magnetism.md
 │   ├── 007-current-becomes-force.md
 │   ├── 008-build-the-vrx-force-map.md
-│   └── 009-inductance-and-current-rise.md
+│   ├── 009-inductance-and-current-rise.md
+│   └── 010-heat-remembers.md
 └── phases/
     ├── 02-kinematics-review.md
     ├── 03-energy-accounting-review.md
@@ -173,10 +109,9 @@ docs/research/ranger/vrx-physics/
     ├── 05-electricity-review.md
     ├── 06-magnetism-force-review.md
     ├── 07-force-map-review.md
-    └── 08-inductance-transients-review.md
+    ├── 08-inductance-transients-review.md
+    └── 09-thermal-state-review.md
 ```
-
-Later episodes should continue one lecture/experiment pair at a time so each physics layer and its evidence claims can be reviewed before the next is added.
 
 ## Review workflow
 
@@ -214,7 +149,8 @@ This curriculum complements the existing VRX laboratory acceptance, Evidence Obj
 - [x] Experiment 008 protocol
 - [x] Episode 9 draft
 - [x] Experiment 009 protocol
-- [ ] Episode 10
+- [x] Episode 10 draft
+- [x] Experiment 010 protocol
 - [ ] Episode 11
 - [ ] Episode 12
 - [ ] ElevenLabs production pass
@@ -224,42 +160,32 @@ This curriculum complements the existing VRX laboratory acceptance, Evidence Obj
 
 ## Current review gate
 
-**Phase 8 — Inductance, RL Transients, and Magnetic-Energy Evidence**
+**Phase 9 — Thermal State, Duty Cycle, and Consequence Context**
 
-Review `episodes/09-why-current-doesnt-change-instantly.md`, `experiments/009-inductance-and-current-rise.md`, and `phases/08-inductance-transients-review.md` before proceeding to thermal-state characterization.
+Review `episodes/10-heat-remembers-what-electricity-did.md`, `experiments/010-heat-remembers.md`, and `phases/09-thermal-state-review.md` before proceeding to vibration and transmissibility characterization.
 
-The central transient-evidence propositions are:
+The central thermal-evidence propositions are:
 
 \[
-\boxed{Command\ edge\neq Current\ edge}
+\boxed{Same\ command\not\Rightarrow Same\ consequence\ when\ thermal\ pre-state\ differs}
 \]
 
 \[
-\boxed{Same\ pulse\ width\not\Rightarrow Same\ current\ history}
+\boxed{Same\ duty\ cycle\not\Rightarrow Same\ thermal\ history}
 \]
 
 \[
-\boxed{Inductance\ estimate\neq Direct\ inductance\ observation}
+\boxed{Sensor\ temperature\neq Unobserved\ internal\ temperature}
 \]
 
-and:
-
 \[
-\boxed{Calculated\ magnetic\ energy\neq Direct\ energy\ observation}
-\]
-
-The primary experiment characterizes the normal, protected current-rise waveform. Installed inductive suppression remains in place; the curriculum does not require open-circuit spike tests or deliberate generation of high-voltage flyback events.
-
-Where a local first-order series-RL model is supported, the evidence package may estimate:
-
-\[
-\tau=\frac{L}{R}
+\boxed{Residual\ temperature\ rise\neq Unique\ proof\ of\ prior\ action}
 \]
 
 and:
 
 \[
-L_{est}=\tau R
+\boxed{Physical\ pre-state\ is\ part\ of\ consequence\ context}
 \]
 
-but only with retained waveform data, temperature/resistance context, fit provenance, residuals, uncertainty, and explicit model-support classification.
+The primary experiment characterizes bounded heating/cooling behavior and cold-versus-warm pre-state effects without approaching thermal limits. Where supported, a first-order cooling model may estimate `tau_th`; unsupported records retain an explicit model classification rather than receiving a forced numeric parameter.
