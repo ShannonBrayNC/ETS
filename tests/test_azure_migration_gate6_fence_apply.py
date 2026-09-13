@@ -4,6 +4,7 @@ import inspect
 from pathlib import Path
 
 import pytest
+
 import scripts.azure_migration_gate6_fence_apply as fence
 from scripts.azure_migration_control import MigrationControlError
 
