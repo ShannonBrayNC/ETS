@@ -91,12 +91,7 @@ def verify_aws_cloudtrail_provider_evidence(
     cloudtrail_public_key_der: bytes,
     uncompressed_log_files: Mapping[str, bytes],
 ) -> RangerAwsCloudTrailVerification:
-    """Verify one receipt-bound CloudTrail digest/log evidence set.
-
-    ``digest_file_bytes`` must be the exact digest JSON content used for the CloudTrail digest hash.
-    ``uncompressed_log_files`` is keyed by ``"bucket/object"`` and contains uncompressed CloudTrail
-    log JSON bytes, matching AWS's documented log-hash validation procedure.
-    """
+    """Verify one receipt-bound CloudTrail digest/log evidence set."""
 
     receipt_result = verify_aws_s3_execution_receipt(
         package,
@@ -108,14 +103,24 @@ def verify_aws_cloudtrail_provider_evidence(
         return _failure(f"execution receipt is invalid: {receipt_result.reason}")
 
     try:
-        policy = RangerAwsCloudTrailVerificationPolicy.model_validate(cloudtrail_policy.model_dump())
+        policy = RangerAwsCloudTrailVerificationPolicy.model_validate(
+            cloudtrail_policy.model_dump()
+        )
         record = RangerAwsS3ExecutionPackage.model_validate(package.model_dump())
-        validated_plan = RangerAwsS3ObjectLockCapturePlan.model_validate(plan.model_dump())
+        validated_plan = RangerAwsS3ObjectLockCapturePlan.model_validate(
+            plan.model_dump()
+        )
     except (AttributeError, ValidationError):
-        return _failure("CloudTrail verifier input schema validation failed", receipt=True)
+        return _failure(
+            "CloudTrail verifier input schema validation failed",
+            receipt=True,
+        )
 
     if not digest_file_bytes or len(digest_file_bytes) > _MAX_DIGEST_BYTES:
-        return _failure("CloudTrail digest size is outside the bounded verifier limit", receipt=True)
+        return _failure(
+            "CloudTrail digest size is outside the bounded verifier limit",
+            receipt=True,
+        )
 
     try:
         digest = json.loads(digest_file_bytes)
@@ -128,7 +133,8 @@ def verify_aws_cloudtrail_provider_evidence(
     if location_error is not None:
         return _failure(location_error, receipt=True)
 
-    if hashlib.sha256(cloudtrail_public_key_der).hexdigest() != policy.expected_public_key_der_sha256:
+    public_key_digest = hashlib.sha256(cloudtrail_public_key_der).hexdigest()
+    if public_key_digest != policy.expected_public_key_der_sha256:
         return _failure(
             "CloudTrail public-key bytes do not match the independently pinned SHA-256",
             receipt=True,
@@ -168,7 +174,9 @@ def verify_aws_cloudtrail_provider_evidence(
         logs_result,
         validated_plan,
         expected_version_id=record.capture_result.configuration.context.object_version_id,
-        maximum_skew=timedelta(seconds=policy.maximum_event_time_skew_seconds),
+        maximum_skew=timedelta(
+            seconds=policy.maximum_event_time_skew_seconds
+        ),
     )
     if correlation_error is not None:
         return _failure(
@@ -201,7 +209,8 @@ def verify_aws_cloudtrail_provider_evidence(
 
 
 def _validate_digest_identity(
-    digest: dict[str, Any], policy: RangerAwsCloudTrailVerificationPolicy
+    digest: dict[str, Any],
+    policy: RangerAwsCloudTrailVerificationPolicy,
 ) -> str | None:
     required = {
         "digestEndTime",
@@ -252,13 +261,21 @@ def _verify_digest_signature(
     bucket = digest.get("digestS3Bucket")
     object_key = digest.get("digestS3Object")
     previous_signature = digest.get("previousDigestSignature")
-    if not all(isinstance(value, str) for value in (end_time, bucket, object_key, previous_signature)):
+    signing_fields = (end_time, bucket, object_key, previous_signature)
+    if not all(isinstance(value, str) for value in signing_fields):
         return "CloudTrail digest signing fields must be strings"
+
     data_to_sign = (
-        f"{end_time}\n{bucket}/{object_key}\n{digest_file_sha256}\n{previous_signature}"
-    ).encode("utf-8")
+        f"{end_time}\n{bucket}/{object_key}\n"
+        f"{digest_file_sha256}\n{previous_signature}"
+    ).encode()
     try:
-        public_key.verify(signature, data_to_sign, padding.PKCS1v15(), hashes.SHA256())
+        public_key.verify(
+            signature,
+            data_to_sign,
+            padding.PKCS1v15(),
+            hashes.SHA256(),
+        )
     except InvalidSignature:
         return "CloudTrail digest signature verification failed"
     return None
@@ -270,7 +287,9 @@ def _verify_log_files(
     policy: RangerAwsCloudTrailVerificationPolicy,
 ) -> list[dict[str, Any]] | str:
     references = digest["logFiles"]
-    if len(references) == 0:
+    if not isinstance(references, list):
+        return "CloudTrail digest logFiles must be an array"
+    if not references:
         return "CloudTrail digest contains no log-file references for the qualification window"
     if len(references) > policy.maximum_log_files:
         return "CloudTrail digest exceeds the verifier log-file count limit"
@@ -284,14 +303,22 @@ def _verify_log_files(
         object_key = reference.get("s3Object")
         hash_value = reference.get("hashValue")
         hash_algorithm = reference.get("hashAlgorithm")
-        if not all(isinstance(value, str) for value in (bucket, object_key, hash_value, hash_algorithm)):
+        reference_fields = (
+            bucket,
+            object_key,
+            hash_value,
+            hash_algorithm,
+        )
+        if not all(isinstance(value, str) for value in reference_fields):
             return "CloudTrail log-file reference has invalid fields"
         if hash_algorithm not in {"SHA-256", "SHA256"}:
             return "CloudTrail log-file hash algorithm is not SHA-256"
+
         path = f"{bucket}/{object_key}"
         if path in expected_paths:
             return "CloudTrail digest contains a duplicate log-file path"
         expected_paths.add(path)
+
         content = supplied.get(path)
         if content is None:
             return f"CloudTrail referenced log file is missing: {path}"
@@ -299,12 +326,14 @@ def _verify_log_files(
             return f"CloudTrail log file exceeds verifier size limit: {path}"
         if hashlib.sha256(content).hexdigest() != hash_value.lower():
             return f"CloudTrail log-file hash mismatch: {path}"
+
         try:
             log = json.loads(content)
         except (UnicodeDecodeError, json.JSONDecodeError):
             return f"CloudTrail log file is not valid JSON: {path}"
         if not isinstance(log, dict) or not isinstance(log.get("Records"), list):
             return f"CloudTrail log file Records array is missing: {path}"
+
         for event in log["Records"]:
             if not isinstance(event, dict):
                 return f"CloudTrail event is not an object: {path}"
@@ -315,7 +344,9 @@ def _verify_log_files(
     return events
 
 
-def _required_requests(package: RangerAwsS3ExecutionPackage) -> tuple[_RequiredRequest, ...]:
+def _required_requests(
+    package: RangerAwsS3ExecutionPackage,
+) -> tuple[_RequiredRequest, ...]:
     result = package.capture_result
     return (
         _RequiredRequest(
@@ -411,20 +442,28 @@ def _correlate_required_requests(
             return f"CloudTrail region mismatch for {expectation.event_name}"
         if event.get("recipientAccountId") != plan.aws_account_id:
             return f"CloudTrail account mismatch for {expectation.event_name}"
+
         event_time = _parse_event_time(event.get("eventTime"))
         if event_time is None or not earliest <= event_time <= latest:
             return (
                 "CloudTrail event time is outside the bounded capture window for "
                 f"{expectation.event_name}"
             )
+
         parameters = event.get("requestParameters")
         if not isinstance(parameters, dict):
             parameters = {}
-        if expectation.require_bucket and parameters.get("bucketName") != plan.bucket_name:
+        if (
+            expectation.require_bucket
+            and parameters.get("bucketName") != plan.bucket_name
+        ):
             return f"CloudTrail bucket mismatch for {expectation.event_name}"
         if expectation.require_key and parameters.get("key") != plan.object_key:
             return f"CloudTrail object-key mismatch for {expectation.event_name}"
-        if expectation.require_version and parameters.get("versionId") != expected_version_id:
+        if (
+            expectation.require_version
+            and parameters.get("versionId") != expected_version_id
+        ):
             return f"CloudTrail object-version mismatch for {expectation.event_name}"
         if expectation.expected_error_code is not None:
             if event.get("errorCode") != expectation.expected_error_code:
