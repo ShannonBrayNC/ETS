@@ -1,0 +1,30 @@
+{
+  "schema_version": "ets.hardware-qualification-negative-fixtures.v1",
+  "source_run": "../valid/edge-qualified-run.json",
+  "cases": [
+    {
+      "case_id": "self-verifier",
+      "operation": "replace",
+      "json_pointer": "/verifier_result/independent_execution_context",
+      "value": false,
+      "recompute_run_digest": true,
+      "expected_failure": "valid verifier result must come from an independent context"
+    },
+    {
+      "case_id": "dangling-observation-reference",
+      "operation": "replace",
+      "json_pointer": "/test_executions/0/observation_ids/0",
+      "value": "missing-observation",
+      "recompute_run_digest": true,
+      "expected_failure": "unknown test observation"
+    },
+    {
+      "case_id": "tampered-run-digest",
+      "operation": "replace",
+      "json_pointer": "/run_digest_sha256",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "recompute_run_digest": false,
+      "expected_failure": "run_digest_sha256 does not match canonical run payload"
+    }
+  ]
+}
