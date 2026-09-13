@@ -1,0 +1,35 @@
+{
+  "schema_version": "ets.hardware-qualification-report.v1",
+  "report_id": "edge-hqp-example-run-001.report",
+  "run_id": "edge-hqp-example-run-001",
+  "run_digest_sha256": "7b7de21b8dcbf3cc53c5f1df46130c097125b1ae2fc161ecff29541a7fc2f074",
+  "profile": {
+    "profile_id": "ets.edge.hardware-qualification.v1",
+    "profile_version": "0.1.0-draft",
+    "profile_digest_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+  },
+  "device_id": "edge-reference-001",
+  "hardware_revision": "rev-a",
+  "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "required_case_ids": ["EDGE-HQP-DUR-001"],
+  "passed_case_ids": ["EDGE-HQP-DUR-001"],
+  "failed_case_ids": [],
+  "invalid_case_ids": [],
+  "waived_case_ids": [],
+  "not_run_case_ids": [],
+  "deviation_ids": [],
+  "evidence_object_ids": ["evidence-object-1"],
+  "artifact_ids": [
+    "artifact-start",
+    "artifact-stimulus",
+    "artifact-observation",
+    "artifact-result",
+    "artifact-evidence",
+    "artifact-approval"
+  ],
+  "verifier_status": "valid",
+  "verifier_result_digest_sha256": "d23c3f631201e7a24f5ca0ef0ee6431928716d040c496002407cce6a353d1fa5",
+  "final_disposition": "qualified",
+  "report_digest_sha256": "a00545eb5b90798321977170c87f3eef19df2c999cd03779c03f1dae5d118da3",
+  "claim_boundary": "bounded_hqp_execution_evidence_not_complete_observation_truth_compliance_safety_or_ga_proof"
+}
