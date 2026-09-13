@@ -333,6 +333,8 @@ class HardwareQualificationReport(StrictModel):
 
     @model_validator(mode="after")
     def verify_report_digest(self) -> HardwareQualificationReport:
+        if self.final_disposition is QualificationDisposition.IN_PROGRESS:
+            raise ValueError("qualification report cannot describe an in-progress run")
         expected = canonical_sha256(
             self.model_dump(mode="json", exclude={"report_digest_sha256"})
         )
@@ -349,13 +351,17 @@ def seal_qualification_run(
 ) -> HardwareQualificationRun:
     """Seal a draft run, optionally applying its terminal disposition and completion time."""
 
-    payload = run.model_dump(mode="json", exclude={"run_digest_sha256"})
+    updates: dict[str, object] = {"run_digest_sha256": None}
     if final_disposition is not None:
-        payload["final_disposition"] = final_disposition.value
+        updates["final_disposition"] = final_disposition
     if completed_at is not None:
-        payload["completed_at"] = completed_at.isoformat()
-    payload["run_digest_sha256"] = canonical_sha256(payload)
-    return HardwareQualificationRun.model_validate(payload)
+        updates["completed_at"] = completed_at
+    candidate = run.model_copy(update=updates)
+    digest_payload = candidate.model_dump(mode="json", exclude={"run_digest_sha256"})
+    digest = canonical_sha256(digest_payload)
+    validation_payload = candidate.model_dump(mode="python", exclude={"run_digest_sha256"})
+    validation_payload["run_digest_sha256"] = digest
+    return HardwareQualificationRun.model_validate(validation_payload)
 
 
 def build_qualification_report(
@@ -375,7 +381,7 @@ def build_qualification_report(
 
     required_ids = tuple(item.test_id for item in run.test_executions if item.required)
     verifier_digest = canonical_sha256(run.verifier_result.model_dump(mode="json"))
-    payload: dict[str, object] = {
+    digest_payload: dict[str, object] = {
         "schema_version": "ets.hardware-qualification-report.v1",
         "report_id": report_id or f"{run.run_id}.report",
         "run_id": run.run_id,
@@ -398,8 +404,13 @@ def build_qualification_report(
         "final_disposition": run.final_disposition.value,
         "claim_boundary": _CLAIM_BOUNDARY,
     }
-    payload["report_digest_sha256"] = canonical_sha256(payload)
-    return HardwareQualificationReport.model_validate(payload)
+    report_digest = canonical_sha256(digest_payload)
+    validation_payload = dict(digest_payload)
+    validation_payload["profile"] = run.profile
+    validation_payload["verifier_status"] = run.verifier_result.status
+    validation_payload["final_disposition"] = run.final_disposition
+    validation_payload["report_digest_sha256"] = report_digest
+    return HardwareQualificationReport.model_validate(validation_payload)
 
 
 def _unique_ids(items: tuple[StrictModel, ...], attribute: str, label: str) -> set[str]:
