@@ -84,17 +84,22 @@ The student should be able to separate prediction, observation, calibrated measu
    - commanded vs observed electrical state
 
 7. **Episode 7 — Turning Current Into Force**
-   - magnetic fields
-   - flux
-   - permeability
+   - magnetic field and magnetic flux
+   - permeability and magnetic-circuit intuition
+   - air-gap effects
    - ferromagnetic behavior
-   - electromagnetic force
+   - saturation and hysteresis
+   - position-dependent force
+   - measured current vs modeled magnetic state
+   - interface force observation
+   - model residuals and provenance
 
 8. **Episode 8 — Build the VRX Force Map**
    - empirical `F(I,x)` characterization
    - air-gap dependence
    - nonlinearity
    - saturation
+   - empirical model domain and uncertainty
 
 9. **Episode 9 — Why Current Doesn't Change Instantly**
    - inductance
@@ -139,17 +144,20 @@ docs/research/ranger/vrx-physics/
 │   ├── 03-motion-has-a-history.md
 │   ├── 04-where-did-the-energy-go.md
 │   ├── 05-the-physics-of-stopping.md
-│   └── 06-electricity-before-magnetism.md
+│   ├── 06-electricity-before-magnetism.md
+│   └── 07-turning-current-into-force.md
 ├── experiments/
 │   ├── 003-reconstruct-the-motion.md
 │   ├── 004-follow-the-energy.md
 │   ├── 005-the-physics-of-shock.md
-│   └── 006-electricity-before-magnetism.md
+│   ├── 006-electricity-before-magnetism.md
+│   └── 007-current-becomes-force.md
 └── phases/
     ├── 02-kinematics-review.md
     ├── 03-energy-accounting-review.md
     ├── 04-impulse-shock-review.md
-    └── 05-electricity-review.md
+    ├── 05-electricity-review.md
+    └── 06-magnetism-force-review.md
 ```
 
 Later episodes should continue one lecture/experiment pair at a time so each physics layer and its evidence claims can be reviewed before the next is added.
@@ -184,7 +192,8 @@ This curriculum complements the existing VRX laboratory acceptance, Evidence Obj
 - [x] Experiment 005 protocol
 - [x] Episode 6 draft
 - [x] Experiment 006 protocol
-- [ ] Episode 7
+- [x] Episode 7 draft
+- [x] Experiment 007 protocol
 - [ ] Episode 8
 - [ ] Episode 9
 - [ ] Episode 10
@@ -197,36 +206,28 @@ This curriculum complements the existing VRX laboratory acceptance, Evidence Obj
 
 ## Current review gate
 
-**Phase 5 — Electricity Before Magnetism**
+**Phase 6 — Magnetism and Force Generation**
 
-Review `episodes/06-electricity-before-magnetism.md`, `experiments/006-electricity-before-magnetism.md`, and `phases/05-electricity-review.md` before proceeding to magnetic field and force generation.
+Review `episodes/07-turning-current-into-force.md`, `experiments/007-current-becomes-force.md`, and `phases/06-magnetism-force-review.md` before proceeding to empirical force-surface identification.
 
-The central electrical evidence propositions are:
+The central magnetic/electromechanical evidence propositions are:
 
 \[
-\boxed{Commanded\ electrical\ state\neq Observed\ electrical\ state}
+\boxed{Same\ current\not\Rightarrow Same\ force}
 \]
 
-\[
-\boxed{Electrical\ energization\neq Mechanical\ consequence}
-\]
+because position, geometry, temperature, material state, and excitation history can matter.
 
-and:
+Also:
 
 \[
-\boxed{Same\ command\not\Rightarrow Same\ electrical\ history\ when\ physical\ pre-state\ differs}
-\]
-
-The central measurement requirement is that voltage and current be tied to a defined physical boundary so an independent verifier can reconstruct:
-
-\[
-P(t)=V(t)I(t)
+\boxed{Magnetic\ model\ prediction\neq Direct\ force\ observation}
 \]
 
 and:
 
 \[
-E_{elec}=\int V(t)I(t)dt
+\boxed{Measured\ interface\ force\neq Complete\ mechanical\ consequence}
 \]
 
-from retained raw observations rather than controller assertions.
+The central experimental requirement is that the current-position-force relationship be characterized from retained raw observations inside a documented domain rather than inferred from an ideal actuator equation or a controller command.
