@@ -38,6 +38,21 @@ _ROBOTS_TAG = re.compile(
     r'<meta\s+name=["\']robots["\']\s+content=["\']noindex,\s*nofollow["\']\s*/?>',
     re.IGNORECASE,
 )
+_DNS_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
+_PROVIDER_SUFFIXES: tuple[tuple[str, tuple[tuple[str, ...], ...]], ...] = (
+    (
+        "azure-dns",
+        (
+            ("azure-dns", "com"),
+            ("azure-dns", "net"),
+            ("azure-dns", "org"),
+            ("azure-dns", "info"),
+        ),
+    ),
+    ("cloudflare", (("cloudflare", "com"),)),
+    ("godaddy", (("domaincontrol", "com"),)),
+    ("namecheap", (("registrar-servers", "com"),)),
+)
 
 
 def _read_json(path: Path, label: str) -> dict[str, Any]:
@@ -241,16 +256,32 @@ def _routing_dns() -> dict[str, list[str]]:
     }
 
 
+def _dns_name_labels(value: str) -> tuple[str, ...]:
+    candidate = value.strip().rstrip(".").casefold()
+    if not candidate:
+        return ()
+    try:
+        ascii_name = candidate.encode("idna").decode("ascii")
+    except UnicodeError:
+        return ()
+    labels = tuple(ascii_name.split("."))
+    if any(not _DNS_LABEL.fullmatch(label) for label in labels):
+        return ()
+    return labels
+
+
+def _has_dns_suffix(labels: tuple[str, ...], suffix: tuple[str, ...]) -> bool:
+    return len(labels) >= len(suffix) and labels[-len(suffix) :] == suffix
+
+
 def _provider_hint(nameservers: list[str]) -> str:
-    folded = [value.casefold() for value in nameservers]
-    if any("azure-dns." in value for value in folded):
-        return "azure-dns"
-    if any(value.endswith("cloudflare.com") for value in folded):
-        return "cloudflare"
-    if any(value.endswith("domaincontrol.com") for value in folded):
-        return "godaddy"
-    if any(value.endswith("registrar-servers.com") for value in folded):
-        return "namecheap"
+    label_sets = tuple(_dns_name_labels(value) for value in nameservers)
+    for provider, suffixes in _PROVIDER_SUFFIXES:
+        if any(
+            labels and any(_has_dns_suffix(labels, suffix) for suffix in suffixes)
+            for labels in label_sets
+        ):
+            return provider
     return "external-unknown"
 
 
