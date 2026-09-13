@@ -125,17 +125,16 @@ jobs:
             --expected-tenant "$SOURCE_TENANT_ID" \
             --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
 
-      - name: Capture ephemeral fenced-source Gateway digest manifest
+      - name: Capture canonical durable fenced-source Gateway digest manifest
         shell: bash
-        env:
-          MIGRATION_RESOURCE_GROUP: rg-ets-live-eastus
         run: |
           set -euo pipefail
-          python -m scripts.azure_migration_gateway_equivalence \
-            --mode capture-source \
+          python -m scripts.azure_migration_gate6_finality capture-gateway \
             --manifest "$GATEWAY_MANIFEST" \
             --expected-tenant "$SOURCE_TENANT_ID" \
-            --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID" \
+            --resource-group "rg-ets-live-eastus" \
+            --share-name "$MIGRATION_GATEWAY_SHARE"
 
       - name: Clear source Azure session
         shell: bash
