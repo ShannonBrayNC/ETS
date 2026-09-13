@@ -28,8 +28,10 @@ from ets.ranger.aws_cloudtrail_provider_evidence import (
 from ets.ranger.aws_qualification_orchestrator import (
     RangerAwsCloudTrailReadScope,
     RangerAwsQualificationOrchestrationError,
+    RangerAwsQualificationRun,
     run_aws_object_lock_qualification,
 )
+from ets.ranger.aws_qualification_run_verifier import verify_aws_qualification_run
 from ets.ranger.aws_s3_object_lock_capture import (
     RangerAwsS3ExecutionAuthorization,
     RangerAwsS3ExecutionAuthorizationPolicy,
@@ -986,6 +988,7 @@ class _ReadScopeProvider:
         self.public_key = public_key
         self.forge_signature = forge_signature
         self.calls = 0
+        self.scope: RangerAwsCloudTrailReadScope | None = None
 
     def authorize(
         self,
@@ -1006,10 +1009,44 @@ class _ReadScopeProvider:
             read_authorization = read_authorization.model_copy(
                 update={"authorizer_signature_hex": "00" * 64}
             )
-        return RangerAwsCloudTrailReadScope(
+        self.scope = RangerAwsCloudTrailReadScope(
             authorization=read_authorization,
             policy=policy,
         )
+        return self.scope
+
+
+def _qualification_run_bundle() -> tuple[
+    RangerAwsQualificationRun,
+    RangerAwsS3ExecutionAuthorization,
+    RangerAwsS3ObjectLockCapturePlan,
+    RangerAwsS3ExecutionReceiptPolicy,
+    RangerAwsCloudTrailCapturePlan,
+    RangerAwsCloudTrailReadScope,
+]:
+    prior_package, authorization, plan, receipt_policy = _package_bundle()
+    digest, signature, public_key, logs, _ = _cloudtrail_evidence(prior_package)
+    provider = _ReadScopeProvider(public_key)
+    cloudtrail_plan = _capture_plan(public_key)
+    run = run_aws_object_lock_qualification(
+        plan,
+        execution_authorization=authorization,
+        execution_authorization_policy=receipt_policy.authorization_policy,
+        object_lock_s3_client=_S3Stub(),
+        iam_client=_IamStub(),
+        receipt_id="receipt-cloudtrail",
+        receipt_issued_at_utc=NOW + timedelta(minutes=5),
+        recorder_id="ets-ranger:test-recorder",
+        recorder_signing_key_id="recorder-key-1",
+        recorder_private_key_hex=RECORDER_PRIVATE_HEX,
+        receipt_policy=receipt_policy,
+        cloudtrail_plan=cloudtrail_plan,
+        read_scope_provider=provider,
+        cloudtrail_client=_CloudTrailCaptureStub(public_key),
+        cloudtrail_s3_client=_CloudTrailS3CaptureStub(digest, signature, logs),
+    )
+    assert provider.scope is not None
+    return run, authorization, plan, receipt_policy, cloudtrail_plan, provider.scope
 
 
 def test_two_phase_orchestrator_composes_execution_authority_and_provider_evidence() -> None:
@@ -1081,3 +1118,98 @@ def test_two_phase_orchestrator_rejects_forged_post_receipt_scope_before_reads()
     assert provider.calls == 1
     assert cloudtrail.calls == []
     assert cloudtrail_s3.calls == []
+
+
+def test_offline_run_verifier_replays_complete_signed_evidence_chain() -> None:
+    run, authorization, plan, receipt_policy, cloudtrail_plan, scope = (
+        _qualification_run_bundle()
+    )
+
+    result = verify_aws_qualification_run(
+        run,
+        authorization,
+        plan,
+        receipt_policy=receipt_policy,
+        cloudtrail_plan=cloudtrail_plan,
+        read_authorization=scope.authorization,
+        read_authorization_policy=scope.policy,
+    )
+
+    assert result.valid
+    assert result.execution_receipt_verified
+    assert result.read_authorization_verified
+    assert result.complete_read_authorization_record_bound
+    assert result.provider_evidence_replayed
+    assert result.stored_verification_matches_replay
+    assert result.cross_stage_binding_verified
+    assert not result.provider_execution_independently_proven
+    assert not result.physical_worm_proven
+
+
+def test_offline_run_verifier_rejects_cross_run_read_scope_substitution() -> None:
+    run, authorization, plan, receipt_policy, cloudtrail_plan, _ = (
+        _qualification_run_bundle()
+    )
+    foreign_package = capture_aws_s3_object_lock_qualification_with_receipt(
+        plan,
+        authorization=authorization,
+        authorization_policy=receipt_policy.authorization_policy,
+        s3_client=_S3Stub(),
+        iam_client=_IamStub(),
+        receipt_id="receipt-from-another-run",
+        receipt_issued_at_utc=NOW + timedelta(minutes=5),
+        recorder_id="ets-ranger:test-recorder",
+        recorder_signing_key_id="recorder-key-1",
+        recorder_private_key_hex=RECORDER_PRIVATE_HEX,
+    )
+    _, foreign_scope, foreign_policy = _read_scope(
+        foreign_package,
+        authorization,
+        plan,
+        run.cloudtrail_capture.cloudtrail_public_key_der,
+        capture_plan=cloudtrail_plan,
+        authorization_id="foreign-run-read-scope",
+    )
+
+    result = verify_aws_qualification_run(
+        run,
+        authorization,
+        plan,
+        receipt_policy=receipt_policy,
+        cloudtrail_plan=cloudtrail_plan,
+        read_authorization=foreign_scope,
+        read_authorization_policy=foreign_policy,
+    )
+
+    assert not result.valid
+    assert result.execution_receipt_verified
+    assert "prior-evidence" in result.reason
+    assert not result.read_authorization_verified
+
+
+def test_offline_run_verifier_rejects_substituted_stored_finding() -> None:
+    run, authorization, plan, receipt_policy, cloudtrail_plan, scope = (
+        _qualification_run_bundle()
+    )
+    substituted = run.model_copy(
+        update={
+            "cloudtrail_verification": run.cloudtrail_verification.model_copy(
+                update={"reason": "substituted stored finding"}
+            )
+        }
+    )
+
+    result = verify_aws_qualification_run(
+        substituted,
+        authorization,
+        plan,
+        receipt_policy=receipt_policy,
+        cloudtrail_plan=cloudtrail_plan,
+        read_authorization=scope.authorization,
+        read_authorization_policy=scope.policy,
+    )
+
+    assert not result.valid
+    assert result.provider_evidence_replayed
+    assert "does not match independent replay" in result.reason
+    assert not result.stored_verification_matches_replay

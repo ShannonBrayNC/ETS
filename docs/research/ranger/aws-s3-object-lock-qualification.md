@@ -260,6 +260,27 @@ The composed result is not evidence of effective AWS permission, actual provider
 complete CloudTrail coverage, signer independence, physical WORM custody, or physical outcome.
 See [ADR 0021](adr/0021-two-phase-aws-qualification-orchestration.md).
 
+## Offline qualification-run verification
+
+[`ets.ranger.aws_qualification_run_verifier`](../../../ets/ranger/aws_qualification_run_verifier.py)
+independently replays an `ets.ranger.aws-qualification-run.v1` without provider access. The caller
+must supply the complete signed execution authorization, complete signed CloudTrail read
+authorization, both independent verification policies, and both exact capture plans. A run alone
+is intentionally insufficient because it retains digests and findings, not the separately governed
+authorization records or verifier trust configuration.
+
+The verifier reruns the execution-receipt signature and artifact binding, verifies the read scope
+against that exact receipt and both plans, matches the capture bundle to the canonical digest of
+the complete signed read authorization, and recomputes the CloudTrail provider-evidence finding
+from the retained source bytes. It then requires the stored finding to equal that replay result.
+Mixing an authorization, receipt, plan, capture bundle, or stored finding from another run fails
+closed rather than producing a partially valid aggregate.
+
+The resulting `ets.ranger.aws-qualification-run-verification.v1` finding preserves separate flags
+for each verified boundary and explicit false claims for permissions, provider execution,
+completeness, signer independence, physical WORM custody, and physical outcome. See
+[ADR 0022](adr/0022-offline-aws-qualification-run-verification.md).
+
 A controlled live trial remains separate work. It must run in an explicitly authorized,
 non-production qualification account/namespace with a fresh verifier challenge, a small synthetic
 archive bundle, minimum approved retention, exact versioned delete, post-denial retrieval, and
