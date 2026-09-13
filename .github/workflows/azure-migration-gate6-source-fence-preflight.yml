@@ -1,0 +1,103 @@
+name: Azure Migration Gate 6 Source Fence Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate6-source-fence-preflight
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: Inspect exact source writer boundary
+    runs-on: ubuntu-latest
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 25
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      SOURCE_TENANT_ID: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+      SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+      REPORT_PATH: ${{ runner.temp }}/ets-gate6-source-fence-preflight.json
+      MIGRATION_EVIDENCE_TABLE: ETSEvents
+      MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject missing source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test -n '${{ vars.SOURCE_AZURE_CLIENT_ID }}'
+          test -n "$SOURCE_TENANT_ID"
+          test -n "$SOURCE_SUBSCRIPTION_ID"
+
+      - name: Azure login with dedicated source transfer identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.SOURCE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Capture sanitized source fence preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate6_fence_preflight \
+            --resource-group rg-ets-live-eastus \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID" \
+            --output "$REPORT_PATH"
+
+      - name: Retain sanitized source-boundary report
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-migration-gate6-source-fence-preflight
+          path: ${{ runner.temp }}/ets-gate6-source-fence-preflight.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove runner-local report
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$REPORT_PATH"
+          test ! -e "$REPORT_PATH"
+
+      - name: Clear source Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert preflight-only boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 6 preflight boundary
+
+          - source Container App mutation: `not performed`
+          - source storage mutation: `not performed`
+          - source writer fence: `not performed`
+          - destination Azure login: `not performed`
+          - DNS/Front Door/routing mutation: `not performed`
+          - retained artifact: `sanitized source-boundary report only`
+
+          This run identifies the exact source writer boundary. A later source fence requires a
+          separately reviewed mutation implementation and explicit authorization after Gate 5 is green.
+          EOF
