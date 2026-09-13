@@ -303,13 +303,12 @@ def _verify_log_files(
         object_key = reference.get("s3Object")
         hash_value = reference.get("hashValue")
         hash_algorithm = reference.get("hashAlgorithm")
-        reference_fields = (
-            bucket,
-            object_key,
-            hash_value,
-            hash_algorithm,
-        )
-        if not all(isinstance(value, str) for value in reference_fields):
+        if not (
+            isinstance(bucket, str)
+            and isinstance(object_key, str)
+            and isinstance(hash_value, str)
+            and isinstance(hash_algorithm, str)
+        ):
             return "CloudTrail log-file reference has invalid fields"
         if hash_algorithm not in {"SHA-256", "SHA256"}:
             return "CloudTrail log-file hash algorithm is not SHA-256"
