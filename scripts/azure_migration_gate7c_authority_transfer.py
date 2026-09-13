@@ -8,6 +8,7 @@ import json
 import os
 import stat
 import subprocess
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -58,7 +59,9 @@ def _write_private_json(path: Path, payload: dict[str, Any]) -> None:
 
 def _digest(value: str) -> str:
     normalized = value.lower()
-    if len(normalized) != 64 or any(char not in "0123456789abcdef" for char in normalized):
+    if len(normalized) != 64 or any(
+        char not in "0123456789abcdef" for char in normalized
+    ):
         raise MigrationControlError("Gate 6 manifest SHA-256 is invalid")
     return normalized
 
@@ -102,11 +105,23 @@ def _validate_gate7b(payload: dict[str, Any], digest: str) -> None:
 
 def _require_pre_transfer_control_plane(resource_group: str) -> None:
     if resource_group != _RESOURCE_GROUP:
-        raise MigrationControlError("Gate 7C resource group is not the approved destination")
-    if _min_replicas(resource_group, _CORE_APP) != 1 or _replica_count(resource_group, _CORE_APP) < 1:
+        raise MigrationControlError(
+            "Gate 7C resource group is not the approved destination"
+        )
+    core_active = (
+        _min_replicas(resource_group, _CORE_APP) == 1
+        and _replica_count(resource_group, _CORE_APP) >= 1
+    )
+    if not core_active:
         raise MigrationControlError("Gate 7C requires destination Core active")
-    if _min_replicas(resource_group, _GATEWAY_APP) != 0 or _replica_count(resource_group, _GATEWAY_APP) != 0:
-        raise MigrationControlError("Gate 7C requires production Gateway dormant before transfer")
+    gateway_dormant = (
+        _min_replicas(resource_group, _GATEWAY_APP) == 0
+        and _replica_count(resource_group, _GATEWAY_APP) == 0
+    )
+    if not gateway_dormant:
+        raise MigrationControlError(
+            "Gate 7C requires production Gateway dormant before transfer"
+        )
 
 
 def prepare(
@@ -143,7 +158,9 @@ def prepare(
         "pre_table_next_index": int(table["next_index"]),
         "pre_table_entity_count": int(table["entity_count"]),
         "pre_state_digest": _state_digest(state),
-        "pre_gateway_file_names": sorted(str(item["name"]) for item in gateway["files"]),
+        "pre_gateway_file_names": sorted(
+            str(item["name"]) for item in gateway["files"]
+        ),
         "core_active": True,
         "gateway_dormant": True,
         "destination_authoritative": False,
@@ -151,22 +168,37 @@ def prepare(
     }
 
 
-def activate(*, resource_group: str, expected_tenant: str, expected_subscription: str, authorization: str) -> dict[str, Any]:
+def activate(
+    *,
+    resource_group: str,
+    expected_tenant: str,
+    expected_subscription: str,
+    authorization: str,
+) -> dict[str, Any]:
     if authorization != AUTHORIZATION_PHRASE:
         raise MigrationControlError("Gate 7C authorization phrase is missing")
     verify_context(expected_tenant, expected_subscription)
     _require_pre_transfer_control_plane(resource_group)
     transfer_time = datetime.now(UTC).isoformat()
     _set_min_replicas(resource_group, _GATEWAY_APP, 1)
-    _wait_for_replica(resource_group, _GATEWAY_APP, timeout_seconds=180, sleeper=__import__("time").sleep)
+    _wait_for_replica(
+        resource_group,
+        _GATEWAY_APP,
+        timeout_seconds=180,
+        sleeper=time.sleep,
+    )
     if _replica_count(resource_group, _CORE_APP) < 1:
-        raise MigrationControlError("Core became unavailable during Gateway authority transfer")
+        raise MigrationControlError(
+            "Core became unavailable during Gateway authority transfer"
+        )
     return {
         "schema_version": _SCHEMA,
         "claim": "gate7c_gateway_activation_started_authority_transfer",
         "authority_transfer_started_at_utc": transfer_time,
         "gateway_min_replicas": _min_replicas(resource_group, _GATEWAY_APP),
-        "gateway_active_replica_count": _replica_count(resource_group, _GATEWAY_APP),
+        "gateway_active_replica_count": _replica_count(
+            resource_group, _GATEWAY_APP
+        ),
         "source_reactivation_permitted": False,
         "destination_authoritative": False,
     }
@@ -189,14 +221,25 @@ def finalize(
     activation = _read_json(activation_path, "Gate 7C activation evidence")
     probe = _read_json(active_probe_path, "Gate 7C active Gateway probe")
     m365 = _read_json(m365_marker_path, "Gate 7C active M365 marker")
-    historical = _read_json(historical_marker_path, "historical verification marker")
+    historical = _read_json(
+        historical_marker_path, "historical verification marker"
+    )
 
-    if pre.get("claim") != "gate7c_authority_transfer_prepared" or pre.get("source_manifest_sha256") != digest:
+    valid_pre = (
+        pre.get("claim") == "gate7c_authority_transfer_prepared"
+        and pre.get("source_manifest_sha256") == digest
+    )
+    if not valid_pre:
         raise MigrationControlError("Gate 7C pre-transfer evidence is invalid")
-    if activation.get("claim") != "gate7c_gateway_activation_started_authority_transfer":
+    if activation.get("claim") != (
+        "gate7c_gateway_activation_started_authority_transfer"
+    ):
         raise MigrationControlError("Gate 7C activation evidence is invalid")
     if activation.get("source_reactivation_permitted") is not False:
-        raise MigrationControlError("Gate 7C activation evidence permits stale-source rollback")
+        raise MigrationControlError(
+            "Gate 7C activation evidence permits stale-source rollback"
+        )
+
     required_probe = {
         "schema_version": _ACTIVE_PROBE_SCHEMA,
         "claim": "active_gateway_core_continuity_proven",
@@ -214,20 +257,38 @@ def finalize(
     for key, expected in required_probe.items():
         if probe.get(key) != expected:
             raise MigrationControlError(f"Gate 7C active probe is invalid: {key}")
-    if m365 != {
+
+    expected_m365 = {
         "active_production_gateway_m365_read": True,
         "exact_sharepoint_site_verified": True,
         "gateway_runtime_qualification_exit_code": 0,
-    }:
-        raise MigrationControlError("Gate 7C production Gateway M365 marker is invalid")
-    if historical.get("workflow_name") != "Azure Migration Historical Key Offline Verification" or historical.get("conclusion") != "success":
+    }
+    if m365 != expected_m365:
+        raise MigrationControlError(
+            "Gate 7C production Gateway M365 marker is invalid"
+        )
+    historical_valid = (
+        historical.get("workflow_name")
+        == "Azure Migration Historical Key Offline Verification"
+        and historical.get("conclusion") == "success"
+    )
+    if not historical_valid:
         raise MigrationControlError("Historical offline verification run is invalid")
 
     verify_context(expected_tenant, expected_subscription)
-    if _min_replicas(resource_group, _CORE_APP) != 1 or _replica_count(resource_group, _CORE_APP) < 1:
+    core_healthy = (
+        _min_replicas(resource_group, _CORE_APP) == 1
+        and _replica_count(resource_group, _CORE_APP) >= 1
+    )
+    if not core_healthy:
         raise MigrationControlError("Core is not healthy after Gate 7C")
-    if _min_replicas(resource_group, _GATEWAY_APP) != 1 or _replica_count(resource_group, _GATEWAY_APP) < 1:
+    gateway_healthy = (
+        _min_replicas(resource_group, _GATEWAY_APP) == 1
+        and _replica_count(resource_group, _GATEWAY_APP) >= 1
+    )
+    if not gateway_healthy:
         raise MigrationControlError("Gateway is not healthy after Gate 7C")
+
     post = _capture_state(resource_group)
     post_table = post["table"]
     post_gateway = post["gateway"]
@@ -235,21 +296,31 @@ def finalize(
     synthetic_index = int(probe["synthetic_log_index"])
     post_index = int(post_table["next_index"])
     if int(probe["pre_tree_size"]) < pre_index:
-        raise MigrationControlError("Destination tree regressed after Gateway activation")
+        raise MigrationControlError(
+            "Destination tree regressed after Gateway activation"
+        )
     if synthetic_index < pre_index or post_index <= synthetic_index:
-        raise MigrationControlError("Controlled destination append did not continue migrated lineage")
+        raise MigrationControlError(
+            "Controlled destination append did not continue migrated lineage"
+        )
     if int(probe["post_tree_size"]) <= synthetic_index:
-        raise MigrationControlError("Controlled destination proof does not contain the new event")
+        raise MigrationControlError(
+            "Controlled destination proof does not contain the new event"
+        )
     pre_files = set(str(item) for item in pre["pre_gateway_file_names"])
     post_files = {str(item["name"]) for item in post_gateway["files"]}
     if pre_files != post_files:
-        raise MigrationControlError("Gateway durable file lineage changed during authority transfer")
+        raise MigrationControlError(
+            "Gateway durable file lineage changed during authority transfer"
+        )
 
     return {
         "schema_version": _SCHEMA,
         "claim": "gate7_destination_authority_transfer_complete",
         "source_manifest_sha256": digest,
-        "authority_transfer_started_at_utc": activation["authority_transfer_started_at_utc"],
+        "authority_transfer_started_at_utc": activation[
+            "authority_transfer_started_at_utc"
+        ],
         "completed_at_utc": datetime.now(UTC).isoformat(),
         "source_fenced": True,
         "gate6_final_copy": True,
@@ -274,14 +345,21 @@ def finalize(
 
 
 def _summary(result: dict[str, Any]) -> None:
+    destination_authoritative = str(
+        bool(result.get("destination_authoritative"))
+    ).lower()
+    source_fenced = str(bool(result.get("source_fenced", True))).lower()
+    stale_rollback = str(
+        bool(result.get("stale_source_automatic_rollback_permitted", False))
+    ).lower()
     content = "\n".join(
         [
             "## Azure migration Gate 7C authority transfer",
             "",
             f"- claim: `{result['claim']}`",
-            f"- destination_authoritative: `{str(bool(result.get('destination_authoritative'))).lower()}`",
-            f"- source_fenced: `{str(bool(result.get('source_fenced', True))).lower()}`",
-            f"- stale-source automatic rollback permitted: `{str(bool(result.get('stale_source_automatic_rollback_permitted', False))).lower()}`",
+            f"- destination_authoritative: `{destination_authoritative}`",
+            f"- source_fenced: `{source_fenced}`",
+            f"- stale-source automatic rollback permitted: `{stale_rollback}`",
             "- DNS / Front Door change: `not performed`",
         ]
     ) + "\n"
@@ -295,6 +373,7 @@ def _summary(result: dict[str, Any]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="mode", required=True)
+
     prep = sub.add_parser("prepare")
     prep.add_argument("--gate7a", required=True)
     prep.add_argument("--gate7b", required=True)
@@ -304,12 +383,14 @@ def main() -> int:
     prep.add_argument("--expected-subscription", required=True)
     prep.add_argument("--authorization", required=True)
     prep.add_argument("--output", required=True)
+
     act = sub.add_parser("activate")
     act.add_argument("--resource-group", default=_RESOURCE_GROUP)
     act.add_argument("--expected-tenant", required=True)
     act.add_argument("--expected-subscription", required=True)
     act.add_argument("--authorization", required=True)
     act.add_argument("--output", required=True)
+
     final = sub.add_parser("finalize")
     final.add_argument("--pre", required=True)
     final.add_argument("--activation", required=True)
@@ -321,31 +402,46 @@ def main() -> int:
     final.add_argument("--expected-tenant", required=True)
     final.add_argument("--expected-subscription", required=True)
     final.add_argument("--output", required=True)
+
     args = parser.parse_args()
     try:
         if args.mode == "prepare":
             result = prepare(
-                gate7a_path=Path(args.gate7a), gate7b_path=Path(args.gate7b),
-                expected_manifest_sha256=args.manifest_sha256, resource_group=args.resource_group,
-                expected_tenant=args.expected_tenant, expected_subscription=args.expected_subscription,
+                gate7a_path=Path(args.gate7a),
+                gate7b_path=Path(args.gate7b),
+                expected_manifest_sha256=args.manifest_sha256,
+                resource_group=args.resource_group,
+                expected_tenant=args.expected_tenant,
+                expected_subscription=args.expected_subscription,
                 authorization=args.authorization,
             )
         elif args.mode == "activate":
             result = activate(
-                resource_group=args.resource_group, expected_tenant=args.expected_tenant,
-                expected_subscription=args.expected_subscription, authorization=args.authorization,
+                resource_group=args.resource_group,
+                expected_tenant=args.expected_tenant,
+                expected_subscription=args.expected_subscription,
+                authorization=args.authorization,
             )
         else:
             result = finalize(
-                pre_path=Path(args.pre), activation_path=Path(args.activation),
-                active_probe_path=Path(args.active_probe), m365_marker_path=Path(args.m365_marker),
+                pre_path=Path(args.pre),
+                activation_path=Path(args.activation),
+                active_probe_path=Path(args.active_probe),
+                m365_marker_path=Path(args.m365_marker),
                 historical_marker_path=Path(args.historical_marker),
-                expected_manifest_sha256=args.manifest_sha256, resource_group=args.resource_group,
-                expected_tenant=args.expected_tenant, expected_subscription=args.expected_subscription,
+                expected_manifest_sha256=args.manifest_sha256,
+                resource_group=args.resource_group,
+                expected_tenant=args.expected_tenant,
+                expected_subscription=args.expected_subscription,
             )
         _write_private_json(Path(args.output), result)
         _summary(result)
-    except (MigrationControlError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+    except (
+        MigrationControlError,
+        OSError,
+        ValueError,
+        subprocess.TimeoutExpired,
+    ) as exc:
         print(f"Gate 7C authority transfer blocked: {type(exc).__name__}")
         return 2
     return 0
