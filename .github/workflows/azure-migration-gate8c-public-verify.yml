@@ -1,0 +1,330 @@
+name: Azure Migration Gate 8C Public Cutover Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: Exact reviewed main commit authorized for Gate 8C verification
+        required: true
+        type: string
+      gate8c_handoff_run_id:
+        description: Successful Gate 8C handoff workflow run ID
+        required: true
+        type: string
+      gate7c_run_id:
+        description: Successful Gate 7C authority-transfer workflow run ID
+        required: true
+        type: string
+      gate6_finality_run_id:
+        description: Successful Gate 6 final-equivalence workflow run ID
+        required: true
+        type: string
+      gate6_snapshot_tag:
+        description: Retained Gate 6 fenced-source snapshot directory tag
+        required: true
+        type: string
+      manifest_sha256:
+        description: Exact retained Gate 6 final-source manifest SHA-256
+        required: true
+        type: string
+      authorization:
+        description: Type GATE8_PUBLIC_CUTOVER_VERIFY_AUTHORIZED exactly
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate8c-public-verify
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Independently prove public cutover and destination health
+    runs-on: [self-hosted, linux, x64, ets-migration-gate4]
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 50
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      SOURCE_TENANT_ID: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+      SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      HANDOFF_RUN_ID: ${{ inputs.gate8c_handoff_run_id }}
+      GATE7C_RUN_ID: ${{ inputs.gate7c_run_id }}
+      FINALITY_RUN_ID: ${{ inputs.gate6_finality_run_id }}
+      SNAPSHOT_TAG: ${{ inputs.gate6_snapshot_tag }}
+      EXPECTED_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+      AUTHORIZATION: ${{ inputs.authorization }}
+      SOURCE_RESOURCE_GROUP: rg-ets-live-eastus
+      DEST_RESOURCE_GROUP: rg-ets-prod-eastus
+      GATEWAY_APP: ets-oif5r5ydprrou-gw
+      MIGRATION_EVIDENCE_TABLE: ETSEvents
+      MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+      HANDOFF_DIR: ${{ runner.temp }}/gate8c-handoff
+      GATE7C_DIR: ${{ runner.temp }}/gate7c
+      FINALITY_DIR: ${{ runner.temp }}/gate6-finality
+      HANDOFF_REPORT: ${{ runner.temp }}/gate8c-handoff/ets-gate8c-cutover-handoff.json
+      GATE7C_REPORT: ${{ runner.temp }}/gate7c/ets-gate7-authority-transfer.json
+      FINALITY_REPORT: ${{ runner.temp }}/gate6-finality/ets-gate6-finality.json
+      SOURCE_REPORT: ${{ runner.temp }}/ets-gate8-source-verify.json
+      PUBLIC_REPORT: ${{ runner.temp }}/ets-gate8-public-verify.json
+      M365_MARKER: ${{ runner.temp }}/ets-gate8-m365-marker.json
+      ACTIVE_PROBE_REPORT: ${{ runner.temp }}/ets-gate8-active-probe.json
+      FINAL_REPORT: ${{ runner.temp }}/ets-gate8-public-cutover-verification.json
+      SITE_ROOT: ops/lantern-site-backup/site
+      PRODUCTION_ROOT: ${{ runner.temp }}/lantern-production-verify
+
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head or missing authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$AUTHORIZATION" == "GATE8_PUBLIC_CUTOVER_VERIFY_AUTHORIZED" ]]
+          [[ "$HANDOFF_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$GATE7C_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$FINALITY_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$SNAPSHOT_TAG" =~ ^[A-Za-z0-9._-]+$ ]]
+          [[ "$EXPECTED_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ -n '${{ vars.SOURCE_AZURE_CLIENT_ID }}' ]]
+          [[ -n '${{ vars.AZURE_CLIENT_ID }}' ]]
+          command -v dig >/dev/null
+          [[ -n "${GATE4_OPERATOR_ROOT:-}" ]]
+          [[ -f "$GATE4_OPERATOR_ROOT/final-source-snapshots/$SNAPSHOT_TAG/gate6-final-source-manifest.json" ]]
+
+      - name: Validate prerequisite workflow identities
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from urllib.request import Request, urlopen
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GITHUB_TOKEN"]
+          checks = (
+              (
+                  os.environ["HANDOFF_RUN_ID"],
+                  "Azure Migration Gate 8C Cutover Handoff Preparation",
+                  ".github/workflows/azure-migration-gate8c-cutover-handoff.yml",
+              ),
+              (
+                  os.environ["GATE7C_RUN_ID"],
+                  "Azure Migration Gate 7C Destination Authority Transfer",
+                  ".github/workflows/azure-migration-gate7c-authority-transfer.yml",
+              ),
+              (
+                  os.environ["FINALITY_RUN_ID"],
+                  "Azure Migration Gate 6 Final Equivalence",
+                  ".github/workflows/azure-migration-gate6-final-equivalence.yml",
+              ),
+          )
+          for run_id, expected_name, expected_path in checks:
+              request = Request(
+                  f"https://api.github.com/repos/{repo}/actions/runs/{run_id}",
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urlopen(request, timeout=20) as response:
+                  run = json.load(response)
+              required = {
+                  "name": expected_name,
+                  "path": expected_path,
+                  "status": "completed",
+                  "conclusion": "success",
+                  "event": "workflow_dispatch",
+                  "head_branch": "main",
+              }
+              for key, expected in required.items():
+                  if run.get(key) != expected:
+                      raise SystemExit(
+                          f"prerequisite workflow run {run_id} failed {key} validation"
+                      )
+          PY
+
+      - name: Download Gate 8C handoff evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate8c-cutover-handoff
+          path: ${{ runner.temp }}/gate8c-handoff
+          run-id: ${{ inputs.gate8c_handoff_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download Gate 7C authority evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate7-authority-transfer
+          path: ${{ runner.temp }}/gate7c
+          run-id: ${{ inputs.gate7c_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download Gate 6 finality evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate6-finality
+          path: ${{ runner.temp }}/gate6-finality
+          run-id: ${{ inputs.gate6_finality_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Require exact prerequisite artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -f "$HANDOFF_REPORT" ]]
+          [[ -f "$GATE7C_REPORT" ]]
+          [[ -f "$FINALITY_REPORT" ]]
+
+      - name: Prove public DNS TLS and Lantern content independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate8c_public_verify public \
+            --handoff "$HANDOFF_REPORT" \
+            --site-root "$SITE_ROOT" \
+            --production-root "$PRODUCTION_ROOT" \
+            --output "$PUBLIC_REPORT"
+
+      - name: Azure login with dedicated source transfer identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.SOURCE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Prove source remains dark and final state remains frozen
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate8c_public_verify source \
+            --final-manifest "$GATE4_OPERATOR_ROOT/final-source-snapshots/$SNAPSHOT_TAG/gate6-final-source-manifest.json" \
+            --manifest-sha256 "$EXPECTED_MANIFEST_SHA256" \
+            --resource-group "$SOURCE_RESOURCE_GROUP" \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID" \
+            --output "$SOURCE_REPORT"
+
+      - name: Clear source Azure session
+        shell: bash
+        run: az account clear
+
+      - name: Azure login with destination restore identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Requalify EchoMedia read from active production Gateway
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $raw = & ./scripts/m365/invoke-ets-sharepoint-workload-identity-runtime-qualification.ps1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Gate 8 M365 qualification failed.' }
+          if ($raw -notmatch '"qualification"\s*:\s*"pass"') { throw 'Gate 8 M365 qualification did not report pass.' }
+          if ($raw -notmatch '"exactSharePointSiteVerified"\s*:\s*true') { throw 'Gate 8 exact SharePoint site was not verified.' }
+          $marker = [ordered]@{
+            active_production_gateway_m365_read = $true
+            exact_sharepoint_site_verified = $true
+            gateway_runtime_qualification_exit_code = 0
+          }
+          $marker | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $env:M365_MARKER -Encoding utf8NoBOM
+
+      - name: Run post-cutover destination append and independent inclusion verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(base64 -w0 scripts/azure_migration_gate7c_active_gateway_probe.py)"
+          remote="python -c \"import base64;exec(compile(base64.b64decode('$payload'),'<ets-gate8-active-probe>','exec'))\""
+          output="$(az containerapp exec \
+            --resource-group "$DEST_RESOURCE_GROUP" \
+            --name "$GATEWAY_APP" \
+            --command "$remote" 2>&1)"
+          encoded="$(printf '%s\n' "$output" | sed -n 's/.*ETS_GATE7C_RESULT_B64=\([A-Za-z0-9+\/=]*\).*/\1/p' | tail -n 1)"
+          [[ -n "$encoded" ]]
+          python - "$encoded" "$ACTIVE_PROBE_REPORT" <<'PY'
+          import base64
+          import json
+          import sys
+          from pathlib import Path
+
+          decoded = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
+          if decoded.get("claim") != "active_gateway_core_continuity_proven":
+              raise SystemExit("Gate 8 active Gateway probe claim is invalid")
+          path = Path(sys.argv[2])
+          path.write_text(json.dumps(decoded, sort_keys=True) + "\n", encoding="utf-8")
+          path.chmod(0o600)
+          PY
+
+      - name: Finalize independent Gate 8 proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate8c_public_verify finalize \
+            --handoff "$HANDOFF_REPORT" \
+            --gate7c "$GATE7C_REPORT" \
+            --finality "$FINALITY_REPORT" \
+            --public "$PUBLIC_REPORT" \
+            --source "$SOURCE_REPORT" \
+            --m365 "$M365_MARKER" \
+            --probe "$ACTIVE_PROBE_REPORT" \
+            --manifest-sha256 "$EXPECTED_MANIFEST_SHA256" \
+            --authorization "$AUTHORIZATION" \
+            --output "$FINAL_REPORT"
+
+      - name: Retain sanitized Gate 8 completion evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-migration-gate8-public-cutover-verification
+          path: ${{ runner.temp }}/ets-gate8-public-cutover-verification.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove runner-local evidence copies
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$HANDOFF_DIR" "$GATE7C_DIR" "$FINALITY_DIR" "$PRODUCTION_ROOT"
+          rm -f "$SOURCE_REPORT" "$PUBLIC_REPORT" "$M365_MARKER" \
+            "$ACTIVE_PROBE_REPORT" "$FINAL_REPORT"
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert Gate 8 completion boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 8 completion boundary
+
+          - public DNS/TLS/content: `independently verified`
+          - destination ETS append/proof: `verified`
+          - production M365 path: `verified`
+          - source Core/Gateway: `dark`
+          - source high-water/state: `unchanged from retained Gate 6 final snapshot`
+          - Gate 8 complete: `true`
+          - Gate 9 observation authorized: `true`
+          - source decommission authorized: `false`
+
+          This workflow does not mutate DNS or source writer state. Source retirement remains Gate 9.
+          EOF
