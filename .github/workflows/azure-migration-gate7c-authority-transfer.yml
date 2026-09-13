@@ -1,0 +1,374 @@
+name: Azure Migration Gate 7C Destination Authority Transfer
+
+on:
+  workflow_dispatch:
+    inputs:
+      authorization:
+        description: Exact Gate 7C destination authority-transfer authorization phrase
+        required: true
+        type: string
+      expected_commit:
+        description: Exact reviewed main commit authorized for Gate 7C
+        required: true
+        type: string
+      gate7a_run_id:
+        description: Successful Gate 7A Core activation workflow run ID
+        required: true
+        type: string
+      gate7b_run_id:
+        description: Successful Gate 7B Gateway readiness workflow run ID
+        required: true
+        type: string
+      historical_verification_run_id:
+        description: Successful historical-key offline verification run on this exact commit
+        required: true
+        type: string
+      manifest_sha256:
+        description: Exact fenced-source manifest SHA-256 bound by Gate 6 finality
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate7c-authority-transfer
+  cancel-in-progress: false
+
+jobs:
+  transfer-authority:
+    name: Activate production Gateway and prove destination authority
+    runs-on: [self-hosted, linux, x64, ets-migration-gate4]
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 45
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      GATE7A_RUN_ID: ${{ inputs.gate7a_run_id }}
+      GATE7B_RUN_ID: ${{ inputs.gate7b_run_id }}
+      HISTORICAL_RUN_ID: ${{ inputs.historical_verification_run_id }}
+      EXPECTED_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+      AUTHORIZATION: ${{ inputs.authorization }}
+      RESOURCE_GROUP: rg-ets-prod-eastus
+      GATEWAY_APP: ets-oif5r5ydprrou-gw
+      GATE7A_DIR: ${{ runner.temp }}/gate7a
+      GATE7B_DIR: ${{ runner.temp }}/gate7b
+      GATE7A_REPORT: ${{ runner.temp }}/gate7a/ets-gate7-core-activation.json
+      GATE7B_REPORT: ${{ runner.temp }}/gate7b/ets-gate7b-gateway-readiness.json
+      HISTORICAL_MARKER: ${{ runner.temp }}/ets-gate7c-historical-marker.json
+      PRE_REPORT: ${{ runner.temp }}/ets-gate7c-pre.json
+      ACTIVATION_REPORT: ${{ runner.temp }}/ets-gate7c-activation.json
+      M365_MARKER: ${{ runner.temp }}/ets-gate7c-m365-marker.json
+      ACTIVE_PROBE_REPORT: ${{ runner.temp }}/ets-gate7c-active-probe.json
+      FINAL_REPORT: ${{ runner.temp }}/ets-gate7-authority-transfer.json
+      MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+
+    steps:
+      - name: Check out exact reviewed migration source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head or missing authorization before any Azure action
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$AUTHORIZATION" == "GATE7C_DESTINATION_AUTHORITY_TRANSFER_AUTHORIZED" ]]
+          [[ "$GATE7A_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$GATE7B_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$HISTORICAL_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$EXPECTED_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ -n '${{ vars.AZURE_CLIENT_ID }}' ]]
+          [[ -n "$DEST_TENANT_ID" ]]
+          [[ -n "$DEST_SUBSCRIPTION_ID" ]]
+
+      - name: Validate prerequisite workflow runs before Azure login
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GITHUB_TOKEN"]
+          expected_commit = os.environ["EXPECTED_COMMIT"]
+          checks = (
+              (
+                  os.environ["GATE7A_RUN_ID"],
+                  "Azure Migration Gate 7A Core Activation",
+                  ".github/workflows/azure-migration-gate7-core-activation.yml",
+                  False,
+              ),
+              (
+                  os.environ["GATE7B_RUN_ID"],
+                  "Azure Migration Gate 7B Gateway Readiness",
+                  ".github/workflows/azure-migration-gate7b-gateway-readiness.yml",
+                  False,
+              ),
+              (
+                  os.environ["HISTORICAL_RUN_ID"],
+                  "Azure Migration Historical Key Offline Verification",
+                  ".github/workflows/azure-migration-historical-key-offline-verify.yml",
+                  True,
+              ),
+          )
+          historical = None
+          for run_id, expected_name, expected_path, require_current_head in checks:
+              request = Request(
+                  f"https://api.github.com/repos/{repo}/actions/runs/{run_id}",
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urlopen(request, timeout=20) as response:
+                  run = json.load(response)
+              required = {
+                  "name": expected_name,
+                  "path": expected_path,
+                  "status": "completed",
+                  "conclusion": "success",
+                  "event": "workflow_dispatch",
+                  "head_branch": "main",
+              }
+              for key, value in required.items():
+                  if run.get(key) != value:
+                      raise SystemExit(f"prerequisite workflow run {run_id} failed {key} validation")
+              if require_current_head and run.get("head_sha") != expected_commit:
+                  raise SystemExit("historical verification must run on the exact Gate 7C commit")
+              if require_current_head:
+                  historical = {
+                      "workflow_name": expected_name,
+                      "workflow_path": expected_path,
+                      "run_id": int(run_id),
+                      "head_sha": run.get("head_sha"),
+                      "conclusion": "success",
+                  }
+          if historical is None:
+              raise SystemExit("historical verification marker was not produced")
+          path = Path(os.environ["HISTORICAL_MARKER"])
+          path.write_text(json.dumps(historical, sort_keys=True) + "\n", encoding="utf-8")
+          path.chmod(0o600)
+          PY
+
+      - name: Download exact Gate 7A evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate7-core-activation
+          path: ${{ runner.temp }}/gate7a
+          run-id: ${{ inputs.gate7a_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download exact Gate 7B evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate7b-gateway-readiness
+          path: ${{ runner.temp }}/gate7b
+          run-id: ${{ inputs.gate7b_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Require prerequisite artifacts before Azure login
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -f "$GATE7A_REPORT" ]]
+          [[ -f "$GATE7B_REPORT" ]]
+          [[ -f "$HISTORICAL_MARKER" ]]
+
+      - name: Azure login with destination restore identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Prepare and bind the authority-transfer boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate7c_authority_transfer prepare \
+            --gate7a "$GATE7A_REPORT" \
+            --gate7b "$GATE7B_REPORT" \
+            --manifest-sha256 "$EXPECTED_MANIFEST_SHA256" \
+            --resource-group "$RESOURCE_GROUP" \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID" \
+            --authorization "$AUTHORIZATION" \
+            --output "$PRE_REPORT"
+
+      - name: Re-prove pre-transfer state immediately before activation
+        shell: bash
+        run: |
+          set -euo pipefail
+          second="$RUNNER_TEMP/ets-gate7c-pre-immediate.json"
+          python -m scripts.azure_migration_gate7c_authority_transfer prepare \
+            --gate7a "$GATE7A_REPORT" \
+            --gate7b "$GATE7B_REPORT" \
+            --manifest-sha256 "$EXPECTED_MANIFEST_SHA256" \
+            --resource-group "$RESOURCE_GROUP" \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID" \
+            --authorization "$AUTHORIZATION" \
+            --output "$second"
+          python - "$PRE_REPORT" "$second" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          first = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          second = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          fields = (
+              "source_manifest_sha256",
+              "pre_table_next_index",
+              "pre_table_entity_count",
+              "pre_state_digest",
+              "pre_gateway_file_names",
+          )
+          if any(first.get(field) != second.get(field) for field in fields):
+              raise SystemExit("destination state changed between Gate 7C prepare and activation")
+          PY
+          rm -f "$second"
+
+      - name: Activate production Gateway and cross destination authority boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate7c_authority_transfer activate \
+            --resource-group "$RESOURCE_GROUP" \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID" \
+            --authorization "$AUTHORIZATION" \
+            --output "$ACTIVATION_REPORT"
+
+      - name: Requalify EchoMedia read from the active production Gateway
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $raw = & ./scripts/m365/invoke-ets-sharepoint-workload-identity-runtime-qualification.ps1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Active Gateway M365 qualification failed.' }
+          if ($raw -notmatch '"qualification"\s*:\s*"pass"') { throw 'Active Gateway qualification did not report pass.' }
+          if ($raw -notmatch '"exactSharePointSiteVerified"\s*:\s*true') { throw 'Exact SharePoint site was not verified.' }
+          $marker = [ordered]@{
+            active_production_gateway_m365_read = $true
+            exact_sharepoint_site_verified = $true
+            gateway_runtime_qualification_exit_code = 0
+          }
+          $marker | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $env:M365_MARKER -Encoding utf8NoBOM
+
+      - name: Run controlled append and independent inclusion verification from active Gateway
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(base64 -w0 scripts/azure_migration_gate7c_active_gateway_probe.py)"
+          remote="python -c \"import base64;exec(compile(base64.b64decode('$payload'),'<ets-gate7c-active-probe>','exec'))\""
+          output="$(az containerapp exec \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$GATEWAY_APP" \
+            --command "$remote" 2>&1)"
+          encoded="$(printf '%s\n' "$output" | sed -n 's/.*ETS_GATE7C_RESULT_B64=\([A-Za-z0-9+\/=]*\).*/\1/p' | tail -n 1)"
+          [[ -n "$encoded" ]]
+          python - "$encoded" "$ACTIVE_PROBE_REPORT" <<'PY'
+          import base64
+          import json
+          import sys
+          from pathlib import Path
+          decoded = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
+          if decoded.get("claim") != "active_gateway_core_continuity_proven":
+              raise SystemExit("Gate 7C active Gateway probe claim is invalid")
+          path = Path(sys.argv[2])
+          path.write_text(json.dumps(decoded, sort_keys=True) + "\n", encoding="utf-8")
+          path.chmod(0o600)
+          PY
+
+      - name: Finalize Gate 7 destination authority from independent evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate7c_authority_transfer finalize \
+            --pre "$PRE_REPORT" \
+            --activation "$ACTIVATION_REPORT" \
+            --active-probe "$ACTIVE_PROBE_REPORT" \
+            --m365-marker "$M365_MARKER" \
+            --historical-marker "$HISTORICAL_MARKER" \
+            --manifest-sha256 "$EXPECTED_MANIFEST_SHA256" \
+            --resource-group "$RESOURCE_GROUP" \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID" \
+            --output "$FINAL_REPORT"
+
+      - name: Retain sanitized Gate 7 authority-transfer evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-migration-gate7-authority-transfer
+          path: ${{ runner.temp }}/ets-gate7-authority-transfer.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Mark post-activation failures as reconciliation-required
+        if: failure()
+        shell: bash
+        run: |
+          if [[ -f "$ACTIVATION_REPORT" ]]; then
+            cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 7C post-activation failure boundary
+
+          Production Gateway activation has already crossed the destination writer-authority boundary.
+          Do **not** automatically reactivate the source. Preserve destination state and use a separately
+          reviewed reconciliation/recovery procedure before any further routing or writer changes.
+          EOF
+          fi
+
+      - name: Remove runner-local evidence copies
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$GATE7A_DIR" "$GATE7B_DIR"
+          rm -f "$HISTORICAL_MARKER" "$PRE_REPORT" "$ACTIVATION_REPORT" \
+            "$M365_MARKER" "$ACTIVE_PROBE_REPORT" "$FINAL_REPORT"
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert Gate 7C boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 7C boundary
+
+          - source Gate 6 finality: `required and preserved`
+          - destination Core: `active`
+          - production Gateway: `active`
+          - active Gateway → EchoMedia `/sites/ETS` read: `passed`
+          - controlled destination ETS append: `verified`
+          - historical source evidence offline verification: `passed`
+          - destination lineage continuity: `passed`
+          - destination authoritative: `true`
+          - stale-source automatic rollback: `prohibited`
+          - DNS / Front Door / custom-domain mutation: `not performed`
+          - source login or reactivation: `not performed`
+
+          Gate 7 is complete only after this workflow succeeds. Gate 8 remains the separate public
+          routing and LanternProtocol.net custom-domain/TLS/DNS cutover boundary.
+          EOF
