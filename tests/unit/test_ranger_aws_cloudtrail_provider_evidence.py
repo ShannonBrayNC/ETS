@@ -25,6 +25,12 @@ from ets.ranger.aws_cloudtrail_provider_evidence import (
     RangerAwsCloudTrailVerificationPolicy,
     verify_aws_cloudtrail_provider_evidence,
 )
+from ets.ranger.aws_qualification_evidence_manifest import (
+    RangerAwsQualificationArtifactKind,
+    RangerAwsQualificationEvidenceManifest,
+    build_aws_qualification_evidence_manifest,
+    verify_aws_qualification_evidence_manifest,
+)
 from ets.ranger.aws_qualification_orchestrator import (
     RangerAwsCloudTrailReadScope,
     RangerAwsQualificationOrchestrationError,
@@ -1213,3 +1219,109 @@ def test_offline_run_verifier_rejects_substituted_stored_finding() -> None:
     assert result.provider_evidence_replayed
     assert "does not match independent replay" in result.reason
     assert not result.stored_verification_matches_replay
+
+
+def test_qualification_evidence_manifest_inventories_complete_secret_free_package() -> None:
+    run, authorization, plan, receipt_policy, cloudtrail_plan, scope = (
+        _qualification_run_bundle()
+    )
+    manifest, run_verification = build_aws_qualification_evidence_manifest(
+        "aws-qualification-package-1",
+        run,
+        authorization,
+        plan,
+        receipt_policy=receipt_policy,
+        cloudtrail_plan=cloudtrail_plan,
+        read_authorization=scope.authorization,
+        read_authorization_policy=scope.policy,
+    )
+
+    result = verify_aws_qualification_evidence_manifest(
+        manifest,
+        run_verification,
+        run,
+        authorization,
+        plan,
+        receipt_policy=receipt_policy,
+        cloudtrail_plan=cloudtrail_plan,
+        read_authorization=scope.authorization,
+        read_authorization_policy=scope.policy,
+    )
+
+    assert result.valid
+    assert result.complete_inventory_verified
+    assert result.qualification_run_replayed
+    assert result.exact_artifact_digests_verified
+    assert tuple(entry.kind for entry in manifest.artifacts) == tuple(
+        RangerAwsQualificationArtifactKind
+    )
+    serialized = manifest.model_dump_json()
+    assert AUTH_PRIVATE_HEX not in serialized
+    assert RECORDER_PRIVATE_HEX not in serialized
+    assert READ_SCOPE_PRIVATE_HEX not in serialized
+    assert ARCHIVE.decode().strip() not in serialized
+    assert not manifest.artifact_bytes_embedded
+    assert not manifest.credentials_embedded
+    assert not manifest.manifest_authenticity_proven
+
+
+def test_qualification_evidence_manifest_rejects_artifact_digest_substitution() -> None:
+    run, authorization, plan, receipt_policy, cloudtrail_plan, scope = (
+        _qualification_run_bundle()
+    )
+    manifest, run_verification = build_aws_qualification_evidence_manifest(
+        "aws-qualification-package-1",
+        run,
+        authorization,
+        plan,
+        receipt_policy=receipt_policy,
+        cloudtrail_plan=cloudtrail_plan,
+        read_authorization=scope.authorization,
+        read_authorization_policy=scope.policy,
+    )
+    entries = list(manifest.artifacts)
+    entries[0] = entries[0].model_copy(
+        update={"canonical_digest_sha256": "0" * 64}
+    )
+    substituted = manifest.model_copy(update={"artifacts": tuple(entries)})
+
+    result = verify_aws_qualification_evidence_manifest(
+        substituted,
+        run_verification,
+        run,
+        authorization,
+        plan,
+        receipt_policy=receipt_policy,
+        cloudtrail_plan=cloudtrail_plan,
+        read_authorization=scope.authorization,
+        read_authorization_policy=scope.policy,
+    )
+
+    assert not result.valid
+    assert "manifest digest mismatch" in result.reason
+    assert not result.exact_artifact_digests_verified
+
+
+def test_qualification_evidence_manifest_rejects_missing_roles() -> None:
+    run, authorization, plan, receipt_policy, cloudtrail_plan, scope = (
+        _qualification_run_bundle()
+    )
+    manifest, _ = build_aws_qualification_evidence_manifest(
+        "aws-qualification-package-1",
+        run,
+        authorization,
+        plan,
+        receipt_policy=receipt_policy,
+        cloudtrail_plan=cloudtrail_plan,
+        read_authorization=scope.authorization,
+        read_authorization_policy=scope.policy,
+    )
+    incomplete = manifest.model_dump()
+    incomplete["artifacts"] = incomplete["artifacts"][:-1]
+
+    try:
+        RangerAwsQualificationEvidenceManifest.model_validate(incomplete)
+    except ValueError as exc:
+        assert "each artifact kind once" in str(exc)
+    else:
+        raise AssertionError("incomplete artifact inventory was accepted")
