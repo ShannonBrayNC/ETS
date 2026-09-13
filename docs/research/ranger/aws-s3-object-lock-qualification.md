@@ -240,6 +240,26 @@ controlled `authorized_non_production` qualification, both flags must be true an
 inject a least-privilege client. This code does not supply credentials, choose an account, create a
 provider client, run a live trial, or establish effective AWS permission. See [ADR 0020](adr/0020-signed-cloudtrail-read-scope.md).
 
+## Two-phase qualification orchestration
+
+[`ets.ranger.aws_qualification_orchestrator`](../../../ets/ranger/aws_qualification_orchestrator.py)
+composes the guarded Object Lock execution and CloudTrail verification paths without erasing the
+authority boundary between them. The first stage produces and verifies its execution receipt. Only
+then does an injected read-scope provider receive that exact package and return the separately
+signed CloudTrail authorization and independent policy. The existing capture adapter verifies that
+scope before any second-stage provider read.
+
+This order is mandatory: a CloudTrail read scope cannot honestly bind an execution receipt before
+that receipt exists. The orchestrator therefore neither precomputes the scope nor holds its signing
+key. A successful `ets.ranger.aws-qualification-run.v1` result retains the execution package,
+CloudTrail capture bundle, and provider-boundary verification. A post-receipt orchestration error
+retains the execution package for caller preservation so a later failure is not represented as if
+the first-stage effects never occurred.
+
+The composed result is not evidence of effective AWS permission, actual provider execution,
+complete CloudTrail coverage, signer independence, physical WORM custody, or physical outcome.
+See [ADR 0021](adr/0021-two-phase-aws-qualification-orchestration.md).
+
 A controlled live trial remains separate work. It must run in an explicitly authorized,
 non-production qualification account/namespace with a fresh verifier challenge, a small synthetic
 archive bundle, minimum approved retention, exact versioned delete, post-denial retrieval, and

@@ -181,6 +181,7 @@ Current implementation increment:
 - [R0.2 signed AWS qualification execution receipt](aws-s3-object-lock-qualification.md#signed-execution-receipt)
 - [R0.2 credential-isolated CloudTrail evidence capture](aws-s3-object-lock-qualification.md#credential-isolated-cloudtrail-evidence-capture)
 - [R0.2 signed CloudTrail read scope](aws-s3-object-lock-qualification.md#signed-cloudtrail-read-scope)
+- [R0.2 two-phase AWS qualification orchestration](aws-s3-object-lock-qualification.md#two-phase-qualification-orchestration)
 - [Captive electromagnetic actuation evidence demonstrator](captive-electromagnetic-actuation-demonstrator.md)
 - [Epistemic identity and bounded observability](epistemic-identity.md)
 - [Cyber-Physical Observability Model](cyber-physical-observability.md)
@@ -206,6 +207,7 @@ Current implementation increment:
 - [ADR 0018: CloudTrail provider-boundary evidence](adr/0018-cloudtrail-provider-boundary-evidence.md)
 - [ADR 0019: credential-isolated CloudTrail evidence capture](adr/0019-credential-isolated-cloudtrail-evidence-capture.md)
 - [ADR 0020: signed CloudTrail read scope](adr/0020-signed-cloudtrail-read-scope.md)
+- [ADR 0021: two-phase AWS qualification orchestration](adr/0021-two-phase-aws-qualification-orchestration.md)
 
 ### R0.1 — Mobility
 - safe rolling chassis
