@@ -1,0 +1,42 @@
+{
+  "title": "VRX Physics Laboratory",
+  "subtitle": "A Spoken Course in Verifiable Electromechanical Systems",
+  "author": "Shannon Bray",
+  "edition": "Lantern Protocol Research Edition",
+  "canonical_source": {
+    "front_matter": "front-matter.md",
+    "chapters": [
+      "chapters/01-how-do-we-know-anything-happened.md",
+      "chapters/02-why-does-vrx-move.md",
+      "chapters/03-motion-has-a-history.md",
+      "chapters/04-where-did-the-energy-go.md",
+      "chapters/05-the-physics-of-stopping.md",
+      "chapters/06-electricity-before-magnetism.md",
+      "chapters/07-turning-current-into-force.md",
+      "chapters/08-build-the-vrx-force-map.md",
+      "chapters/09-why-current-doesnt-change-instantly.md",
+      "chapters/10-heat-remembers-what-electricity-did.md",
+      "chapters/11-why-machines-shake.md",
+      "chapters/12-can-we-prove-what-happened.md"
+    ],
+    "back_matter": [
+      "back-matter/glossary.md",
+      "back-matter/references-and-further-reading.md"
+    ],
+    "research_appendices": [
+      "technical-review.md"
+    ]
+  },
+  "generated_outputs": {
+    "elevenreader": "publication/VRX_Physics_Laboratory_ElevenReader.md",
+    "research": "publication/VRX_Physics_Laboratory_Research_Edition.md"
+  },
+  "rules": {
+    "canonical_files_are_hand_edited": true,
+    "generated_outputs_are_not_hand_edited": true,
+    "elevenreader_omits_display_latex": true,
+    "elevenreader_preserves_bold_title_and_chapter_headings": true,
+    "research_preserves_display_math": true,
+    "research_includes_technical_review_appendix": true
+  }
+}
