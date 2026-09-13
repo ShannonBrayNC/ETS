@@ -212,16 +212,27 @@ def to_elevenreader(text: str) -> str:
 
 
 def assemble_elevenreader(manifest: dict) -> str:
-    pieces = [
-        "**VRX Physics Laboratory**\n\n"
-        "**A Spoken Course in Verifiable Electromechanical Systems**\n\n"
-        "Shannon Bray\n\n"
-        "Lantern Protocol Research Edition\n"
-    ]
+    pieces: list[str] = []
     for relative in source_sequence(manifest, include_research_appendices=False):
-        pieces.append(to_elevenreader(read_source(relative)).rstrip())
-    body = "\n\n".join(pieces)
-    return collapse_blank_lines(body)
+        rendered = to_elevenreader(read_source(relative)).rstrip()
+        if relative == manifest["canonical_source"]["front_matter"]:
+            rendered = rendered.replace(
+                "Lantern Protocol Research Edition",
+                "Lantern Protocol ElevenReader Edition",
+                1,
+            )
+            rendered = rendered.replace(
+                "This research edition is written",
+                "This ElevenReader edition is written",
+                1,
+            )
+            rendered = rendered.replace(
+                "No ISBN has been assigned to this research edition.",
+                "No ISBN has been assigned to this edition.",
+                1,
+            )
+        pieces.append(rendered)
+    return collapse_blank_lines("\n\n".join(pieces))
 
 
 def write_output(path: Path, content: str) -> None:
