@@ -63,8 +63,12 @@ The student should be able to separate prediction, observation, calibrated measu
    - momentum
    - impulse
    - force-time curves
-   - compliant vs rigid stopping
+   - average vs peak force
+   - rebound and momentum change
+   - compliant vs stiff stopping
+   - transient sensor bandwidth and clipping
    - shock transfer
+   - force-impulse vs momentum-change consistency
 
 ### Phase 2 — Electricity and electromagnetism
 
@@ -129,13 +133,16 @@ docs/research/ranger/vrx-physics/
 │   ├── 01-how-do-we-know-anything-happened.md
 │   ├── 02-why-does-vrx-move.md
 │   ├── 03-motion-has-a-history.md
-│   └── 04-where-did-the-energy-go.md
+│   ├── 04-where-did-the-energy-go.md
+│   └── 05-the-physics-of-stopping.md
 ├── experiments/
 │   ├── 003-reconstruct-the-motion.md
-│   └── 004-follow-the-energy.md
+│   ├── 004-follow-the-energy.md
+│   └── 005-the-physics-of-shock.md
 └── phases/
     ├── 02-kinematics-review.md
-    └── 03-energy-accounting-review.md
+    ├── 03-energy-accounting-review.md
+    └── 04-impulse-shock-review.md
 ```
 
 Later episodes should continue one lecture/experiment pair at a time so each physics layer and its evidence claims can be reviewed before the next is added.
@@ -166,7 +173,8 @@ This curriculum complements the existing VRX laboratory acceptance, Evidence Obj
 - [x] Experiment 003 protocol
 - [x] Episode 4 draft
 - [x] Experiment 004 protocol
-- [ ] Episode 5
+- [x] Episode 5 draft
+- [x] Experiment 005 protocol
 - [ ] Episode 6
 - [ ] Episode 7
 - [ ] Episode 8
@@ -181,6 +189,24 @@ This curriculum complements the existing VRX laboratory acceptance, Evidence Obj
 
 ## Current review gate
 
-**Phase 3 — Energy Accounting**
+**Phase 4 — Momentum, Impulse, and Bounded Shock Characterization**
 
-Review `episodes/04-where-did-the-energy-go.md`, `experiments/004-follow-the-energy.md`, and `phases/03-energy-accounting-review.md` before proceeding to momentum, impulse, and stopping-force characterization.
+Review `episodes/05-the-physics-of-stopping.md`, `experiments/005-the-physics-of-shock.md`, and `phases/04-impulse-shock-review.md` before proceeding to electricity, resistance, power, and Joule heating.
+
+The central cross-check in this phase is:
+
+\[
+J_F=\int Fdt
+\]
+
+versus:
+
+\[
+J_p=m(v_{after}-v_{before})
+\]
+
+The central consequence-custody proposition is:
+
+\[
+\boxed{Same\ final\ state\not\Rightarrow Same\ mechanical\ consequence}
+\]
