@@ -101,6 +101,7 @@ response, or physical outcome.
 | Replayed or mixed trial artifacts | Old evidence passes a new challenge | Challenge, qualification/resource identity, exact times, distinct request IDs, and signed content digests | Trusted-time attestations and protected live-run identity | All five artifacts and verifier policy | Replay request ID or change challenge/time |
 | Evidence deletion/modification | Qualification cannot be reconstructed | Complete five-kind set, strict schemas, canonical bytes, and signed digest binding | Separate immutable custody of the evidence package | All artifact bytes | Missing, malformed, duplicate-member, extra-field, and noncanonical JSON tests |
 | Overprivileged or substituted live client | Capture code writes or probes an unintended resource | Caller injects minimal S3/IAM capabilities; plan pins account, bucket, key, principal, and exact generated version; no client construction or credential discovery | Separate workload identity, resource policies, and non-production account controls | Client provenance and live-run authorization record | Stub records required parameters; future controlled negative run |
+| Missing, stale, forged, or scope-shifted execution approval | A client call occurs without current authority or against another plan | Verify configured-authorizer Ed25519 signature, independent policy, validity interval, exact plan digest, resource identity, environment, and bounded cost before the first client call | Human identity, independent budget approval, effective IAM policy, and signer hardware attestation | Signed authorization plus independently supplied policy | Expiry, signature, plan-substitution, environment, and zero-client-call tests |
 | Archive-body or credential retention by capture code | Sensitive material leaks into evidence output | Result contains only normalized metadata and SHA-256 bindings; credentials are never accepted; CI asserts archive bytes are absent from artifacts | Secret scanning and protected evidence-export path | Secret-free output inventory | Stubbed artifact serialization and repository scans |
 | Compromised evidence issuer | Fabricated captures receive a valid ETS signature | Separate issuer key and explicit provider-authenticity nonclaim | Hardware-backed key, lifecycle, workload attestation, independent capture | Key attestation and signer history | Future live negative/control run |
 | Clock manipulation | Retention interval is misstated | Exact ordered artifact/qualification timestamps; trusted-time remains false | Provider and external trusted-time attestations | Time-bearing provider responses and attestations | Substitute or reorder times |
@@ -129,11 +130,32 @@ mode enabled. A successful delete, missing/malformed response metadata, unbounde
 retrieved bytes, stale retention deadline, or out-of-order observation plan fails before an
 artifact package is returned.
 
-This adapter does not make a cloud call by itself and is not an authorization mechanism. A future
-controlled run must provide separately authorized, least-privilege clients from an isolated
-non-production environment. The returned version ID is an observation for the run record; an
+This adapter does not make a cloud call by itself. It now requires a signed pre-execution
+authorization and an independently supplied verification policy before it invokes even the first
+injected client method. The returned version ID remains an observation for the run record; an
 independent verifier policy must still pin the exact resource identity rather than trusting the
 adapter result as its own authority.
+
+## Signed pre-execution authorization
+
+The `ets.ranger.aws-s3-execution-authorization.v1` manifest signs the exact capture-plan digest,
+qualification/challenge identity, AWS account/region/bucket/key, delete-probe principal, archive
+digest and size, retention deadline, execution environment, validity interval, and maximum cost
+ceiling. The plan digest includes every planned observation timestamp and represents the archive
+body only by SHA-256 and byte count. A caller must separately supply the expected authorization,
+qualification, challenge, environment, authorizer/key, verification time, public key, and maximum
+cost ceiling. The manifest therefore cannot supply its own trust anchor or freshness decision.
+
+`simulation` manifests must deny cloud execution and spending. `authorized_non_production`
+manifests must explicitly assert both flags. A missing, malformed, expired, not-yet-valid,
+wrong-key, wrong-environment, over-budget, bad-signature, or plan-substituted manifest fails before
+any S3 or IAM method is called. Policy also caps authorization lifetime and requires all planned
+observation times to remain within the authorized interval. Simulation execution accepts only
+clients carrying an explicit test-double marker, preventing an ordinary injected provider client
+from being used under a simulation manifest. The marker is a misuse guard, not client attestation.
+This is an authenticated configured-key authorization assertion, not proof of the human signer,
+independent budget approval, effective AWS permissions, provider execution, correct clock, or
+workload identity. No live manifest or signing key is included.
 
 A controlled live trial remains separate work. It must run in an explicitly authorized,
 non-production qualification account/namespace with a fresh verifier challenge, a small synthetic

@@ -14,10 +14,18 @@ import base64
 import hashlib
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Literal, Protocol, runtime_checkable
+from enum import StrEnum
+from typing import Any, Literal, Protocol, runtime_checkable
 
-from pydantic import Field, field_validator, model_validator
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from pydantic import Field, ValidationError, field_validator, model_validator
 
+from ets.core.canonical_json import canonical_sha256, canonicalize
 from ets.ranger.aws_s3_object_lock import (
     RangerAwsIamDeleteCapabilityArtifact,
     RangerAwsS3BucketObjectLockObservation,
@@ -40,6 +48,109 @@ from ets.ranger.immutable_publication import RangerImmutableEvidenceArtifactKind
 _MAX_QUALIFICATION_ARCHIVE_BYTES = 1024 * 1024
 
 
+class RangerAwsS3ExecutionEnvironment(StrEnum):
+    """Execution class explicitly asserted by the authorization signer."""
+
+    SIMULATION = "simulation"
+    AUTHORIZED_NON_PRODUCTION = "authorized_non_production"
+
+
+class RangerAwsS3ExecutionAuthorization(StrictModel):
+    """Signed authority over one exact capture plan and bounded cloud cost."""
+
+    schema_version: Literal["ets.ranger.aws-s3-execution-authorization.v1"] = (
+        "ets.ranger.aws-s3-execution-authorization.v1"
+    )
+    authorization_id: str = Field(min_length=1, max_length=256)
+    capture_plan_digest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    qualification_id: str = Field(min_length=1, max_length=256)
+    verifier_challenge_nonce_hex: str = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_environment: RangerAwsS3ExecutionEnvironment
+    aws_partition: Literal["aws", "aws-us-gov", "aws-cn"]
+    aws_account_id: str = Field(pattern=r"^[0-9]{12}$")
+    aws_region: str = Field(pattern=r"^[a-z0-9-]{3,32}$")
+    bucket_name: str = Field(min_length=3, max_length=63)
+    object_key: str = Field(min_length=1, max_length=1024)
+    delete_test_principal_arn: str = Field(min_length=20, max_length=2048)
+    archive_bundle_digest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    archive_bundle_size_bytes: int = Field(ge=1, le=_MAX_QUALIFICATION_ARCHIVE_BYTES)
+    retention_until_utc: datetime
+    issued_at_utc: datetime
+    not_before_utc: datetime
+    expires_at_utc: datetime
+    approved_cost_ceiling_usd_cents: int = Field(ge=0, le=100_000)
+    cloud_execution_authorized: bool
+    spending_authorized: bool
+    authorizer_id: str = Field(min_length=1, max_length=160)
+    authorizer_signing_key_id: str = Field(min_length=1, max_length=256)
+    authorizer_public_key_fingerprint_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    signing_algorithm: Literal["ed25519"] = "ed25519"
+    authorization_digest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    authorizer_signature_hex: str = Field(pattern=r"^[0-9a-f]{128}$")
+    human_identity_proven: Literal[False] = False
+    independent_budget_approval_proven: Literal[False] = False
+    effective_aws_permissions_proven: Literal[False] = False
+    provider_execution_proven: Literal[False] = False
+    claim_boundary: Literal[
+        "configured_authorizer_key_approval_no_human_budget_permission_or_execution_proof"
+    ] = "configured_authorizer_key_approval_no_human_budget_permission_or_execution_proof"
+
+    @field_validator(
+        "retention_until_utc", "issued_at_utc", "not_before_utc", "expires_at_utc"
+    )
+    @classmethod
+    def require_aware_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("execution authorization times must be timezone-aware")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def require_bounded_authority(self) -> RangerAwsS3ExecutionAuthorization:
+        if not self.issued_at_utc <= self.not_before_utc < self.expires_at_utc:
+            raise ValueError("execution authorization interval is invalid")
+        if self.retention_until_utc <= self.expires_at_utc:
+            raise ValueError("retention must extend beyond authorization expiry")
+        if self.execution_environment is RangerAwsS3ExecutionEnvironment.SIMULATION:
+            if self.cloud_execution_authorized or self.spending_authorized:
+                raise ValueError("simulation authorization cannot authorize cloud use or spending")
+        elif not (self.cloud_execution_authorized and self.spending_authorized):
+            raise ValueError(
+                "non-production cloud execution requires explicit execution and spending flags"
+            )
+        return self
+
+
+class RangerAwsS3ExecutionAuthorizationPolicy(StrictModel):
+    """Independent trust, freshness, environment, and cost expectations."""
+
+    expected_authorization_id: str = Field(min_length=1, max_length=256)
+    expected_qualification_id: str = Field(min_length=1, max_length=256)
+    expected_verifier_challenge_nonce_hex: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_execution_environment: RangerAwsS3ExecutionEnvironment
+    expected_authorizer_id: str = Field(min_length=1, max_length=160)
+    expected_authorizer_signing_key_id: str = Field(min_length=1, max_length=256)
+    authorizer_public_key_hex: str = Field(pattern=r"^[0-9a-f]{64}$")
+    verification_time_utc: datetime
+    maximum_cost_ceiling_usd_cents: int = Field(ge=0, le=100_000)
+    maximum_authorization_lifetime_seconds: int = Field(ge=1, le=86_400)
+
+    @field_validator("verification_time_utc")
+    @classmethod
+    def require_verification_time_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("authorization verification time must be timezone-aware")
+        return value.astimezone(UTC)
+
+
+class RangerAwsS3ExecutionAuthorizationVerification(StrictModel):
+    valid: bool
+    authorization_id: str | None = None
+    capture_plan_digest_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    configured_authorizer_signature_proven: bool = False
+    execution_scope_authorized: bool = False
+    reason: str
+
+
 class RangerAwsS3ObjectLockCaptureError(RuntimeError):
     """Raised when a client response cannot form a bounded canonical capture."""
 
@@ -47,6 +158,8 @@ class RangerAwsS3ObjectLockCaptureError(RuntimeError):
 @runtime_checkable
 class RangerAwsS3ObjectLockS3Client(Protocol):
     """Minimal injected S3 capability required for one qualification capture."""
+
+    ets_ranger_simulation: bool
 
     def get_bucket_versioning(self, **kwargs: object) -> Mapping[str, object]: ...
 
@@ -65,11 +178,13 @@ class RangerAwsS3ObjectLockS3Client(Protocol):
 class RangerAwsS3ObjectLockIamClient(Protocol):
     """Minimal injected IAM capability required for one qualification capture."""
 
+    ets_ranger_simulation: bool
+
     def simulate_principal_policy(self, **kwargs: object) -> Mapping[str, object]: ...
 
 
 class RangerAwsS3ObjectLockCapturePlan(StrictModel):
-    """Pre-authorized, bounded inputs for one synthetic Object Lock qualification object."""
+    """Bounded inputs for one synthetic Object Lock qualification object."""
 
     qualification_id: str = Field(min_length=1, max_length=256)
     verifier_challenge_nonce_hex: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -120,6 +235,204 @@ class RangerAwsS3ObjectLockCapturePlan(StrictModel):
         return self
 
 
+def aws_s3_object_lock_capture_plan_digest(plan: RangerAwsS3ObjectLockCapturePlan) -> str:
+    """Hash the exact plan, representing archive bytes only by digest and byte count."""
+
+    validated = RangerAwsS3ObjectLockCapturePlan.model_validate(plan.model_dump())
+    payload = validated.model_dump(mode="json", exclude={"archive_bundle_bytes"})
+    payload["archive_bundle_digest_sha256"] = hashlib.sha256(
+        validated.archive_bundle_bytes
+    ).hexdigest()
+    payload["archive_bundle_size_bytes"] = len(validated.archive_bundle_bytes)
+    return canonical_sha256(
+        {"schema_version": "ets.ranger.aws-s3-capture-plan-digest.v1", "plan": payload}
+    )
+
+
+def build_aws_s3_execution_authorization(
+    plan: RangerAwsS3ObjectLockCapturePlan,
+    *,
+    authorization_id: str,
+    execution_environment: RangerAwsS3ExecutionEnvironment,
+    issued_at_utc: datetime,
+    not_before_utc: datetime,
+    expires_at_utc: datetime,
+    approved_cost_ceiling_usd_cents: int,
+    cloud_execution_authorized: bool,
+    spending_authorized: bool,
+    authorizer_id: str,
+    authorizer_signing_key_id: str,
+    authorizer_private_key_hex: str,
+) -> RangerAwsS3ExecutionAuthorization:
+    """Create a configured-key authorization assertion for one exact capture plan."""
+
+    validated = RangerAwsS3ObjectLockCapturePlan.model_validate(plan.model_dump())
+    try:
+        private_key = Ed25519PrivateKey.from_private_bytes(
+            bytes.fromhex(authorizer_private_key_hex)
+        )
+    except (ValueError, TypeError) as exc:
+        raise RangerAwsS3ObjectLockCaptureError(
+            "authorizer private key must be a 32-byte Ed25519 key"
+        ) from exc
+    public_bytes = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    unsigned: dict[str, Any] = {
+        "schema_version": "ets.ranger.aws-s3-execution-authorization.v1",
+        "authorization_id": authorization_id,
+        "capture_plan_digest_sha256": aws_s3_object_lock_capture_plan_digest(validated),
+        "qualification_id": validated.qualification_id,
+        "verifier_challenge_nonce_hex": validated.verifier_challenge_nonce_hex,
+        "execution_environment": execution_environment,
+        "aws_partition": validated.aws_partition,
+        "aws_account_id": validated.aws_account_id,
+        "aws_region": validated.aws_region,
+        "bucket_name": validated.bucket_name,
+        "object_key": validated.object_key,
+        "delete_test_principal_arn": validated.delete_test_principal_arn,
+        "archive_bundle_digest_sha256": hashlib.sha256(
+            validated.archive_bundle_bytes
+        ).hexdigest(),
+        "archive_bundle_size_bytes": len(validated.archive_bundle_bytes),
+        "retention_until_utc": validated.retention_until_utc,
+        "issued_at_utc": issued_at_utc,
+        "not_before_utc": not_before_utc,
+        "expires_at_utc": expires_at_utc,
+        "approved_cost_ceiling_usd_cents": approved_cost_ceiling_usd_cents,
+        "cloud_execution_authorized": cloud_execution_authorized,
+        "spending_authorized": spending_authorized,
+        "authorizer_id": authorizer_id,
+        "authorizer_signing_key_id": authorizer_signing_key_id,
+        "authorizer_public_key_fingerprint_sha256": hashlib.sha256(public_bytes).hexdigest(),
+        "signing_algorithm": "ed25519",
+        "human_identity_proven": False,
+        "independent_budget_approval_proven": False,
+        "effective_aws_permissions_proven": False,
+        "provider_execution_proven": False,
+        "claim_boundary": (
+            "configured_authorizer_key_approval_no_human_budget_permission_or_execution_proof"
+        ),
+    }
+    try:
+        candidate = RangerAwsS3ExecutionAuthorization.model_validate(
+            {
+                **unsigned,
+                "authorization_digest_sha256": "0" * 64,
+                "authorizer_signature_hex": "0" * 128,
+            }
+        )
+        payload = candidate.model_dump(
+            mode="json", exclude={"authorization_digest_sha256", "authorizer_signature_hex"}
+        )
+        return RangerAwsS3ExecutionAuthorization.model_validate(
+            candidate.model_copy(
+                update={
+                    "authorization_digest_sha256": canonical_sha256(payload),
+                    "authorizer_signature_hex": private_key.sign(canonicalize(payload)).hex(),
+                }
+            ).model_dump()
+        )
+    except ValidationError as exc:
+        raise RangerAwsS3ObjectLockCaptureError(
+            "invalid execution authorization fields"
+        ) from exc
+
+
+def verify_aws_s3_execution_authorization(
+    authorization: RangerAwsS3ExecutionAuthorization,
+    plan: RangerAwsS3ObjectLockCapturePlan,
+    *,
+    policy: RangerAwsS3ExecutionAuthorizationPolicy,
+) -> RangerAwsS3ExecutionAuthorizationVerification:
+    """Verify signature, freshness, independent expectations, and exact plan binding."""
+
+    try:
+        record = RangerAwsS3ExecutionAuthorization.model_validate(authorization.model_dump())
+        validated_plan = RangerAwsS3ObjectLockCapturePlan.model_validate(plan.model_dump())
+        configured = RangerAwsS3ExecutionAuthorizationPolicy.model_validate(policy.model_dump())
+    except (AttributeError, ValidationError):
+        return _authorization_failure("execution authorization schema validation failed")
+    if (
+        record.authorization_id != configured.expected_authorization_id
+        or record.qualification_id != configured.expected_qualification_id
+        or record.verifier_challenge_nonce_hex
+        != configured.expected_verifier_challenge_nonce_hex
+        or record.execution_environment != configured.expected_execution_environment
+        or record.authorizer_id != configured.expected_authorizer_id
+        or record.authorizer_signing_key_id != configured.expected_authorizer_signing_key_id
+    ):
+        return _authorization_failure("execution authorization policy identity or scope mismatch")
+    if not record.not_before_utc <= configured.verification_time_utc < record.expires_at_utc:
+        return _authorization_failure("execution authorization is not currently valid")
+    lifetime_seconds = (record.expires_at_utc - record.issued_at_utc).total_seconds()
+    if lifetime_seconds > configured.maximum_authorization_lifetime_seconds:
+        return _authorization_failure("execution authorization lifetime exceeds policy")
+    if record.approved_cost_ceiling_usd_cents > configured.maximum_cost_ceiling_usd_cents:
+        return _authorization_failure("execution authorization exceeds the configured cost ceiling")
+    expected_plan_digest = aws_s3_object_lock_capture_plan_digest(validated_plan)
+    archive_digest = hashlib.sha256(validated_plan.archive_bundle_bytes).hexdigest()
+    if record.capture_plan_digest_sha256 != expected_plan_digest:
+        return _authorization_failure("execution authorization capture-plan digest mismatch")
+    if (
+        record.qualification_id != validated_plan.qualification_id
+        or record.verifier_challenge_nonce_hex != validated_plan.verifier_challenge_nonce_hex
+        or record.aws_partition != validated_plan.aws_partition
+        or record.aws_account_id != validated_plan.aws_account_id
+        or record.aws_region != validated_plan.aws_region
+        or record.bucket_name != validated_plan.bucket_name
+        or record.object_key != validated_plan.object_key
+        or record.delete_test_principal_arn != validated_plan.delete_test_principal_arn
+        or record.archive_bundle_digest_sha256 != archive_digest
+        or record.archive_bundle_size_bytes != len(validated_plan.archive_bundle_bytes)
+        or record.retention_until_utc != validated_plan.retention_until_utc
+    ):
+        return _authorization_failure("execution authorization resource or plan scope mismatch")
+    observation_times = (
+        validated_plan.configuration_observed_at_utc,
+        validated_plan.retention_put_observed_at_utc,
+        validated_plan.delete_capability_observed_at_utc,
+        validated_plan.delete_attempt_observed_at_utc,
+        validated_plan.retrieval_observed_at_utc,
+    )
+    if (
+        observation_times[0] < record.not_before_utc
+        or observation_times[-1] >= record.expires_at_utc
+    ):
+        return _authorization_failure("planned observation times exceed authorization interval")
+    try:
+        public_bytes = bytes.fromhex(configured.authorizer_public_key_hex)
+        public_key = Ed25519PublicKey.from_public_bytes(public_bytes)
+    except ValueError:
+        return _authorization_failure("authorizer public key is not 32-byte Ed25519")
+    if record.authorizer_public_key_fingerprint_sha256 != hashlib.sha256(public_bytes).hexdigest():
+        return _authorization_failure("execution authorization key fingerprint mismatch")
+    unsigned = record.model_dump(
+        mode="json", exclude={"authorization_digest_sha256", "authorizer_signature_hex"}
+    )
+    if canonical_sha256(unsigned) != record.authorization_digest_sha256:
+        return _authorization_failure("execution authorization digest mismatch")
+    try:
+        public_key.verify(bytes.fromhex(record.authorizer_signature_hex), canonicalize(unsigned))
+    except (InvalidSignature, ValueError):
+        return _authorization_failure("execution authorization signature invalid")
+    if record.execution_environment is RangerAwsS3ExecutionEnvironment.AUTHORIZED_NON_PRODUCTION:
+        if not (record.cloud_execution_authorized and record.spending_authorized):
+            return _authorization_failure(
+                "cloud execution or spending is not explicitly authorized"
+            )
+    return RangerAwsS3ExecutionAuthorizationVerification(
+        valid=True,
+        authorization_id=record.authorization_id,
+        capture_plan_digest_sha256=expected_plan_digest,
+        configured_authorizer_signature_proven=True,
+        execution_scope_authorized=True,
+        reason=(
+            "configured authorizer signature and policy match the exact fresh capture plan; "
+            "human identity, independent budget approval, effective AWS permissions, and "
+            "provider execution are not proven"
+        ),
+    )
+
+
 class RangerAwsS3ObjectLockCaptureResult(StrictModel):
     """Five canonical artifacts; deliberately excludes clients, credentials, and object bytes."""
 
@@ -152,16 +465,33 @@ class RangerAwsS3ObjectLockCaptureResult(StrictModel):
 def capture_aws_s3_object_lock_qualification(
     plan: RangerAwsS3ObjectLockCapturePlan,
     *,
+    authorization: RangerAwsS3ExecutionAuthorization,
+    authorization_policy: RangerAwsS3ExecutionAuthorizationPolicy,
     s3_client: RangerAwsS3ObjectLockS3Client,
     iam_client: RangerAwsS3ObjectLockIamClient,
 ) -> RangerAwsS3ObjectLockCaptureResult:
     """Run the fixed, bounded capture sequence through caller-injected clients.
 
-    This function makes the capability use explicit: configuration, synthetic object put and
+    Authorization is verified before any injected client method can execute. This function then
+    makes capability use explicit: configuration, synthetic object put and
     retention readback, IAM identity-policy simulation, version-specific delete attempt, then
     version-specific retrieval.  It refuses a successful delete and never performs unversioned
     operations or governance-bypass requests.
     """
+
+    authorization_result = verify_aws_s3_execution_authorization(
+        authorization, plan, policy=authorization_policy
+    )
+    if not authorization_result.valid:
+        raise RangerAwsS3ObjectLockCaptureError(authorization_result.reason)
+    if authorization.execution_environment is RangerAwsS3ExecutionEnvironment.SIMULATION:
+        if not (
+            getattr(s3_client, "ets_ranger_simulation", False) is True
+            and getattr(iam_client, "ets_ranger_simulation", False) is True
+        ):
+            raise RangerAwsS3ObjectLockCaptureError(
+                "simulation authorization requires explicitly marked test-double clients"
+            )
 
     digest = hashlib.sha256(plan.archive_bundle_bytes).hexdigest()
     checksum = base64.b64encode(bytes.fromhex(digest)).decode("ascii")
@@ -457,11 +787,22 @@ def _datetime(mapping: Mapping[str, object], key: str, label: str) -> datetime:
     return value.astimezone(UTC)
 
 
+def _authorization_failure(reason: str) -> RangerAwsS3ExecutionAuthorizationVerification:
+    return RangerAwsS3ExecutionAuthorizationVerification(valid=False, reason=reason)
+
+
 __all__ = [
+    "RangerAwsS3ExecutionAuthorization",
+    "RangerAwsS3ExecutionAuthorizationPolicy",
+    "RangerAwsS3ExecutionAuthorizationVerification",
+    "RangerAwsS3ExecutionEnvironment",
     "RangerAwsS3ObjectLockCaptureError",
     "RangerAwsS3ObjectLockCapturePlan",
     "RangerAwsS3ObjectLockCaptureResult",
     "RangerAwsS3ObjectLockIamClient",
     "RangerAwsS3ObjectLockS3Client",
+    "aws_s3_object_lock_capture_plan_digest",
+    "build_aws_s3_execution_authorization",
     "capture_aws_s3_object_lock_qualification",
+    "verify_aws_s3_execution_authorization",
 ]
