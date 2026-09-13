@@ -1,0 +1,63 @@
+name: Lantern Static Dependency Sweep
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'ops/lantern-site-backup/site/**'
+      - 'scripts/lantern_content_dependency_sweep.py'
+      - 'tests/test_lantern_content_dependency_sweep.py'
+      - '.github/workflows/lantern-content-dependency-sweep.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    name: Prove deployable Lantern content has no source Azure dependency
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run static dependency sweep
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.lantern_content_dependency_sweep \
+            --site-root ops/lantern-site-backup/site \
+            --output "$RUNNER_TEMP/lantern-content-dependency-report.json"
+
+      - name: Retain sanitized report
+        uses: actions/upload-artifact@v4
+        with:
+          name: lantern-content-dependency-sweep
+          path: ${{ runner.temp }}/lantern-content-dependency-report.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove runner-local report
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/lantern-content-dependency-report.json"
+
+      - name: Reassert static-only boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Static sweep boundary
+
+          - Azure login: `not performed`
+          - DNS query/mutation: `not performed`
+          - Front Door mutation: `not performed`
+          - site deployment: `not performed`
+
+          This gate proves only that the deployable static content contains no known direct source-Azure dependency.
+          Live destination hosting, TLS, DNS and web-edge readiness remain separate #737 gates.
+          EOF
