@@ -180,7 +180,8 @@ def test_module_has_no_automatic_source_reactivation_or_cutover_path() -> None:
     for forbidden in (
         '"revision",\n            "activate"',
         '"ingress",\n            "enable"',
-        "frontdoor",
+        "az afd",
+        "az network front-door",
         "role assignment create",
         "storage entity insert",
         "storage entity replace",
