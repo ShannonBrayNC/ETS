@@ -1,0 +1,227 @@
+name: Azure Migration Gate 6 Final Equivalence
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: Exact reviewed main commit authorized for final equivalence proof
+        required: true
+        type: string
+      snapshot_tag:
+        description: Retained final-source snapshot tag
+        required: true
+        type: string
+      manifest_sha256:
+        description: Exact retained Gate 6 final-source manifest SHA-256
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate6-final-equivalence
+  cancel-in-progress: false
+
+jobs:
+  prove:
+    name: Re-prove fenced source and exact dormant destination equivalence
+    runs-on: [self-hosted, linux, x64, ets-migration-gate4]
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 35
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      SOURCE_TENANT_ID: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+      SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      GATE4_OPERATOR_ROOT: ${{ vars.GATE4_OPERATOR_ROOT }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
+      EXPECTED_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+      TABLE_MANIFEST: ${{ runner.temp }}/ets-gate6-final-table.json
+      GATEWAY_MANIFEST: ${{ runner.temp }}/ets-gate6-final-gateway.json
+      SOURCE_PROOF: ${{ runner.temp }}/ets-gate6-final-source-proof.json
+      GATE5_MARKER: ${{ runner.temp }}/ets-gate6-gate5-pass.json
+      FINALITY_REPORT: ${{ runner.temp }}/ets-gate6-finality.json
+      MIGRATION_EVIDENCE_TABLE: ETSEvents
+      MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+
+    steps:
+      - name: Check out exact reviewed migration source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head or invalid protected input
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$SNAPSHOT_TAG" =~ ^[A-Za-z0-9._-]+$ ]]
+          [[ "$EXPECTED_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ -n "$GATE4_OPERATOR_ROOT" ]]
+          [[ "$GATE4_OPERATOR_ROOT" = /* ]]
+          [[ -d "$GATE4_OPERATOR_ROOT" ]]
+          case "$GATE4_OPERATOR_ROOT" in
+            "$GITHUB_WORKSPACE"|"$GITHUB_WORKSPACE"/*|"$RUNNER_TEMP"|"$RUNNER_TEMP"/*)
+              echo "Gate 6 operator root must be persistent and outside checkout/runner temp" >&2
+              exit 2
+              ;;
+          esac
+          for value in \
+            '${{ vars.SOURCE_AZURE_CLIENT_ID }}' "$SOURCE_TENANT_ID" "$SOURCE_SUBSCRIPTION_ID" \
+            '${{ vars.AZURE_CLIENT_ID }}' "$DEST_TENANT_ID" "$DEST_SUBSCRIPTION_ID"; do
+            [[ -n "$value" ]] || { echo "Required Gate 6 identity value is missing" >&2; exit 2; }
+          done
+          SOURCE_WORKSPACE="$GATE4_OPERATOR_ROOT/final-source-snapshots/$SNAPSHOT_TAG"
+          MANIFEST="$SOURCE_WORKSPACE/gate6-final-source-manifest.json"
+          [[ -d "$SOURCE_WORKSPACE" ]]
+          [[ -f "$MANIFEST" ]]
+          ACTUAL_MANIFEST_SHA="$(sha256sum "$MANIFEST" | awk '{print $1}')"
+          [[ "$ACTUAL_MANIFEST_SHA" == "$EXPECTED_MANIFEST_SHA256" ]]
+          echo "SOURCE_WORKSPACE=$SOURCE_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Azure login with dedicated source transfer identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.SOURCE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Prove source remains dark and retained final snapshot remains exact
+        shell: bash
+        env:
+          MIGRATION_RESOURCE_GROUP: rg-ets-live-eastus
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate6_finality verify-source \
+            --workspace "$SOURCE_WORKSPACE" \
+            --manifest-sha256 "$EXPECTED_MANIFEST_SHA256" \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID" \
+            --resource-group "$MIGRATION_RESOURCE_GROUP" \
+            --table-name "$MIGRATION_EVIDENCE_TABLE" \
+            --share-name "$MIGRATION_GATEWAY_SHARE" \
+            --output "$SOURCE_PROOF"
+
+      - name: Capture ephemeral fenced-source Table digest manifest
+        shell: bash
+        env:
+          MIGRATION_RESOURCE_GROUP: rg-ets-live-eastus
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_prefix_preflight \
+            --mode capture-source \
+            --manifest "$TABLE_MANIFEST" \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
+
+      - name: Capture canonical durable fenced-source Gateway digest manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate6_finality capture-gateway \
+            --manifest "$GATEWAY_MANIFEST" \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID" \
+            --resource-group "rg-ets-live-eastus" \
+            --share-name "$MIGRATION_GATEWAY_SHARE"
+
+      - name: Clear source Azure session
+        shell: bash
+        run: az account clear
+
+      - name: Azure login with destination restore identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Repeat independent Gate 5 exact equivalence against fenced source
+        shell: bash
+        env:
+          MIGRATION_RESOURCE_GROUP: rg-ets-prod-eastus
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate5_equivalence \
+            --table-manifest "$TABLE_MANIFEST" \
+            --gateway-manifest "$GATEWAY_MANIFEST" \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          Path(os.environ["GATE5_MARKER"]).write_text(
+              json.dumps(
+                  {
+                      "gate5_exact_equivalence": True,
+                      "source_manifest_sha256": os.environ["EXPECTED_MANIFEST_SHA256"],
+                  },
+                  sort_keys=True,
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Assert Gate 6 final-copy status from independent proofs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate6_finality attest \
+            --source-proof "$SOURCE_PROOF" \
+            --gate5-marker "$GATE5_MARKER" \
+            --manifest-sha256 "$EXPECTED_MANIFEST_SHA256" \
+            --output "$FINALITY_REPORT"
+
+      - name: Retain sanitized Gate 6 finality evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-migration-gate6-finality
+          path: ${{ runner.temp }}/ets-gate6-finality.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove ephemeral proof inputs
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$TABLE_MANIFEST" "$GATEWAY_MANIFEST" "$SOURCE_PROOF" "$GATE5_MARKER"
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert Gate 6 completion boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 6 final-copy boundary
+
+          - source writers: `fenced`
+          - retained final-source snapshot still equals source: `true`
+          - destination exact Table/Gateway equivalence: `pass`
+          - source_fenced: `true`
+          - final_copy: `true`
+          - destination writer activation: `not performed`
+          - DNS/Front Door/routing change: `not performed`
+          - source decommission: `not performed`
+
+          Gate 6 is complete. Gate 7 destination activation may now be considered under its
+          own separately reviewed and authorized boundary. This workflow does not activate it.
+          EOF

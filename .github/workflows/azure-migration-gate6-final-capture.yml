@@ -1,0 +1,128 @@
+name: Azure Migration Gate 6 Final Source Capture
+
+on:
+  workflow_dispatch:
+    inputs:
+      authorization:
+        description: Type GATE6_FINAL_CAPTURE_AUTHORIZED exactly
+        required: true
+        type: string
+      expected_commit:
+        description: Exact reviewed main commit authorized for final source capture
+        required: true
+        type: string
+      snapshot_tag:
+        description: Final snapshot tag (letters, digits, dot, underscore, dash)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate6-final-source-capture
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    name: Capture fenced source into protected operator storage
+    runs-on: [self-hosted, linux, x64, ets-migration-gate4]
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 30
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      SOURCE_TENANT_ID: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+      SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+      GATE4_OPERATOR_ROOT: ${{ vars.GATE4_OPERATOR_ROOT }}
+      GATE6_AUTHORIZATION: ${{ inputs.authorization }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
+      MIGRATION_RESOURCE_GROUP: rg-ets-live-eastus
+      MIGRATION_EVIDENCE_TABLE: ETSEvents
+      MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+
+    steps:
+      - name: Check out exact reviewed migration source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head, missing authorization, or unsafe operator path
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$GATE6_AUTHORIZATION" == "GATE6_FINAL_CAPTURE_AUTHORIZED" ]]
+          [[ "$SNAPSHOT_TAG" =~ ^[A-Za-z0-9._-]+$ ]]
+          [[ -n "$GATE4_OPERATOR_ROOT" ]]
+          [[ "$GATE4_OPERATOR_ROOT" = /* ]]
+          [[ -d "$GATE4_OPERATOR_ROOT" ]]
+          case "$GATE4_OPERATOR_ROOT" in
+            "$GITHUB_WORKSPACE"|"$GITHUB_WORKSPACE"/*|"$RUNNER_TEMP"|"$RUNNER_TEMP"/*)
+              echo "Gate 6 operator root must be persistent and outside checkout/runner temp" >&2
+              exit 2
+              ;;
+          esac
+          for value in '${{ vars.SOURCE_AZURE_CLIENT_ID }}' "$SOURCE_TENANT_ID" "$SOURCE_SUBSCRIPTION_ID"; do
+            [[ -n "$value" ]] || { echo "Required Gate 6 source identity value is missing" >&2; exit 2; }
+          done
+          SNAPSHOT_PARENT="$GATE4_OPERATOR_ROOT/final-source-snapshots"
+          SOURCE_WORKSPACE="$SNAPSHOT_PARENT/$SNAPSHOT_TAG"
+          mkdir -p -- "$SNAPSHOT_PARENT"
+          [[ ! -e "$SOURCE_WORKSPACE" ]]
+          echo "SOURCE_WORKSPACE=$SOURCE_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Azure login with dedicated source transfer identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.SOURCE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Capture fenced source and prove capture stability
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate6_final_capture \
+            --workspace "$SOURCE_WORKSPACE" \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID"
+          MANIFEST="$SOURCE_WORKSPACE/gate6-final-source-manifest.json"
+          MANIFEST_SHA="$(sha256sum "$MANIFEST" | awk '{print $1}')"
+          echo "MANIFEST_SHA=$MANIFEST_SHA" >> "$GITHUB_ENV"
+          printf '%s\n' "- final snapshot tag: \`$SNAPSHOT_TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "- protected final manifest SHA-256: \`$MANIFEST_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clear source Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert final-capture boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 6 final-source capture boundary
+
+          - source writers: `already fenced and re-proven dark`
+          - source mutation: `not performed`
+          - destination Azure login/write: `not performed`
+          - protected GitHub artifact: `not created`
+          - protected source bytes: `retained only on operator-controlled storage`
+          - final_copy: `false`
+          - destination writer activation: `not performed`
+          - DNS/Front Door/routing change: `not performed`
+
+          Record the final snapshot tag and manifest SHA-256 in the protected migration record.
+          The next step is a separately authorized dormant-destination reconciliation.
+          EOF

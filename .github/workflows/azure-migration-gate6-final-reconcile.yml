@@ -1,0 +1,148 @@
+name: Azure Migration Gate 6 Final Destination Reconciliation
+
+on:
+  workflow_dispatch:
+    inputs:
+      authorization:
+        description: Type GATE6_FINAL_RECONCILIATION_AUTHORIZED exactly
+        required: true
+        type: string
+      expected_commit:
+        description: Exact reviewed main commit authorized for final reconciliation
+        required: true
+        type: string
+      snapshot_tag:
+        description: Retained final-source snapshot tag
+        required: true
+        type: string
+      manifest_sha256:
+        description: Exact retained Gate 6 final-source manifest SHA-256
+        required: true
+        type: string
+      rollback_tag:
+        description: New destination rollback tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate6-final-reconciliation
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile fenced source to dormant destination
+    runs-on: [self-hosted, linux, x64, ets-migration-gate4]
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 35
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      GATE4_OPERATOR_ROOT: ${{ vars.GATE4_OPERATOR_ROOT }}
+      GATE6_AUTHORIZATION: ${{ inputs.authorization }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
+      EXPECTED_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+      ROLLBACK_TAG: ${{ inputs.rollback_tag }}
+      REPORT_PATH: ${{ runner.temp }}/ets-gate6-final-reconciliation.json
+      MIGRATION_RESOURCE_GROUP: rg-ets-prod-eastus
+      MIGRATION_EVIDENCE_TABLE: ETSEvents
+      MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
+
+    steps:
+      - name: Check out exact reviewed migration source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head, missing authorization, or invalid retained input
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$GATE6_AUTHORIZATION" == "GATE6_FINAL_RECONCILIATION_AUTHORIZED" ]]
+          [[ "$SNAPSHOT_TAG" =~ ^[A-Za-z0-9._-]+$ ]]
+          [[ "$ROLLBACK_TAG" =~ ^[A-Za-z0-9._-]+$ ]]
+          [[ "$EXPECTED_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ -n "$GATE4_OPERATOR_ROOT" ]]
+          [[ "$GATE4_OPERATOR_ROOT" = /* ]]
+          [[ -d "$GATE4_OPERATOR_ROOT" ]]
+          case "$GATE4_OPERATOR_ROOT" in
+            "$GITHUB_WORKSPACE"|"$GITHUB_WORKSPACE"/*|"$RUNNER_TEMP"|"$RUNNER_TEMP"/*)
+              echo "Gate 6 operator root must be persistent and outside checkout/runner temp" >&2
+              exit 2
+              ;;
+          esac
+          for value in '${{ vars.AZURE_CLIENT_ID }}' "$DEST_TENANT_ID" "$DEST_SUBSCRIPTION_ID"; do
+            [[ -n "$value" ]] || { echo "Required destination restore identity value is missing" >&2; exit 2; }
+          done
+          SOURCE_WORKSPACE="$GATE4_OPERATOR_ROOT/final-source-snapshots/$SNAPSHOT_TAG"
+          ROLLBACK_PARENT="$GATE4_OPERATOR_ROOT/final-rollback-snapshots"
+          ROLLBACK_WORKSPACE="$ROLLBACK_PARENT/$ROLLBACK_TAG"
+          [[ -d "$SOURCE_WORKSPACE" ]]
+          [[ -f "$SOURCE_WORKSPACE/gate6-final-source-manifest.json" ]]
+          ACTUAL_MANIFEST_SHA="$(sha256sum "$SOURCE_WORKSPACE/gate6-final-source-manifest.json" | awk '{print $1}')"
+          [[ "$ACTUAL_MANIFEST_SHA" == "$EXPECTED_MANIFEST_SHA256" ]]
+          mkdir -p -- "$ROLLBACK_PARENT"
+          [[ ! -e "$ROLLBACK_WORKSPACE" ]]
+          echo "SOURCE_WORKSPACE=$SOURCE_WORKSPACE" >> "$GITHUB_ENV"
+          echo "ROLLBACK_WORKSPACE=$ROLLBACK_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Azure login with destination restore identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Reconcile final protected source state while destination remains dormant
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate6_final_reconcile \
+            --workspace "$SOURCE_WORKSPACE" \
+            --manifest-sha256 "$EXPECTED_MANIFEST_SHA256" \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID" \
+            --rollback-workspace "$ROLLBACK_WORKSPACE" \
+            --authorization "$GATE6_AUTHORIZATION" \
+            --output "$REPORT_PATH"
+
+      - name: Retain sanitized reconciliation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-migration-gate6-final-reconciliation
+          path: ${{ runner.temp }}/ets-gate6-final-reconciliation.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert reconciliation boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 6 final-reconciliation boundary
+
+          - source_fenced: `true` from retained protected input
+          - destination replicas: `0`
+          - destination state: `reconciled to fenced-source protected capture`
+          - destination rollback: `captured before Gateway mutation`
+          - final_copy: `false`
+          - destination writer activation: `not performed`
+          - source reactivation/mutation: `not performed`
+          - DNS/Front Door/routing change: `not performed`
+
+          Reconciliation is not self-certifying. Run the independent Gate 6 final-equivalence
+          workflow next; only its successful repeated Gate 5 proof may assert final_copy=true.
+          EOF
