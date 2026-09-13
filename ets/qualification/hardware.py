@@ -388,6 +388,14 @@ def build_qualification_report(
         return tuple(item.test_id for item in run.test_executions if item.status is status)
 
     required_ids = tuple(item.test_id for item in run.test_executions if item.required)
+    passed_ids = ids_for(TestStatus.PASSED)
+    failed_ids = ids_for(TestStatus.FAILED)
+    invalid_ids = ids_for(TestStatus.INVALID)
+    waived_ids = ids_for(TestStatus.WAIVED)
+    not_run_ids = ids_for(TestStatus.NOT_RUN)
+    deviation_ids = tuple(item.deviation_id for item in run.deviations)
+    evidence_ids = tuple(item.evidence_object_id for item in run.evidence_objects)
+    artifact_ids = tuple(item.artifact_id for item in run.artifacts)
     verifier_digest = canonical_sha256(run.verifier_result.model_dump(mode="json"))
     digest_payload: dict[str, object] = {
         "schema_version": "ets.hardware-qualification-report.v1",
@@ -398,15 +406,15 @@ def build_qualification_report(
         "device_id": run.device.device_id,
         "hardware_revision": run.device.hardware_revision,
         "commit_sha": run.build.commit_sha,
-        "required_case_ids": required_ids,
-        "passed_case_ids": ids_for(TestStatus.PASSED),
-        "failed_case_ids": ids_for(TestStatus.FAILED),
-        "invalid_case_ids": ids_for(TestStatus.INVALID),
-        "waived_case_ids": ids_for(TestStatus.WAIVED),
-        "not_run_case_ids": ids_for(TestStatus.NOT_RUN),
-        "deviation_ids": tuple(item.deviation_id for item in run.deviations),
-        "evidence_object_ids": tuple(item.evidence_object_id for item in run.evidence_objects),
-        "artifact_ids": tuple(item.artifact_id for item in run.artifacts),
+        "required_case_ids": list(required_ids),
+        "passed_case_ids": list(passed_ids),
+        "failed_case_ids": list(failed_ids),
+        "invalid_case_ids": list(invalid_ids),
+        "waived_case_ids": list(waived_ids),
+        "not_run_case_ids": list(not_run_ids),
+        "deviation_ids": list(deviation_ids),
+        "evidence_object_ids": list(evidence_ids),
+        "artifact_ids": list(artifact_ids),
         "verifier_status": run.verifier_result.status.value,
         "verifier_result_digest_sha256": verifier_digest,
         "final_disposition": run.final_disposition.value,
@@ -414,10 +422,23 @@ def build_qualification_report(
     }
     report_digest = canonical_sha256(digest_payload)
     validation_payload = dict(digest_payload)
-    validation_payload["profile"] = run.profile
-    validation_payload["verifier_status"] = run.verifier_result.status
-    validation_payload["final_disposition"] = run.final_disposition
-    validation_payload["report_digest_sha256"] = report_digest
+    validation_payload.update(
+        {
+            "profile": run.profile,
+            "required_case_ids": required_ids,
+            "passed_case_ids": passed_ids,
+            "failed_case_ids": failed_ids,
+            "invalid_case_ids": invalid_ids,
+            "waived_case_ids": waived_ids,
+            "not_run_case_ids": not_run_ids,
+            "deviation_ids": deviation_ids,
+            "evidence_object_ids": evidence_ids,
+            "artifact_ids": artifact_ids,
+            "verifier_status": run.verifier_result.status,
+            "final_disposition": run.final_disposition,
+            "report_digest_sha256": report_digest,
+        }
+    )
     return HardwareQualificationReport.model_validate(validation_payload)
 
 
