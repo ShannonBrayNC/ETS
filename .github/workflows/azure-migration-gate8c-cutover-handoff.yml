@@ -1,0 +1,230 @@
+name: Azure Migration Gate 8C Cutover Handoff Preparation
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: Exact reviewed main commit authorized for Gate 8C handoff
+        required: true
+        type: string
+      gate8a_run_id:
+        description: Successful Gate 8A cutover-preflight workflow run ID
+        required: true
+        type: string
+      gate8b_run_id:
+        description: Successful Gate 8B domain/TLS workflow run ID
+        required: true
+        type: string
+      lantern_staging_run_id:
+        description: Successful Lantern destination staging workflow run ID
+        required: true
+        type: string
+      authorization:
+        description: Exact Gate 8 coordinated public-cutover authorization phrase
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate8c-cutover-handoff
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare production Lantern bytes and reviewed DNS handoff
+    runs-on: ubuntu-latest
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 35
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      GATE8A_RUN_ID: ${{ inputs.gate8a_run_id }}
+      GATE8B_RUN_ID: ${{ inputs.gate8b_run_id }}
+      STAGING_RUN_ID: ${{ inputs.lantern_staging_run_id }}
+      AUTHORIZATION: ${{ inputs.authorization }}
+      GATE8A_DIR: ${{ runner.temp }}/gate8a
+      GATE8B_DIR: ${{ runner.temp }}/gate8b
+      STAGING_DIR: ${{ runner.temp }}/lantern-staging
+      PRODUCTION_ROOT: ${{ runner.temp }}/lantern-production-site
+      GATE8A_REPORT: ${{ runner.temp }}/gate8a/ets-gate8-cutover-preflight.json
+      GATE8B_REPORT: ${{ runner.temp }}/gate8b/ets-gate8b-lantern-domain-tls.json
+      STAGING_REPORT: ${{ runner.temp }}/lantern-staging/lantern-destination-staging.json
+      OUTPUT_REPORT: ${{ runner.temp }}/ets-gate8c-cutover-handoff.json
+      SITE_ROOT: ops/lantern-site-backup/site
+
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head or missing authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$GATE8A_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$GATE8B_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$STAGING_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$AUTHORIZATION" == "GATE8_COORDINATED_PUBLIC_CUTOVER_AUTHORIZED" ]]
+          [[ -n '${{ vars.AZURE_CLIENT_ID }}' ]]
+          [[ "${DEST_TENANT_ID,,}" == "0d20cf0f-3498-46c1-a0db-69b09c634cc2" ]]
+          [[ "${DEST_SUBSCRIPTION_ID,,}" == "5729a82b-8850-4868-b96c-96c3805cbb9d" ]]
+          [[ -f "$SITE_ROOT/index.html" ]]
+
+      - name: Validate prerequisite workflow identities before Azure login
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from urllib.request import Request, urlopen
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GITHUB_TOKEN"]
+          checks = (
+              (
+                  os.environ["GATE8A_RUN_ID"],
+                  "Azure Migration Gate 8 Cutover Preflight",
+                  ".github/workflows/azure-migration-gate8-cutover-preflight.yml",
+              ),
+              (
+                  os.environ["GATE8B_RUN_ID"],
+                  "Azure Migration Gate 8B Lantern Domain TLS Preparation",
+                  ".github/workflows/azure-migration-gate8b-lantern-domain-tls.yml",
+              ),
+              (
+                  os.environ["STAGING_RUN_ID"],
+                  "Lantern Destination Staging Qualification",
+                  ".github/workflows/lantern-destination-staging.yml",
+              ),
+          )
+          for run_id, expected_name, expected_path in checks:
+              request = Request(
+                  f"https://api.github.com/repos/{repo}/actions/runs/{run_id}",
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urlopen(request, timeout=20) as response:
+                  run = json.load(response)
+              required = {
+                  "name": expected_name,
+                  "path": expected_path,
+                  "status": "completed",
+                  "conclusion": "success",
+                  "event": "workflow_dispatch",
+                  "head_branch": "main",
+              }
+              for key, expected in required.items():
+                  if run.get(key) != expected:
+                      raise SystemExit(
+                          f"prerequisite workflow run {run_id} failed {key} validation"
+                      )
+          PY
+
+      - name: Download Gate 8A evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate8-cutover-preflight
+          path: ${{ runner.temp }}/gate8a
+          run-id: ${{ inputs.gate8a_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download Gate 8B evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate8b-lantern-domain-tls
+          path: ${{ runner.temp }}/gate8b
+          run-id: ${{ inputs.gate8b_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download Lantern staging evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: lantern-destination-staging-readiness
+          path: ${{ runner.temp }}/lantern-staging
+          run-id: ${{ inputs.lantern_staging_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Require exact prerequisite artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -f "$GATE8A_REPORT" ]]
+          [[ -f "$GATE8B_REPORT" ]]
+          [[ -f "$STAGING_REPORT" ]]
+
+      - name: Azure login to destination only
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Prepare production Lantern bytes and provider-neutral DNS handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate8c_cutover_handoff \
+            --preflight "$GATE8A_REPORT" \
+            --gate8b "$GATE8B_REPORT" \
+            --staging "$STAGING_REPORT" \
+            --site-root "$SITE_ROOT" \
+            --production-root "$PRODUCTION_ROOT" \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID" \
+            --authorization "$AUTHORIZATION" \
+            --output "$OUTPUT_REPORT"
+
+      - name: Retain Gate 8C cutover handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-migration-gate8c-cutover-handoff
+          path: ${{ runner.temp }}/ets-gate8c-cutover-handoff.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove runner-local prerequisite and production copies
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$GATE8A_DIR" "$GATE8B_DIR" "$STAGING_DIR" "$PRODUCTION_ROOT"
+          rm -f "$OUTPUT_REPORT"
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert provider-neutral handoff boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 8C handoff boundary
+
+          - destination Lantern content: `qualified production bytes prepared`
+          - production DNS routing: `not modified`
+          - registrar / authoritative DNS provider: `not modified`
+          - source Azure state: `not modified`
+          - ETS writer state: `not modified`
+          - Gate 8 complete: `false`
+          - source decommission authorized: `false`
+
+          The generated handoff is provider-neutral. Apply its DNS change set through the
+          authoritative provider, then run independent Gate 8C public-cutover verification.
+          EOF
