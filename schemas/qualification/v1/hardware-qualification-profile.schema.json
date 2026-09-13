@@ -1,0 +1,328 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/qualification/v1/hardware-qualification-profile.schema.json",
+  "title": "ETS Hardware Qualification Profile v1",
+  "description": "Normative product-neutral descriptor for an ETS hardware qualification profile.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "base_profile",
+    "profile_id",
+    "profile_version",
+    "title",
+    "purpose",
+    "product_scope",
+    "capability_boundary",
+    "device_constraints",
+    "environment_dimensions",
+    "evidence_requirements",
+    "verifier_requirements",
+    "test_cases",
+    "disposition_policy",
+    "validity_policy",
+    "non_claims",
+    "traceability"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "base_profile": {"const": "ets.hardware-qualification.v1"},
+    "profile_id": {
+      "type": "string",
+      "minLength": 3,
+      "pattern": "^[a-z0-9][a-z0-9._-]+$"
+    },
+    "profile_version": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "purpose": {"type": "string", "minLength": 1},
+    "product_scope": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "parent_profiles": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["profile_id", "profile_version"],
+        "properties": {
+          "profile_id": {"type": "string", "minLength": 3},
+          "profile_version": {"type": "string", "minLength": 1},
+          "override_review_required": {"type": "boolean"}
+        }
+      }
+    },
+    "capability_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_states_are_independent",
+        "qualification_states",
+        "claim_statement"
+      ],
+      "properties": {
+        "capability_states_are_independent": {"const": true},
+        "qualification_states": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "not_tested",
+              "simulated",
+              "lab_tested",
+              "qualification_in_progress",
+              "qualified",
+              "qualified_with_deviation",
+              "failed",
+              "expired",
+              "superseded"
+            ]
+          }
+        },
+        "claim_statement": {"type": "string", "minLength": 1}
+      }
+    },
+    "device_constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_critical_fields",
+        "cross_revision_qualification_allowed"
+      ],
+      "properties": {
+        "claim_critical_fields": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "cross_revision_qualification_allowed": {"const": false},
+        "equivalence_profile_required": {"type": "boolean", "default": true},
+        "notes": {"type": "string"}
+      }
+    },
+    "environment_dimensions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "evidence_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_object_binding_required",
+        "required_classes",
+        "missing_required_evidence_policy"
+      ],
+      "properties": {
+        "evidence_object_binding_required": {"const": true},
+        "required_classes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "dut_identity",
+              "environment",
+              "build_identity",
+              "observer_identity",
+              "starting_state",
+              "stimulus",
+              "observations",
+              "resulting_state",
+              "verifier_output",
+              "qualification_report"
+            ]
+          }
+        },
+        "missing_required_evidence_policy": {"enum": ["invalid", "failed"]},
+        "external_artifacts_allowed": {"type": "boolean"},
+        "raw_artifact_digest_required": {"type": "boolean"}
+      }
+    },
+    "verifier_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "independent_verification_required_for",
+        "immutable_verifier_identity_required",
+        "checks"
+      ],
+      "properties": {
+        "independent_verification_required_for": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["qualified", "qualified_with_deviation"]}
+        },
+        "immutable_verifier_identity_required": {"const": true},
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "schema_conformance",
+              "artifact_presence",
+              "digest_validity",
+              "signature_validity",
+              "evidence_object_binding",
+              "test_case_completion",
+              "observation_result_linkage",
+              "deviation_policy",
+              "disposition_policy"
+            ]
+          }
+        },
+        "dut_runtime_may_be_trusted": {"const": false}
+      }
+    },
+    "test_cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "test_id",
+          "title",
+          "purpose",
+          "required",
+          "stimulus_class",
+          "required_observations",
+          "required_resulting_state",
+          "pass_criteria",
+          "failure_policy",
+          "waivable"
+        ],
+        "properties": {
+          "test_id": {
+            "type": "string",
+            "minLength": 2,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]+$"
+          },
+          "title": {"type": "string", "minLength": 1},
+          "purpose": {"type": "string", "minLength": 1},
+          "required": {"type": "boolean"},
+          "depends_on": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 2}
+          },
+          "stimulus_class": {"type": "string", "minLength": 1},
+          "required_observations": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "required_resulting_state": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "pass_criteria": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "failure_policy": {
+            "enum": ["fail", "invalidate", "continue_for_diagnostics"]
+          },
+          "waivable": {"type": "boolean"},
+          "safety_boundary": {"type": "string"},
+          "notes": {"type": "string"}
+        }
+      }
+    },
+    "disposition_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowed_final_states",
+        "missing_required_case_policy",
+        "deviation_state",
+        "non_waivable_failure_blocks_qualification"
+      ],
+      "properties": {
+        "allowed_final_states": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "lab_tested",
+              "qualified",
+              "qualified_with_deviation",
+              "failed",
+              "expired",
+              "superseded"
+            ]
+          }
+        },
+        "missing_required_case_policy": {"enum": ["failed", "invalid"]},
+        "deviation_state": {"const": "qualified_with_deviation"},
+        "non_waivable_failure_blocks_qualification": {"const": true}
+      }
+    },
+    "validity_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requalify_on_claim_critical_change",
+        "supersession_must_be_explicit",
+        "historical_results_immutable"
+      ],
+      "properties": {
+        "requalify_on_claim_critical_change": {"const": true},
+        "supersession_must_be_explicit": {"const": true},
+        "historical_results_immutable": {"const": true},
+        "maximum_validity_days": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "additional_requalification_triggers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "non_claims": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "traceability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tracking_issue",
+        "source_requirements",
+        "authoritative_roadmap"
+      ],
+      "properties": {
+        "tracking_issue": {"type": "string", "minLength": 1},
+        "source_requirements": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "authoritative_roadmap": {"type": "string", "minLength": 1},
+        "review_references": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}
