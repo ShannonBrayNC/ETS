@@ -1,0 +1,132 @@
+name: Azure Migration Historical Key Offline Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: Exact reviewed main commit
+        required: true
+        type: string
+      tree_head_relative_path:
+        description: Path under GATE4_OPERATOR_ROOT to retained historical signed tree head JSON
+        required: true
+        type: string
+      source_public_key_pem_relative_path:
+        description: Path under GATE4_OPERATOR_ROOT to retained historical source public PEM
+        required: true
+        type: string
+      alternate_public_key_pem_relative_path:
+        description: Optional path under GATE4_OPERATOR_ROOT to destination public PEM negative control
+        required: false
+        type: string
+      expected_source_key_id:
+        description: Exact historical public_key_id from retained continuity record
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: azure-migration-historical-key-offline-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify historical evidence with retained public material only
+    runs-on: [self-hosted, linux, x64, ets-migration-gate4]
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 15
+    env:
+      GATE4_OPERATOR_ROOT: ${{ vars.GATE4_OPERATOR_ROOT }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      TREE_REL: ${{ inputs.tree_head_relative_path }}
+      SOURCE_PEM_REL: ${{ inputs.source_public_key_pem_relative_path }}
+      ALT_PEM_REL: ${{ inputs.alternate_public_key_pem_relative_path }}
+      EXPECTED_SOURCE_KEY_ID: ${{ inputs.expected_source_key_id }}
+      REPORT_PATH: ${{ runner.temp }}/historical-key-offline-verification.json
+
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head or unsafe protected paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_SHA" = "$EXPECTED_COMMIT"
+          test -n "$GATE4_OPERATOR_ROOT"
+          test "${GATE4_OPERATOR_ROOT#/}" != "$GATE4_OPERATOR_ROOT"
+          test -d "$GATE4_OPERATOR_ROOT"
+          test -n "$TREE_REL"
+          test -n "$SOURCE_PEM_REL"
+          test -n "$EXPECTED_SOURCE_KEY_ID"
+          for value in "$TREE_REL" "$SOURCE_PEM_REL" "$ALT_PEM_REL"; do
+            test -z "$value" && continue
+            case "$value" in
+              /*|../*|*/../*|*/..|..) echo 'Protected input path must remain relative to operator root' >&2; exit 2 ;;
+            esac
+          done
+          TREE_PATH="$GATE4_OPERATOR_ROOT/$TREE_REL"
+          SOURCE_PEM_PATH="$GATE4_OPERATOR_ROOT/$SOURCE_PEM_REL"
+          test -f "$TREE_PATH"
+          test -f "$SOURCE_PEM_PATH"
+          echo "TREE_PATH=$TREE_PATH" >> "$GITHUB_ENV"
+          echo "SOURCE_PEM_PATH=$SOURCE_PEM_PATH" >> "$GITHUB_ENV"
+          if [ -n "$ALT_PEM_REL" ]; then
+            ALT_PEM_PATH="$GATE4_OPERATOR_ROOT/$ALT_PEM_REL"
+            test -f "$ALT_PEM_PATH"
+            echo "ALT_PEM_PATH=$ALT_PEM_PATH" >> "$GITHUB_ENV"
+          fi
+
+      - name: Prove workflow has no Azure credential context
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "${AZURE_CLIENT_ID:-}"
+          test -z "${AZURE_TENANT_ID:-}"
+          test -z "${AZURE_SUBSCRIPTION_ID:-}"
+          test -z "${SOURCE_AZURE_CLIENT_ID:-}"
+
+      - name: Verify historical tree head offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(
+            --tree-head "$TREE_PATH"
+            --source-public-key-pem "$SOURCE_PEM_PATH"
+            --expected-source-key-id "$EXPECTED_SOURCE_KEY_ID"
+            --output "$REPORT_PATH"
+          )
+          if [ -n "${ALT_PEM_PATH:-}" ]; then
+            args+=(--alternate-public-key-pem "$ALT_PEM_PATH")
+          fi
+          python -m scripts.azure_migration_historical_key_offline_verify "${args[@]}"
+
+      - name: Remove runner-local report
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$REPORT_PATH"
+          test ! -e "$REPORT_PATH"
+
+      - name: Reassert offline-only boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Historical-key retirement boundary
+
+          - Azure login: `not performed`
+          - source Key Vault call: `not performed`
+          - private signing key use: `not performed`
+          - protected input upload: `not performed`
+          - retained GitHub artifact: `none`
+
+          A pass proves the retained historical public material can verify the supplied historical
+          signed tree head offline. Source Key Vault deletion still remains a Gate 9 action.
+          EOF
