@@ -22,6 +22,21 @@ def test_clean_site_reports_external_hosts_and_no_blocker(tmp_path: Path) -> Non
     assert result["external_hosts"] == ["elevenlabs.io", "lanternprotocol.net"]
 
 
+def test_w3c_namespace_uri_is_not_treated_as_network_dependency(tmp_path: Path) -> None:
+    root = tmp_path / "site"
+    root.mkdir()
+    (root / "favicon.svg").write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+        encoding="utf-8",
+    )
+
+    result = sweep.sweep(root)
+
+    assert result["source_dependency_free"] is True
+    assert result["external_hosts"] == []
+    assert result["non_network_namespace_uris"] == ["http://www.w3.org/2000/svg"]
+
+
 def test_source_resource_reference_is_blocking(tmp_path: Path) -> None:
     root = tmp_path / "site"
     root.mkdir()
