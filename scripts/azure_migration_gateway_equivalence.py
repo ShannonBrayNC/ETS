@@ -33,6 +33,7 @@ _SAFE_FAILURE_STAGES = {
     "replica_fence",
     "storage_discovery",
     "restore_identity_scope",
+    "source_capture",
     "destination_capture",
     "file_set",
     "wal_state",
@@ -142,8 +143,14 @@ def _capture_file_hashes(account: str, share_name: str) -> list[dict[str, Any]]:
 def capture_source_manifest(path: Path) -> dict[str, int]:
     resource_group = _required_env("MIGRATION_RESOURCE_GROUP")
     share_name = _required_env("MIGRATION_GATEWAY_SHARE")
-    _, gateway_account = _discover_storage_accounts(resource_group)
-    files = _capture_file_hashes(gateway_account, share_name)
+    try:
+        _, gateway_account = _discover_storage_accounts(resource_group)
+    except MigrationControlError as exc:
+        raise _stage_failure("storage_discovery", exc) from exc
+    try:
+        files = _capture_file_hashes(gateway_account, share_name)
+    except MigrationControlError as exc:
+        raise _stage_failure("source_capture", exc) from exc
     total_bytes = sum(int(item["size"]) for item in files)
     manifest = {
         "manifest_version": 1,
