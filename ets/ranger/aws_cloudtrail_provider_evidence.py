@@ -1,13 +1,13 @@
 """CloudTrail provider-boundary evidence verification for Ranger R0.2.
 
 This module composes a verified Ranger AWS execution receipt with AWS CloudTrail digest/log
-integrity evidence.  It validates the CloudTrail digest signature under an independently supplied
-RSA public key, validates every referenced log hash supplied to the verifier, and correlates the
-exact AWS request IDs from the Ranger capture package to CloudTrail events.
+integrity evidence. It validates the CloudTrail digest signature under an independently pinned RSA
+public key, validates every referenced log hash supplied to the verifier, and correlates the exact
+AWS request IDs from the Ranger capture package to CloudTrail events.
 
-The verifier deliberately does *not* establish how the CloudTrail public key was obtained.  A
-future controlled live trial must separately preserve and authenticate the ListPublicKeys lookup
-(or equivalent trust-anchor evidence).  Therefore a passing result does not, by itself, prove AWS
+The verifier deliberately does *not* establish how the CloudTrail public key was obtained. A future
+controlled live trial must separately preserve and authenticate the ListPublicKeys lookup (or an
+equivalent trust-anchor record). Therefore a passing result does not, by itself, prove AWS
 public-key provenance, complete CloudTrail coverage, physical WORM storage, or semantic truth.
 """
 
@@ -22,7 +22,7 @@ from typing import Any, Literal, NamedTuple
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
-from pydantic import Field, ValidationError, field_validator
+from pydantic import Field, ValidationError
 
 from ets.ranger.aws_s3_object_lock import StrictModel
 from ets.ranger.aws_s3_object_lock_capture import (
@@ -38,16 +38,13 @@ from ets.ranger.aws_s3_object_lock_execution import (
 _MAX_DIGEST_BYTES = 2 * 1024 * 1024
 
 
-class RangerAwsCloudTrailEvidenceError(RuntimeError):
-    """Raised when CloudTrail evidence input cannot be safely interpreted."""
-
-
 class RangerAwsCloudTrailVerificationPolicy(StrictModel):
     """Independent verifier inputs for one bounded CloudTrail evidence window."""
 
     expected_digest_s3_bucket: str = Field(min_length=3, max_length=63)
     expected_digest_s3_object: str = Field(min_length=1, max_length=2048)
     expected_public_key_fingerprint: str = Field(pattern=r"^[0-9A-Fa-f]{16,128}$")
+    expected_public_key_der_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     maximum_log_files: int = Field(ge=1, le=256)
     maximum_log_file_bytes: int = Field(ge=1, le=128 * 1024 * 1024)
     maximum_event_time_skew_seconds: int = Field(ge=0, le=3600)
@@ -57,6 +54,7 @@ class RangerAwsCloudTrailVerification(StrictModel):
     valid: bool
     execution_receipt_verified: bool = False
     digest_location_verified: bool = False
+    public_key_material_pinned: bool = False
     digest_signature_verified: bool = False
     referenced_log_hashes_verified: bool = False
     capture_request_ids_correlated: bool = False
@@ -81,12 +79,6 @@ class _RequiredRequest(NamedTuple):
     expected_error_code: str | None = None
 
 
-@field_validator
-
-def _unused_validator_marker() -> None:  # pragma: no cover - prevents accidental pydantic import drift
-    """This function is never registered; validation is intentionally performed explicitly below."""
-
-
 def verify_aws_cloudtrail_provider_evidence(
     package: RangerAwsS3ExecutionPackage,
     authorization: RangerAwsS3ExecutionAuthorization,
@@ -101,7 +93,7 @@ def verify_aws_cloudtrail_provider_evidence(
 ) -> RangerAwsCloudTrailVerification:
     """Verify one receipt-bound CloudTrail digest/log evidence set.
 
-    ``digest_file_bytes`` must be the exact digest content used for the CloudTrail digest hash.
+    ``digest_file_bytes`` must be the exact digest JSON content used for the CloudTrail digest hash.
     ``uncompressed_log_files`` is keyed by ``"bucket/object"`` and contains uncompressed CloudTrail
     log JSON bytes, matching AWS's documented log-hash validation procedure.
     """
@@ -136,6 +128,13 @@ def verify_aws_cloudtrail_provider_evidence(
     if location_error is not None:
         return _failure(location_error, receipt=True)
 
+    if hashlib.sha256(cloudtrail_public_key_der).hexdigest() != policy.expected_public_key_der_sha256:
+        return _failure(
+            "CloudTrail public-key bytes do not match the independently pinned SHA-256",
+            receipt=True,
+            location=True,
+        )
+
     digest_sha256 = hashlib.sha256(digest_file_bytes).hexdigest()
     signature_error = _verify_digest_signature(
         digest,
@@ -148,6 +147,7 @@ def verify_aws_cloudtrail_provider_evidence(
             signature_error,
             receipt=True,
             location=True,
+            key_pinned=True,
             digest_sha256=digest_sha256,
         )
 
@@ -157,6 +157,7 @@ def verify_aws_cloudtrail_provider_evidence(
             logs_result,
             receipt=True,
             location=True,
+            key_pinned=True,
             signature=True,
             digest_sha256=digest_sha256,
         )
@@ -166,6 +167,7 @@ def verify_aws_cloudtrail_provider_evidence(
         required,
         logs_result,
         validated_plan,
+        expected_version_id=record.capture_result.configuration.context.object_version_id,
         maximum_skew=timedelta(seconds=policy.maximum_event_time_skew_seconds),
     )
     if correlation_error is not None:
@@ -173,6 +175,7 @@ def verify_aws_cloudtrail_provider_evidence(
             correlation_error,
             receipt=True,
             location=True,
+            key_pinned=True,
             signature=True,
             logs=True,
             digest_sha256=digest_sha256,
@@ -182,6 +185,7 @@ def verify_aws_cloudtrail_provider_evidence(
         valid=True,
         execution_receipt_verified=True,
         digest_location_verified=True,
+        public_key_material_pinned=True,
         digest_signature_verified=True,
         referenced_log_hashes_verified=True,
         capture_request_ids_correlated=True,
@@ -214,9 +218,10 @@ def _validate_digest_identity(
         return "CloudTrail digest bucket does not match verifier policy"
     if digest["digestS3Object"] != policy.expected_digest_s3_object:
         return "CloudTrail digest object does not match verifier policy"
-    if str(digest["digestPublicKeyFingerprint"]).lower() != (
-        policy.expected_public_key_fingerprint.lower()
-    ):
+    fingerprint = digest["digestPublicKeyFingerprint"]
+    if not isinstance(fingerprint, str):
+        return "CloudTrail digest public-key fingerprint is not a string"
+    if fingerprint.lower() != policy.expected_public_key_fingerprint.lower():
         return "CloudTrail digest public-key fingerprint does not match verifier policy"
     if digest["digestSignatureAlgorithm"] != "SHA256withRSA":
         return "CloudTrail digest signature algorithm is not SHA256withRSA"
@@ -378,6 +383,7 @@ def _correlate_required_requests(
     events: list[dict[str, Any]],
     plan: RangerAwsS3ObjectLockCapturePlan,
     *,
+    expected_version_id: str,
     maximum_skew: timedelta,
 ) -> str | None:
     by_request_id: dict[str, list[dict[str, Any]]] = {}
@@ -388,15 +394,12 @@ def _correlate_required_requests(
 
     earliest = plan.configuration_observed_at_utc - maximum_skew
     latest = plan.retrieval_observed_at_utc + maximum_skew
-    version_id = plan.model_dump().get("object_version_id")
-    if version_id is None:
-        version_id = None
 
     for expectation in required:
         matches = by_request_id.get(expectation.request_id, [])
         if len(matches) != 1:
             return (
-                f"CloudTrail request-ID correlation expected exactly one event for "
+                "CloudTrail request-ID correlation expected exactly one event for "
                 f"{expectation.event_name}"
             )
         event = matches[0]
@@ -410,7 +413,10 @@ def _correlate_required_requests(
             return f"CloudTrail account mismatch for {expectation.event_name}"
         event_time = _parse_event_time(event.get("eventTime"))
         if event_time is None or not earliest <= event_time <= latest:
-            return f"CloudTrail event time is outside the bounded capture window for {expectation.event_name}"
+            return (
+                "CloudTrail event time is outside the bounded capture window for "
+                f"{expectation.event_name}"
+            )
         parameters = event.get("requestParameters")
         if not isinstance(parameters, dict):
             parameters = {}
@@ -418,32 +424,11 @@ def _correlate_required_requests(
             return f"CloudTrail bucket mismatch for {expectation.event_name}"
         if expectation.require_key and parameters.get("key") != plan.object_key:
             return f"CloudTrail object-key mismatch for {expectation.event_name}"
-        if expectation.require_version:
-            observed_version = parameters.get("versionId")
-            expected_version = package_version = _package_version_from_required_context(required, events)
-            if observed_version != expected_version:
-                return f"CloudTrail object-version mismatch for {expectation.event_name}"
+        if expectation.require_version and parameters.get("versionId") != expected_version_id:
+            return f"CloudTrail object-version mismatch for {expectation.event_name}"
         if expectation.expected_error_code is not None:
             if event.get("errorCode") != expectation.expected_error_code:
                 return "CloudTrail delete error code does not match captured denial"
-    return None
-
-
-def _package_version_from_required_context(
-    required: tuple[_RequiredRequest, ...], events: list[dict[str, Any]]
-) -> str | None:
-    """Return the unique version ID already carried by correlated version-specific S3 events."""
-
-    del required
-    versions = {
-        event.get("requestParameters", {}).get("versionId")
-        for event in events
-        if isinstance(event.get("requestParameters"), dict)
-        and isinstance(event.get("requestParameters", {}).get("versionId"), str)
-    }
-    if len(versions) == 1:
-        value = next(iter(versions))
-        return value if isinstance(value, str) else None
     return None
 
 
@@ -464,6 +449,7 @@ def _failure(
     *,
     receipt: bool = False,
     location: bool = False,
+    key_pinned: bool = False,
     signature: bool = False,
     logs: bool = False,
     digest_sha256: str | None = None,
@@ -472,6 +458,7 @@ def _failure(
         valid=False,
         execution_receipt_verified=receipt,
         digest_location_verified=location,
+        public_key_material_pinned=key_pinned,
         digest_signature_verified=signature,
         referenced_log_hashes_verified=logs,
         digest_file_sha256=digest_sha256,
