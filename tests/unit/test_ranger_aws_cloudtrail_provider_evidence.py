@@ -42,7 +42,9 @@ AUTH_PUBLIC_HEX = (
     .hex()
 )
 RECORDER_PUBLIC_HEX = (
-    ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex(RECORDER_PRIVATE_HEX))
+    ed25519.Ed25519PrivateKey.from_private_bytes(
+        bytes.fromhex(RECORDER_PRIVATE_HEX)
+    )
     .public_key()
     .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
     .hex()
@@ -77,7 +79,10 @@ class _S3Stub:
         del kwargs
         return {"Status": "Enabled", "ResponseMetadata": _meta(1)}
 
-    def get_object_lock_configuration(self, **kwargs: object) -> dict[str, object]:
+    def get_object_lock_configuration(
+        self,
+        **kwargs: object,
+    ) -> dict[str, object]:
         del kwargs
         return {
             "ObjectLockConfiguration": {"ObjectLockEnabled": "Enabled"},
@@ -95,7 +100,10 @@ class _S3Stub:
     def get_object_retention(self, **kwargs: object) -> dict[str, object]:
         del kwargs
         return {
-            "Retention": {"Mode": "COMPLIANCE", "RetainUntilDate": NOW + timedelta(days=1)},
+            "Retention": {
+                "Mode": "COMPLIANCE",
+                "RetainUntilDate": NOW + timedelta(days=1),
+            },
             "ResponseMetadata": _meta(4),
         }
 
@@ -103,14 +111,17 @@ class _S3Stub:
         del kwargs
         raise _StubAwsError(
             {
-                "Error": {"Code": "AccessDenied", "Message": "retained object version"},
+                "Error": {
+                    "Code": "AccessDenied",
+                    "Message": "retained object version",
+                },
                 "ResponseMetadata": _meta(6, 403),
             }
         )
 
     def get_object(self, **kwargs: object) -> dict[str, object]:
         del kwargs
-        checksum = base64.b64encode(hashlib.sha256(ARCHIVE).digest()).decode("ascii")
+        checksum = base64.b64encode(hashlib.sha256(ARCHIVE).digest()).decode()
         return {
             "Body": _Body(),
             "VersionId": "version-123",
@@ -238,7 +249,9 @@ def _event(
     if version:
         parameters["versionId"] = "version-123"
     event: dict[str, object] = {
-        "eventTime": (NOW + timedelta(minutes=minute)).isoformat().replace("+00:00", "Z"),
+        "eventTime": (
+            NOW + timedelta(minutes=minute)
+        ).isoformat().replace("+00:00", "Z"),
         "eventSource": source,
         "eventName": name,
         "awsRegion": "us-east-1",
@@ -251,18 +264,25 @@ def _event(
     return event
 
 
-def _cloudtrail_evidence(
-    package: RangerAwsS3ExecutionPackage,
-) -> tuple[bytes, str, bytes, dict[str, bytes], RangerAwsCloudTrailVerificationPolicy]:
+def _events(package: RangerAwsS3ExecutionPackage) -> list[dict[str, object]]:
     result = package.capture_result
-    events = [
-        _event("GetBucketVersioning", result.configuration.get_bucket_versioning.metadata.request_id, 0),
+    return [
+        _event(
+            "GetBucketVersioning",
+            result.configuration.get_bucket_versioning.metadata.request_id,
+            0,
+        ),
         _event(
             "GetObjectLockConfiguration",
             result.configuration.get_object_lock_configuration.metadata.request_id,
             0,
         ),
-        _event("PutObject", result.retention_put.put_object.metadata.request_id, 1, key=True),
+        _event(
+            "PutObject",
+            result.retention_put.put_object.metadata.request_id,
+            1,
+            key=True,
+        ),
         _event(
             "GetObjectRetention",
             result.retention_put.get_object_retention.metadata.request_id,
@@ -285,9 +305,30 @@ def _cloudtrail_evidence(
             version=True,
             error_code="AccessDenied",
         ),
-        _event("GetObject", result.retrieval.get_object.metadata.request_id, 4, key=True, version=True),
+        _event(
+            "GetObject",
+            result.retrieval.get_object.metadata.request_id,
+            4,
+            key=True,
+            version=True,
+        ),
     ]
-    log_bytes = json.dumps({"Records": events}, separators=(",", ":"), sort_keys=True).encode()
+
+
+def _signed_evidence(
+    events: list[dict[str, object]],
+) -> tuple[
+    bytes,
+    str,
+    bytes,
+    dict[str, bytes],
+    RangerAwsCloudTrailVerificationPolicy,
+]:
+    log_bytes = json.dumps(
+        {"Records": events},
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
     log_path = f"{DIGEST_BUCKET}/{LOG_OBJECT}"
     digest = {
         "digestEndTime": "2026-09-13T00:10:00Z",
@@ -305,15 +346,23 @@ def _cloudtrail_evidence(
             }
         ],
     }
-    digest_bytes = json.dumps(digest, separators=(",", ":"), sort_keys=True).encode()
-    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    digest_bytes = json.dumps(
+        digest,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+    )
     public_der = private_key.public_key().public_bytes(
         serialization.Encoding.DER,
         serialization.PublicFormat.PKCS1,
     )
     data_to_sign = (
         f"{digest['digestEndTime']}\n{DIGEST_BUCKET}/{DIGEST_OBJECT}\n"
-        f"{hashlib.sha256(digest_bytes).hexdigest()}\n{digest['previousDigestSignature']}"
+        f"{hashlib.sha256(digest_bytes).hexdigest()}\n"
+        f"{digest['previousDigestSignature']}"
     ).encode()
     signature_hex = private_key.sign(
         data_to_sign,
@@ -329,12 +378,32 @@ def _cloudtrail_evidence(
         maximum_log_file_bytes=1024 * 1024,
         maximum_event_time_skew_seconds=60,
     )
-    return digest_bytes, signature_hex, public_der, {log_path: log_bytes}, policy
+    return (
+        digest_bytes,
+        signature_hex,
+        public_der,
+        {log_path: log_bytes},
+        policy,
+    )
+
+
+def _cloudtrail_evidence(
+    package: RangerAwsS3ExecutionPackage,
+) -> tuple[
+    bytes,
+    str,
+    bytes,
+    dict[str, bytes],
+    RangerAwsCloudTrailVerificationPolicy,
+]:
+    return _signed_evidence(_events(package))
 
 
 def test_cloudtrail_digest_and_events_bind_to_verified_execution_receipt() -> None:
     package, authorization, plan, receipt_policy = _package_bundle()
-    digest, signature, public_key, logs, cloudtrail_policy = _cloudtrail_evidence(package)
+    digest, signature, public_key, logs, cloudtrail_policy = (
+        _cloudtrail_evidence(package)
+    )
 
     result = verify_aws_cloudtrail_provider_evidence(
         package,
@@ -362,7 +431,9 @@ def test_cloudtrail_digest_and_events_bind_to_verified_execution_receipt() -> No
 
 def test_cloudtrail_verifier_rejects_log_mutation_and_unpinned_key() -> None:
     package, authorization, plan, receipt_policy = _package_bundle()
-    digest, signature, public_key, logs, cloudtrail_policy = _cloudtrail_evidence(package)
+    digest, signature, public_key, logs, cloudtrail_policy = (
+        _cloudtrail_evidence(package)
+    )
     log_path = next(iter(logs))
     mutated_logs = {log_path: logs[log_path] + b" "}
 
@@ -380,7 +451,11 @@ def test_cloudtrail_verifier_rejects_log_mutation_and_unpinned_key() -> None:
     assert not result.valid
     assert "hash mismatch" in result.reason
 
-    other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048).public_key().public_bytes(
+    other_private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+    )
+    other_key = other_private_key.public_key().public_bytes(
         serialization.Encoding.DER,
         serialization.PublicFormat.PKCS1,
     )
@@ -401,71 +476,9 @@ def test_cloudtrail_verifier_rejects_log_mutation_and_unpinned_key() -> None:
 
 def test_cloudtrail_verifier_rejects_request_substitution_even_when_resigned() -> None:
     package, authorization, plan, receipt_policy = _package_bundle()
-    _, _, _, _, cloudtrail_policy = _cloudtrail_evidence(package)
-    result = package.capture_result
-    events = [
-        _event("GetBucketVersioning", "substituted-request", 0),
-        _event(
-            "GetObjectLockConfiguration",
-            result.configuration.get_object_lock_configuration.metadata.request_id,
-            0,
-        ),
-        _event("PutObject", result.retention_put.put_object.metadata.request_id, 1, key=True),
-        _event(
-            "GetObjectRetention",
-            result.retention_put.get_object_retention.metadata.request_id,
-            1,
-            key=True,
-            version=True,
-        ),
-        _event(
-            "SimulatePrincipalPolicy",
-            result.delete_capability.metadata.request_id,
-            2,
-            source="iam.amazonaws.com",
-            bucket=False,
-        ),
-        _event(
-            "DeleteObject",
-            result.delete_attempt.metadata.request_id,
-            3,
-            key=True,
-            version=True,
-            error_code="AccessDenied",
-        ),
-        _event("GetObject", result.retrieval.get_object.metadata.request_id, 4, key=True, version=True),
-    ]
-    log_bytes = json.dumps({"Records": events}, separators=(",", ":"), sort_keys=True).encode()
-    digest_record = {
-        "digestEndTime": "2026-09-13T00:10:00Z",
-        "digestS3Bucket": DIGEST_BUCKET,
-        "digestS3Object": DIGEST_OBJECT,
-        "digestPublicKeyFingerprint": FINGERPRINT,
-        "digestSignatureAlgorithm": "SHA256withRSA",
-        "previousDigestSignature": "cd" * 256,
-        "logFiles": [
-            {
-                "s3Bucket": DIGEST_BUCKET,
-                "s3Object": LOG_OBJECT,
-                "hashValue": hashlib.sha256(log_bytes).hexdigest(),
-                "hashAlgorithm": "SHA-256",
-            }
-        ],
-    }
-    digest_bytes = json.dumps(digest_record, separators=(",", ":"), sort_keys=True).encode()
-    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    public_der = private_key.public_key().public_bytes(
-        serialization.Encoding.DER,
-        serialization.PublicFormat.PKCS1,
-    )
-    policy = cloudtrail_policy.model_copy(
-        update={"expected_public_key_der_sha256": hashlib.sha256(public_der).hexdigest()}
-    )
-    data_to_sign = (
-        f"{digest_record['digestEndTime']}\n{DIGEST_BUCKET}/{DIGEST_OBJECT}\n"
-        f"{hashlib.sha256(digest_bytes).hexdigest()}\n{digest_record['previousDigestSignature']}"
-    ).encode()
-    signature = private_key.sign(data_to_sign, padding.PKCS1v15(), hashes.SHA256()).hex()
+    events = _events(package)
+    events[0] = _event("GetBucketVersioning", "substituted-request", 0)
+    digest, signature, public_key, logs, policy = _signed_evidence(events)
 
     verification = verify_aws_cloudtrail_provider_evidence(
         package,
@@ -473,10 +486,10 @@ def test_cloudtrail_verifier_rejects_request_substitution_even_when_resigned() -
         plan,
         receipt_policy=receipt_policy,
         cloudtrail_policy=policy,
-        digest_file_bytes=digest_bytes,
+        digest_file_bytes=digest,
         digest_signature_hex=signature,
-        cloudtrail_public_key_der=public_der,
-        uncompressed_log_files={f"{DIGEST_BUCKET}/{LOG_OBJECT}": log_bytes},
+        cloudtrail_public_key_der=public_key,
+        uncompressed_log_files=logs,
     )
 
     assert not verification.valid
