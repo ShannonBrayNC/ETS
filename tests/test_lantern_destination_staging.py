@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -88,7 +89,8 @@ def test_verifier_rejects_frontdoor_byte_drift(
     def fetch(url: str, timeout: float = 15.0) -> bytes:
         del timeout
         name = url.rsplit("/", 1)[-1]
-        if "azurefd.net" in url and name == "app.js":
+        host = urllib.parse.urlsplit(url).hostname
+        if host == "lantern-dst-abc.azurefd.net" and name == "app.js":
             return b"changed"
         return (site / name).read_bytes()
 
