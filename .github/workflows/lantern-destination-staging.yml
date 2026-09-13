@@ -34,10 +34,6 @@ jobs:
       AUTHORIZATION: ${{ inputs.authorization }}
       RESOURCE_GROUP: rg-ets-prod-eastus
       SITE_SOURCE: ops/lantern-site-backup/site
-      PROFILE_NAME: lantern-destination-fd
-      ORIGIN_GROUP_NAME: lantern-destination-static
-      ORIGIN_NAME: lantern-destination-storage
-      ROUTE_NAME: lantern-destination-site
       SWEEP_REPORT: ${{ runner.temp }}/lantern-destination-source-sweep.json
       QUALIFICATION_REPORT: ${{ runner.temp }}/lantern-destination-staging.json
 
@@ -58,7 +54,7 @@ jobs:
           [[ "${DEST_SUBSCRIPTION_ID,,}" == "5729a82b-8850-4868-b96c-96c3805cbb9d" ]]
           [[ -n '${{ vars.AZURE_CLIENT_ID }}' ]]
           test -f "$SITE_SOURCE/index.html"
-          grep -Eiq '<meta[[:space:]]+[^>]*name=["'"']robots["'"'][^>]*content=["'"'][^"'"']*noindex[^"'"']*nofollow' "$SITE_SOURCE/index.html"
+          grep -Fqi '<meta name="robots" content="noindex, nofollow">' "$SITE_SOURCE/index.html"
 
       - name: Re-prove deployable site has no source-Azure dependency
         shell: bash
@@ -81,201 +77,16 @@ jobs:
           set -euo pipefail
           az extension add --name cdn --upgrade --yes --only-show-errors
 
-      - name: Validate destination Azure boundary and derive names
-        id: boundary
+      - name: Converge and qualify destination-only Lantern staging
         shell: bash
         run: |
           set -euo pipefail
-          active_subscription="$(az account show --query id -o tsv)"
-          active_tenant="$(az account show --query tenantId -o tsv)"
-          [[ "${active_subscription,,}" == "${DEST_SUBSCRIPTION_ID,,}" ]]
-          [[ "${active_tenant,,}" == "${DEST_TENANT_ID,,}" ]]
-          location="$(az group show --name "$RESOURCE_GROUP" --query location -o tsv)"
-          [[ "$location" == "eastus" ]]
-          suffix="$(printf '%s' "${DEST_SUBSCRIPTION_ID}:${RESOURCE_GROUP}:lantern-destination" | sha256sum | cut -c1-13)"
-          storage="lanterndst${suffix}"
-          endpoint_suffix="$(printf '%s' "${DEST_SUBSCRIPTION_ID}:${RESOURCE_GROUP}:lantern-destination-frontdoor" | sha256sum | cut -c1-10)"
-          endpoint_name="lantern-dst-${endpoint_suffix}"
-          echo "storage=$storage" >> "$GITHUB_OUTPUT"
-          echo "endpoint_name=$endpoint_name" >> "$GITHUB_OUTPUT"
-
-      - name: Create or converge dedicated destination static-site storage
-        id: storage
-        shell: bash
-        env:
-          STORAGE_ACCOUNT: ${{ steps.boundary.outputs.storage }}
-        run: |
-          set -euo pipefail
-          if ! az storage account show --name "$STORAGE_ACCOUNT" --resource-group "$RESOURCE_GROUP" >/dev/null 2>&1; then
-            az storage account create \
-              --name "$STORAGE_ACCOUNT" \
-              --resource-group "$RESOURCE_GROUP" \
-              --location eastus \
-              --sku Standard_LRS \
-              --kind StorageV2 \
-              --https-only true \
-              --min-tls-version TLS1_2 \
-              --public-network-access Enabled \
-              --tags workload=lantern-site purpose=tenant-exit-staging owner=lantern-protocol \
-              --output none
-          fi
-          kind="$(az storage account show --name "$STORAGE_ACCOUNT" --resource-group "$RESOURCE_GROUP" --query kind -o tsv)"
-          https_only="$(az storage account show --name "$STORAGE_ACCOUNT" --resource-group "$RESOURCE_GROUP" --query enableHttpsTrafficOnly -o tsv)"
-          min_tls="$(az storage account show --name "$STORAGE_ACCOUNT" --resource-group "$RESOURCE_GROUP" --query minimumTlsVersion -o tsv)"
-          [[ "$kind" == "StorageV2" ]]
-          [[ "${https_only,,}" == "true" ]]
-          [[ "$min_tls" == "TLS1_2" ]]
-          az storage blob service-properties update \
-            --account-name "$STORAGE_ACCOUNT" \
-            --auth-mode login \
-            --static-website \
-            --index-document index.html \
-            --output none
-          storage_endpoint="$(az storage account show --name "$STORAGE_ACCOUNT" --resource-group "$RESOURCE_GROUP" --query primaryEndpoints.web -o tsv)"
-          [[ "$storage_endpoint" == https://*.web.core.windows.net/ ]]
-          echo "storage_endpoint=$storage_endpoint" >> "$GITHUB_OUTPUT"
-
-      - name: Publish exact destination staging site
-        shell: bash
-        env:
-          STORAGE_ACCOUNT: ${{ steps.boundary.outputs.storage }}
-        run: |
-          set -euo pipefail
-          az storage blob delete-batch \
-            --account-name "$STORAGE_ACCOUNT" \
-            --auth-mode login \
-            --source '$web' \
-            --output none || true
-          az storage blob upload-batch \
-            --account-name "$STORAGE_ACCOUNT" \
-            --auth-mode login \
-            --destination '$web' \
-            --source "$SITE_SOURCE" \
-            --overwrite true \
-            --output none
-
-      - name: Create or converge destination Front Door default endpoint
-        id: frontdoor
-        shell: bash
-        env:
-          ENDPOINT_NAME: ${{ steps.boundary.outputs.endpoint_name }}
-          STORAGE_ENDPOINT: ${{ steps.storage.outputs.storage_endpoint }}
-        run: |
-          set -euo pipefail
-          origin_host="${STORAGE_ENDPOINT#https://}"
-          origin_host="${origin_host%/}"
-          if ! az afd profile show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" >/dev/null 2>&1; then
-            az afd profile create \
-              -g "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --sku Standard_AzureFrontDoor \
-              --tags workload=lantern-site purpose=tenant-exit-staging owner=lantern-protocol \
-              --output none
-          fi
-          if ! az afd endpoint show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$ENDPOINT_NAME" >/dev/null 2>&1; then
-            az afd endpoint create \
-              -g "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --endpoint-name "$ENDPOINT_NAME" \
-              --enabled-state Enabled \
-              --tags workload=lantern-site purpose=tenant-exit-staging \
-              --output none
-          fi
-          if ! az afd origin-group show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --origin-group-name "$ORIGIN_GROUP_NAME" >/dev/null 2>&1; then
-            az afd origin-group create \
-              -g "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --origin-group-name "$ORIGIN_GROUP_NAME" \
-              --probe-request-type GET \
-              --probe-protocol Https \
-              --probe-interval-in-seconds 60 \
-              --probe-path / \
-              --sample-size 4 \
-              --successful-samples-required 3 \
-              --additional-latency-in-milliseconds 50 \
-              --output none
-          fi
-          if az afd origin show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --origin-group-name "$ORIGIN_GROUP_NAME" --origin-name "$ORIGIN_NAME" >/dev/null 2>&1; then
-            az afd origin update \
-              -g "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --origin-group-name "$ORIGIN_GROUP_NAME" \
-              --origin-name "$ORIGIN_NAME" \
-              --host-name "$origin_host" \
-              --origin-host-header "$origin_host" \
-              --priority 1 \
-              --weight 1000 \
-              --enabled-state Enabled \
-              --http-port 80 \
-              --https-port 443 \
-              --output none
-          else
-            az afd origin create \
-              -g "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --origin-group-name "$ORIGIN_GROUP_NAME" \
-              --origin-name "$ORIGIN_NAME" \
-              --host-name "$origin_host" \
-              --origin-host-header "$origin_host" \
-              --priority 1 \
-              --weight 1000 \
-              --enabled-state Enabled \
-              --http-port 80 \
-              --https-port 443 \
-              --output none
-          fi
-          if az afd route show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$ENDPOINT_NAME" --route-name "$ROUTE_NAME" >/dev/null 2>&1; then
-            az afd route update \
-              -g "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --endpoint-name "$ENDPOINT_NAME" \
-              --route-name "$ROUTE_NAME" \
-              --origin-group "$ORIGIN_GROUP_NAME" \
-              --enabled-state Enabled \
-              --forwarding-protocol HttpsOnly \
-              --https-redirect Enabled \
-              --link-to-default-domain Enabled \
-              --patterns-to-match '/*' \
-              --supported-protocols Http Https \
-              --output none
-          else
-            az afd route create \
-              -g "$RESOURCE_GROUP" \
-              --profile-name "$PROFILE_NAME" \
-              --endpoint-name "$ENDPOINT_NAME" \
-              --route-name "$ROUTE_NAME" \
-              --origin-group "$ORIGIN_GROUP_NAME" \
-              --enabled-state Enabled \
-              --forwarding-protocol HttpsOnly \
-              --https-redirect Enabled \
-              --link-to-default-domain Enabled \
-              --patterns-to-match '/*' \
-              --supported-protocols Http Https \
-              --output none
-          fi
-          afd_host="$(az afd endpoint show -g "$RESOURCE_GROUP" --profile-name "$PROFILE_NAME" --endpoint-name "$ENDPOINT_NAME" --query hostName -o tsv)"
-          [[ "$afd_host" == *.azurefd.net ]]
-          echo "frontdoor_endpoint=https://$afd_host/" >> "$GITHUB_OUTPUT"
-
-      - name: Require exact bytes through destination Storage and Front Door
-        shell: bash
-        env:
-          STORAGE_ACCOUNT: ${{ steps.boundary.outputs.storage }}
-          STORAGE_ENDPOINT: ${{ steps.storage.outputs.storage_endpoint }}
-          ENDPOINT_NAME: ${{ steps.boundary.outputs.endpoint_name }}
-          FRONTDOOR_ENDPOINT: ${{ steps.frontdoor.outputs.frontdoor_endpoint }}
-        run: |
-          set -euo pipefail
-          python -m scripts.lantern_destination_staging_verify \
-            --site-root "$SITE_SOURCE" \
-            --storage-endpoint "$STORAGE_ENDPOINT" \
-            --frontdoor-endpoint "$FRONTDOOR_ENDPOINT" \
-            --storage-account "$STORAGE_ACCOUNT" \
-            --frontdoor-profile "$PROFILE_NAME" \
-            --frontdoor-endpoint-name "$ENDPOINT_NAME" \
-            --attempts 24 \
-            --delay-seconds 15 \
-            --output "$QUALIFICATION_REPORT"
+          bash scripts/lantern_destination_staging_apply.sh \
+            "$DEST_TENANT_ID" \
+            "$DEST_SUBSCRIPTION_ID" \
+            "$RESOURCE_GROUP" \
+            "$SITE_SOURCE" \
+            "$QUALIFICATION_REPORT"
 
       - name: Retain sanitized destination staging evidence
         uses: actions/upload-artifact@v4
