@@ -102,6 +102,7 @@ response, or physical outcome.
 | Evidence deletion/modification | Qualification cannot be reconstructed | Complete five-kind set, strict schemas, canonical bytes, and signed digest binding | Separate immutable custody of the evidence package | All artifact bytes | Missing, malformed, duplicate-member, extra-field, and noncanonical JSON tests |
 | Overprivileged or substituted live client | Capture code writes or probes an unintended resource | Caller injects minimal S3/IAM capabilities; plan pins account, bucket, key, principal, and exact generated version; no client construction or credential discovery | Separate workload identity, resource policies, and non-production account controls | Client provenance and live-run authorization record | Stub records required parameters; future controlled negative run |
 | Missing, stale, forged, or scope-shifted execution approval | A client call occurs without current authority or against another plan | Verify configured-authorizer Ed25519 signature, independent policy, validity interval, exact plan digest, resource identity, environment, and bounded cost before the first client call | Human identity, independent budget approval, effective IAM policy, and signer hardware attestation | Signed authorization plus independently supplied policy | Expiry, signature, plan-substitution, environment, and zero-client-call tests |
+| Authorization/result separation or artifact substitution | A valid approval is presented beside artifacts from another run | A distinct recorder key signs the complete authorization-record digest, plan, shared object version, five canonical artifact digests, and bounded receipt time | Provider-signed observations, recorder attestation, and organizational independence | Authorization, receipt, exact five artifacts, plan, and independent policies | Swap authorization, artifact bytes, context, version, recorder key, or signature |
 | Archive-body or credential retention by capture code | Sensitive material leaks into evidence output | Result contains only normalized metadata and SHA-256 bindings; credentials are never accepted; CI asserts archive bytes are absent from artifacts | Secret scanning and protected evidence-export path | Secret-free output inventory | Stubbed artifact serialization and repository scans |
 | Compromised evidence issuer | Fabricated captures receive a valid ETS signature | Separate issuer key and explicit provider-authenticity nonclaim | Hardware-backed key, lifecycle, workload attestation, independent capture | Key attestation and signer history | Future live negative/control run |
 | Clock manipulation | Retention interval is misstated | Exact ordered artifact/qualification timestamps; trusted-time remains false | Provider and external trusted-time attestations | Time-bearing provider responses and attestations | Substitute or reorder times |
@@ -156,6 +157,32 @@ from being used under a simulation manifest. The marker is a misuse guard, not c
 This is an authenticated configured-key authorization assertion, not proof of the human signer,
 independent budget approval, effective AWS permissions, provider execution, correct clock, or
 workload identity. No live manifest or signing key is included.
+
+## Signed execution receipt
+
+[`ets.ranger.aws_s3_object_lock_execution`](../../../ets/ranger/aws_s3_object_lock_execution.py)
+adds `ets.ranger.aws-s3-execution-receipt.v1`. The guarded orchestration calls the authorized
+capture adapter first and issues no receipt if capture fails. After successful capture, a recorder
+key distinct from the authorization key signs:
+
+- the complete signed authorization-record digest and its internal authorization digest;
+- the exact capture-plan digest, qualification, verifier challenge, and environment;
+- the returned object version shared by all five artifacts;
+- the canonical SHA-256 of configuration, retention-put, delete-capability, delete-attempt, and
+  retrieval artifacts; and
+- the declared capture interval and bounded receipt-issuance time.
+
+Independent verification reruns authorization verification, reconstructs the exact plan and
+artifact digests, checks every artifact context against that plan, pins the recorder identity and
+public key, enforces key separation and maximum receipt delay, then verifies the canonical receipt
+digest and signature. Authorization or artifact substitution, mixed versions, context changes,
+stale receipts, same-key authorization/recording, and forged signatures fail closed.
+
+The receipt proves that a configured recorder key bound the supplied authorization, plan, and
+artifacts. It does not independently prove that AWS executed the calls, that AWS produced the
+captured fields, that capture was complete, that the recorder was uncompromised or organizationally
+independent, or that storage is physically WORM. The simulation fixture therefore remains a
+simulation even though both configured signatures verify.
 
 A controlled live trial remains separate work. It must run in an explicitly authorized,
 non-production qualification account/namespace with a fresh verifier challenge, a small synthetic

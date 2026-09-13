@@ -178,6 +178,7 @@ Current implementation increment:
 - [R0.2 AWS S3 Object Lock artifact verification](aws-s3-object-lock-qualification.md)
 - [R0.2 credential-isolated AWS qualification capture adapter](aws-s3-object-lock-qualification.md#credential-isolated-capture-adapter)
 - [R0.2 signed AWS qualification execution authorization](aws-s3-object-lock-qualification.md#signed-pre-execution-authorization)
+- [R0.2 signed AWS qualification execution receipt](aws-s3-object-lock-qualification.md#signed-execution-receipt)
 - [Captive electromagnetic actuation evidence demonstrator](captive-electromagnetic-actuation-demonstrator.md)
 - [Epistemic identity and bounded observability](epistemic-identity.md)
 - [Cyber-Physical Observability Model](cyber-physical-observability.md)
@@ -199,6 +200,7 @@ Current implementation increment:
 - [ADR 0014: immutable-publication qualification evidence](adr/0014-immutable-publication-qualification-evidence.md)
 - [ADR 0015: AWS S3 Object Lock artifact verification](adr/0015-aws-s3-object-lock-artifact-verification.md)
 - [ADR 0016: signed AWS qualification execution authorization](adr/0016-signed-aws-qualification-execution-authorization.md)
+- [ADR 0017: signed AWS qualification execution receipt](adr/0017-signed-aws-qualification-execution-receipt.md)
 
 ### R0.1 — Mobility
 - safe rolling chassis

@@ -22,6 +22,15 @@ from ets.ranger.aws_s3_object_lock_capture import (
     capture_aws_s3_object_lock_qualification,
     verify_aws_s3_execution_authorization,
 )
+from ets.ranger.aws_s3_object_lock_execution import (
+    RangerAwsS3ExecutionPackage,
+    RangerAwsS3ExecutionReceiptError,
+    RangerAwsS3ExecutionReceiptPolicy,
+    aws_s3_execution_receipt_bytes,
+    build_aws_s3_execution_receipt,
+    capture_aws_s3_object_lock_qualification_with_receipt,
+    verify_aws_s3_execution_receipt,
+)
 from ets.ranger.immutable_publication import RangerImmutableEvidenceArtifactKind
 
 NOW = datetime(2026, 9, 12, 20, 0, tzinfo=UTC)
@@ -33,6 +42,13 @@ PRINCIPAL = "arn:aws:iam::123456789012:role/ranger-delete-probe"
 PRIVATE_KEY_HEX = "11" * 32
 PUBLIC_KEY_HEX = (
     Ed25519PrivateKey.from_private_bytes(bytes.fromhex(PRIVATE_KEY_HEX))
+    .public_key()
+    .public_bytes(Encoding.Raw, PublicFormat.Raw)
+    .hex()
+)
+RECORDER_PRIVATE_KEY_HEX = "22" * 32
+RECORDER_PUBLIC_KEY_HEX = (
+    Ed25519PrivateKey.from_private_bytes(bytes.fromhex(RECORDER_PRIVATE_KEY_HEX))
     .public_key()
     .public_bytes(Encoding.Raw, PublicFormat.Raw)
     .hex()
@@ -207,6 +223,37 @@ def _capture(
     )
 
 
+def _capture_package() -> tuple[
+    RangerAwsS3ExecutionPackage,
+    RangerAwsS3ExecutionAuthorization,
+    RangerAwsS3ObjectLockCapturePlan,
+    RangerAwsS3ExecutionReceiptPolicy,
+]:
+    plan = _plan()
+    authorization, authorization_policy = _authorization_bundle(plan)
+    package = capture_aws_s3_object_lock_qualification_with_receipt(
+        plan,
+        authorization=authorization,
+        authorization_policy=authorization_policy,
+        s3_client=_S3Stub(),
+        iam_client=_IamStub(),
+        receipt_id="receipt-123",
+        receipt_issued_at_utc=NOW + timedelta(minutes=5),
+        recorder_id="ets-ranger:test-recorder",
+        recorder_signing_key_id="recorder-key-1",
+        recorder_private_key_hex=RECORDER_PRIVATE_KEY_HEX,
+    )
+    policy = RangerAwsS3ExecutionReceiptPolicy(
+        authorization_policy=authorization_policy,
+        expected_receipt_id="receipt-123",
+        expected_recorder_id="ets-ranger:test-recorder",
+        expected_recorder_signing_key_id="recorder-key-1",
+        recorder_public_key_hex=RECORDER_PUBLIC_KEY_HEX,
+        maximum_receipt_delay_seconds=120,
+    )
+    return package, authorization, plan, policy
+
+
 def test_capture_adapter_emits_five_canonical_artifacts_from_injected_stubs() -> None:
     s3 = _S3Stub()
     iam = _IamStub()
@@ -244,6 +291,113 @@ def test_capture_adapter_emits_five_canonical_artifacts_from_injected_stubs() ->
     assert set(artifacts) == set(RangerImmutableEvidenceArtifactKind)
     assert all(value.startswith(b"{") for value in artifacts.values())
     assert ARCHIVE not in b"".join(artifacts.values())
+
+
+def test_execution_receipt_binds_authorization_and_all_returned_artifacts() -> None:
+    package, authorization, plan, policy = _capture_package()
+
+    result = verify_aws_s3_execution_receipt(
+        package, authorization, plan, policy=policy
+    )
+
+    assert result.valid
+    assert result.configured_authorizer_signature_proven
+    assert result.configured_recorder_signature_proven
+    assert result.exact_capture_artifacts_bound
+    assert not result.provider_execution_independently_proven
+    assert package.execution_receipt.object_version_id == "version-123"
+    assert (
+        package.execution_receipt.authorization_digest_sha256
+        == authorization.authorization_digest_sha256
+    )
+    assert aws_s3_execution_receipt_bytes(package.execution_receipt).startswith(b"{")
+
+
+def test_execution_receipt_rejects_artifact_and_authorization_substitution() -> None:
+    package, authorization, plan, policy = _capture_package()
+    configuration = package.capture_result.configuration
+    versioning = configuration.get_bucket_versioning
+    changed_metadata = versioning.metadata.model_copy(update={"request_id": "substituted"})
+    changed_versioning = versioning.model_copy(update={"metadata": changed_metadata})
+    changed_configuration = configuration.model_copy(
+        update={"get_bucket_versioning": changed_versioning}
+    )
+    changed_result = package.capture_result.model_copy(
+        update={"configuration": changed_configuration}
+    )
+    changed_package = package.model_copy(update={"capture_result": changed_result})
+
+    result = verify_aws_s3_execution_receipt(
+        changed_package, authorization, plan, policy=policy
+    )
+    assert not result.valid
+    assert "artifact digest mismatch" in result.reason
+
+    substituted_authorization = build_aws_s3_execution_authorization(
+        plan,
+        authorization_id="authorization-123",
+        execution_environment=RangerAwsS3ExecutionEnvironment.SIMULATION,
+        issued_at_utc=NOW - timedelta(minutes=3),
+        not_before_utc=NOW - timedelta(minutes=1),
+        expires_at_utc=NOW + timedelta(minutes=30),
+        approved_cost_ceiling_usd_cents=0,
+        cloud_execution_authorized=False,
+        spending_authorized=False,
+        authorizer_id="ets-ranger:test-authorizer",
+        authorizer_signing_key_id="test-key-1",
+        authorizer_private_key_hex=PRIVATE_KEY_HEX,
+    )
+    result = verify_aws_s3_execution_receipt(
+        package, substituted_authorization, plan, policy=policy
+    )
+    assert not result.valid
+    assert "authorization-record digest mismatch" in result.reason
+
+
+def test_execution_receipt_rejects_bad_signature_and_same_authorizer_key() -> None:
+    package, authorization, plan, policy = _capture_package()
+    bad_receipt = package.execution_receipt.model_copy(
+        update={"recorder_signature_hex": "0" * 128}
+    )
+    bad_package = package.model_copy(update={"execution_receipt": bad_receipt})
+
+    result = verify_aws_s3_execution_receipt(
+        bad_package, authorization, plan, policy=policy
+    )
+    assert not result.valid
+    assert "signature invalid" in result.reason
+
+    with pytest.raises(RangerAwsS3ExecutionReceiptError, match="must be distinct"):
+        build_aws_s3_execution_receipt(
+            authorization,
+            plan,
+            package.capture_result,
+            authorization_policy=policy.authorization_policy,
+            receipt_id="receipt-duplicate-key",
+            receipt_issued_at_utc=NOW + timedelta(minutes=5),
+            recorder_id="ets-ranger:test-recorder",
+            recorder_signing_key_id="test-key-1",
+            recorder_private_key_hex=PRIVATE_KEY_HEX,
+        )
+
+
+def test_guarded_execution_does_not_issue_receipt_when_capture_fails() -> None:
+    plan = _plan()
+    authorization, authorization_policy = _authorization_bundle(plan)
+
+    with pytest.raises(RangerAwsS3ObjectLockCaptureError, match="unexpectedly succeeded"):
+        capture_aws_s3_object_lock_qualification_with_receipt(
+            plan,
+            authorization=authorization,
+            authorization_policy=authorization_policy,
+            s3_client=_S3Stub(delete_succeeds=True),
+            iam_client=_IamStub(),
+            receipt_id="receipt-must-not-exist",
+            receipt_issued_at_utc=NOW + timedelta(minutes=5),
+            recorder_id="ets-ranger:test-recorder",
+            recorder_signing_key_id="recorder-key-1",
+            recorder_private_key_hex=RECORDER_PRIVATE_KEY_HEX,
+        )
 
 
 def test_capture_adapter_fails_closed_when_versioned_delete_succeeds() -> None:
