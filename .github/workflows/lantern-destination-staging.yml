@@ -1,0 +1,130 @@
+name: Lantern Destination Staging Qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      authorization:
+        description: Exact Lantern destination staging authorization phrase
+        required: true
+        type: string
+      expected_commit:
+        description: Exact reviewed main commit authorized for destination staging
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: lantern-destination-staging
+  cancel-in-progress: false
+
+jobs:
+  stage-and-qualify:
+    name: Stage Lantern on destination Storage and Front Door default endpoint
+    runs-on: ubuntu-latest
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 45
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      AUTHORIZATION: ${{ inputs.authorization }}
+      RESOURCE_GROUP: rg-ets-prod-eastus
+      SITE_SOURCE: ops/lantern-site-backup/site
+      SWEEP_REPORT: ${{ runner.temp }}/lantern-destination-source-sweep.json
+      QUALIFICATION_REPORT: ${{ runner.temp }}/lantern-destination-staging.json
+
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head or unauthorized destination staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$AUTHORIZATION" == "LANTERN_DESTINATION_STAGING_AUTHORIZED" ]]
+          [[ "${DEST_TENANT_ID,,}" == "0d20cf0f-3498-46c1-a0db-69b09c634cc2" ]]
+          [[ "${DEST_SUBSCRIPTION_ID,,}" == "5729a82b-8850-4868-b96c-96c3805cbb9d" ]]
+          [[ -n '${{ vars.AZURE_CLIENT_ID }}' ]]
+          test -f "$SITE_SOURCE/index.html"
+          grep -Fqi '<meta name="robots" content="noindex, nofollow">' "$SITE_SOURCE/index.html"
+
+      - name: Re-prove deployable site has no source-Azure dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.lantern_content_dependency_sweep \
+            --site-root "$SITE_SOURCE" \
+            --output "$SWEEP_REPORT"
+
+      - name: Azure login to destination only
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Front Door CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name cdn --upgrade --yes --only-show-errors
+
+      - name: Converge and qualify destination-only Lantern staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/lantern_destination_staging_apply.sh \
+            "$DEST_TENANT_ID" \
+            "$DEST_SUBSCRIPTION_ID" \
+            "$RESOURCE_GROUP" \
+            "$SITE_SOURCE" \
+            "$QUALIFICATION_REPORT"
+
+      - name: Retain sanitized destination staging evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: lantern-destination-staging-readiness
+          path: ${{ runner.temp }}/lantern-destination-staging.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove runner-local reports
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$SWEEP_REPORT" "$QUALIFICATION_REPORT"
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert staging-only boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Lantern destination staging boundary
+
+          - destination-native static Storage: `qualified`
+          - destination Front Door default endpoint: `qualified`
+          - checked-in site byte equivalence: `pass through both endpoints`
+          - noindex/nofollow: `preserved`
+          - production custom domain: `not attached`
+          - production DNS: `unchanged`
+          - source Lantern resources: `not modified`
+          - ETS Core/Gateway: `not modified`
+          - tenant_exit_ready: `false`
+
+          Gate 8 remains responsible for custom-domain/TLS/DNS cutover after ETS Gate 7 and all
+          Lantern tenant-exit dependencies are independently green.
+          EOF
