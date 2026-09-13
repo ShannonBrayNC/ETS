@@ -33,7 +33,7 @@ The files under `publication/` are generated artifacts and must not be edited by
 - `publication/VRX_Physics_Laboratory_ElevenReader.md`
 - `publication/VRX_Physics_Laboratory_Research_Edition.md`
 
-The ElevenReader build removes display-only LaTeX after the concept has already been explained in narration, removes raw URLs and low-value Markdown syntax, converts common mathematical symbols into spoken words, normalizes tables and headings, and keeps the book/chapter structure visibly bold for rich-text import.
+The ElevenReader build removes display-only LaTeX after the concept has already been explained in narration, removes raw URLs and low-value Markdown syntax, converts common mathematical symbols into spoken words, normalizes tables and headings, and keeps the book/chapter structure visibly bold for rich-text import. Its title/subtitle/author block is rendered from `front-matter.md` only; the builder must never prepend a second title block.
 
 The research edition preserves equations, technical Markdown, glossary, references, and the technical-review appendix.
 
