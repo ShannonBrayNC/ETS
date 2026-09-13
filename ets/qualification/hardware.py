@@ -258,7 +258,11 @@ class HardwareQualificationRun(StrictModel):
         for evidence in self.evidence_objects:
             _require_members(evidence.artifact_ids, artifact_ids, "Evidence Object artifact")
         for deviation in self.deviations:
-            _require_member(deviation.approval_artifact_id, artifact_ids, "deviation approval artifact")
+            _require_member(
+                deviation.approval_artifact_id,
+                artifact_ids,
+                "deviation approval artifact",
+            )
 
         for execution in self.test_executions:
             _require_member(execution.starting_state_id, state_ids, "test starting state")
@@ -289,13 +293,17 @@ class HardwareQualificationRun(StrictModel):
             if self.verifier_result.status is not VerifierStatus.VALID:
                 raise ValueError("qualified disposition requires a valid independent verifier")
             if not self.evidence_objects:
-                raise ValueError("qualified disposition requires retained Evidence Object references")
+                raise ValueError(
+                    "qualified disposition requires retained Evidence Object references"
+                )
             for execution in self.test_executions:
                 if execution.required and execution.status not in {
                     TestStatus.PASSED,
                     TestStatus.WAIVED,
                 }:
-                    raise ValueError("qualified disposition requires every required case to pass/waive")
+                    raise ValueError(
+                        "qualified disposition requires every required case to pass/waive"
+                    )
             if self.final_disposition is QualificationDisposition.QUALIFIED:
                 if any(item.affects_claim_scope for item in self.deviations):
                     raise ValueError("claim-affecting deviation requires qualified_with_deviation")
