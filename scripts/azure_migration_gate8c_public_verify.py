@@ -276,7 +276,9 @@ def verify_public(
     for host in ("www.lanternprotocol.net", "azure.lanternprotocol.net"):
         public = _dig(host, "CNAME")
         if public != [expected_target]:
-            raise MigrationControlError(f"Public DNS does not route {host} to destination Front Door")
+            raise MigrationControlError(
+                f"Public DNS does not route {host} to destination Front Door"
+            )
         for resolver in ("1.1.1.1", "8.8.8.8"):
             if _dig(host, "CNAME", resolver) != [expected_target]:
                 raise MigrationControlError(
