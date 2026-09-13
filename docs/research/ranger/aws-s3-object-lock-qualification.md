@@ -103,6 +103,7 @@ response, or physical outcome.
 | Overprivileged or substituted live client | Capture code writes or probes an unintended resource | Caller injects minimal S3/IAM capabilities; plan pins account, bucket, key, principal, and exact generated version; no client construction or credential discovery | Separate workload identity, resource policies, and non-production account controls | Client provenance and live-run authorization record | Stub records required parameters; future controlled negative run |
 | Missing, stale, forged, or scope-shifted execution approval | A client call occurs without current authority or against another plan | Verify configured-authorizer Ed25519 signature, independent policy, validity interval, exact plan digest, resource identity, environment, and bounded cost before the first client call | Human identity, independent budget approval, effective IAM policy, and signer hardware attestation | Signed authorization plus independently supplied policy | Expiry, signature, plan-substitution, environment, and zero-client-call tests |
 | Authorization/result separation or artifact substitution | A valid approval is presented beside artifacts from another run | A distinct recorder key signs the complete authorization-record digest, plan, shared object version, five canonical artifact digests, and bounded receipt time | Provider-signed observations, recorder attestation, and organizational independence | Authorization, receipt, exact five artifacts, plan, and independent policies | Swap authorization, artifact bytes, context, version, recorder key, or signature |
+| Unscoped CloudTrail evidence reads or compressed-object expansion | A reused authorization reads unintended provider data or a gzip object exhausts memory | Existing receipt verifies before calls; simulation requires marked clients; account/Region/key/location/file bounds are pinned; decompression is output-bounded; live reads are disabled | Separately signed CloudTrail read scope and authorized live workload identity | Capture plan, authorization/receipt, client-call trace, key/selector observations, digest metadata, and exact referenced logs | Invalid receipt and live/unmarked clients produce zero calls; substitute key/signature; duplicate paths; exceed gzip output bound |
 | Archive-body or credential retention by capture code | Sensitive material leaks into evidence output | Result contains only normalized metadata and SHA-256 bindings; credentials are never accepted; CI asserts archive bytes are absent from artifacts | Secret scanning and protected evidence-export path | Secret-free output inventory | Stubbed artifact serialization and repository scans |
 | Compromised evidence issuer | Fabricated captures receive a valid ETS signature | Separate issuer key and explicit provider-authenticity nonclaim | Hardware-backed key, lifecycle, workload attestation, independent capture | Key attestation and signer history | Future live negative/control run |
 | Clock manipulation | Retention interval is misstated | Exact ordered artifact/qualification timestamps; trusted-time remains false | Provider and external trusted-time attestations | Time-bearing provider responses and attestations | Substitute or reorder times |
@@ -183,6 +184,40 @@ artifacts. It does not independently prove that AWS executed the calls, that AWS
 captured fields, that capture was complete, that the recorder was uncompromised or organizationally
 independent, or that storage is physically WORM. The simulation fixture therefore remains a
 simulation even though both configured signatures verify.
+
+## Credential-isolated CloudTrail evidence capture
+
+[`ets.ranger.aws_cloudtrail_capture`](../../../ets/ranger/aws_cloudtrail_capture.py) passively
+collects the inputs required by the CloudTrail provider-boundary verifier through caller-injected
+CloudTrail and S3 clients. It does not import an AWS SDK, resolve credentials or profiles, select
+endpoints, or construct clients. The signed AWS execution package is verified before either client
+can be invoked. This increment accepts only simulation authorization and explicitly marked test
+doubles. A non-production authorization fails before any call because the existing signed manifest
+does not cover the additional CloudTrail and digest/log read scope.
+
+The capture plan independently pins the account, Region, trail, exact digest object, CloudTrail
+public-key fingerprint and DER SHA-256, UTC window, maximum file count, maximum uncompressed file
+size, and event-time skew. The adapter then performs a bounded sequence:
+
+1. `ListPublicKeys` for the exact UTC window, requiring one matching fingerprint and DER digest;
+2. `GetEventSelectors` for the named trail, retaining canonical digests of both selector arrays;
+3. version-neutral read of the exact pinned digest object, retaining its hexadecimal signature and
+   `SHA256withRSA` metadata; and
+4. read and bounded gzip decompression of exactly the log objects referenced by that digest.
+
+Pagination, ambiguous keys, invalid validity intervals, changed key bytes, absent signature
+metadata, invalid gzip/JSON, duplicate log paths, empty references, or count/size overflow fails
+closed. The composed helper passes those exact captured bytes into the independent verifier rather
+than reconstructing or normalizing signed content.
+
+The adapter records the provider request IDs for key and selector lookups, but does not retain
+credentials or raw response envelopes. Selector-array digests establish what the injected client
+returned; they do not prove the selectors were continuously effective or complete. Likewise,
+`ListPublicKeys` capture does not independently authenticate AWS as the key source. The capture plan
+is an independent runtime constraint but is not yet a separately signed scope extension, so
+`capture_scope_independently_signed`, public-key provenance, complete coverage, and provider
+execution all remain false. Live use requires a separately signed scope extension before this guard
+can be relaxed.
 
 A controlled live trial remains separate work. It must run in an explicitly authorized,
 non-production qualification account/namespace with a fresh verifier challenge, a small synthetic

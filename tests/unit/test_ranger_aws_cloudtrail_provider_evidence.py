@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 import base64
+import gzip
 import hashlib
 import json
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519, padding, rsa
 
+from ets.ranger.aws_cloudtrail_capture import (
+    RangerAwsCloudTrailCaptureError,
+    RangerAwsCloudTrailCapturePlan,
+    capture_and_verify_aws_cloudtrail_provider_evidence,
+    capture_aws_cloudtrail_provider_evidence,
+)
 from ets.ranger.aws_cloudtrail_provider_evidence import (
     RangerAwsCloudTrailVerificationPolicy,
     verify_aws_cloudtrail_provider_evidence,
@@ -494,3 +503,292 @@ def test_cloudtrail_verifier_rejects_request_substitution_even_when_resigned() -
 
     assert not verification.valid
     assert "exactly one event" in verification.reason
+
+
+class _CaptureBody:
+    def __init__(self, value: bytes) -> None:
+        self.value = value
+
+    def read(self, amount: int = -1) -> bytes:
+        return self.value if amount < 0 else self.value[:amount]
+
+
+class _CloudTrailCaptureStub:
+    ets_ranger_simulation = True
+
+    def __init__(self, public_key: bytes) -> None:
+        self.public_key = public_key
+        self.calls: list[tuple[str, dict[str, object]]] = []
+
+    def list_public_keys(self, **kwargs: object) -> dict[str, object]:
+        self.calls.append(("list_public_keys", kwargs))
+        return {
+            "PublicKeyList": [
+                {
+                    "Value": self.public_key,
+                    "ValidityStartTime": NOW - timedelta(days=1),
+                    "ValidityEndTime": NOW + timedelta(days=1),
+                    "Fingerprint": FINGERPRINT,
+                }
+            ],
+            "ResponseMetadata": _meta(20),
+        }
+
+    def get_event_selectors(self, **kwargs: object) -> dict[str, object]:
+        self.calls.append(("get_event_selectors", kwargs))
+        return {
+            "TrailARN": "arn:aws:cloudtrail:us-east-1:123456789012:trail/ranger",
+            "EventSelectors": [{"ReadWriteType": "All", "IncludeManagementEvents": True}],
+            "AdvancedEventSelectors": [],
+            "ResponseMetadata": _meta(21),
+        }
+
+
+class _CloudTrailS3CaptureStub:
+    ets_ranger_simulation = True
+
+    def __init__(
+        self,
+        digest: bytes,
+        signature: str,
+        logs: dict[str, bytes],
+        *,
+        include_signature: bool = True,
+    ) -> None:
+        self.digest = digest
+        self.signature = signature
+        self.logs = logs
+        self.include_signature = include_signature
+        self.calls: list[dict[str, object]] = []
+
+    def get_object(self, **kwargs: object) -> dict[str, object]:
+        self.calls.append(kwargs)
+        bucket = kwargs["Bucket"]
+        key = kwargs["Key"]
+        path = f"{bucket}/{key}"
+        if bucket == DIGEST_BUCKET and key == DIGEST_OBJECT:
+            metadata = {"signature-algorithm": "SHA256withRSA"}
+            if self.include_signature:
+                metadata["signature"] = self.signature
+            return {
+                "Body": _CaptureBody(gzip.compress(self.digest)),
+                "Metadata": metadata,
+                "ResponseMetadata": _meta(22),
+            }
+        return {
+            "Body": _CaptureBody(gzip.compress(self.logs[path])),
+            "ResponseMetadata": _meta(23),
+        }
+
+
+def _capture_plan(public_key: bytes) -> RangerAwsCloudTrailCapturePlan:
+    return RangerAwsCloudTrailCapturePlan(
+        trail_name="ranger-qualification-trail",
+        aws_account_id=ACCOUNT,
+        aws_region="us-east-1",
+        digest_s3_bucket=DIGEST_BUCKET,
+        digest_s3_object=DIGEST_OBJECT,
+        expected_public_key_fingerprint=FINGERPRINT,
+        expected_public_key_der_sha256=hashlib.sha256(public_key).hexdigest(),
+        window_start_utc=NOW - timedelta(minutes=1),
+        window_end_utc=NOW + timedelta(minutes=10),
+        maximum_log_files=4,
+        maximum_log_file_bytes=1024 * 1024,
+        maximum_event_time_skew_seconds=60,
+    )
+
+
+def test_cloudtrail_capture_uses_injected_clients_and_composes_with_verifier() -> None:
+    package, authorization, plan, receipt_policy = _package_bundle()
+    digest, signature, public_key, logs, _ = _cloudtrail_evidence(package)
+    cloudtrail = _CloudTrailCaptureStub(public_key)
+    s3 = _CloudTrailS3CaptureStub(digest, signature, logs)
+
+    bundle, verification = capture_and_verify_aws_cloudtrail_provider_evidence(
+        package,
+        authorization,
+        plan,
+        receipt_policy=receipt_policy,
+        capture_plan=_capture_plan(public_key),
+        cloudtrail_client=cloudtrail,
+        s3_client=s3,
+    )
+
+    assert verification.valid
+    assert bundle.execution_receipt_verified_before_calls
+    assert bundle.injected_client_boundary_enforced
+    assert not bundle.capture_scope_independently_signed
+    assert not bundle.aws_public_key_provenance_independently_verified
+    assert len(bundle.uncompressed_log_files) == 1
+    assert [name for name, _ in cloudtrail.calls] == [
+        "list_public_keys",
+        "get_event_selectors",
+    ]
+    assert len(s3.calls) == 2
+    assert all(call["ExpectedBucketOwner"] == ACCOUNT for call in s3.calls)
+
+
+def test_cloudtrail_capture_rejects_invalid_receipt_before_client_calls() -> None:
+    package, authorization, plan, receipt_policy = _package_bundle()
+    digest, signature, public_key, logs, _ = _cloudtrail_evidence(package)
+    cloudtrail = _CloudTrailCaptureStub(public_key)
+    s3 = _CloudTrailS3CaptureStub(digest, signature, logs)
+    wrong_policy = receipt_policy.model_copy(
+        update={"expected_receipt_id": "wrong-receipt"}
+    )
+
+    try:
+        capture_aws_cloudtrail_provider_evidence(
+            package,
+            authorization,
+            plan,
+            receipt_policy=wrong_policy,
+            capture_plan=_capture_plan(public_key),
+            cloudtrail_client=cloudtrail,
+            s3_client=s3,
+        )
+    except RangerAwsCloudTrailCaptureError as exc:
+        assert "execution receipt is invalid" in str(exc)
+    else:
+        raise AssertionError("invalid receipt unexpectedly reached provider clients")
+    assert cloudtrail.calls == []
+    assert s3.calls == []
+
+
+def test_cloudtrail_capture_rejects_unmarked_simulation_clients_before_calls() -> None:
+    package, authorization, plan, receipt_policy = _package_bundle()
+    digest, signature, public_key, logs, _ = _cloudtrail_evidence(package)
+    cloudtrail = _CloudTrailCaptureStub(public_key)
+    s3 = _CloudTrailS3CaptureStub(digest, signature, logs)
+    cloudtrail.ets_ranger_simulation = False
+
+    try:
+        capture_aws_cloudtrail_provider_evidence(
+            package,
+            authorization,
+            plan,
+            receipt_policy=receipt_policy,
+            capture_plan=_capture_plan(public_key),
+            cloudtrail_client=cloudtrail,
+            s3_client=s3,
+        )
+    except RangerAwsCloudTrailCaptureError as exc:
+        assert "marked test-double" in str(exc)
+    else:
+        raise AssertionError("unmarked simulation client was accepted")
+    assert cloudtrail.calls == []
+    assert s3.calls == []
+
+
+def test_cloudtrail_capture_rejects_substituted_key_before_s3_reads() -> None:
+    package, authorization, plan, receipt_policy = _package_bundle()
+    digest, signature, public_key, logs, _ = _cloudtrail_evidence(package)
+    substituted = rsa.generate_private_key(
+        public_exponent=65537, key_size=2048
+    ).public_key().public_bytes(
+        serialization.Encoding.DER,
+        serialization.PublicFormat.PKCS1,
+    )
+    cloudtrail = _CloudTrailCaptureStub(substituted)
+    s3 = _CloudTrailS3CaptureStub(digest, signature, logs)
+
+    try:
+        capture_aws_cloudtrail_provider_evidence(
+            package,
+            authorization,
+            plan,
+            receipt_policy=receipt_policy,
+            capture_plan=_capture_plan(public_key),
+            cloudtrail_client=cloudtrail,
+            s3_client=s3,
+        )
+    except RangerAwsCloudTrailCaptureError as exc:
+        assert "pinned SHA-256" in str(exc)
+    else:
+        raise AssertionError("substituted CloudTrail key was accepted")
+    assert len(cloudtrail.calls) == 1
+    assert s3.calls == []
+
+
+def test_cloudtrail_capture_requires_digest_signature_metadata() -> None:
+    package, authorization, plan, receipt_policy = _package_bundle()
+    digest, signature, public_key, logs, _ = _cloudtrail_evidence(package)
+    cloudtrail = _CloudTrailCaptureStub(public_key)
+    s3 = _CloudTrailS3CaptureStub(
+        digest, signature, logs, include_signature=False
+    )
+
+    try:
+        capture_aws_cloudtrail_provider_evidence(
+            package,
+            authorization,
+            plan,
+            receipt_policy=receipt_policy,
+            capture_plan=_capture_plan(public_key),
+            cloudtrail_client=cloudtrail,
+            s3_client=s3,
+        )
+    except RangerAwsCloudTrailCaptureError as exc:
+        assert "signature is missing" in str(exc)
+    else:
+        raise AssertionError("unsigned digest metadata was accepted")
+
+
+def test_cloudtrail_capture_rejects_live_scope_before_client_calls() -> None:
+    package, authorization, plan, receipt_policy = _package_bundle()
+    digest, signature, public_key, logs, _ = _cloudtrail_evidence(package)
+    cloudtrail = _CloudTrailCaptureStub(public_key)
+    s3 = _CloudTrailS3CaptureStub(digest, signature, logs)
+    live_authorization = authorization.model_copy(
+        update={
+            "execution_environment": (
+                RangerAwsS3ExecutionEnvironment.AUTHORIZED_NON_PRODUCTION
+            ),
+            "cloud_execution_authorized": True,
+            "spending_authorized": True,
+        }
+    )
+
+    with patch(
+        "ets.ranger.aws_cloudtrail_capture.verify_aws_s3_execution_receipt",
+        return_value=SimpleNamespace(valid=True, reason="verified"),
+    ):
+        try:
+            capture_aws_cloudtrail_provider_evidence(
+                package,
+                live_authorization,
+                plan,
+                receipt_policy=receipt_policy,
+                capture_plan=_capture_plan(public_key),
+                cloudtrail_client=cloudtrail,
+                s3_client=s3,
+            )
+        except RangerAwsCloudTrailCaptureError as exc:
+            assert "separately signed capture-scope" in str(exc)
+        else:
+            raise AssertionError("unsigned live CloudTrail read scope was accepted")
+    assert cloudtrail.calls == []
+    assert s3.calls == []
+
+
+def test_cloudtrail_capture_bounds_gzip_expansion() -> None:
+    package, authorization, plan, receipt_policy = _package_bundle()
+    digest, signature, public_key, logs, _ = _cloudtrail_evidence(package)
+    oversized_logs = {path: b"x" * (1024 * 1024 + 1) for path in logs}
+    cloudtrail = _CloudTrailCaptureStub(public_key)
+    s3 = _CloudTrailS3CaptureStub(digest, signature, oversized_logs)
+
+    try:
+        capture_aws_cloudtrail_provider_evidence(
+            package,
+            authorization,
+            plan,
+            receipt_policy=receipt_policy,
+            capture_plan=_capture_plan(public_key),
+            cloudtrail_client=cloudtrail,
+            s3_client=s3,
+        )
+    except RangerAwsCloudTrailCaptureError as exc:
+        assert "uncompressed body exceeds limit" in str(exc)
+    else:
+        raise AssertionError("oversized gzip expansion was accepted")
