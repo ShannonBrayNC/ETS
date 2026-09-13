@@ -1,0 +1,117 @@
+{
+  "schema_version": "ets.hardware-qualification-run.v1",
+  "run_id": "edge-hqp-example-run-001",
+  "profile": {
+    "profile_id": "ets.edge.hardware-qualification.v1",
+    "profile_version": "0.1.0-draft",
+    "profile_digest_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+  },
+  "device": {
+    "device_id": "edge-reference-001",
+    "manufacturer": "ETS Lab",
+    "model": "Edge Reference",
+    "hardware_revision": "rev-a",
+    "serial_or_asset_id": "LAB-EDGE-001",
+    "firmware": {"uefi": "1.0.0", "tpm": "7.2.0"},
+    "identity_digest_sha256": "7777777777777777777777777777777777777777777777777777777777777777"
+  },
+  "environment": {
+    "environment_id": "lab-bench-a",
+    "dimensions": {
+      "power_source": "controlled-ac",
+      "network_topology": "isolated-lab-vlan",
+      "time_source": "lab-ntp"
+    },
+    "environment_digest_sha256": "8888888888888888888888888888888888888888888888888888888888888888"
+  },
+  "build": {
+    "repository": "ShannonBrayNC/ETS",
+    "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifact_digest_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+    "configuration_digest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sbom_artifact_id": null
+  },
+  "observers": [{
+    "observer_id": "observer-lab-controller",
+    "observer_kind": "machine",
+    "role": "independent-lab-observer",
+    "signing_identity": "did:example:lab-controller"
+  }],
+  "started_at": "2026-09-13T20:00:00Z",
+  "completed_at": "2026-09-13T20:05:00Z",
+  "starting_states": [{
+    "state_id": "state-start",
+    "canonical_digest_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "artifact_ids": ["artifact-start"]
+  }],
+  "stimuli": [{
+    "stimulus_id": "stimulus-1",
+    "test_id": "EDGE-HQP-DUR-001",
+    "issued_at": "2026-09-13T20:01:00Z",
+    "authority_reference": "authority://lab-runner/001",
+    "stimulus_class": "bounded_restart",
+    "canonical_digest_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+    "artifact_ids": ["artifact-stimulus"]
+  }],
+  "observations": [{
+    "observation_id": "observation-1",
+    "test_id": "EDGE-HQP-DUR-001",
+    "observer_id": "observer-lab-controller",
+    "observed_at": "2026-09-13T20:02:00Z",
+    "observation_class": "post-restart-record-observation",
+    "canonical_digest_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "artifact_ids": ["artifact-observation"],
+    "uncertainty_statement": "Observation is bounded to the retained lab interface."
+  }],
+  "resulting_states": [{
+    "resulting_state_id": "result-1",
+    "test_id": "EDGE-HQP-DUR-001",
+    "observed_at": "2026-09-13T20:03:00Z",
+    "canonical_digest_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+    "artifact_ids": ["artifact-result"]
+  }],
+  "artifacts": [
+    {"artifact_id":"artifact-start","artifact_role":"artifact-start","media_type":"application/json","sha256":"0000000000000000000000000000000000000000000000000000000000000000","byte_length":128,"retention_locator":"artifact://artifact-start","redaction_state":"none","required":true,"secret_material_embedded":false,"private_key_embedded":false},
+    {"artifact_id":"artifact-stimulus","artifact_role":"artifact-stimulus","media_type":"application/json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","byte_length":128,"retention_locator":"artifact://artifact-stimulus","redaction_state":"none","required":true,"secret_material_embedded":false,"private_key_embedded":false},
+    {"artifact_id":"artifact-observation","artifact_role":"artifact-observation","media_type":"application/json","sha256":"2222222222222222222222222222222222222222222222222222222222222222","byte_length":128,"retention_locator":"artifact://artifact-observation","redaction_state":"none","required":true,"secret_material_embedded":false,"private_key_embedded":false},
+    {"artifact_id":"artifact-result","artifact_role":"artifact-result","media_type":"application/json","sha256":"3333333333333333333333333333333333333333333333333333333333333333","byte_length":128,"retention_locator":"artifact://artifact-result","redaction_state":"none","required":true,"secret_material_embedded":false,"private_key_embedded":false},
+    {"artifact_id":"artifact-evidence","artifact_role":"artifact-evidence","media_type":"application/json","sha256":"4444444444444444444444444444444444444444444444444444444444444444","byte_length":128,"retention_locator":"artifact://artifact-evidence","redaction_state":"none","required":true,"secret_material_embedded":false,"private_key_embedded":false},
+    {"artifact_id":"artifact-approval","artifact_role":"artifact-approval","media_type":"application/json","sha256":"5555555555555555555555555555555555555555555555555555555555555555","byte_length":128,"retention_locator":"artifact://artifact-approval","redaction_state":"none","required":true,"secret_material_embedded":false,"private_key_embedded":false}
+  ],
+  "evidence_objects": [{
+    "evidence_object_id": "evidence-object-1",
+    "evidence_class": "hardware-qualification-result",
+    "canonical_digest_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+    "artifact_ids": ["artifact-evidence"]
+  }],
+  "test_executions": [{
+    "test_id": "EDGE-HQP-DUR-001",
+    "required": true,
+    "status": "passed",
+    "started_at": "2026-09-13T20:00:00Z",
+    "completed_at": "2026-09-13T20:05:00Z",
+    "starting_state_id": "state-start",
+    "stimulus_ids": ["stimulus-1"],
+    "observation_ids": ["observation-1"],
+    "resulting_state_ids": ["result-1"],
+    "evidence_object_ids": ["evidence-object-1"],
+    "artifact_ids": ["artifact-start","artifact-stimulus","artifact-observation","artifact-result","artifact-evidence"],
+    "assertions": [{"assertion_id":"committed-record-recoverable","passed":true,"reason":"Retained test assertion result."}],
+    "deviation_ids": []
+  }],
+  "deviations": [],
+  "verifier_result": {
+    "status": "valid",
+    "verifier_id": "ets-hqp-verifier-test-fixture",
+    "verifier_build_digest_sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+    "independent_execution_context": true,
+    "verification_digest_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+    "challenge_nonce": "fixture-challenge-001",
+    "reason": "Fixture verifier independently reproduced the retained package bindings."
+  },
+  "final_disposition": "qualified",
+  "run_digest_sha256": "7b7de21b8dcbf3cc53c5f1df46130c097125b1ae2fc161ecff29541a7fc2f074",
+  "credentials_embedded": false,
+  "private_keys_embedded": false,
+  "claim_boundary": "bounded_hqp_execution_evidence_not_complete_observation_truth_compliance_safety_or_ga_proof"
+}
