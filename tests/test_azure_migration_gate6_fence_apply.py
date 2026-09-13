@@ -98,15 +98,6 @@ def test_fence_applies_monotonic_sequence_and_requires_stability(
         lambda _rg, app: events.append(("dark", app)),
     )
     monkeypatch.setattr(fence, "_capture_state", lambda _rg: next(states))
-    monkeypatch.setattr(
-        fence,
-        "datetime",
-        type(
-            "FrozenDateTime",
-            (),
-            {"now": staticmethod(lambda _tz: type("Stamp", (), {"isoformat": lambda self: "2026-09-13T18:30:00+00:00"})())},
-        ),
-    )
 
     sleeps: list[float] = []
     result = fence.apply_source_fence(
@@ -185,7 +176,7 @@ def test_scale_rule_guard_rejects_event_driven_reactivation(
 
 
 def test_module_has_no_automatic_source_reactivation_or_cutover_path() -> None:
-    source = inspect.getsource(fence)
+    source = inspect.getsource(fence).lower()
     for forbidden in (
         '"revision",\n            "activate"',
         '"ingress",\n            "enable"',
@@ -194,11 +185,12 @@ def test_module_has_no_automatic_source_reactivation_or_cutover_path() -> None:
         "storage entity insert",
         "storage entity replace",
     ):
-        assert forbidden not in source.lower()
+        assert forbidden not in source
 
 
 def test_workflow_requires_exact_commit_dedicated_identity_and_authorization() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
+    lowered = text.lower()
 
     assert "workflow_dispatch:" in text
     assert "GATE6_SOURCE_WRITER_FENCE_AUTHORIZED" in text
@@ -217,4 +209,4 @@ def test_workflow_requires_exact_commit_dedicated_identity_and_authorization() -
         "az storage entity replace",
         "az storage file upload",
     ):
-        assert forbidden not in text.lower()
+        assert forbidden not in lowered
