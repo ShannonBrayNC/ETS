@@ -96,10 +96,15 @@ The student should be able to separate prediction, observation, calibrated measu
 
 8. **Episode 8 — Build the VRX Force Map**
    - empirical `F(I,x)` characterization
-   - air-gap dependence
-   - nonlinearity
-   - saturation
-   - empirical model domain and uncertainty
+   - repeated grid observations
+   - interpolation versus direct observation
+   - explicit measured domain
+   - local-support rules
+   - repeatability and uncertainty
+   - residual and holdout validation
+   - thermal/history context
+   - immutable versioned force-map artifacts
+   - strict out-of-domain handling
 
 9. **Episode 9 — Why Current Doesn't Change Instantly**
    - inductance
@@ -145,19 +150,22 @@ docs/research/ranger/vrx-physics/
 │   ├── 04-where-did-the-energy-go.md
 │   ├── 05-the-physics-of-stopping.md
 │   ├── 06-electricity-before-magnetism.md
-│   └── 07-turning-current-into-force.md
+│   ├── 07-turning-current-into-force.md
+│   └── 08-build-the-vrx-force-map.md
 ├── experiments/
 │   ├── 003-reconstruct-the-motion.md
 │   ├── 004-follow-the-energy.md
 │   ├── 005-the-physics-of-shock.md
 │   ├── 006-electricity-before-magnetism.md
-│   └── 007-current-becomes-force.md
+│   ├── 007-current-becomes-force.md
+│   └── 008-build-the-vrx-force-map.md
 └── phases/
     ├── 02-kinematics-review.md
     ├── 03-energy-accounting-review.md
     ├── 04-impulse-shock-review.md
     ├── 05-electricity-review.md
-    └── 06-magnetism-force-review.md
+    ├── 06-magnetism-force-review.md
+    └── 07-force-map-review.md
 ```
 
 Later episodes should continue one lecture/experiment pair at a time so each physics layer and its evidence claims can be reviewed before the next is added.
@@ -194,7 +202,8 @@ This curriculum complements the existing VRX laboratory acceptance, Evidence Obj
 - [x] Experiment 006 protocol
 - [x] Episode 7 draft
 - [x] Experiment 007 protocol
-- [ ] Episode 8
+- [x] Episode 8 draft
+- [x] Experiment 008 protocol
 - [ ] Episode 9
 - [ ] Episode 10
 - [ ] Episode 11
@@ -206,28 +215,28 @@ This curriculum complements the existing VRX laboratory acceptance, Evidence Obj
 
 ## Current review gate
 
-**Phase 6 — Magnetism and Force Generation**
+**Phase 7 — Empirical Force-Surface Identification**
 
-Review `episodes/07-turning-current-into-force.md`, `experiments/007-current-becomes-force.md`, and `phases/06-magnetism-force-review.md` before proceeding to empirical force-surface identification.
+Review `episodes/08-build-the-vrx-force-map.md`, `experiments/008-build-the-vrx-force-map.md`, and `phases/07-force-map-review.md` before proceeding to inductance and RL transient characterization.
 
-The central magnetic/electromechanical evidence propositions are:
+The central force-map propositions are:
 
 \[
-\boxed{Same\ current\not\Rightarrow Same\ force}
+\boxed{Measured\ calibration\ point\neq Interpolated\ model\ point}
 \]
 
-because position, geometry, temperature, material state, and excitation history can matter.
-
-Also:
+\[
+\boxed{In\ numeric\ range\neq In\ validated\ domain}
+\]
 
 \[
-\boxed{Magnetic\ model\ prediction\neq Direct\ force\ observation}
+\boxed{Model\ prediction\neq Runtime\ direct\ observation}
 \]
 
 and:
 
 \[
-\boxed{Measured\ interface\ force\neq Complete\ mechanical\ consequence}
+\boxed{Unsupported\ inference\ should\ fail\ closed}
 \]
 
-The central experimental requirement is that the current-position-force relationship be characterized from retained raw observations inside a documented domain rather than inferred from an ideal actuator equation or a controller command.
+The resulting calibration artifact should have a stable identity such as `VRX-R0-FMAP-0001`, preserve its raw dataset and calibration lineage, expose its local support and uncertainty, and return `OUT_OF_DOMAIN` or `INSUFFICIENT_LOCAL_SUPPORT` rather than silently extrapolating.
