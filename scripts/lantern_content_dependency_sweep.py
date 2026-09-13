@@ -32,6 +32,14 @@ _FORBIDDEN_HOST_SUFFIXES = (
     ".azurecontainerapps.io",
     ".vault.azure.net",
 )
+# W3C namespace identifiers use HTTP-shaped URIs but are not network dependencies.
+_NON_NETWORK_NAMESPACE_URIS = {
+    "http://www.w3.org/2000/svg",
+    "http://www.w3.org/1999/xlink",
+    "http://www.w3.org/1999/xhtml",
+    "http://www.w3.org/2001/xmlschema",
+    "http://www.w3.org/2001/xmlschema-instance",
+}
 
 
 def _write_private_json(path: Path, payload: dict[str, Any]) -> None:
@@ -68,6 +76,7 @@ def sweep(root: Path) -> dict[str, Any]:
     blockers: list[dict[str, str]] = []
     urls: set[str] = set()
     hosts: set[str] = set()
+    namespace_uris: set[str] = set()
     insecure_external: list[dict[str, str]] = []
     robots_values: list[str] = []
 
@@ -85,6 +94,9 @@ def sweep(root: Path) -> dict[str, Any]:
 
         for raw_url in _URL_PATTERN.findall(text):
             cleaned = raw_url.rstrip(".,;:")
+            if cleaned.casefold() in _NON_NETWORK_NAMESPACE_URIS:
+                namespace_uris.add(cleaned)
+                continue
             urls.add(cleaned)
             parsed = urlparse(cleaned)
             host = (parsed.hostname or "").casefold()
@@ -123,6 +135,7 @@ def sweep(root: Path) -> dict[str, Any]:
         "files_scanned": len(files),
         "external_hosts": sorted(hosts),
         "external_urls": sorted(urls),
+        "non_network_namespace_uris": sorted(namespace_uris),
         "blockers": sorted(
             blockers,
             key=lambda item: (item["file"], item["category"], item["value"]),
@@ -147,6 +160,7 @@ def _write_summary(report: dict[str, Any]) -> None:
         f"- source dependency free: `{str(report['source_dependency_free']).lower()}`",
         f"- blocking references: `{len(report['blockers'])}`",
         f"- external hosts discovered: `{len(report['external_hosts'])}`",
+        f"- non-network namespace URIs: `{len(report['non_network_namespace_uris'])}`",
         f"- search-index ready: `{str(report['search_index_ready']).lower()}`",
         f"- cutover note: {report['cutover_note']}",
     ]
