@@ -28,6 +28,7 @@ from scripts.azure_migration_gate7_activation_preflight import (
     _CORE_APP,
     _CORE_STORAGE,
     _GATEWAY_APP,
+    _GATEWAY_STORAGE,
     _RESOURCE_GROUP,
     _TABLE_NAME,
     capture_preflight,
@@ -173,6 +174,21 @@ def _wait_for_replica(
     raise MigrationControlError("Destination Core did not produce a replica in time")
 
 
+def _wait_for_zero_replica(
+    resource_group: str,
+    app_name: str,
+    *,
+    timeout_seconds: int = 120,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if _replica_count(resource_group, app_name) == 0:
+            return
+        sleeper(5.0)
+    raise MigrationControlError("Destination Core could not be re-fenced after failure")
+
+
 def _state_digest(state: dict[str, Any]) -> str:
     serialized = json.dumps(state, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(serialized).hexdigest()
@@ -184,11 +200,15 @@ def _capture_state(resource_group: str) -> dict[str, Any]:
     core_account, gateway_account = _discover_storage_accounts(resource_group)
     if core_account != _CORE_STORAGE:
         raise MigrationControlError("Destination Core storage identity changed")
+    if gateway_account != _GATEWAY_STORAGE:
+        raise MigrationControlError("Destination Gateway storage identity changed")
     table_state = _validated_state(_read_evidence_entities(core_account, _TABLE_NAME))
-    raw_gateway = _capture_file_hashes(
-        gateway_account,
-        os.environ.get("MIGRATION_GATEWAY_SHARE", "ets-gateway-state-q1-v2"),
-    )
+    share_name = os.environ.get(
+        "MIGRATION_GATEWAY_SHARE", "ets-gateway-state-q1-v2"
+    ).strip()
+    if not share_name:
+        raise MigrationControlError("Destination Gateway share name is empty")
+    raw_gateway = _capture_file_hashes(gateway_account, share_name)
     gateway_files = durable_gateway_inventory(raw_gateway)
     if not gateway_files:
         raise MigrationControlError("Destination Gateway durable state is empty")
@@ -280,9 +300,16 @@ def activate_core(
         if _state_digest(state_after_stability) != _state_digest(state_before):
             raise MigrationControlError("Destination state changed during Core stability window")
     except Exception:
+        # Contain any failed Gate 7A attempt on the destination. This never reactivates
+        # the source and does not discard or rewrite migrated state.
         if mutation_started:
             try:
                 _set_min_replicas(resource_group, _CORE_APP, 0)
+                _wait_for_zero_replica(
+                    resource_group,
+                    _CORE_APP,
+                    sleeper=sleeper,
+                )
             except (MigrationControlError, subprocess.TimeoutExpired):
                 pass
         raise
