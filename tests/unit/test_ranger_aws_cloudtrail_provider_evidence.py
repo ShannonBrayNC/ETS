@@ -25,6 +25,11 @@ from ets.ranger.aws_cloudtrail_provider_evidence import (
     RangerAwsCloudTrailVerificationPolicy,
     verify_aws_cloudtrail_provider_evidence,
 )
+from ets.ranger.aws_qualification_orchestrator import (
+    RangerAwsCloudTrailReadScope,
+    RangerAwsQualificationOrchestrationError,
+    run_aws_object_lock_qualification,
+)
 from ets.ranger.aws_s3_object_lock_capture import (
     RangerAwsS3ExecutionAuthorization,
     RangerAwsS3ExecutionAuthorizationPolicy,
@@ -974,3 +979,105 @@ def test_cloudtrail_capture_bounds_gzip_expansion() -> None:
         assert "uncompressed body exceeds limit" in str(exc)
     else:
         raise AssertionError("oversized gzip expansion was accepted")
+
+
+class _ReadScopeProvider:
+    def __init__(self, public_key: bytes, *, forge_signature: bool = False) -> None:
+        self.public_key = public_key
+        self.forge_signature = forge_signature
+        self.calls = 0
+
+    def authorize(
+        self,
+        package: RangerAwsS3ExecutionPackage,
+        authorization: RangerAwsS3ExecutionAuthorization,
+        s3_plan: RangerAwsS3ObjectLockCapturePlan,
+        cloudtrail_plan: RangerAwsCloudTrailCapturePlan,
+    ) -> RangerAwsCloudTrailReadScope:
+        self.calls += 1
+        _, read_authorization, policy = _read_scope(
+            package,
+            authorization,
+            s3_plan,
+            self.public_key,
+            capture_plan=cloudtrail_plan,
+        )
+        if self.forge_signature:
+            read_authorization = read_authorization.model_copy(
+                update={"authorizer_signature_hex": "00" * 64}
+            )
+        return RangerAwsCloudTrailReadScope(
+            authorization=read_authorization,
+            policy=policy,
+        )
+
+
+def test_two_phase_orchestrator_composes_execution_authority_and_provider_evidence() -> None:
+    prior_package, authorization, plan, receipt_policy = _package_bundle()
+    digest, signature, public_key, logs, _ = _cloudtrail_evidence(prior_package)
+    provider = _ReadScopeProvider(public_key)
+    cloudtrail = _CloudTrailCaptureStub(public_key)
+    cloudtrail_s3 = _CloudTrailS3CaptureStub(digest, signature, logs)
+
+    run = run_aws_object_lock_qualification(
+        plan,
+        execution_authorization=authorization,
+        execution_authorization_policy=receipt_policy.authorization_policy,
+        object_lock_s3_client=_S3Stub(),
+        iam_client=_IamStub(),
+        receipt_id="receipt-cloudtrail",
+        receipt_issued_at_utc=NOW + timedelta(minutes=5),
+        recorder_id="ets-ranger:test-recorder",
+        recorder_signing_key_id="recorder-key-1",
+        recorder_private_key_hex=RECORDER_PRIVATE_HEX,
+        receipt_policy=receipt_policy,
+        cloudtrail_plan=_capture_plan(public_key),
+        read_scope_provider=provider,
+        cloudtrail_client=cloudtrail,
+        cloudtrail_s3_client=cloudtrail_s3,
+    )
+
+    assert run.cloudtrail_verification.valid
+    assert run.execution_receipt_verified_before_read_scope_request
+    assert run.read_scope_verified_before_provider_reads
+    assert provider.calls == 1
+    assert len(cloudtrail.calls) == 2
+    assert len(cloudtrail_s3.calls) == 2
+    assert not run.effective_aws_permissions_proven
+    assert not run.physical_worm_proven
+
+
+def test_two_phase_orchestrator_rejects_forged_post_receipt_scope_before_reads() -> None:
+    prior_package, authorization, plan, receipt_policy = _package_bundle()
+    digest, signature, public_key, logs, _ = _cloudtrail_evidence(prior_package)
+    provider = _ReadScopeProvider(public_key, forge_signature=True)
+    cloudtrail = _CloudTrailCaptureStub(public_key)
+    cloudtrail_s3 = _CloudTrailS3CaptureStub(digest, signature, logs)
+
+    try:
+        run_aws_object_lock_qualification(
+            plan,
+            execution_authorization=authorization,
+            execution_authorization_policy=receipt_policy.authorization_policy,
+            object_lock_s3_client=_S3Stub(),
+            iam_client=_IamStub(),
+            receipt_id="receipt-cloudtrail",
+            receipt_issued_at_utc=NOW + timedelta(minutes=5),
+            recorder_id="ets-ranger:test-recorder",
+            recorder_signing_key_id="recorder-key-1",
+            recorder_private_key_hex=RECORDER_PRIVATE_HEX,
+            receipt_policy=receipt_policy,
+            cloudtrail_plan=_capture_plan(public_key),
+            read_scope_provider=provider,
+            cloudtrail_client=cloudtrail,
+            cloudtrail_s3_client=cloudtrail_s3,
+        )
+    except RangerAwsQualificationOrchestrationError as exc:
+        assert "read authorization is invalid" in str(exc)
+        assert exc.execution_package is not None
+        assert exc.execution_package.execution_receipt.receipt_id == "receipt-cloudtrail"
+    else:
+        raise AssertionError("forged post-receipt read scope was accepted")
+    assert provider.calls == 1
+    assert cloudtrail.calls == []
+    assert cloudtrail_s3.calls == []
