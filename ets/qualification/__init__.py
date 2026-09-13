@@ -2,6 +2,7 @@
 
 from ets.qualification.hardware import (
     ArtifactReference,
+    AssertionResult,
     BuildIdentity,
     DeviationKind,
     DeviationRecord,
@@ -27,6 +28,7 @@ from ets.qualification.hardware import (
 
 __all__ = [
     "ArtifactReference",
+    "AssertionResult",
     "BuildIdentity",
     "DeviationKind",
     "DeviationRecord",
