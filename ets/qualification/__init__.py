@@ -25,6 +25,19 @@ from ets.qualification.hardware import (
     build_qualification_report,
     seal_qualification_run,
 )
+from ets.qualification.profile import (
+    HardwareQualificationProfile,
+    HardwareQualificationTestCase,
+    VerifierCheckName,
+)
+from ets.qualification.verifier import (
+    HardwareQualificationVerification,
+    QualificationVerificationCheck,
+    VerificationCheckStatus,
+    VerificationOutcome,
+    render_hardware_qualification_verification,
+    verify_hardware_qualification_package,
+)
 
 __all__ = [
     "ArtifactReference",
@@ -34,20 +47,29 @@ __all__ = [
     "DeviationRecord",
     "DeviceIdentity",
     "EvidenceObjectReference",
+    "HardwareQualificationProfile",
     "HardwareQualificationReport",
     "HardwareQualificationRun",
+    "HardwareQualificationTestCase",
+    "HardwareQualificationVerification",
     "ObservationRecord",
     "ObserverIdentity",
     "ProfileBinding",
     "QualificationDisposition",
     "QualificationEnvironment",
+    "QualificationVerificationCheck",
     "ResultingStateRecord",
     "StateReference",
     "StimulusRecord",
     "TestExecution",
     "TestStatus",
+    "VerificationCheckStatus",
+    "VerificationOutcome",
+    "VerifierCheckName",
     "VerifierResult",
     "VerifierStatus",
     "build_qualification_report",
+    "render_hardware_qualification_verification",
     "seal_qualification_run",
+    "verify_hardware_qualification_package",
 ]
