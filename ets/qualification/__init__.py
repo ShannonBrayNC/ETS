@@ -1,5 +1,17 @@
 """Cross-product ETS qualification helpers."""
 
+from ets.qualification.edge_corpus import (
+    EdgeExecutionMode,
+    EdgeHardwareQualificationCorpus,
+    EdgeQualificationCase,
+    EdgeReferenceTargetClass,
+    load_edge_corpus,
+    load_edge_profile,
+    render_edge_execution_plan,
+    seal_edge_lab_run,
+    validate_edge_corpus_against_profile,
+    validate_edge_run_against_corpus,
+)
 from ets.qualification.hardware import (
     ArtifactReference,
     AssertionResult,
@@ -46,6 +58,10 @@ __all__ = [
     "DeviationKind",
     "DeviationRecord",
     "DeviceIdentity",
+    "EdgeExecutionMode",
+    "EdgeHardwareQualificationCorpus",
+    "EdgeQualificationCase",
+    "EdgeReferenceTargetClass",
     "EvidenceObjectReference",
     "HardwareQualificationProfile",
     "HardwareQualificationReport",
@@ -69,7 +85,13 @@ __all__ = [
     "VerifierResult",
     "VerifierStatus",
     "build_qualification_report",
+    "load_edge_corpus",
+    "load_edge_profile",
+    "render_edge_execution_plan",
     "render_hardware_qualification_verification",
+    "seal_edge_lab_run",
     "seal_qualification_run",
+    "validate_edge_corpus_against_profile",
+    "validate_edge_run_against_corpus",
     "verify_hardware_qualification_package",
 ]
