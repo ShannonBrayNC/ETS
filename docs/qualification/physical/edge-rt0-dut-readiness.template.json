@@ -1,0 +1,115 @@
+{
+  "schema_version": "ets.edge-rt0-physical-readiness.v1",
+  "execution_state": "template_not_executed",
+  "qualification_claim": false,
+  "profile": {
+    "profile_id": "ets.edge.hardware-qualification.v1",
+    "profile_version": "1.0.0",
+    "corpus_id": "ets.edge.hardware-qualification.corpus.v1",
+    "corpus_version": "1.0.0",
+    "target_class_id": "EDGE-RT0"
+  },
+  "dut": {
+    "device_id": null,
+    "manufacturer": null,
+    "model": null,
+    "hardware_revision": null,
+    "serial_or_asset_id": null,
+    "identity_digest_sha256": null,
+    "firmware": {
+      "boot_firmware": null,
+      "storage_model_firmware": null,
+      "tpm_or_signer_profile": null
+    }
+  },
+  "hardware_envelope": {
+    "cpu_architecture": "x86_64",
+    "cpu_model": null,
+    "cpu_cores": null,
+    "memory_gib": null,
+    "storage_manufacturer": null,
+    "storage_model": null,
+    "storage_capacity_gb": null,
+    "storage_endurance_rating": null,
+    "nic_identity": null,
+    "secure_boot_state": null,
+    "tpm_or_security_element": null,
+    "meets_edge_mvp_minimum": false,
+    "minimum_reference": {
+      "cpu_cores": 4,
+      "memory_gib": 16,
+      "storage_capacity_gb": 512,
+      "storage_class": "high-endurance SSD/NVMe"
+    }
+  },
+  "software_build": {
+    "repository": "ShannonBrayNC/ETS",
+    "commit_sha": null,
+    "artifact_digest_sha256": null,
+    "configuration_digest_sha256": null,
+    "sbom_artifact_id": null,
+    "provenance_artifact_id": null,
+    "ubuntu_release": null,
+    "kernel_release": null
+  },
+  "qualification_environment": {
+    "environment_id": null,
+    "power_source": null,
+    "power_control_method": null,
+    "network_topology": null,
+    "network_fault_injection_method": null,
+    "storage_filesystem": null,
+    "os_kernel_runtime": null,
+    "time_source": null,
+    "ambient_condition": null,
+    "upstream_verifier_endpoint": null,
+    "environment_digest_sha256": null
+  },
+  "roles": {
+    "dut_operator": null,
+    "independent_observer": null,
+    "evidence_custodian": null,
+    "hqp2_verifier_operator": null
+  },
+  "lab_controls": {
+    "independent_observer_host_ready": false,
+    "controlled_power_interruption_ready": false,
+    "controlled_network_partition_ready": false,
+    "isolated_qualification_storage_or_recoverable_image_ready": false,
+    "external_hqp2_verifier_environment_ready": false,
+    "recovery_media_boot_tested": false,
+    "dedicated_qualification_credentials_ready": false,
+    "pristine_evidence_store_backup_ready": false,
+    "thermal_resource_monitoring_ready": false
+  },
+  "fault_boundaries": {
+    "power_fault_dut_only": false,
+    "network_fault_qualification_path_only": false,
+    "clock_fault_isolated": false,
+    "disk_exhaustion_not_host_root": false,
+    "tamper_case_uses_clone_only": false
+  },
+  "retention": {
+    "run_id": null,
+    "artifact_root": null,
+    "independent_observer_artifact_root": null,
+    "custody_record_locator": null,
+    "secrets_private_keys_prohibited": true
+  },
+  "preflight": {
+    "claim_critical_fields_complete": false,
+    "recovery_baseline_proven": false,
+    "external_proof_verification_proven": false,
+    "fault_boundaries_reviewed": false,
+    "preflight_authorized": false,
+    "authorized_by": null,
+    "authorized_at": null
+  },
+  "non_claims": [
+    "This template is not evidence that a physical test occurred.",
+    "EDGE-RT0 is not a qualified manufacturer or model.",
+    "A populated readiness manifest is not an HQP-1 qualification result.",
+    "Producer-side lab-tested sealing is not independent qualification.",
+    "Qualification does not by itself establish semantic truth, complete observation, legal admissibility, regulatory compliance, safety certification, general availability, or production readiness."
+  ]
+}
