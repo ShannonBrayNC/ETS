@@ -1,6 +1,7 @@
 """Runtime model for the ETS Hardware Qualification Profile v1 descriptor.
 
-The normative JSON Schema remains schemas/qualification/v1/hardware-qualification-profile.schema.json.
+The normative JSON Schema remains
+schemas/qualification/v1/hardware-qualification-profile.schema.json.
 This module mirrors that contract so HQP-2 can validate a profile in a clean verifier process
 without adding a second JSON-Schema dependency to the ETS runtime.
 """
