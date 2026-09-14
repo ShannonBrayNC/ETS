@@ -4,7 +4,11 @@ import hashlib
 import json
 from pathlib import Path
 
-from ets.qualification.verifier import VerificationCheckStatus, VerificationOutcome, verify_hardware_qualification_package
+from ets.qualification.verifier import (
+    VerificationCheckStatus,
+    VerificationOutcome,
+    verify_hardware_qualification_package,
+)
 
 _ROOT = Path(__file__).parents[2]
 _FIXTURE_ROOT = _ROOT / "docs" / "qualification" / "fixtures" / "hqp2"
@@ -44,8 +48,12 @@ def test_retained_fixture_verifies_in_clean_room() -> None:
 
     assert result.outcome is VerificationOutcome.VALID
     assert result.eligible_for_claimed_disposition is True
-    assert result.run_digest_sha256 == "c0782f8eda93f87b346cff2c57d7bf418f14ff47d7f40f9d412257cfd486f060"
-    assert result.report_digest_sha256 == "873e919b669c95565768c20662ae49bac0df1778f972fc91eef91e90a2f561c5"
+    assert result.run_digest_sha256 == (
+        "c0782f8eda93f87b346cff2c57d7bf418f14ff47d7f40f9d412257cfd486f060"
+    )
+    assert result.report_digest_sha256 == (
+        "873e919b669c95565768c20662ae49bac0df1778f972fc91eef91e90a2f561c5"
+    )
 
 
 def test_retained_negative_mutation_vectors_fail_expected_gate() -> None:
