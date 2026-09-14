@@ -38,10 +38,10 @@ from ets.qualification.hardware import (
     seal_qualification_run,
 )
 from ets.qualification.index import (
+    IndependentVerificationReference,
     IndexedBuildIdentity,
     IndexedDeviceIdentity,
     IndexedDisposition,
-    IndependentVerificationReference,
     PendingQualificationState,
     PendingQualificationTarget,
     PublicationState,
