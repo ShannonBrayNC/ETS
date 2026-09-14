@@ -87,6 +87,8 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.ruff.lint.per-file-ignores]
 # Retain conventional TypeVar syntax at the DB/Pydantic adapter boundary for strict Mypy clarity.
 "ets/fleet/postgres.py" = ["UP047"]
+# Keep normative verifier diagnostics and fixed claim-boundary literals intact for audit readability.
+"ets/qualification/verifier.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"

@@ -1,0 +1,132 @@
+{
+  "schema_version": "ets.hardware-qualification-run.v1",
+  "run_id": "hqp2-fixture-run-001",
+  "profile": {
+    "profile_id": "ets.test.hardware-qualification.v1",
+    "profile_version": "1.0.0-test",
+    "profile_digest_sha256": "077698897506f6dcd4d6484ddb8364bbda918704fc424493ba4e2e6e7e4c5b92"
+  },
+  "device": {
+    "device_id": "dut-hqp2-001",
+    "manufacturer": "ETS Lab",
+    "model": "HQP2 Fixture",
+    "hardware_revision": "rev-a",
+    "serial_or_asset_id": "HQP2-001",
+    "firmware": {"uefi": "1.0.0"},
+    "identity_digest_sha256": "6a127c4cd32887ee18fc99a9d112ea4e7d448e66a4c6395924ffeb359b1bbd22"
+  },
+  "environment": {
+    "environment_id": "clean-room-fixture",
+    "dimensions": {
+      "power_source": "controlled-ac",
+      "network_topology": "isolated",
+      "time_source": "fixture-clock"
+    },
+    "environment_digest_sha256": "0c46eb879e765db9f64b8e7ade372fbf127314fa929e54b3abc230cfe0ec1494"
+  },
+  "build": {
+    "repository": "ShannonBrayNC/ETS",
+    "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifact_digest_sha256": "39e88c17cc95ace5674274b1baeba67fe3b53446f124b47063889bae1d8914ae",
+    "configuration_digest_sha256": "9be1ed24983f256c74e3e6042ce2c85a933ff5420c476c3cee86d4f903f0d110",
+    "sbom_artifact_id": null
+  },
+  "observers": [
+    {
+      "observer_id": "observer-clean-room",
+      "observer_kind": "machine",
+      "role": "independent-observer",
+      "signing_identity": "did:example:hqp2-observer"
+    }
+  ],
+  "started_at": "2026-09-13T20:00:00Z",
+  "completed_at": "2026-09-13T20:05:00Z",
+  "starting_states": [
+    {
+      "state_id": "state-start",
+      "canonical_digest_sha256": "01f532db0699cb982c79455efa3e6db36767e7c56a7b7bf0f8d8e9bdf0005fea",
+      "artifact_ids": ["artifact-start"]
+    }
+  ],
+  "stimuli": [
+    {
+      "stimulus_id": "stimulus-1",
+      "test_id": "TEST-HQP-001",
+      "issued_at": "2026-09-13T20:00:00Z",
+      "authority_reference": "authority://fixture/1",
+      "stimulus_class": "controlled_restart",
+      "canonical_digest_sha256": "77573c4687af1b5834c15bcf2d7c30324168fb044ca9157def799dddfdd3d825",
+      "artifact_ids": ["artifact-stimulus"]
+    }
+  ],
+  "observations": [
+    {
+      "observation_id": "observation-1",
+      "test_id": "TEST-HQP-001",
+      "observer_id": "observer-clean-room",
+      "observed_at": "2026-09-13T20:05:00Z",
+      "observation_class": "post_restart_record_presence",
+      "canonical_digest_sha256": "43b2dd1bc63f8e1a5c6f565b85831e2a6dee7c5630d773147e4100c4a8c36ddf",
+      "artifact_ids": ["artifact-observation"],
+      "uncertainty_statement": "Bounded to the retained fixture interface."
+    }
+  ],
+  "resulting_states": [
+    {
+      "resulting_state_id": "result-1",
+      "test_id": "TEST-HQP-001",
+      "observed_at": "2026-09-13T20:05:00Z",
+      "canonical_digest_sha256": "9eb929d97362ae540642feb0166235c97b8c5f5fe5a0a1b31696df438edc2859",
+      "artifact_ids": ["artifact-result"]
+    }
+  ],
+  "artifacts": [
+    {"artifact_id":"artifact-start","artifact_role":"artifact-start","media_type":"application/json","sha256":"01f532db0699cb982c79455efa3e6db36767e7c56a7b7bf0f8d8e9bdf0005fea","byte_length":17,"retention_locator":"artifact://artifact-start","redaction_state":"none","required":true,"secret_material_embedded":false,"private_key_embedded":false},
+    {"artifact_id":"artifact-stimulus","artifact_role":"artifact-stimulus","media_type":"application/json","sha256":"77573c4687af1b5834c15bcf2d7c30324168fb044ca9157def799dddfdd3d825","byte_length":20,"retention_locator":"artifact://artifact-stimulus","redaction_state":"none","required":true,"secret_material_embedded":false,"private_key_embedded":false},
+    {"artifact_id":"artifact-observation","artifact_role":"artifact-observation","media_type":"application/json","sha256":"43b2dd1bc63f8e1a5c6f565b85831e2a6dee7c5630d773147e4100c4a8c36ddf","byte_length":23,"retention_locator":"artifact://artifact-observation","redaction_state":"none","required":true,"secret_material_embedded":false,"private_key_embedded":false},
+    {"artifact_id":"artifact-result","artifact_role":"artifact-result","media_type":"application/json","sha256":"9eb929d97362ae540642feb0166235c97b8c5f5fe5a0a1b31696df438edc2859","byte_length":21,"retention_locator":"artifact://artifact-result","redaction_state":"none","required":true,"secret_material_embedded":false,"private_key_embedded":false},
+    {"artifact_id":"artifact-evidence","artifact_role":"artifact-evidence","media_type":"application/json","sha256":"3e424d3fa0c1c4b9ec9072200a37c190623a939ccb70717517466661e1c3da16","byte_length":462,"retention_locator":"artifact://artifact-evidence","redaction_state":"none","required":true,"secret_material_embedded":false,"private_key_embedded":false}
+  ],
+  "evidence_objects": [
+    {
+      "evidence_object_id": "evidence-object-1",
+      "evidence_class": "hardware-qualification-result",
+      "canonical_digest_sha256": "3e424d3fa0c1c4b9ec9072200a37c190623a939ccb70717517466661e1c3da16",
+      "artifact_ids": ["artifact-evidence"]
+    }
+  ],
+  "test_executions": [
+    {
+      "test_id": "TEST-HQP-001",
+      "required": true,
+      "status": "passed",
+      "started_at": "2026-09-13T20:00:00Z",
+      "completed_at": "2026-09-13T20:05:00Z",
+      "starting_state_id": "state-start",
+      "stimulus_ids": ["stimulus-1"],
+      "observation_ids": ["observation-1"],
+      "resulting_state_ids": ["result-1"],
+      "evidence_object_ids": ["evidence-object-1"],
+      "artifact_ids": ["artifact-start","artifact-stimulus","artifact-observation","artifact-result","artifact-evidence"],
+      "assertions": [
+        {"assertion_id":"committed_record_recoverable","passed":true,"reason":"Fixture result is retained and reproducible."}
+      ],
+      "deviation_ids": []
+    }
+  ],
+  "deviations": [],
+  "verifier_result": {
+    "status": "valid",
+    "verifier_id": "producer-verifier-fixture",
+    "verifier_build_digest_sha256": "4de6b2a37078d521804ac6be52f955aacec8f57a7ffd9e3837c30ee2a9411656",
+    "independent_execution_context": true,
+    "verification_digest_sha256": "d6ec2c07ec33d567a8b7da7361384c502a2dae21c46f218b9b4d0a0b6c1ca54f",
+    "challenge_nonce": "producer-fixture-nonce",
+    "reason": "Retained producer-side verifier provenance for the fixture."
+  },
+  "final_disposition": "qualified",
+  "run_digest_sha256": "c0782f8eda93f87b346cff2c57d7bf418f14ff47d7f40f9d412257cfd486f060",
+  "credentials_embedded": false,
+  "private_keys_embedded": false,
+  "claim_boundary": "bounded_hqp_execution_evidence_not_complete_observation_truth_compliance_safety_or_ga_proof"
+}

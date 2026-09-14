@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "base_profile": "ets.hardware-qualification.v1",
+  "profile_id": "ets.test.hardware-qualification.v1",
+  "profile_version": "1.0.0-test",
+  "title": "HQP-2 clean-room verifier fixture",
+  "purpose": "Exercise deterministic independent verification.",
+  "product_scope": ["ETS Test DUT"],
+  "parent_profiles": [],
+  "capability_boundary": {
+    "capability_states_are_independent": true,
+    "qualification_states": ["not_tested", "qualified", "failed"],
+    "claim_statement": "Qualification is bounded to this fixture DUT and build."
+  },
+  "device_constraints": {
+    "claim_critical_fields": ["manufacturer", "model", "hardware_revision"],
+    "cross_revision_qualification_allowed": false,
+    "equivalence_profile_required": true,
+    "notes": null
+  },
+  "environment_dimensions": ["power_source", "network_topology", "time_source"],
+  "evidence_requirements": {
+    "evidence_object_binding_required": true,
+    "required_classes": [
+      "dut_identity",
+      "environment",
+      "build_identity",
+      "observer_identity",
+      "starting_state",
+      "stimulus",
+      "observations",
+      "resulting_state",
+      "verifier_output",
+      "qualification_report"
+    ],
+    "missing_required_evidence_policy": "invalid",
+    "external_artifacts_allowed": true,
+    "raw_artifact_digest_required": true
+  },
+  "verifier_requirements": {
+    "independent_verification_required_for": ["qualified", "qualified_with_deviation"],
+    "immutable_verifier_identity_required": true,
+    "checks": [
+      "schema_conformance",
+      "artifact_presence",
+      "digest_validity",
+      "signature_validity",
+      "evidence_object_binding",
+      "test_case_completion",
+      "observation_result_linkage",
+      "deviation_policy",
+      "disposition_policy"
+    ],
+    "dut_runtime_may_be_trusted": false
+  },
+  "test_cases": [
+    {
+      "test_id": "TEST-HQP-001",
+      "title": "Retained state survives a bounded restart",
+      "purpose": "Exercise the common evidence chain.",
+      "required": true,
+      "depends_on": [],
+      "stimulus_class": "controlled_restart",
+      "required_observations": ["post_restart_record_presence"],
+      "required_resulting_state": ["committed_record_recoverable"],
+      "pass_criteria": ["The retained record is independently reproducible."],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": null,
+      "notes": null
+    }
+  ],
+  "disposition_policy": {
+    "allowed_final_states": ["lab_tested", "qualified", "qualified_with_deviation", "failed"],
+    "missing_required_case_policy": "invalid",
+    "deviation_state": "qualified_with_deviation",
+    "non_waivable_failure_blocks_qualification": true
+  },
+  "validity_policy": {
+    "requalify_on_claim_critical_change": true,
+    "supersession_must_be_explicit": true,
+    "historical_results_immutable": true,
+    "maximum_validity_days": null,
+    "additional_requalification_triggers": ["verifier_contract_change"]
+  },
+  "non_claims": ["complete_observation", "semantic_truth", "general_availability"],
+  "traceability": {
+    "tracking_issue": "#795",
+    "source_requirements": ["#790", "#794"],
+    "authoritative_roadmap": "docs/PUBLIC_ROADMAP_STATUS.md",
+    "review_references": []
+  }
+}

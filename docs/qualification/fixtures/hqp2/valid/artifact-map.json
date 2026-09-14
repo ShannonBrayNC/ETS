@@ -1,0 +1,7 @@
+{
+  "artifact-start": "artifacts/artifact-start.json",
+  "artifact-stimulus": "artifacts/artifact-stimulus.json",
+  "artifact-observation": "artifacts/artifact-observation.json",
+  "artifact-result": "artifacts/artifact-result.json",
+  "artifact-evidence": "artifacts/artifact-evidence.json"
+}

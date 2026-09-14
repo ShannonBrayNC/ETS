@@ -41,9 +41,10 @@ Merged by PR #793.
 
 HQP-0 defines the product-neutral claim boundary, qualification states, required evidence classes, verifier requirements, requalification, supersession, and non-claims.
 
-### HQP-1 — execution package and deterministic report — active
+### HQP-1 — execution package and deterministic report — complete
 
-Tracking issue: #794.
+Tracking issue: #794.  
+Merged by PR #802.
 
 - [`ETS_HARDWARE_QUALIFICATION_EXECUTION_PACKAGE_V1.md`](ETS_HARDWARE_QUALIFICATION_EXECUTION_PACKAGE_V1.md)
 - run schema: `schemas/qualification/v1/hardware-qualification-run.schema.json`
@@ -54,11 +55,19 @@ Tracking issue: #794.
 
 HQP-1 binds a concrete test execution to the exact DUT, environment, build, observer chain, starting state, stimulus, observations, resulting state, retained artifacts, Evidence Objects, verifier result, deviations, and final disposition. Completed run/report digests reuse `ets.core.canonical_json`.
 
-### HQP-2 — independent verifier
+### HQP-2 — independent verifier — active
 
 Tracking issue: #795.
 
-HQP-2 consumes the HQP-1 run/report/fixture contract from a clean environment and determines structural completeness, digest integrity, Evidence Object bindings, reference integrity, deviation handling, and eligibility for the claimed disposition without trusting the DUT runtime.
+- [`ETS_HARDWARE_QUALIFICATION_VERIFIER_V1.md`](ETS_HARDWARE_QUALIFICATION_VERIFIER_V1.md)
+- verifier runtime: `ets/qualification/verifier.py`
+- profile runtime mirror: `ets/qualification/profile.py`
+- verification schema: `schemas/qualification/v1/hardware-qualification-verification.schema.json`
+- clean-room CLI: `python -m ets.hqp_verify`
+- valid retained fixture: `docs/qualification/fixtures/hqp2/valid/`
+- negative mutation vectors: `docs/qualification/fixtures/hqp2/invalid/mutations.json`
+
+HQP-2 consumes the HQP-1 run/report/fixture contract from a clean environment and determines structural completeness, digest integrity, Evidence Object bindings, reference integrity, test completion, observation/result linkage, deviation handling, and eligibility for the claimed disposition without trusting the DUT runtime or producer-side verifier narrative.
 
 ### HQP-3 — Edge executable corpus
 

@@ -1,0 +1,27 @@
+{
+  "schema_version": "ets.hardware-qualification-verifier-mutations.v1",
+  "mutations": [
+    {
+      "mutation_id": "artifact-byte-tamper",
+      "operation": "append_utf8",
+      "target": "artifact-result",
+      "value": "tamper",
+      "expected_outcome": "invalid",
+      "expected_check": "digest_validity"
+    },
+    {
+      "mutation_id": "profile-after-seal-mutation",
+      "operation": "replace_profile_purpose",
+      "value": "Mutated after the run was sealed.",
+      "expected_outcome": "invalid",
+      "expected_check": "profile_binding"
+    },
+    {
+      "mutation_id": "non-independent-verifier",
+      "operation": "set_independent_execution_context",
+      "value": false,
+      "expected_outcome": "invalid",
+      "expected_check": "verifier_independence"
+    }
+  ]
+}
