@@ -1,0 +1,279 @@
+{
+  "schema_version": "1.0",
+  "base_profile": "ets.hardware-qualification.v1",
+  "profile_id": "ets.legacy-network-syslog.hardware-qualification.v1",
+  "profile_version": "1.0.0",
+  "title": "ETS Legacy Network Syslog Hardware Qualification Profile",
+  "purpose": "Apply the common ETS HQP contract to a physical legacy network device observed through the existing ETS Edge RFC 5424 UDP syslog boundary without upgrading transport observations into authenticated source identity.",
+  "product_scope": ["Legacy hardware lab / RFC 5424 UDP network source"],
+  "parent_profiles": [
+    {
+      "profile_id": "ets.hardware-qualification.v1",
+      "profile_version": "1.0",
+      "override_review_required": true
+    }
+  ],
+  "capability_boundary": {
+    "capability_states_are_independent": true,
+    "qualification_states": [
+      "not_tested",
+      "simulated",
+      "lab_tested",
+      "qualification_in_progress",
+      "qualified",
+      "qualified_with_deviation",
+      "failed",
+      "expired",
+      "superseded"
+    ],
+    "claim_statement": "Qualification applies only to the named legacy source device/firmware, observer adapter build, transport configuration, and retained test evidence. UDP source address and RFC 5424 identity fields remain observations rather than authenticated identity."
+  },
+  "device_constraints": {
+    "claim_critical_fields": [
+      "manufacturer",
+      "model",
+      "hardware_revision",
+      "device_firmware",
+      "configured_syslog_identity",
+      "configured_syslog_transport"
+    ],
+    "cross_revision_qualification_allowed": false,
+    "equivalence_profile_required": true,
+    "notes": "The source device is qualified only as the exact named legacy hardware/firmware target. Observer-side Edge hardware and software are separately bound in build/environment evidence."
+  },
+  "environment_dimensions": [
+    "source_network_segment",
+    "observer_network_interface",
+    "observer_edge_build",
+    "syslog_transport",
+    "syslog_listener_port",
+    "packet_capture_method",
+    "time_source",
+    "network_fault_injection_method"
+  ],
+  "evidence_requirements": {
+    "evidence_object_binding_required": true,
+    "required_classes": [
+      "dut_identity",
+      "environment",
+      "build_identity",
+      "observer_identity",
+      "starting_state",
+      "stimulus",
+      "observations",
+      "resulting_state",
+      "verifier_output",
+      "qualification_report"
+    ],
+    "missing_required_evidence_policy": "invalid",
+    "external_artifacts_allowed": true,
+    "raw_artifact_digest_required": true
+  },
+  "verifier_requirements": {
+    "independent_verification_required_for": ["qualified", "qualified_with_deviation"],
+    "immutable_verifier_identity_required": true,
+    "checks": [
+      "schema_conformance",
+      "artifact_presence",
+      "digest_validity",
+      "signature_validity",
+      "evidence_object_binding",
+      "test_case_completion",
+      "observation_result_linkage",
+      "deviation_policy",
+      "disposition_policy"
+    ],
+    "dut_runtime_may_be_trusted": false
+  },
+  "test_cases": [
+    {
+      "test_id": "LEG-HQP-BIND-001",
+      "title": "Bind legacy source and observer configuration",
+      "purpose": "Retain exact physical source hardware/firmware, configured syslog identity, observer adapter build, interface, transport, and time-source facts before traffic tests execute.",
+      "required": true,
+      "stimulus_class": "qualification_session_start",
+      "required_observations": [
+        "source_device_snapshot",
+        "observer_adapter_build",
+        "transport_configuration",
+        "time_source_snapshot"
+      ],
+      "required_resulting_state": ["source_observer_binding_retained"],
+      "pass_criteria": [
+        "Manufacturer/model/revision/firmware and configured syslog identity are retained for the source device.",
+        "Observer Edge build, network interface, UDP listener configuration, packet-observation method, and time source are retained separately from source claims."
+      ],
+      "failure_policy": "invalidate",
+      "waivable": false,
+      "safety_boundary": "Use an isolated lab network and preserve the source configuration before making test changes."
+    },
+    {
+      "test_id": "LEG-HQP-ING-001",
+      "title": "Commit exact received RFC 5424 datagram bytes",
+      "purpose": "Prove that a physical legacy source can emit a datagram whose exact received bytes are committed before parsing and are independently reviewable through ETS evidence.",
+      "required": true,
+      "depends_on": ["LEG-HQP-BIND-001"],
+      "stimulus_class": "rfc5424_udp_datagram_emission",
+      "required_observations": [
+        "exact_received_byte_digest",
+        "parsed_metadata_snapshot",
+        "source_ip_port_observation",
+        "evidence_object_commit"
+      ],
+      "required_resulting_state": [
+        "exact_datagram_commit_recoverable",
+        "independent_proof_verifiable"
+      ],
+      "pass_criteria": [
+        "The observer hashes the exact received datagram bytes before parsing.",
+        "Bounded RFC 5424 metadata and source IP/port observations are retained without copying raw MSG or structured-data content into default metadata stores.",
+        "The committed event/proof can be independently verified without trusting the source device."
+      ],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Use synthetic/non-sensitive syslog content and do not expose the UDP listener outside the controlled lab network."
+    },
+    {
+      "test_id": "LEG-HQP-ID-001",
+      "title": "Preserve unauthenticated source-identity boundary",
+      "purpose": "Demonstrate that UDP source address and RFC 5424 identity fields remain transport/message observations and are never upgraded into authenticated device identity.",
+      "required": true,
+      "depends_on": ["LEG-HQP-ING-001"],
+      "stimulus_class": "unauthenticated_source_identity_boundary_check",
+      "required_observations": [
+        "transport_authentication_mode",
+        "source_ip_port_observation",
+        "rfc5424_identity_fields"
+      ],
+      "required_resulting_state": [
+        "source_identity_remains_observation_only",
+        "no_authenticated_identity_claim"
+      ],
+      "pass_criteria": [
+        "The qualification package explicitly records UDP as unauthenticated transport for this profile.",
+        "No source IP, port, hostname, app-name, procid, or msgid field is represented as cryptographically authenticated source identity."
+      ],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Do not add credentials or production trust assertions merely to make the legacy source appear stronger than its actual transport."
+    },
+    {
+      "test_id": "LEG-HQP-MUT-001",
+      "title": "One-byte datagram mutation produces a distinct commitment",
+      "purpose": "Demonstrate substitution detection for observed legacy-device messages without claiming that either message is semantically true.",
+      "required": true,
+      "depends_on": ["LEG-HQP-ING-001"],
+      "stimulus_class": "one_byte_datagram_mutation",
+      "required_observations": [
+        "original_datagram_digest",
+        "mutated_datagram_digest",
+        "evidence_object_ids"
+      ],
+      "required_resulting_state": ["mutation_produces_distinct_commitment"],
+      "pass_criteria": [
+        "Changing any retained test datagram byte changes the received-byte SHA-256 commitment.",
+        "Original and mutated observations remain distinct Evidence Object/event references."
+      ],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Use test messages; do not mutate production traffic or operational device logs."
+    },
+    {
+      "test_id": "LEG-HQP-REC-001",
+      "title": "Observer restart preserves committed legacy-source evidence",
+      "purpose": "Exercise the existing Edge persistence boundary while keeping the legacy source device as the DUT under observation.",
+      "required": true,
+      "depends_on": ["LEG-HQP-ING-001"],
+      "stimulus_class": "observer_adapter_restart",
+      "required_observations": [
+        "pre_restart_commit",
+        "observer_restart_event",
+        "post_restart_evidence_presence",
+        "post_restart_proof_verification"
+      ],
+      "required_resulting_state": [
+        "committed_record_recoverable",
+        "proof_verifiable_post_restart"
+      ],
+      "pass_criteria": [
+        "An acknowledged committed record from the physical source remains recoverable after observer restart.",
+        "Independent proof verification succeeds after restart without consulting the source device's runtime state."
+      ],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Restart only the designated lab observer/adapter and preserve storage before destructive diagnostics."
+    },
+    {
+      "test_id": "LEG-HQP-INT-001",
+      "title": "Source or network interruption does not fabricate history",
+      "purpose": "Bound missing-observation behavior when the legacy source or network path is interrupted and prove clean resumption without backfilling invented events.",
+      "required": true,
+      "depends_on": ["LEG-HQP-ING-001"],
+      "stimulus_class": "source_or_network_interruption",
+      "required_observations": [
+        "interruption_window",
+        "capture_absence_or_failure_state",
+        "recovery_event",
+        "first_post_recovery_capture"
+      ],
+      "required_resulting_state": [
+        "no_fabricated_events_during_interruption",
+        "capture_resumes_without_relabeling_history"
+      ],
+      "pass_criteria": [
+        "The package distinguishes no observation from evidence that no source event occurred.",
+        "No synthetic success event is created to fill the interruption window.",
+        "Post-recovery capture resumes as a new observation with the interruption boundary retained."
+      ],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Perform interruption testing on an isolated test path and restore the original source/network configuration afterward."
+    }
+  ],
+  "disposition_policy": {
+    "allowed_final_states": [
+      "lab_tested",
+      "qualified",
+      "qualified_with_deviation",
+      "failed",
+      "expired",
+      "superseded"
+    ],
+    "missing_required_case_policy": "invalid",
+    "deviation_state": "qualified_with_deviation",
+    "non_waivable_failure_blocks_qualification": true
+  },
+  "validity_policy": {
+    "requalify_on_claim_critical_change": true,
+    "supersession_must_be_explicit": true,
+    "historical_results_immutable": true,
+    "maximum_validity_days": null,
+    "additional_requalification_triggers": [
+      "source_device_firmware_change",
+      "configured_syslog_transport_or_identity_change",
+      "observer_edge_build_change",
+      "observer_network_path_change",
+      "common_hqp_or_verifier_contract_change"
+    ]
+  },
+  "non_claims": [
+    "authenticated_udp_source_identity",
+    "semantic_truth_of_source_message",
+    "complete_network_observation",
+    "proof_that_no_source_event_occurred_during_missing_observation",
+    "legal_admissibility",
+    "regulatory_compliance",
+    "safety_certification",
+    "qualification_of_other_legacy_devices"
+  ],
+  "traceability": {
+    "tracking_issue": "#797",
+    "source_requirements": [
+      "#143",
+      "#145",
+      "edge-demo/README.md"
+    ],
+    "authoritative_roadmap": "docs/PUBLIC_ROADMAP_STATUS.md",
+    "review_references": []
+  }
+}
