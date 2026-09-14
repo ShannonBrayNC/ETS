@@ -134,7 +134,12 @@ def _package() -> tuple[bytes, bytes, bytes, dict[str, bytes]]:
             }
         ],
         "disposition_policy": {
-            "allowed_final_states": ["lab_tested", "qualified", "qualified_with_deviation", "failed"],
+            "allowed_final_states": [
+                "lab_tested",
+                "qualified",
+                "qualified_with_deviation",
+                "failed",
+            ],
             "missing_required_case_policy": "invalid",
             "deviation_state": "qualified_with_deviation",
             "non_waivable_failure_blocks_qualification": True,
