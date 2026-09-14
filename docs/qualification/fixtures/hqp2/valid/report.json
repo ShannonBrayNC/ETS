@@ -1,0 +1,28 @@
+{
+  "schema_version": "ets.hardware-qualification-report.v1",
+  "report_id": "hqp2-fixture-run-001.report",
+  "run_id": "hqp2-fixture-run-001",
+  "run_digest_sha256": "c0782f8eda93f87b346cff2c57d7bf418f14ff47d7f40f9d412257cfd486f060",
+  "profile": {
+    "profile_id": "ets.test.hardware-qualification.v1",
+    "profile_version": "1.0.0-test",
+    "profile_digest_sha256": "077698897506f6dcd4d6484ddb8364bbda918704fc424493ba4e2e6e7e4c5b92"
+  },
+  "device_id": "dut-hqp2-001",
+  "hardware_revision": "rev-a",
+  "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "required_case_ids": ["TEST-HQP-001"],
+  "passed_case_ids": ["TEST-HQP-001"],
+  "failed_case_ids": [],
+  "invalid_case_ids": [],
+  "waived_case_ids": [],
+  "not_run_case_ids": [],
+  "deviation_ids": [],
+  "evidence_object_ids": ["evidence-object-1"],
+  "artifact_ids": ["artifact-start","artifact-stimulus","artifact-observation","artifact-result","artifact-evidence"],
+  "verifier_status": "valid",
+  "verifier_result_digest_sha256": "46dd86b8d5ba45f73b5bd9358e648b8c409001dd8c297be7942927c348eb6023",
+  "final_disposition": "qualified",
+  "claim_boundary": "bounded_hqp_execution_evidence_not_complete_observation_truth_compliance_safety_or_ga_proof",
+  "report_digest_sha256": "873e919b669c95565768c20662ae49bac0df1778f972fc91eef91e90a2f561c5"
+}
