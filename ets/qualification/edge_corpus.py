@@ -76,7 +76,8 @@ class EdgeQualificationCase(StrictEdgeCorpusModel):
         _require_unique(self.preconditions, f"{self.test_id} preconditions")
         _require_unique(self.required_artifact_roles, f"{self.test_id} artifact roles")
         _require_unique(self.assertion_ids, f"{self.test_id} assertion IDs")
-        if not any(ref in {"#140", "#141", "#142", "#143", "#144", "#145"} for ref in self.requirement_refs):
+        source_issues = {"#140", "#141", "#142", "#143", "#144", "#145"}
+        if not any(ref in source_issues for ref in self.requirement_refs):
             raise ValueError(f"{self.test_id} must trace to Edge requirements #140-#145")
         return self
 
@@ -162,11 +163,13 @@ def validate_edge_run_against_corpus(
     if run.profile.profile_version != profile.profile_version:
         raise ValueError("run profile_version does not match Edge profile")
 
-    missing_firmware = sorted(
-        set(corpus.reference_target_class.required_device_firmware_fields) - set(run.device.firmware)
-    )
+    required_firmware = set(corpus.reference_target_class.required_device_firmware_fields)
+    missing_firmware = sorted(required_firmware - set(run.device.firmware))
     if missing_firmware:
-        raise ValueError(f"run device identity is missing claim-critical firmware fields: {missing_firmware}")
+        raise ValueError(
+            "run device identity is missing claim-critical firmware fields: "
+            f"{missing_firmware}"
+        )
 
     missing_dimensions = sorted(
         set(corpus.reference_target_class.required_environment_dimensions)
@@ -178,7 +181,9 @@ def validate_edge_run_against_corpus(
     executions = {item.test_id: item for item in run.test_executions}
     unknown_executions = sorted(set(executions) - set(corpus.case_order))
     if unknown_executions:
-        raise ValueError(f"run contains test executions outside Edge corpus v1: {unknown_executions}")
+        raise ValueError(
+            f"run contains test executions outside Edge corpus v1: {unknown_executions}"
+        )
 
     missing_executions = sorted(set(corpus.case_order) - set(executions))
     if missing_executions:
@@ -260,7 +265,8 @@ def seal_edge_lab_run(
         execution = executions[profile_case.test_id]
         if execution.status in {TestStatus.INVALID, TestStatus.NOT_RUN}:
             raise ValueError(
-                f"{profile_case.test_id} is incomplete/invalid and cannot produce a lab-tested package"
+                f"{profile_case.test_id} is incomplete/invalid and cannot produce "
+                "a lab-tested package"
             )
         if execution.status is TestStatus.FAILED:
             raise ValueError(
