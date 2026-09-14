@@ -37,6 +37,7 @@ from ets.qualification.hardware import (
     VerifierResult,
     VerifierStatus,
 )
+from ets.qualification.profile import HardwareQualificationProfile
 
 _ROOT = Path(__file__).parents[2]
 _PROFILE = _ROOT / "docs" / "qualification" / "profiles" / "ets-edge-hardware-qualification-v1.json"
@@ -49,7 +50,10 @@ def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _profile_and_corpus():
+def _profile_and_corpus() -> tuple[
+    HardwareQualificationProfile,
+    EdgeHardwareQualificationCorpus,
+]:
     profile = load_edge_profile(_PROFILE.read_bytes())
     corpus = load_edge_corpus(_CORPUS.read_bytes())
     return profile, corpus
@@ -131,7 +135,9 @@ def _complete_draft_run() -> HardwareQualificationRun:
                     observation_class=observation_class,
                     canonical_digest_sha256=_sha256(observation_id),
                     artifact_ids=(case_artifact_ids[0],),
-                    uncertainty_statement="Synthetic conformance fixture only; not physical evidence.",
+                    uncertainty_statement=(
+                        "Synthetic conformance fixture only; not physical evidence."
+                    ),
                 )
             )
 
@@ -311,12 +317,19 @@ def test_complete_synthetic_capture_validates_and_seals_lab_tested() -> None:
 def test_missing_claim_critical_firmware_field_is_rejected() -> None:
     profile, corpus = _profile_and_corpus()
     run = _complete_draft_run()
-    device = run.device.model_copy(
-        update={"firmware": {key: value for key, value in run.device.firmware.items() if key != "boot_firmware"}}
-    )
+    firmware = {
+        key: value
+        for key, value in run.device.firmware.items()
+        if key != "boot_firmware"
+    }
+    device = run.device.model_copy(update={"firmware": firmware})
 
     with pytest.raises(ValueError, match="claim-critical firmware"):
-        validate_edge_run_against_corpus(profile, corpus, run.model_copy(update={"device": device}))
+        validate_edge_run_against_corpus(
+            profile,
+            corpus,
+            run.model_copy(update={"device": device}),
+        )
 
 
 def test_missing_required_case_artifact_role_is_rejected() -> None:
