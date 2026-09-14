@@ -3,6 +3,8 @@
 Run with ``python -m ets.hqp_verify`` from an installed ETS environment.
 """
 
+from __future__ import annotations
+
 from ets.qualification.verifier import main
 
 
