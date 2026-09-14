@@ -13,18 +13,72 @@ A successful virtual run is a **simulated qualification result**. It MUST NOT be
 
 ## 2. Recommended host
 
-Preferred host: Linux with KVM/QEMU/libvirt.
+Primary host: the available dedicated Ubuntu physical server running KVM/QEMU/libvirt headlessly.
+
+The host's display/GPU driver is **not a prerequisite** for VT0. If the server boots, has stable networking, exposes hardware virtualization, and can be administered over SSH, VT0 can proceed without a working local graphical desktop. GPU/display remediation is therefore a separate maintenance item unless the fault prevents normal boot, networking, storage access, or virtualization.
+
+Preferred trust separation:
+
+- **Ubuntu physical server** — hypervisor and VT0 DUT/upstream workload host;
+- **operator workstation** — independent observer, packet capture, retained-artifact receiver, and HQP-2 verifier context where practical;
+- **Linksys/D-Link hardware** — real physical source-side/network-fault boundary;
+- **future EDGEW-RT0-DUT** — separately identified physical qualification target when procured.
+
+This separation is preferred over running DUT, observer, and verifier on one host because a single hypervisor should not be treated as the sole historian of all fault timing and resulting-state evidence.
 
 Reference guest envelope:
 
 | VM | vCPU | RAM | Storage | NICs | Role |
 | --- | ---: | ---: | --- | ---: | --- |
 | `edgew-rt0-vt0-dut` | 4 | 16 GiB | 64 GiB OS + sparse 512 GiB qualification disk | 4 | Edge DUT twin |
-| `edgew-rt0-vt0-observer` | 2 | 4 GiB | 64 GiB | 2 | independent packet/fault/timeline observer |
-| `edgew-rt0-vt0-verifier` | 2 | 4 GiB | 64 GiB | 1 | clean HQP-2/proof verification context |
+| `edgew-rt0-vt0-observer` | 2 | 4 GiB | 64 GiB | 2 | optional on-host observer; external workstation observer preferred |
 | `edgew-rt0-vt0-upstream` | 2 | 4 GiB | 64 GiB | 2 | Gateway/upstream synchronization target |
 
+A verifier VM may run on the server for tooling rehearsal, but an external workstation verifier is preferred for independent-verifier exercises.
+
 The virtual DUT should run Ubuntu 24.04 LTS x86-64 to match the intended first physical software baseline even if the KVM host runs another supported Ubuntu LTS version.
+
+### Host preflight
+
+Before creating VT0, retain the output of:
+
+```bash
+uname -a
+cat /etc/os-release
+lscpu
+free -h
+lsblk -o NAME,MODEL,SERIAL,SIZE,TYPE,FSTYPE,MOUNTPOINTS
+ip -br link
+ip -br addr
+sudo dmesg --level=err,warn | tail -n 200
+```
+
+Check hardware virtualization:
+
+```bash
+grep -Eoc '(vmx|svm)' /proc/cpuinfo
+ls -l /dev/kvm
+```
+
+After installing libvirt tooling, verify:
+
+```bash
+sudo virt-host-validate
+sudo virsh list --all
+```
+
+Retain these as **host-environment observations**, not as physical DUT qualification evidence.
+
+### GPU/display-driver triage boundary
+
+Do not install a guessed video driver as part of VT0 setup. First identify the device and active driver:
+
+```bash
+lspci -nnk | grep -A3 -E 'VGA|3D|Display'
+lsmod | grep -E 'nvidia|nouveau|amdgpu|i915'
+```
+
+If the machine is remotely manageable and KVM works, continue VT0 even if local video remains unresolved. Fixing local graphics should not be allowed to delay Edge software/evidence preflight.
 
 ## 3. Virtual firmware and TPM
 
@@ -55,7 +109,7 @@ The old routers are useful before the DUT arrives.
 
 Recommended physical/virtual hybrid topology:
 
-`source VM or legacy source -> old router -> host physical NIC/bridge -> EDGEW-RT0-VT0 source vNIC`
+`source VM or legacy source -> old router -> server physical NIC/bridge -> EDGEW-RT0-VT0 source vNIC`
 
 Use one router as the active source-side boundary and the second as an alternate/recovery topology. This gives the VM real external network-state changes instead of simulating every fault inside one hypervisor.
 
