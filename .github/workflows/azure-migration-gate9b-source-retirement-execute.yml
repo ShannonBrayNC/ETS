@@ -1,0 +1,440 @@
+name: Azure Migration Gate 9B Source Retirement Execute
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: Exact reviewed main commit authorized for Gate 9B execution
+        required: true
+        type: string
+      gate9_readiness_run_id:
+        description: Successful Gate 9 readiness workflow run ID
+        required: true
+        type: string
+      gate9b_inventory_run_id:
+        description: Successful Gate 9B source inventory workflow run ID
+        required: true
+        type: string
+      retirement_plan_relative_path:
+        description: Protected retirement-plan JSON path under GATE4_OPERATOR_ROOT
+        required: true
+        type: string
+      retirement_plan_sha256:
+        description: Exact SHA-256 of protected retirement-plan JSON
+        required: true
+        type: string
+      authorization:
+        description: Type GATE9_SOURCE_RETIREMENT_EXECUTE_AUTHORIZED exactly
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate9b-source-retirement-execute
+  cancel-in-progress: false
+
+jobs:
+  retire-source:
+    name: Retire only explicitly reviewed source resources
+    runs-on: [self-hosted, linux, x64, ets-migration-gate4]
+    environment: ets-azure-migration-source-retirement
+    timeout-minutes: 90
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      GATE9_RUN_ID: ${{ inputs.gate9_readiness_run_id }}
+      INVENTORY_RUN_ID: ${{ inputs.gate9b_inventory_run_id }}
+      PLAN_REL: ${{ inputs.retirement_plan_relative_path }}
+      PLAN_SHA256: ${{ inputs.retirement_plan_sha256 }}
+      AUTHORIZATION: ${{ inputs.authorization }}
+      SOURCE_TENANT_ID: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+      SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+      GATE9_DIR: ${{ runner.temp }}/gate9-readiness
+      INVENTORY_DIR: ${{ runner.temp }}/gate9b-inventory
+      GATE9_REPORT: ${{ runner.temp }}/gate9-readiness/ets-gate9-decommission-readiness.json
+      INVENTORY_REPORT: ${{ runner.temp }}/gate9b-inventory/ets-gate9b-source-retirement-inventory.json
+      RETIREMENT_RESULT: ${{ runner.temp }}/ets-gate9b-source-retirement-execution.json
+
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head or unsafe execution inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$AUTHORIZATION" == "GATE9_SOURCE_RETIREMENT_EXECUTE_AUTHORIZED" ]]
+          [[ "$GATE9_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$INVENTORY_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$PLAN_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ -n '${{ vars.SOURCE_RETIREMENT_AZURE_CLIENT_ID }}' ]]
+          [[ -n "$SOURCE_TENANT_ID" ]]
+          [[ -n "$SOURCE_SUBSCRIPTION_ID" ]]
+          [[ -n "${GATE4_OPERATOR_ROOT:-}" ]]
+          [[ -d "$GATE4_OPERATOR_ROOT" ]]
+          [[ -n "$PLAN_REL" ]]
+          case "$PLAN_REL" in
+            /*|../*|*/../*|*/..|..)
+              echo 'Gate 9B retirement plan must remain under operator root' >&2
+              exit 2
+              ;;
+          esac
+          PLAN_PATH="$GATE4_OPERATOR_ROOT/$PLAN_REL"
+          [[ -f "$PLAN_PATH" ]]
+          echo "PLAN_PATH=$PLAN_PATH" >> "$GITHUB_ENV"
+
+      - name: Validate prerequisite workflow identities
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from urllib.request import Request, urlopen
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GITHUB_TOKEN"]
+          checks = (
+              (
+                  os.environ["GATE9_RUN_ID"],
+                  "Azure Migration Gate 9 Observation and Decommission Readiness",
+                  ".github/workflows/azure-migration-gate9-observation.yml",
+              ),
+              (
+                  os.environ["INVENTORY_RUN_ID"],
+                  "Azure Migration Gate 9B Source Retirement Inventory",
+                  ".github/workflows/azure-migration-gate9b-source-retirement-inventory.yml",
+              ),
+          )
+          for run_id, expected_name, expected_path in checks:
+              request = Request(
+                  f"https://api.github.com/repos/{repo}/actions/runs/{run_id}",
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urlopen(request, timeout=20) as response:
+                  run = json.load(response)
+              required = {
+                  "name": expected_name,
+                  "path": expected_path,
+                  "status": "completed",
+                  "conclusion": "success",
+                  "event": "workflow_dispatch",
+                  "head_branch": "main",
+              }
+              for key, expected in required.items():
+                  if run.get(key) != expected:
+                      raise SystemExit(
+                          f"Gate 9B prerequisite workflow {run_id} failed {key} validation"
+                      )
+          PY
+
+      - name: Download exact Gate 9 readiness evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate9-decommission-readiness
+          path: ${{ runner.temp }}/gate9-readiness
+          run-id: ${{ inputs.gate9_readiness_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download exact Gate 9B reviewed inventory
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate9b-source-retirement-inventory
+          path: ${{ runner.temp }}/gate9b-inventory
+          run-id: ${{ inputs.gate9b_inventory_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Require exact prerequisite files and plan digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -f "$GATE9_REPORT" ]]
+          [[ -f "$INVENTORY_REPORT" ]]
+          observed="$(sha256sum "$PLAN_PATH" | awk '{print $1}')"
+          [[ "$observed" == "$PLAN_SHA256" ]]
+
+      - name: Azure login with dedicated source-retirement identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.SOURCE_RETIREMENT_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Execute exact reviewed source-retirement plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate9b_retirement execute \
+            --readiness "$GATE9_REPORT" \
+            --inventory "$INVENTORY_REPORT" \
+            --plan "$PLAN_PATH" \
+            --plan-sha256 "$PLAN_SHA256" \
+            --resource-group rg-ets-live-eastus \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID" \
+            --authorization "$AUTHORIZATION" \
+            --output "$RETIREMENT_RESULT"
+
+      - name: Retain sanitized source retirement execution evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-migration-gate9b-source-retirement-execution
+          path: ${{ runner.temp }}/ets-gate9b-source-retirement-execution.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove protected/local source evidence copies
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$GATE9_DIR" "$INVENTORY_DIR"
+          rm -f "$RETIREMENT_RESULT"
+
+      - name: Clear source Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+  destination-smoke:
+    name: Prove destination survives source retirement
+    needs: retire-source
+    runs-on: [self-hosted, linux, x64, ets-migration-gate4]
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 35
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      DEST_RESOURCE_GROUP: rg-ets-prod-eastus
+      GATEWAY_APP: ets-oif5r5ydprrou-gw
+      RETIREMENT_DIR: ${{ runner.temp }}/gate9b-retirement
+      RETIREMENT_REPORT: ${{ runner.temp }}/gate9b-retirement/ets-gate9b-source-retirement-execution.json
+      ACTIVE_PROBE_REPORT: ${{ runner.temp }}/ets-gate9b-active-gateway-probe.json
+      M365_MARKER: ${{ runner.temp }}/ets-gate9b-m365-marker.json
+      PUBLIC_MARKER: ${{ runner.temp }}/ets-gate9b-public-marker.json
+      FINAL_REPORT: ${{ runner.temp }}/ets-gate9b-source-retirement-final.json
+
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require same exact reviewed main commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == '${{ inputs.expected_commit }}' ]]
+
+      - name: Download source retirement execution evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate9b-source-retirement-execution
+          path: ${{ runner.temp }}/gate9b-retirement
+
+      - name: Validate source retirement execution evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -f "$RETIREMENT_REPORT" ]]
+          python - "$RETIREMENT_REPORT" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          required = {
+              "schema_version": "ets.azure-migration.gate9b-source-retirement-execution.v1",
+              "claim": "source_azure_resources_retired_from_explicit_plan",
+              "source_decommission_authorized": True,
+              "source_decommission_execution_performed": True,
+              "subscription_cancellation_performed": False,
+              "stale_source_automatic_rollback_permitted": False,
+              "post_retirement_smoke_required": True,
+          }
+          for key, expected in required.items():
+              if payload.get(key) != expected:
+                  raise SystemExit(f"Gate 9B retirement evidence failed {key} validation")
+          PY
+
+      - name: Azure login with destination identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Container Apps CLI extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+
+      - name: Requalify EchoMedia read from active destination Gateway
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $raw = & ./scripts/m365/invoke-ets-sharepoint-workload-identity-runtime-qualification.ps1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Gate 9B active Gateway M365 qualification failed.' }
+          if ($raw -notmatch '"qualification"\s*:\s*"pass"') { throw 'Gate 9B M365 qualification did not report pass.' }
+          if ($raw -notmatch '"exactSharePointSiteVerified"\s*:\s*true') { throw 'Gate 9B exact SharePoint site was not verified.' }
+          $marker = [ordered]@{
+            active_production_gateway_m365_read = $true
+            exact_sharepoint_site_verified = $true
+          }
+          $marker | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $env:M365_MARKER -Encoding utf8NoBOM
+
+      - name: Run fresh controlled destination append and inclusion proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(base64 -w0 scripts/azure_migration_gate7c_active_gateway_probe.py)"
+          remote="python -c \"import base64;exec(compile(base64.b64decode('$payload'),'<ets-gate9b-active-probe>','exec'))\""
+          output="$(az containerapp exec \
+            --resource-group "$DEST_RESOURCE_GROUP" \
+            --name "$GATEWAY_APP" \
+            --command "$remote" 2>&1)"
+          encoded="$(printf '%s\n' "$output" | sed -n 's/.*ETS_GATE7C_RESULT_B64=\([A-Za-z0-9+\/=]*\).*/\1/p' | tail -n 1)"
+          [[ -n "$encoded" ]]
+          python - "$encoded" "$ACTIVE_PROBE_REPORT" <<'PY'
+          import base64
+          import json
+          import sys
+          from pathlib import Path
+
+          decoded = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
+          if decoded.get("claim") != "active_gateway_core_continuity_proven":
+              raise SystemExit("Gate 9B active Gateway probe claim is invalid")
+          required = (
+              "local_inclusion_verification",
+              "api_inclusion_verification",
+              "event_readback_verified",
+              "destination_tree_head_ps256",
+          )
+          if any(decoded.get(key) is not True for key in required):
+              raise SystemExit("Gate 9B active Gateway proof is incomplete")
+          path = Path(sys.argv[2])
+          path.write_text(json.dumps(decoded, sort_keys=True) + "\n", encoding="utf-8")
+          path.chmod(0o600)
+          PY
+
+      - name: Verify Lantern public hosts remain healthy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$PUBLIC_MARKER" <<'PY'
+          import json
+          import ssl
+          import sys
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+
+          hosts = ("lanternprotocol.net", "www.lanternprotocol.net", "azure.lanternprotocol.net")
+          context = ssl.create_default_context()
+          for host in hosts:
+              request = Request(f"https://{host}/", headers={"User-Agent": "ETS-Gate9B/1"})
+              with urlopen(request, timeout=20, context=context) as response:
+                  body = response.read(2 * 1024 * 1024)
+                  status = int(getattr(response, "status", 0))
+              if status < 200 or status >= 400 or not body:
+                  raise SystemExit(f"Gate 9B public Lantern smoke failed for {host}")
+          marker = {
+              "lantern_public_hosts_healthy": True,
+              "tls_verified_by_default_context": True,
+              "hosts": list(hosts),
+          }
+          path = Path(sys.argv[1])
+          path.write_text(json.dumps(marker, sort_keys=True) + "\n", encoding="utf-8")
+          path.chmod(0o600)
+          PY
+
+      - name: Finalize post-retirement destination-only proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$RETIREMENT_REPORT" "$M365_MARKER" "$ACTIVE_PROBE_REPORT" "$PUBLIC_MARKER" "$FINAL_REPORT" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          retirement, m365, probe, public, output = map(Path, sys.argv[1:])
+          r = json.loads(retirement.read_text(encoding="utf-8"))
+          m = json.loads(m365.read_text(encoding="utf-8"))
+          p = json.loads(probe.read_text(encoding="utf-8"))
+          w = json.loads(public.read_text(encoding="utf-8"))
+          if m.get("active_production_gateway_m365_read") is not True:
+              raise SystemExit("Gate 9B M365 post-retirement smoke is incomplete")
+          if p.get("api_inclusion_verification") is not True:
+              raise SystemExit("Gate 9B ETS post-retirement smoke is incomplete")
+          if w.get("lantern_public_hosts_healthy") is not True:
+              raise SystemExit("Gate 9B Lantern post-retirement smoke is incomplete")
+          result = {
+              "schema_version": "ets.azure-migration.gate9b-source-retirement-final.v1",
+              "claim": "source_retirement_complete_destination_healthy",
+              "source_manifest_sha256": r["source_manifest_sha256"],
+              "retirement_plan_sha256": r["retirement_plan_sha256"],
+              "source_decommission_execution_performed": True,
+              "destination_append_and_proof_verified": True,
+              "active_production_gateway_m365_read": True,
+              "lantern_public_hosts_healthy": True,
+              "stale_source_automatic_rollback_permitted": False,
+              "subscription_cancellation_performed": False,
+              "tenant_exit_resource_retirement_complete": True,
+          }
+          output.write_text(json.dumps(result, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+          output.chmod(0o600)
+          PY
+
+      - name: Retain final source-retirement evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-migration-gate9b-source-retirement-final
+          path: ${{ runner.temp }}/ets-gate9b-source-retirement-final.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Remove runner-local evidence copies
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$RETIREMENT_DIR"
+          rm -f "$ACTIVE_PROBE_REPORT" "$M365_MARKER" "$PUBLIC_MARKER" "$FINAL_REPORT"
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert post-retirement boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 9B retirement result
+
+          - source retirement plan: `executed exactly`
+          - destination ETS append/proof after retirement: `passed`
+          - destination Gateway → EchoMedia `/sites/ETS`: `passed`
+          - Lantern public HTTPS hosts: `passed`
+          - stale-source writer rollback: `forbidden`
+          - subscription cancellation: `not performed`
+
+          Resource retirement and subscription cancellation are separate boundaries. This workflow
+          intentionally leaves subscription cancellation for a later inventory-proven decision.
+          EOF
