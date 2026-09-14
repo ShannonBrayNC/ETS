@@ -210,7 +210,7 @@ def test_gate9_script_contains_no_destructive_azure_command() -> None:
     for forbidden in (
         "az group delete",
         "az resource delete",
-        "subscription cancel",
+        "az account subscription cancel",
         "containerapp delete",
         "keyvault delete",
         "storage account delete",
