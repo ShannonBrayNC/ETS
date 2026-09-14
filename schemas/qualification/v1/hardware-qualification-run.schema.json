@@ -1,0 +1,492 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/qualification/v1/hardware-qualification-run.schema.json",
+  "title": "ETS Hardware Qualification Run v1",
+  "description": "Product-neutral retained execution package for one HQP hardware qualification run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "profile",
+    "device",
+    "environment",
+    "build",
+    "observers",
+    "started_at",
+    "completed_at",
+    "starting_states",
+    "stimuli",
+    "observations",
+    "resulting_states",
+    "artifacts",
+    "evidence_objects",
+    "test_executions",
+    "deviations",
+    "verifier_result",
+    "final_disposition",
+    "run_digest_sha256",
+    "credentials_embedded",
+    "private_keys_embedded",
+    "claim_boundary"
+  ],
+  "properties": {
+    "schema_version": {"const": "ets.hardware-qualification-run.v1"},
+    "run_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "profile": {"$ref": "#/$defs/profileBinding"},
+    "device": {"$ref": "#/$defs/deviceIdentity"},
+    "environment": {"$ref": "#/$defs/environment"},
+    "build": {"$ref": "#/$defs/buildIdentity"},
+    "observers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/observerIdentity"}
+    },
+    "started_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": ["string", "null"], "format": "date-time"},
+    "starting_states": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/stateReference"}
+    },
+    "stimuli": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/stimulusRecord"}
+    },
+    "observations": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/observationRecord"}
+    },
+    "resulting_states": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/resultingStateRecord"}
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/artifactReference"}
+    },
+    "evidence_objects": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/evidenceObjectReference"}
+    },
+    "test_executions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/testExecution"}
+    },
+    "deviations": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/deviationRecord"}
+    },
+    "verifier_result": {"$ref": "#/$defs/verifierResult"},
+    "final_disposition": {
+      "enum": [
+        "in_progress",
+        "invalid",
+        "failed",
+        "lab_tested",
+        "qualified",
+        "qualified_with_deviation"
+      ]
+    },
+    "run_digest_sha256": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "credentials_embedded": {"const": false},
+    "private_keys_embedded": {"const": false},
+    "claim_boundary": {
+      "const": "bounded_hqp_execution_evidence_not_complete_observation_truth_compliance_safety_or_ga_proof"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "final_disposition": {"not": {"const": "in_progress"}}
+        },
+        "required": ["final_disposition"]
+      },
+      "then": {
+        "properties": {
+          "completed_at": {"type": "string", "format": "date-time"},
+          "run_digest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "final_disposition": {
+            "enum": ["qualified", "qualified_with_deviation"]
+          }
+        },
+        "required": ["final_disposition"]
+      },
+      "then": {
+        "properties": {
+          "evidence_objects": {"minItems": 1},
+          "verifier_result": {
+            "allOf": [
+              {"$ref": "#/$defs/verifierResult"},
+              {
+                "properties": {
+                  "status": {"const": "valid"},
+                  "independent_execution_context": {"const": true}
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"final_disposition": {"const": "qualified"}},
+        "required": ["final_disposition"]
+      },
+      "then": {
+        "properties": {
+          "deviations": {
+            "items": {
+              "allOf": [
+                {"$ref": "#/$defs/deviationRecord"},
+                {"properties": {"affects_claim_scope": {"const": false}}}
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "profileBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "profile_version", "profile_digest_sha256"],
+      "properties": {
+        "profile_id": {"type": "string", "minLength": 3, "maxLength": 256},
+        "profile_version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "profile_digest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "deviceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "device_id",
+        "manufacturer",
+        "model",
+        "hardware_revision",
+        "serial_or_asset_id",
+        "firmware",
+        "identity_digest_sha256"
+      ],
+      "properties": {
+        "device_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "manufacturer": {"type": "string", "minLength": 1, "maxLength": 256},
+        "model": {"type": "string", "minLength": 1, "maxLength": 256},
+        "hardware_revision": {"type": "string", "minLength": 1, "maxLength": 256},
+        "serial_or_asset_id": {"type": ["string", "null"], "maxLength": 256},
+        "firmware": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
+        "identity_digest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["environment_id", "dimensions", "environment_digest_sha256"],
+      "properties": {
+        "environment_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "dimensions": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"type": "string"}
+        },
+        "environment_digest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "buildIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "commit_sha",
+        "artifact_digest_sha256",
+        "configuration_digest_sha256",
+        "sbom_artifact_id"
+      ],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1, "maxLength": 512},
+        "commit_sha": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+        "artifact_digest_sha256": {"$ref": "#/$defs/sha256"},
+        "configuration_digest_sha256": {"$ref": "#/$defs/sha256"},
+        "sbom_artifact_id": {"type": ["string", "null"], "maxLength": 256}
+      }
+    },
+    "observerIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observer_id", "observer_kind", "role", "signing_identity"],
+      "properties": {
+        "observer_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "observer_kind": {"enum": ["human", "machine", "composite"]},
+        "role": {"type": "string", "minLength": 1, "maxLength": 256},
+        "signing_identity": {"type": ["string", "null"], "maxLength": 512}
+      }
+    },
+    "artifactReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_id",
+        "artifact_role",
+        "media_type",
+        "sha256",
+        "byte_length",
+        "retention_locator",
+        "redaction_state",
+        "required",
+        "secret_material_embedded",
+        "private_key_embedded"
+      ],
+      "properties": {
+        "artifact_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "artifact_role": {"type": "string", "minLength": 1, "maxLength": 256},
+        "media_type": {"type": "string", "minLength": 1, "maxLength": 256},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "byte_length": {"type": "integer", "minimum": 0},
+        "retention_locator": {"type": ["string", "null"], "maxLength": 2048},
+        "redaction_state": {"enum": ["none", "redacted", "withheld"]},
+        "required": {"type": "boolean"},
+        "secret_material_embedded": {"const": false},
+        "private_key_embedded": {"const": false}
+      }
+    },
+    "stateReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state_id", "canonical_digest_sha256", "artifact_ids"],
+      "properties": {
+        "state_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "canonical_digest_sha256": {"$ref": "#/$defs/sha256"},
+        "artifact_ids": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "stimulusRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stimulus_id",
+        "test_id",
+        "issued_at",
+        "authority_reference",
+        "stimulus_class",
+        "canonical_digest_sha256",
+        "artifact_ids"
+      ],
+      "properties": {
+        "stimulus_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "test_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "issued_at": {"type": "string", "format": "date-time"},
+        "authority_reference": {"type": "string", "minLength": 1, "maxLength": 512},
+        "stimulus_class": {"type": "string", "minLength": 1, "maxLength": 256},
+        "canonical_digest_sha256": {"$ref": "#/$defs/sha256"},
+        "artifact_ids": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "observationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observation_id",
+        "test_id",
+        "observer_id",
+        "observed_at",
+        "observation_class",
+        "canonical_digest_sha256",
+        "artifact_ids",
+        "uncertainty_statement"
+      ],
+      "properties": {
+        "observation_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "test_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "observer_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "observation_class": {"type": "string", "minLength": 1, "maxLength": 256},
+        "canonical_digest_sha256": {"$ref": "#/$defs/sha256"},
+        "artifact_ids": {"$ref": "#/$defs/stringArray"},
+        "uncertainty_statement": {"type": ["string", "null"], "maxLength": 2048}
+      }
+    },
+    "resultingStateRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resulting_state_id",
+        "test_id",
+        "observed_at",
+        "canonical_digest_sha256",
+        "artifact_ids"
+      ],
+      "properties": {
+        "resulting_state_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "test_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "canonical_digest_sha256": {"$ref": "#/$defs/sha256"},
+        "artifact_ids": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "evidenceObjectReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_object_id",
+        "evidence_class",
+        "canonical_digest_sha256",
+        "artifact_ids"
+      ],
+      "properties": {
+        "evidence_object_id": {"type": "string", "minLength": 1, "maxLength": 512},
+        "evidence_class": {"type": "string", "minLength": 1, "maxLength": 256},
+        "canonical_digest_sha256": {"$ref": "#/$defs/sha256"},
+        "artifact_ids": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "deviationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deviation_id",
+        "kind",
+        "test_id",
+        "rationale",
+        "approved_by",
+        "approval_artifact_id",
+        "affects_claim_scope",
+        "expires_at"
+      ],
+      "properties": {
+        "deviation_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "kind": {"enum": ["deviation", "waiver"]},
+        "test_id": {"type": ["string", "null"], "maxLength": 256},
+        "rationale": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "approved_by": {"type": "string", "minLength": 1, "maxLength": 256},
+        "approval_artifact_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "affects_claim_scope": {"type": "boolean"},
+        "expires_at": {"type": ["string", "null"], "format": "date-time"}
+      }
+    },
+    "assertionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assertion_id", "passed", "reason"],
+      "properties": {
+        "assertion_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "passed": {"type": "boolean"},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 2048}
+      }
+    },
+    "testExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "test_id",
+        "required",
+        "status",
+        "started_at",
+        "completed_at",
+        "starting_state_id",
+        "stimulus_ids",
+        "observation_ids",
+        "resulting_state_ids",
+        "evidence_object_ids",
+        "artifact_ids",
+        "assertions",
+        "deviation_ids"
+      ],
+      "properties": {
+        "test_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "required": {"type": "boolean"},
+        "status": {"enum": ["passed", "failed", "invalid", "waived", "not_run"]},
+        "started_at": {"type": "string", "format": "date-time"},
+        "completed_at": {"type": ["string", "null"], "format": "date-time"},
+        "starting_state_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "stimulus_ids": {"$ref": "#/$defs/stringArray"},
+        "observation_ids": {"$ref": "#/$defs/stringArray"},
+        "resulting_state_ids": {"$ref": "#/$defs/stringArray"},
+        "evidence_object_ids": {"$ref": "#/$defs/stringArray"},
+        "artifact_ids": {"$ref": "#/$defs/stringArray"},
+        "assertions": {"type": "array", "items": {"$ref": "#/$defs/assertionResult"}},
+        "deviation_ids": {"$ref": "#/$defs/stringArray"}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"status": {"not": {"const": "not_run"}}},
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {"completed_at": {"type": "string", "format": "date-time"}}
+          }
+        }
+      ]
+    },
+    "verifierResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "verifier_id",
+        "verifier_build_digest_sha256",
+        "independent_execution_context",
+        "verification_digest_sha256",
+        "challenge_nonce",
+        "reason"
+      ],
+      "properties": {
+        "status": {"enum": ["not_run", "valid", "invalid"]},
+        "verifier_id": {"type": ["string", "null"], "maxLength": 256},
+        "verifier_build_digest_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "independent_execution_context": {"type": "boolean"},
+        "verification_digest_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "challenge_nonce": {"type": ["string", "null"], "maxLength": 512},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 4096}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"status": {"const": "valid"}},
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "verifier_id": {"type": "string", "minLength": 1, "maxLength": 256},
+              "verifier_build_digest_sha256": {"$ref": "#/$defs/sha256"},
+              "independent_execution_context": {"const": true},
+              "verification_digest_sha256": {"$ref": "#/$defs/sha256"}
+            }
+          }
+        }
+      ]
+    },
+    "stringArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 512}
+    }
+  }
+}
