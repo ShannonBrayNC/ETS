@@ -125,7 +125,9 @@ def _fixture_claim_payload() -> dict[str, object]:
             "roadmap_path": "docs/PUBLIC_ROADMAP_STATUS.md",
             "product": "HQP conformance fixture",
             "capability_maturity": "test-only",
-            "qualification_language": "Conformance fixture; never publish as product qualification.",
+            "qualification_language": (
+                "Conformance fixture; never publish as product qualification."
+            ),
             "capability_maturity_is_independent": True,
         },
         "source_issue_refs": ["ShannonBrayNC/ETS#798"],
