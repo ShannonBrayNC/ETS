@@ -36,7 +36,9 @@ _REQUIRED_VERIFIER_CHECKS = {
 }
 _CLAIM_BOUNDARY: Literal[
     "cross_product_hqp_reuse_not_physical_qualification_truth_completeness_compliance_or_safety_proof"
-] = "cross_product_hqp_reuse_not_physical_qualification_truth_completeness_compliance_or_safety_proof"
+] = (
+    "cross_product_hqp_reuse_not_physical_qualification_truth_completeness_compliance_or_safety_proof"
+)
 
 
 class StrictReuseModel(BaseModel):
