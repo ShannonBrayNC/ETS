@@ -151,7 +151,7 @@ def test_index_rejects_duplicate_pending_target_ids() -> None:
     raw["pending_targets"].append(dict(raw["pending_targets"][0]))
 
     with pytest.raises(ValidationError, match="pending qualification target identifiers"):
-        QualificationIndex.model_validate(raw)
+        QualificationIndex.model_validate_json(json.dumps(raw))
 
 
 def test_positive_claim_requires_valid_eligible_independent_verification() -> None:
@@ -161,7 +161,7 @@ def test_positive_claim_requires_valid_eligible_independent_verification() -> No
     raw["verification"]["eligible_for_claimed_disposition"] = False
 
     with pytest.raises(ValidationError, match="valid HQP-2 verification"):
-        QualificationClaim.model_validate(raw)
+        QualificationClaim.model_validate_json(json.dumps(raw))
 
 
 def test_superseded_claim_cannot_remain_active() -> None:
@@ -174,11 +174,11 @@ def test_superseded_claim_cannot_remain_active() -> None:
     }
 
     with pytest.raises(ValidationError, match="cannot remain active"):
-        QualificationClaim.model_validate(raw)
+        QualificationClaim.model_validate_json(json.dumps(raw))
 
 
 def test_fixture_claim_cross_checks_against_hqp1_and_hqp2() -> None:
-    claim = QualificationClaim.model_validate(_fixture_claim_payload())
+    claim = QualificationClaim.model_validate_json(json.dumps(_fixture_claim_payload()))
     report = HardwareQualificationReport.model_validate_json(
         (_VALID / "report.json").read_bytes()
     )
@@ -191,7 +191,7 @@ def test_cross_check_rejects_mutated_build_commit() -> None:
     raw = _fixture_claim_payload()
     raw["build"] = dict(raw["build"])
     raw["build"]["commit_sha"] = "b" * 40
-    claim = QualificationClaim.model_validate(raw)
+    claim = QualificationClaim.model_validate_json(json.dumps(raw))
     report = HardwareQualificationReport.model_validate_json(
         (_VALID / "report.json").read_bytes()
     )
