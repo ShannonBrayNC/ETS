@@ -1,6 +1,6 @@
 # ETS Qualification Program
 
-This directory contains cross-product qualification contracts, execution packages, conformance fixtures, product-specific corpora, reuse bindings, and roadmap traceability artifacts.
+This directory contains cross-product qualification contracts, execution packages, conformance fixtures, product-specific corpora, reuse bindings, publication governance, and roadmap traceability artifacts.
 
 ## Authoritative rule
 
@@ -27,6 +27,7 @@ device-under-test
 → Evidence Object(s)
 → independent verifier result
 → qualification report
+→ qualification index publication state
 ```
 
 ## Wave 0 — Hardware Qualification Baseline
@@ -90,7 +91,8 @@ Repository CI proves the profile/corpus/tooling is internally executable. CI can
 
 ### HQP-4 — Provenance Android and legacy hardware reuse — repository implementation active
 
-Tracking issue: #797.
+Tracking issue: #797.  
+Repository portability layer merged by PR #806.
 
 - [`ETS_HQP_CROSS_PRODUCT_REUSE_V1.md`](ETS_HQP_CROSS_PRODUCT_REUSE_V1.md)
 - Android profile: `docs/qualification/profiles/ets-provenance-android-phase1a-hardware-qualification-v1.json`
@@ -107,24 +109,34 @@ The Android binding consumes the existing ETS-Mobile Phase 1A physical-device qu
 
 Repository CI is not the HQP-4 exit gate. #797 remains open until one named physical Android target and one named physical legacy target each produce HQP-1 packages that pass HQP-2 independent verification.
 
-### HQP-5 — qualification index and roadmap governance
+### HQP-5 — qualification index and roadmap governance — active repository implementation
 
 Tracking issue: #798.
 
-Publishes bounded claims tied to exact profile, DUT revision, immutable build, retained evidence, verifier result, limitations, expiry, and supersession state.
+- [`ETS_HARDWARE_QUALIFICATION_INDEX_V1.md`](ETS_HARDWARE_QUALIFICATION_INDEX_V1.md)
+- public index: `docs/qualification/qualification-index.json`
+- index schema: `schemas/qualification/v1/hardware-qualification-index.schema.json`
+- runtime/cross-checker: `ets/qualification/index.py`
+- CLI: `python -m ets.hqp_index`
+
+HQP-5 is the publication firewall. A published physical qualification result must identify the exact profile/version/digest, DUT/revision, immutable build/configuration, retained HQP-1 package, HQP-2 result, limitations, validity window, requalification triggers, and supersession state.
+
+The initial public index intentionally contains **zero published physical qualified claims**. Edge, Android Phase 1A, and the first legacy target appear as pending physical gates. Existence of a target profile, simulator, virtual appliance, CI result, or laboratory tooling cannot create a qualified public claim.
 
 ## Initial product traceability
 
 | Product / program | Qualification role | Current Wave 0 relationship |
 |---|---|---|
-| ETS Edge | First HQP specialization | #140 is the Edge qualification/pilot-readiness parent. #145 plus #141-#144 are the requirements provenance for HQP-3. |
-| Provenance / ETS Mobile | Second physical target | HQP-4 binds the existing Android Phase 1A device report into the common HQP run/report/verifier contract. |
-| Legacy hardware lab | Third physical target | HQP-4 defines `LEGACY-NET-SYSLOG-RT0` for a named physical RFC 5424 UDP source using the same HQP evidence/verifier chain. |
+| ETS Edge | First HQP specialization | #140 is the Edge qualification/pilot-readiness parent. #145 plus #141-#144 are the requirements provenance for HQP-3. HQP-5 lists `EDGE-RT0` as pending physical qualification, not a qualified model. |
+| Provenance / ETS Mobile | Second physical target | HQP-4 binds the existing Android Phase 1A device report into the common HQP run/report/verifier contract. HQP-5 lists `ANDROID-PHASE1A-RT0` as pending physical qualification. |
+| Legacy hardware lab | Third physical target | HQP-4 defines `LEGACY-NET-SYSLOG-RT0` for a named physical RFC 5424 UDP source using the same HQP evidence/verifier chain. HQP-5 lists it as not yet physically tested. |
 | Ranger / VRX | Cyber-physical research consumer | Physical experiments inherit HQP while adding motion, actuator, measurement, uncertainty, safety, and consequence-custody requirements. |
 | AI Witness / Black Box / Fleet | Later appliance consumers | Product-specific profiles may add stricter controls but may not silently weaken common HQP evidence requirements. |
 
 ## Governance and claim boundary
 
 No later wave may treat successful software CI alone as physical qualification evidence. No hardware qualification may silently inherit across a hardware revision, software build, profile version, firmware/security-element change, or claim-critical environment change.
+
+A roadmap or publication may call a named physical target **qualified** only when an active HQP-5 index record points to the exact retained HQP-1/HQP-2 evidence supporting that bounded statement.
 
 HQP packages reuse ETS Evidence Object semantics rather than create a second provenance model. Qualification evidence may support a bounded claim about what was tested and observed; it does not by itself prove complete observation, semantic truth, legal admissibility, regulatory compliance, safety certification, general availability, or production readiness.
