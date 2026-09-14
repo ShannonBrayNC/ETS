@@ -1,0 +1,82 @@
+{
+  "schema_version": "ets.hqp-cross-product-reuse.v1",
+  "reuse_id": "ets.legacy-network-syslog.hqp-reuse.v1",
+  "product_name": "Legacy hardware lab / RFC 5424 UDP network source",
+  "target_class_id": "LEGACY-NET-SYSLOG-RT0",
+  "profile_id": "ets.legacy-network-syslog.hardware-qualification.v1",
+  "profile_version": "1.0.0",
+  "source_contract": {
+    "repository": "ShannonBrayNC/ETS",
+    "path": "edge-demo/README.md",
+    "commit_sha": "9e03a693dff986917ec6bf69998fb6a3cf4d002f",
+    "issue_refs": ["#143", "#145", "#797"]
+  },
+  "bindings": [
+    {
+      "source_field": "source_manufacturer_model_revision_firmware",
+      "hqp_target": "run.device",
+      "evidence_role": "dut_identity"
+    },
+    {
+      "source_field": "configured_syslog_identity",
+      "hqp_target": "run.device.firmware.configured_syslog_identity",
+      "evidence_role": "dut_identity"
+    },
+    {
+      "source_field": "observer_edge_build",
+      "hqp_target": "run.build",
+      "evidence_role": "build_identity"
+    },
+    {
+      "source_field": "observer_network_interface_transport_listener",
+      "hqp_target": "run.environment.dimensions",
+      "evidence_role": "environment"
+    },
+    {
+      "source_field": "exact_received_datagram_sha256",
+      "hqp_target": "run.observations + run.artifacts",
+      "evidence_role": "observations"
+    },
+    {
+      "source_field": "parsed_rfc5424_metadata",
+      "hqp_target": "run.observations",
+      "evidence_role": "observations"
+    },
+    {
+      "source_field": "source_ip_port_observation",
+      "hqp_target": "run.observations",
+      "evidence_role": "observations",
+      "notes": "Observation only. This field is never authenticated device identity under UDP."
+    },
+    {
+      "source_field": "evidence_object_and_proof_references",
+      "hqp_target": "run.evidence_objects + run.artifacts",
+      "evidence_role": "evidence_object_binding"
+    },
+    {
+      "source_field": "mutation_comparison",
+      "hqp_target": "run.observations + run.resulting_states",
+      "evidence_role": "resulting_state"
+    },
+    {
+      "source_field": "observer_restart_recovery",
+      "hqp_target": "run.observations + run.resulting_states",
+      "evidence_role": "resulting_state"
+    },
+    {
+      "source_field": "network_interruption_window",
+      "hqp_target": "run.observations + run.resulting_states",
+      "evidence_role": "resulting_state",
+      "notes": "Missing observation is not evidence that no source event occurred."
+    }
+  ],
+  "product_specific_extensions": [
+    "RFC 5424 VERSION 1 UDP datagram observation",
+    "exact received-byte commitment before parsing",
+    "bounded parsed syslog metadata",
+    "explicit unauthenticated-source identity boundary",
+    "legacy-source/network interruption boundary"
+  ],
+  "physical_exit_gate": "One named physical legacy network device must emit RFC 5424 UDP through the controlled lab path, execute all required profile cases, produce a sealed HQP-1 package, and pass HQP-2 independent verification. The source device, firmware, observer Edge build, interface, and network topology must be exact bindings; CI and Edge Virtual do not satisfy this physical gate.",
+  "claim_boundary": "cross_product_hqp_reuse_not_physical_qualification_truth_completeness_compliance_or_safety_proof"
+}

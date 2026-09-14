@@ -1,0 +1,85 @@
+{
+  "schema_version": "ets.hqp-cross-product-reuse.v1",
+  "reuse_id": "ets.provenance.android-phase1a.hqp-reuse.v1",
+  "product_name": "Provenance / ETS Mobile Android Phase 1A",
+  "target_class_id": "ANDROID-PHASE1A-RT0",
+  "profile_id": "ets.provenance.android-phase1a.hardware-qualification.v1",
+  "profile_version": "1.0.0",
+  "source_contract": {
+    "repository": "Lantern-Protocol/ETS-Mobile",
+    "path": "docs/ANDROID_PHASE1A_DEVICE_QUALIFICATION.md",
+    "commit_sha": "fefba5069da1d33251211dd3d67d176bade478c2",
+    "issue_refs": ["Lantern-Protocol/ETS-Mobile#4"]
+  },
+  "bindings": [
+    {
+      "source_field": "manufacturer_model",
+      "hqp_target": "run.device.manufacturer + run.device.model",
+      "evidence_role": "dut_identity"
+    },
+    {
+      "source_field": "android_release_api_level_build_fingerprint",
+      "hqp_target": "run.device.firmware",
+      "evidence_role": "dut_identity"
+    },
+    {
+      "source_field": "application_version_source_git_sha_ci_run",
+      "hqp_target": "run.build",
+      "evidence_role": "build_identity"
+    },
+    {
+      "source_field": "apk_signing_certificate_sha256",
+      "hqp_target": "run.device.firmware.apk_signing_certificate_sha256",
+      "evidence_role": "build_identity"
+    },
+    {
+      "source_field": "keystore_security_level_hardware_backed",
+      "hqp_target": "run.device.firmware.keystore_security_level + hardware_backed_tristate",
+      "evidence_role": "dut_identity"
+    },
+    {
+      "source_field": "capture_source_and_provenance_digests",
+      "hqp_target": "run.observations + run.artifacts",
+      "evidence_role": "observations"
+    },
+    {
+      "source_field": "capture_and_import_evidence_object_ids",
+      "hqp_target": "run.evidence_objects",
+      "evidence_role": "evidence_object_binding"
+    },
+    {
+      "source_field": "origin_signature_verification",
+      "hqp_target": "run.test_executions.assertions",
+      "evidence_role": "verifier_input"
+    },
+    {
+      "source_field": "cold_process_recovery",
+      "hqp_target": "run.observations + run.resulting_states",
+      "evidence_role": "resulting_state"
+    },
+    {
+      "source_field": "import_classification_result",
+      "hqp_target": "run.observations + run.resulting_states",
+      "evidence_role": "resulting_state"
+    },
+    {
+      "source_field": "negative_case_evidence",
+      "hqp_target": "run.observations + run.artifacts + run.test_executions.assertions",
+      "evidence_role": "observations"
+    },
+    {
+      "source_field": "exported_device_qualification_report",
+      "hqp_target": "run.artifacts",
+      "evidence_role": "qualification_source_report"
+    }
+  ],
+  "product_specific_extensions": [
+    "CameraX exact output-byte preservation",
+    "ETS_CAPTURED versus ETS_IMPORTED origin classification",
+    "Android Keystore security-level and hardware-backed tri-state reporting",
+    "APK signing-certificate binding",
+    "cold-process lifecycle-journal replay"
+  ],
+  "physical_exit_gate": "One named physical Android device must execute all required profile cases, retain the source Phase 1A qualification report and supporting artifacts, produce a sealed HQP-1 package, and pass HQP-2 independent verification. Repository CI alone does not satisfy this gate.",
+  "claim_boundary": "cross_product_hqp_reuse_not_physical_qualification_truth_completeness_compliance_or_safety_proof"
+}

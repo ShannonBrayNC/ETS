@@ -26,7 +26,7 @@ Before additional physical feature expansion, the program establishes one qualif
 3. legacy hardware and adapter testing;
 4. later Ranger/VRX and physical ETS appliance work.
 
-HQP-0, HQP-1, and HQP-2 are complete. HQP-3 is the active Edge specialization that turns retained Edge requirements into a versioned executable corpus.
+HQP-0, HQP-1, and HQP-2 are complete. HQP-3 repository implementation is merged and awaits named physical Edge execution. HQP-4 is the active portability layer for Android and legacy hardware.
 
 ## Roadmap interpretation
 
@@ -47,9 +47,9 @@ A roadmap statement that implementation exists is not evidence that a physical p
 
 | Roadmap item | Current roadmap gate | HQP relationship |
 |---|---|---|
-| ETS Edge | Repeatable live qualification of durability, recovery, identity, synchronization, and verifier-visible custody | #140 is qualification parent. HQP-3 profile/corpus derives from #140-#145 and defines 17 executable Edge cases under target class `EDGE-RT0`. |
-| Provenance / ETS Mobile | Physical Android Phase 1A qualification | HQP-4 reuses HQP-0/1/2 semantics and the execution methodology proven by HQP-3 rather than inventing a mobile-only evidence methodology. |
-| Legacy hardware lab | Hardware/adapter characterization and compatibility testing | HQP-4 reuses the same DUT/build/stimulus/observation/result/verifier/report chain and records hardware-specific deviations rather than generalizing Edge results. |
+| ETS Edge | Repeatable live qualification of durability, recovery, identity, synchronization, and verifier-visible custody | #140 is qualification parent. HQP-3 profile/corpus derives from #140-#145 and defines 17 executable Edge cases under target class `EDGE-RT0`; repository implementation merged in #805, physical execution remains #796. |
+| Provenance / ETS Mobile | Physical Android Phase 1A qualification | HQP-4 profile `ets.provenance.android-phase1a.hardware-qualification.v1` binds the existing ETS-Mobile device qualification report into HQP-1/HQP-2 without changing MECB semantics. |
+| Legacy hardware lab | Hardware/adapter characterization and compatibility testing | HQP-4 profile `ets.legacy-network-syslog.hardware-qualification.v1` defines `LEGACY-NET-SYSLOG-RT0` for a named physical RFC 5424 UDP source while preserving unauthenticated-source identity boundaries. |
 | Ranger R0 | Physical terrestrial build and consequence-custody demonstration | Reuse HQP and add cyber-physical observation, uncertainty, actuator, safety, and consequence requirements. |
 | VectorRail / VRX | Replace simulated trials with calibrated physical measurements | Reuse HQP and add laboratory measurement/calibration requirements. |
 | AI Witness / Black Box / Fleet | Physical/live appliance qualification gates | Later product-specific profiles inherit HQP common evidence and claim-boundary rules. |
@@ -67,6 +67,27 @@ Conversely, later implementation does not justify silently checking those histor
 `EDGE-RT0` is a qualification target class, not a qualified hardware model. A physical run must replace the class abstraction with exact manufacturer/model/revision/firmware/security-element/build/environment values.
 
 Repository CI may validate that the profile, corpus, synthetic capture, and sealing path are executable. It MUST NOT be reported as a physical Edge qualification result.
+
+## HQP-4 portability rule
+
+HQP-4 intentionally permits different product-specific test inventories while prohibiting weaker common evidence semantics.
+
+The Android and legacy profiles must retain the same:
+
+- common HQP evidence classes;
+- Evidence Object/raw-artifact requirements;
+- verifier checks and verifier-independence requirements;
+- qualification disposition policy;
+- no-cross-revision rule;
+- requalification/supersession/history rules.
+
+The common-semantics fingerprint is computed over these shared contract elements. Matching fingerprints prove repository-level portability of the qualification methodology, not physical qualification of either target.
+
+Android source evidence is pinned to `Lantern-Protocol/ETS-Mobile` Phase 1A qualification contract at `fefba5069da1d33251211dd3d67d176bade478c2`. A later source-contract change requires review of the binding.
+
+The first legacy profile uses the existing Edge RFC 5424 UDP observation boundary. UDP source IP/port and RFC 5424 identity fields remain observations and MUST NOT be presented as authenticated source identity.
+
+Issue #797 remains open until one named physical Android device and one named physical legacy device each produce retained HQP-1 packages accepted by HQP-2 from an independent context.
 
 ## Publication rule
 

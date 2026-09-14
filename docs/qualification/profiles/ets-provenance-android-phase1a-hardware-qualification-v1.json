@@ -1,0 +1,290 @@
+{
+  "schema_version": "1.0",
+  "base_profile": "ets.hardware-qualification.v1",
+  "profile_id": "ets.provenance.android-phase1a.hardware-qualification.v1",
+  "profile_version": "1.0.0",
+  "title": "ETS Provenance Android Phase 1A Hardware Qualification Profile",
+  "purpose": "Apply the common ETS HQP contract to the existing ETS Mobile Phase 1A physical-device qualification boundary without defining a mobile-only evidence methodology.",
+  "product_scope": ["Provenance / ETS Mobile Android Phase 1A"],
+  "parent_profiles": [
+    {
+      "profile_id": "ets.hardware-qualification.v1",
+      "profile_version": "1.0",
+      "override_review_required": true
+    }
+  ],
+  "capability_boundary": {
+    "capability_states_are_independent": true,
+    "qualification_states": [
+      "not_tested",
+      "simulated",
+      "lab_tested",
+      "qualification_in_progress",
+      "qualified",
+      "qualified_with_deviation",
+      "failed",
+      "expired",
+      "superseded"
+    ],
+    "claim_statement": "Qualification applies only to the named Android device/build/application/profile combination and does not establish semantic truth, production attestation, Gateway sync, remote durability, or qualification of other Android devices."
+  },
+  "device_constraints": {
+    "claim_critical_fields": [
+      "manufacturer",
+      "model",
+      "hardware_revision",
+      "android_release",
+      "api_level",
+      "build_fingerprint",
+      "keystore_security_level",
+      "hardware_backed_tristate",
+      "apk_signing_certificate_sha256"
+    ],
+    "cross_revision_qualification_allowed": false,
+    "equivalence_profile_required": true,
+    "notes": "Android security implementation, OS/build fingerprint, application build, and signing identity are claim-critical. A result does not silently transfer between devices or materially different platform security implementations."
+  },
+  "environment_dimensions": [
+    "qualification_host",
+    "apk_install_method",
+    "camera_adapter",
+    "content_store",
+    "journal_backend",
+    "time_source",
+    "process_restart_method",
+    "test_media_classification"
+  ],
+  "evidence_requirements": {
+    "evidence_object_binding_required": true,
+    "required_classes": [
+      "dut_identity",
+      "environment",
+      "build_identity",
+      "observer_identity",
+      "starting_state",
+      "stimulus",
+      "observations",
+      "resulting_state",
+      "verifier_output",
+      "qualification_report"
+    ],
+    "missing_required_evidence_policy": "invalid",
+    "external_artifacts_allowed": true,
+    "raw_artifact_digest_required": true
+  },
+  "verifier_requirements": {
+    "independent_verification_required_for": ["qualified", "qualified_with_deviation"],
+    "immutable_verifier_identity_required": true,
+    "checks": [
+      "schema_conformance",
+      "artifact_presence",
+      "digest_validity",
+      "signature_validity",
+      "evidence_object_binding",
+      "test_case_completion",
+      "observation_result_linkage",
+      "deviation_policy",
+      "disposition_policy"
+    ],
+    "dut_runtime_may_be_trusted": false
+  },
+  "test_cases": [
+    {
+      "test_id": "MOB-HQP-BIND-001",
+      "title": "Bind physical Android device and application build",
+      "purpose": "Retain exact device, OS/build, application, source, signing-certificate, and Keystore capability identity before product-specific qualification cases execute.",
+      "required": true,
+      "stimulus_class": "qualification_session_start",
+      "required_observations": [
+        "device_identity_snapshot",
+        "android_build_fingerprint",
+        "application_build_identity",
+        "keystore_capability_snapshot"
+      ],
+      "required_resulting_state": ["device_build_binding_retained"],
+      "pass_criteria": [
+        "Manufacturer/model, Android release/API level/build fingerprint, application version, source Git SHA, CI run, and APK signing-certificate digest are retained.",
+        "Keystore security level and hardware-backed tri-state reflect the live runtime capability report rather than requested capability."
+      ],
+      "failure_policy": "invalidate",
+      "waivable": false,
+      "safety_boundary": "Use a designated qualification device and retain no private key or secret application credential."
+    },
+    {
+      "test_id": "MOB-HQP-CAP-001",
+      "title": "ETS-controlled still capture preserves exact committed bytes",
+      "purpose": "Map Phase 1A Test A into HQP stimulus/observation/result evidence while preserving the existing MECB semantics.",
+      "required": true,
+      "depends_on": ["MOB-HQP-BIND-001"],
+      "stimulus_class": "ets_controlled_still_capture",
+      "required_observations": [
+        "camera_output_digest",
+        "evidence_object_commit",
+        "provenance_envelope_digest",
+        "origin_signature_verification"
+      ],
+      "required_resulting_state": [
+        "exact_artifact_recoverable",
+        "ets_captured_class_preserved",
+        "local_commit_replayable"
+      ],
+      "pass_criteria": [
+        "The committed artifact is the exact CameraX adapter byte stream with no ETS rewrite before commitment.",
+        "Independent SHA-256 and provenance-envelope digest checks match the retained Evidence Object.",
+        "The retained public key verifies the origin signature over the exact signed payload.",
+        "The artifact remains ETS_CAPTURED and COMMITTED_LOCAL with no remote-durability or truth claim introduced."
+      ],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Use synthetic or non-sensitive imagery; do not alter production capture behavior to satisfy the test."
+    },
+    {
+      "test_id": "MOB-HQP-KEY-001",
+      "title": "Android Keystore capability is reported conservatively",
+      "purpose": "Map Phase 1A Test B into retained evidence without treating hardware-backed keys as proof of semantic truth.",
+      "required": true,
+      "depends_on": ["MOB-HQP-BIND-001"],
+      "stimulus_class": "keystore_signing_capability_check",
+      "required_observations": [
+        "live_keystore_security_level",
+        "provenance_keystore_security_level",
+        "hardware_backed_tristate"
+      ],
+      "required_resulting_state": [
+        "security_level_match_retained",
+        "no_security_level_upgrade"
+      ],
+      "pass_criteria": [
+        "Live runtime and provenance-envelope security classifications match.",
+        "Software-enforced keys are never represented as hardware-backed.",
+        "Unavailable StrongBox or TEE capability is recorded as observed rather than inferred or upgraded."
+      ],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Do not export, replace, or deliberately destroy private key material merely to produce qualification evidence."
+    },
+    {
+      "test_id": "MOB-HQP-IMP-001",
+      "title": "Pre-existing image remains ETS_IMPORTED",
+      "purpose": "Map Phase 1A Test D into HQP while proving that later hashing, signing, commitment, export, or verification cannot upgrade origin classification.",
+      "required": true,
+      "depends_on": ["MOB-HQP-BIND-001"],
+      "stimulus_class": "preexisting_image_import",
+      "required_observations": [
+        "source_digest",
+        "evidence_object_commit",
+        "provenance_envelope_digest",
+        "artifact_classification"
+      ],
+      "required_resulting_state": [
+        "ets_imported_class_preserved",
+        "local_commit_replayable"
+      ],
+      "pass_criteria": [
+        "The selected pre-existing device image is committed as ETS_IMPORTED.",
+        "Digest, signature, provenance, and local replay checks succeed without changing the origin class."
+      ],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Use a non-sensitive pre-existing image whose origin classification is known before the test."
+    },
+    {
+      "test_id": "MOB-HQP-REC-001",
+      "title": "Committed mobile evidence survives cold-process restart",
+      "purpose": "Map Phase 1A Test C into HQP resulting-state evidence using an actual process-destroy/relaunch boundary.",
+      "required": true,
+      "depends_on": ["MOB-HQP-CAP-001", "MOB-HQP-IMP-001"],
+      "stimulus_class": "forced_process_termination_and_relaunch",
+      "required_observations": [
+        "prior_process_session_id",
+        "current_process_session_id",
+        "capture_journal_replay",
+        "import_journal_replay"
+      ],
+      "required_resulting_state": [
+        "capture_recovered_new_process",
+        "import_recovered_new_process"
+      ],
+      "pass_criteria": [
+        "The current process session differs from the sessions that performed CAPTURE and IMPORT.",
+        "Both retained Evidence Objects replay from the journal with original classes, digests, and COMMITTED_LOCAL state."
+      ],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Use Android Force stop or an equivalent process-destroy action; Activity recreation alone is insufficient."
+    },
+    {
+      "test_id": "MOB-HQP-NEG-001",
+      "title": "Negative and interruption cases fail closed",
+      "purpose": "Map Phase 1A Test E into a bounded negative-case evidence record without weakening production persistence or recovery behavior.",
+      "required": true,
+      "depends_on": ["MOB-HQP-CAP-001", "MOB-HQP-IMP-001"],
+      "stimulus_class": "bounded_negative_or_interruption_case",
+      "required_observations": [
+        "attempted_negative_case",
+        "failure_state",
+        "success_commit_absence_or_integrity_failure",
+        "retained_diagnostic"
+      ],
+      "required_resulting_state": [
+        "no_false_success_claim",
+        "negative_case_reviewable"
+      ],
+      "pass_criteria": [
+        "Denied/failed capture or import attempts do not produce a successful Evidence Object claim.",
+        "Corrupted artifact or journal state fails closed.",
+        "Any targeted instrumentation exercises the same persistence/recovery boundary and does not weaken production behavior."
+      ],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Prefer bounded test instrumentation over destructive platform manipulation when a real failure cannot be induced deterministically."
+    }
+  ],
+  "disposition_policy": {
+    "allowed_final_states": [
+      "lab_tested",
+      "qualified",
+      "qualified_with_deviation",
+      "failed",
+      "expired",
+      "superseded"
+    ],
+    "missing_required_case_policy": "invalid",
+    "deviation_state": "qualified_with_deviation",
+    "non_waivable_failure_blocks_qualification": true
+  },
+  "validity_policy": {
+    "requalify_on_claim_critical_change": true,
+    "supersession_must_be_explicit": true,
+    "historical_results_immutable": true,
+    "maximum_validity_days": null,
+    "additional_requalification_triggers": [
+      "android_build_fingerprint_change",
+      "application_build_or_signing_identity_change",
+      "keystore_security_implementation_change",
+      "mobile_evidence_capture_boundary_change",
+      "common_hqp_or_verifier_contract_change"
+    ]
+  },
+  "non_claims": [
+    "semantic_truth_of_image_content",
+    "capture_causality_beyond_retained_observations",
+    "complete_device_observation",
+    "production_android_key_attestation",
+    "gateway_sync",
+    "remote_durability",
+    "legal_admissibility",
+    "regulatory_compliance",
+    "safety_certification",
+    "qualification_of_other_android_devices"
+  ],
+  "traceability": {
+    "tracking_issue": "#797",
+    "source_requirements": [
+      "Lantern-Protocol/ETS-Mobile#4",
+      "Lantern-Protocol/ETS-Mobile:docs/ANDROID_PHASE1A_DEVICE_QUALIFICATION.md"
+    ],
+    "authoritative_roadmap": "docs/PUBLIC_ROADMAP_STATUS.md",
+    "review_references": []
+  }
+}
