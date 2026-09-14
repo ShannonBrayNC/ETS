@@ -1,6 +1,6 @@
 # ETS Qualification Program
 
-This directory contains cross-product qualification contracts, execution packages, conformance fixtures, and roadmap traceability artifacts.
+This directory contains cross-product qualification contracts, execution packages, conformance fixtures, product-specific corpora, and roadmap traceability artifacts.
 
 ## Authoritative rule
 
@@ -43,7 +43,7 @@ HQP-0 defines the product-neutral claim boundary, qualification states, required
 
 ### HQP-1 — execution package and deterministic report — complete
 
-Tracking issue: #794.  
+Tracking issue: #794  
 Merged by PR #802.
 
 - [`ETS_HARDWARE_QUALIFICATION_EXECUTION_PACKAGE_V1.md`](ETS_HARDWARE_QUALIFICATION_EXECUTION_PACKAGE_V1.md)
@@ -55,9 +55,10 @@ Merged by PR #802.
 
 HQP-1 binds a concrete test execution to the exact DUT, environment, build, observer chain, starting state, stimulus, observations, resulting state, retained artifacts, Evidence Objects, verifier result, deviations, and final disposition. Completed run/report digests reuse `ets.core.canonical_json`.
 
-### HQP-2 — independent verifier — active
+### HQP-2 — independent verifier — complete
 
-Tracking issue: #795.
+Tracking issue: #795  
+Merged by PR #804.
 
 - [`ETS_HARDWARE_QUALIFICATION_VERIFIER_V1.md`](ETS_HARDWARE_QUALIFICATION_VERIFIER_V1.md)
 - verifier runtime: `ets/qualification/verifier.py`
@@ -69,13 +70,22 @@ Tracking issue: #795.
 
 HQP-2 consumes the HQP-1 run/report/fixture contract from a clean environment and determines structural completeness, digest integrity, Evidence Object bindings, reference integrity, test completion, observation/result linkage, deviation handling, and eligibility for the claimed disposition without trusting the DUT runtime or producer-side verifier narrative.
 
-### HQP-3 — Edge executable corpus
+### HQP-3 — Edge executable corpus — active
 
-Tracking issue: #796.  
-Parent: #140.  
+Tracking issue: #796  
+Parent: #140  
 First source corpus: #145.
 
-HQP-3 converts still-applicable Edge requirements into executable starting-state/stimulus/observation/result assertions for named hardware targets.
+- [`ETS_EDGE_HARDWARE_QUALIFICATION_CORPUS_V1.md`](ETS_EDGE_HARDWARE_QUALIFICATION_CORPUS_V1.md)
+- Edge profile: `docs/qualification/profiles/ets-edge-hardware-qualification-v1.json`
+- executable corpus: `docs/qualification/corpora/ets-edge-hqp-corpus-v1.json`
+- corpus schema: `schemas/qualification/v1/edge-hardware-qualification-corpus.schema.json`
+- runtime/validator/sealer: `ets/qualification/edge_corpus.py`
+- CLI: `python -m ets.edge_hqp`
+
+HQP-3 translates requirements from #140-#145 into 17 versioned Edge cases covering build identity, enrollment/key custody, boot/storage security posture, durability, abrupt power loss, disk pressure, backpressure, offline operation, resumable synchronization, checkpoint continuity, clock faults, signer lifecycle, tamper detection, update/recovery, backup/restore, capacity/soak, and source-to-proof/export verification.
+
+Repository CI can prove the profile/corpus/tooling is internally executable. CI cannot satisfy the physical DUT execution gate. The producer tooling can seal a complete capture as `lab_tested` but deliberately cannot self-promote a DUT to `qualified`.
 
 ### HQP-4 — Provenance Android and legacy hardware reuse
 
@@ -93,7 +103,7 @@ Publishes bounded claims tied to exact profile, DUT revision, immutable build, r
 
 | Product / program | Qualification role | Current Wave 0 relationship |
 |---|---|---|
-| ETS Edge | First HQP specialization | #140 is the Edge qualification/pilot-readiness parent. #145 is the source corpus for the first Edge hardware qualification cases. |
+| ETS Edge | First HQP specialization | #140 is the Edge qualification/pilot-readiness parent. #145 plus #141-#144 are the requirements provenance for HQP-3. |
 | Provenance / ETS Mobile | Second physical target | Android Phase 1A consumes the common HQP contract rather than defining a separate evidence methodology. |
 | Legacy hardware lab | Third physical target | Legacy devices/adapters use the same DUT/build/stimulus/observation/result/verifier/report chain. |
 | Ranger / VRX | Cyber-physical research consumer | Physical experiments inherit HQP while adding motion, actuator, measurement, uncertainty, safety, and consequence-custody requirements. |
@@ -101,6 +111,6 @@ Publishes bounded claims tied to exact profile, DUT revision, immutable build, r
 
 ## Governance and claim boundary
 
-No later wave may treat successful software CI alone as physical qualification evidence. No hardware qualification may silently inherit across a hardware revision, software build, profile version, or claim-critical environment change.
+No later wave may treat successful software CI alone as physical qualification evidence. No hardware qualification may silently inherit across a hardware revision, software build, profile version, firmware/security-element change, or claim-critical environment change.
 
 HQP packages reuse ETS Evidence Object semantics rather than create a second provenance model. Qualification evidence may support a bounded claim about what was tested and observed; it does not by itself prove complete observation, semantic truth, legal admissibility, regulatory compliance, safety certification, general availability, or production readiness.
