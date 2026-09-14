@@ -1,0 +1,247 @@
+{
+  "schema_version": "ets.edge-hardware-qualification-corpus.v1",
+  "corpus_id": "ets.edge.hardware-qualification.corpus.v1",
+  "corpus_version": "1.0.0",
+  "profile_id": "ets.edge.hardware-qualification.v1",
+  "profile_version": "1.0.0",
+  "reference_target_class": {
+    "target_class_id": "EDGE-RT0",
+    "title": "ETS Edge Reference Target 0",
+    "description": "The first physical Edge qualification target class. Every run must replace this class-level description with the exact manufacturer, model, hardware revision, serial/asset identity, firmware, signer/security-element posture, immutable build identity, and measured environment of the DUT.",
+    "required_device_firmware_fields": ["boot_firmware", "storage_model_firmware", "tpm_or_signer_profile"],
+    "required_environment_dimensions": [
+      "power_source",
+      "power_control_method",
+      "network_topology",
+      "network_fault_injection_method",
+      "storage_filesystem",
+      "os_kernel_runtime",
+      "time_source",
+      "ambient_condition",
+      "upstream_verifier_endpoint"
+    ],
+    "minimum_lab_controls": [
+      "independent observer host",
+      "controlled power interruption",
+      "controlled network partition",
+      "isolated qualification storage or recoverable image",
+      "external HQP-2 verifier environment"
+    ],
+    "non_claims": [
+      "EDGE-RT0 is not a qualified hardware model by itself",
+      "passing CI does not qualify a physical DUT",
+      "software signer behavior is not TPM/HSM attestation",
+      "a lab result does not establish production readiness"
+    ]
+  },
+  "case_order": [
+    "EDGE-HQP-BLD-001",
+    "EDGE-HQP-ID-001",
+    "EDGE-HQP-SEC-001",
+    "EDGE-HQP-DUR-001",
+    "EDGE-HQP-PWR-001",
+    "EDGE-HQP-DSK-001",
+    "EDGE-HQP-BPR-001",
+    "EDGE-HQP-OFF-001",
+    "EDGE-HQP-SYN-001",
+    "EDGE-HQP-CHK-001",
+    "EDGE-HQP-TIM-001",
+    "EDGE-HQP-KEY-001",
+    "EDGE-HQP-TMP-001",
+    "EDGE-HQP-UPD-001",
+    "EDGE-HQP-BKR-001",
+    "EDGE-HQP-CAP-001",
+    "EDGE-HQP-OPS-001"
+  ],
+  "cases": [
+    {
+      "test_id": "EDGE-HQP-BLD-001",
+      "family": "build_identity",
+      "requirement_refs": ["#140", "#145"],
+      "execution_mode": "operator_assisted",
+      "driver_id": "edge.build-identity.v1",
+      "preconditions": ["candidate build is installed", "build/SBOM/provenance material is available without secrets"],
+      "required_artifact_roles": ["build_identity", "configuration_identity", "sbom_or_provenance"],
+      "assertion_ids": ["installed_build_matches_declared_digest", "build_material_retained"],
+      "recovery_boundary": "Read-only evidence capture; abort if collection would expose credentials or private signing material."
+    },
+    {
+      "test_id": "EDGE-HQP-ID-001",
+      "family": "identity_enrollment_key_custody",
+      "requirement_refs": ["#140", "#141", "#145"],
+      "execution_mode": "operator_assisted",
+      "driver_id": "edge.identity-enrollment.v1",
+      "preconditions": ["fresh or reset qualification enrollment state", "dedicated qualification credentials", "identity observation available before and after restart"],
+      "required_artifact_roles": ["pre_enrollment_identity", "enrollment_receipt", "post_enrollment_identity", "key_custody_posture", "secret_exposure_scan"],
+      "assertion_ids": ["device_identity_stable", "custody_matches_manifest", "bootstrap_secret_not_retained"],
+      "recovery_boundary": "Use synthetic/dedicated bootstrap material and revoke/reset it after the case."
+    },
+    {
+      "test_id": "EDGE-HQP-SEC-001",
+      "family": "boot_storage_security",
+      "requirement_refs": ["#141", "#145"],
+      "execution_mode": "observation_only",
+      "driver_id": "edge.security-posture.v1",
+      "preconditions": ["target manifest declares expected Secure Boot/storage/signer posture"],
+      "required_artifact_roles": ["secure_boot_state", "storage_protection_state", "rollback_protection_state", "signer_security_element_state"],
+      "assertion_ids": ["security_posture_matches_manifest", "limitations_explicit"],
+      "recovery_boundary": "Do not mutate firmware security settings as part of this observation-only case."
+    },
+    {
+      "test_id": "EDGE-HQP-DUR-001",
+      "family": "durability_restart",
+      "requirement_refs": ["#140", "#142", "#145"],
+      "execution_mode": "automated_or_operator_assisted",
+      "driver_id": "edge.controlled-restart.v1",
+      "preconditions": ["representative synthetic event committed", "pre-restart proof/export retained"],
+      "required_artifact_roles": ["pre_restart_commit", "restart_receipt", "post_restart_record", "post_restart_proof", "external_proof_verification"],
+      "assertion_ids": ["acknowledged_record_survives_restart", "post_restart_proof_verifies"],
+      "recovery_boundary": "Do not repair or compact evidence state during the case."
+    },
+    {
+      "test_id": "EDGE-HQP-PWR-001",
+      "family": "abrupt_power_loss",
+      "requirement_refs": ["#140", "#142", "#145"],
+      "execution_mode": "physical_fault_injection",
+      "driver_id": "edge.abrupt-power.v1",
+      "preconditions": ["switched-power qualification harness", "known-good recovery media", "representative acknowledged records retained before cut"],
+      "required_artifact_roles": ["pre_cut_commit", "power_cut_observer_receipt", "boot_recovery_diagnostics", "post_recovery_record", "post_recovery_proof", "external_proof_verification"],
+      "assertion_ids": ["acknowledged_records_preserved_after_power_loss", "recovery_state_explicit", "proof_continuity_preserved"],
+      "recovery_boundary": "Stop if storage/thermal/hardware safety limits are exceeded; never perform on uncontrolled production hardware."
+    },
+    {
+      "test_id": "EDGE-HQP-DSK-001",
+      "family": "disk_watermark_exhaustion",
+      "requirement_refs": ["#140", "#141", "#142", "#145"],
+      "execution_mode": "physical_fault_injection",
+      "driver_id": "edge.storage-pressure.v1",
+      "preconditions": ["dedicated qualification filesystem or quota", "recovery headroom reserved"],
+      "required_artifact_roles": ["baseline_storage_metrics", "watermark_transition", "ingress_under_pressure", "accepted_record_inventory", "post_recovery_storage_metrics"],
+      "assertion_ids": ["watermarks_observable", "backpressure_before_unsafe_ack", "no_silent_acknowledged_loss", "recovery_without_history_rewrite"],
+      "recovery_boundary": "Never exhaust the host root filesystem unintentionally; restore free space using the pre-approved cleanup path."
+    },
+    {
+      "test_id": "EDGE-HQP-BPR-001",
+      "family": "bounded_queue_backpressure",
+      "requirement_refs": ["#140", "#142", "#145"],
+      "execution_mode": "automated_or_operator_assisted",
+      "driver_id": "edge.queue-saturation.v1",
+      "preconditions": ["explicit queue item/byte limits", "synthetic input generator"],
+      "required_artifact_roles": ["baseline_queue_metrics", "queue_limit_transition", "backpressure_response", "accepted_record_inventory", "queue_recovery_metrics"],
+      "assertion_ids": ["queue_bounds_enforced", "explicit_backpressure_observed", "accepted_records_preserved"],
+      "recovery_boundary": "Use intentionally small qualification limits; do not induce unbounded memory or disk growth."
+    },
+    {
+      "test_id": "EDGE-HQP-OFF-001",
+      "family": "offline_operation",
+      "requirement_refs": ["#140", "#142", "#143"],
+      "execution_mode": "automated_or_operator_assisted",
+      "driver_id": "edge.offline-capture.v1",
+      "preconditions": ["upstream path can be independently disabled", "local capture/proof endpoints available"],
+      "required_artifact_roles": ["upstream_loss_observation", "offline_capture_receipt", "offline_local_proof", "offline_queue_state"],
+      "assertion_ids": ["capture_succeeds_offline", "proof_available_offline", "pending_sync_bounded"],
+      "recovery_boundary": "Disable only the dedicated qualification upstream path."
+    },
+    {
+      "test_id": "EDGE-HQP-SYN-001",
+      "family": "network_partition_resumable_sync",
+      "requirement_refs": ["#140", "#143", "#145"],
+      "execution_mode": "physical_fault_injection",
+      "driver_id": "edge.partition-resume.v1",
+      "preconditions": ["pending sync workload exists", "network fault can be applied only to qualification path", "upstream receipt/checkpoint evidence available"],
+      "required_artifact_roles": ["pre_partition_sync_state", "partition_observer_receipt", "retryable_sync_state", "reconnect_observer_receipt", "resumed_sync_receipts", "checkpoint_comparison"],
+      "assertion_ids": ["local_sequence_not_rewritten", "sync_resumes_idempotently", "checkpoint_agreement_reproduced"],
+      "recovery_boundary": "Partition only the dedicated qualification path and remove the fault before final verification."
+    },
+    {
+      "test_id": "EDGE-HQP-CHK-001",
+      "family": "checkpoint_proof_continuity",
+      "requirement_refs": ["#140", "#142", "#143", "#145"],
+      "execution_mode": "automated_or_operator_assisted",
+      "driver_id": "edge.checkpoint-continuity.v1",
+      "preconditions": ["baseline signed tree head and inclusion proof retained"],
+      "required_artifact_roles": ["baseline_tree_head", "baseline_inclusion_proof", "post_disruption_tree_head", "post_disruption_inclusion_proof", "independent_continuity_verification"],
+      "assertion_ids": ["earlier_commitments_remain_verifiable", "checkpoint_progression_consistent"],
+      "recovery_boundary": "Never rewrite or repair log history to force continuity."
+    },
+    {
+      "test_id": "EDGE-HQP-TIM-001",
+      "family": "clock_degradation_rollback",
+      "requirement_refs": ["#140", "#141"],
+      "execution_mode": "physical_fault_injection",
+      "driver_id": "edge.clock-fault.v1",
+      "preconditions": ["isolated test time source or namespace/VM", "baseline clock-quality evidence retained"],
+      "required_artifact_roles": ["baseline_clock_quality", "clock_fault_receipt", "event_time_metadata_under_fault", "monotonic_sequence_observation", "clock_recovery_observation"],
+      "assertion_ids": ["clock_fault_explicit", "sequence_not_rewritten", "time_uncertainty_retained"],
+      "recovery_boundary": "Do not alter enterprise/shared time infrastructure."
+    },
+    {
+      "test_id": "EDGE-HQP-KEY-001",
+      "family": "key_unavailability_rotation",
+      "requirement_refs": ["#140", "#141", "#142", "#145"],
+      "execution_mode": "operator_assisted",
+      "driver_id": "edge.signer-lifecycle.v1",
+      "preconditions": ["dedicated qualification signing identity/security element", "historical public verification material retained"],
+      "required_artifact_roles": ["baseline_signer_identity", "key_unavailable_receipt", "operation_under_key_loss", "rotation_receipt", "new_signer_identity", "historical_proof_verification"],
+      "assertion_ids": ["key_loss_fails_closed", "rotation_history_retained", "historical_proofs_verify_after_rotation"],
+      "recovery_boundary": "Never destroy a sole production signing key; use dedicated qualification keys and documented recovery."
+    },
+    {
+      "test_id": "EDGE-HQP-TMP-001",
+      "family": "storage_tamper_detection",
+      "requirement_refs": ["#140", "#141", "#142", "#145"],
+      "execution_mode": "physical_fault_injection",
+      "driver_id": "edge.storage-tamper.v1",
+      "preconditions": ["cloned qualification store", "pristine source image retained", "specific mutation target selected"],
+      "required_artifact_roles": ["baseline_integrity_state", "tamper_receipt", "post_tamper_integrity_check", "operator_diagnostic", "untampered_reference_verification"],
+      "assertion_ids": ["tamper_detected", "affected_claim_not_verified", "untampered_reference_still_verifies"],
+      "recovery_boundary": "Operate only on a clone and restore from the pristine source after evidence retention."
+    },
+    {
+      "test_id": "EDGE-HQP-UPD-001",
+      "family": "update_rollback_recovery",
+      "requirement_refs": ["#140", "#145"],
+      "execution_mode": "operator_assisted",
+      "driver_id": "edge.update-recovery.v1",
+      "preconditions": ["staged qualification update image", "known-good image", "recovery media", "pre-update evidence/proof retained"],
+      "required_artifact_roles": ["pre_update_build_state", "update_attempt", "failure_or_rollback_receipt", "recovered_build_identity", "post_recovery_evidence_verification", "downgrade_policy_result"],
+      "assertion_ids": ["known_good_runtime_recovered_or_explicit_failure", "committed_evidence_preserved", "downgrade_policy_matches_manifest"],
+      "recovery_boundary": "Never inject update failure without tested recovery media and a preserved evidence-store backup."
+    },
+    {
+      "test_id": "EDGE-HQP-BKR-001",
+      "family": "backup_restore",
+      "requirement_refs": ["#141", "#142", "#144", "#145"],
+      "execution_mode": "operator_assisted",
+      "driver_id": "edge.backup-restore.v1",
+      "preconditions": ["isolated restore target or clean volume", "pre-backup evidence/proof inventory retained"],
+      "required_artifact_roles": ["pre_backup_inventory", "backup_receipt", "restore_receipt", "post_restore_inventory", "post_restore_proof_verification"],
+      "assertion_ids": ["restored_identity_matches_scope", "restored_proofs_verify", "restore_limitations_explicit"],
+      "recovery_boundary": "Preserve the original source until restored evidence has independently verified."
+    },
+    {
+      "test_id": "EDGE-HQP-CAP-001",
+      "family": "capacity_soak",
+      "requirement_refs": ["#140", "#143", "#145"],
+      "execution_mode": "automated_or_operator_assisted",
+      "driver_id": "edge.capacity-soak.v1",
+      "preconditions": ["bounded synthetic workload profile", "resource/thermal/storage monitoring", "stop thresholds defined"],
+      "required_artifact_roles": ["baseline_resource_state", "workload_profile", "queue_storage_metrics", "proof_latency_metrics", "sync_throughput_metrics", "thermal_system_metrics", "end_state_integrity_check"],
+      "assertion_ids": ["workload_envelope_retained", "no_unexplained_acknowledged_loss", "limits_recorded_as_measurements"],
+      "recovery_boundary": "Stop on hardware safety, thermal, storage-endurance, or evidence-integrity threshold breach."
+    },
+    {
+      "test_id": "EDGE-HQP-OPS-001",
+      "family": "operator_source_to_proof_export",
+      "requirement_refs": ["#140", "#144", "#145"],
+      "execution_mode": "operator_assisted",
+      "driver_id": "edge.operator-evidence-workflow.v1",
+      "preconditions": ["synthetic source event available", "operator and viewer roles available", "external HQP/proof verifier environment available"],
+      "required_artifact_roles": ["source_capture_receipt", "canonical_event_view", "tree_head_proof_view", "export_bundle", "external_verifier_result", "role_boundary_observation"],
+      "assertion_ids": ["source_to_export_trace_reproducible", "external_verification_succeeds", "trust_change_boundary_preserved"],
+      "recovery_boundary": "Use synthetic/non-sensitive evidence and ensure exports contain no credentials or private keys."
+    }
+  ],
+  "traceability_rule": "Historical issue checkboxes are provenance only. A physical claim is supported only by a retained HQP run/report package and independent HQP-2 verification for the exact DUT/build/profile/environment.",
+  "claim_boundary": "bounded_edge_hardware_qualification_corpus_not_a_physical_qualification_result"
+}

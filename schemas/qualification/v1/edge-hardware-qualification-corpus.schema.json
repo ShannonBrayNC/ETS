@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/qualification/v1/edge-hardware-qualification-corpus.schema.json",
+  "title": "ETS Edge Hardware Qualification Corpus v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "corpus_id",
+    "corpus_version",
+    "profile_id",
+    "profile_version",
+    "reference_target_class",
+    "case_order",
+    "cases",
+    "traceability_rule",
+    "claim_boundary"
+  ],
+  "properties": {
+    "schema_version": {"const": "ets.edge-hardware-qualification-corpus.v1"},
+    "corpus_id": {"const": "ets.edge.hardware-qualification.corpus.v1"},
+    "corpus_version": {"type": "string", "minLength": 1},
+    "profile_id": {"const": "ets.edge.hardware-qualification.v1"},
+    "profile_version": {"type": "string", "minLength": 1},
+    "reference_target_class": {"$ref": "#/$defs/reference_target"},
+    "case_order": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 2}
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/case"}
+    },
+    "traceability_rule": {"type": "string", "minLength": 1},
+    "claim_boundary": {
+      "const": "bounded_edge_hardware_qualification_corpus_not_a_physical_qualification_result"
+    }
+  },
+  "$defs": {
+    "reference_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_class_id",
+        "title",
+        "description",
+        "required_device_firmware_fields",
+        "required_environment_dimensions",
+        "minimum_lab_controls",
+        "non_claims"
+      ],
+      "properties": {
+        "target_class_id": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
+        "required_device_firmware_fields": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "required_environment_dimensions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "minimum_lab_controls": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "non_claims": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "test_id",
+        "family",
+        "requirement_refs",
+        "execution_mode",
+        "driver_id",
+        "preconditions",
+        "required_artifact_roles",
+        "assertion_ids",
+        "recovery_boundary"
+      ],
+      "properties": {
+        "test_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]+$"},
+        "family": {"type": "string", "minLength": 1},
+        "requirement_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^#(140|141|142|143|144|145)$"}
+        },
+        "execution_mode": {
+          "enum": [
+            "automated_or_operator_assisted",
+            "operator_assisted",
+            "physical_fault_injection",
+            "observation_only"
+          ]
+        },
+        "driver_id": {"type": "string", "minLength": 1},
+        "preconditions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "required_artifact_roles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "assertion_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "recovery_boundary": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

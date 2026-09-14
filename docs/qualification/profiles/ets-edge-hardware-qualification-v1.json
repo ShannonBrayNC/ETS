@@ -1,0 +1,346 @@
+{
+  "schema_version": "1.0",
+  "base_profile": "ets.hardware-qualification.v1",
+  "profile_id": "ets.edge.hardware-qualification.v1",
+  "profile_version": "1.0.0",
+  "title": "ETS Edge Hardware Qualification Profile v1",
+  "purpose": "Define the bounded physical qualification cases required to evaluate a named ETS Edge device/revision/build without treating historical implementation checklists as qualification evidence.",
+  "product_scope": ["ETS Edge"],
+  "parent_profiles": [
+    {
+      "profile_id": "ets.hardware-qualification.v1",
+      "profile_version": "1.0",
+      "override_review_required": true
+    }
+  ],
+  "capability_boundary": {
+    "capability_states_are_independent": true,
+    "qualification_states": [
+      "not_tested",
+      "simulated",
+      "lab_tested",
+      "qualification_in_progress",
+      "qualified",
+      "qualified_with_deviation",
+      "failed",
+      "expired",
+      "superseded"
+    ],
+    "claim_statement": "Qualification is bounded to the exact Edge DUT, hardware revision, firmware/security-element posture, immutable software build/configuration, environment, retained evidence, and independent verifier result recorded by the HQP run."
+  },
+  "device_constraints": {
+    "claim_critical_fields": [
+      "manufacturer",
+      "model",
+      "hardware_revision",
+      "boot_firmware",
+      "storage_model_firmware",
+      "tpm_or_signer_profile"
+    ],
+    "cross_revision_qualification_allowed": false,
+    "equivalence_profile_required": true,
+    "notes": "A result for one Edge device or revision never qualifies another revision by implication. Claim-critical firmware/security-element values are carried in the HQP device firmware map and requalification is required when they change."
+  },
+  "environment_dimensions": [
+    "power_source",
+    "power_control_method",
+    "network_topology",
+    "network_fault_injection_method",
+    "storage_filesystem",
+    "os_kernel_runtime",
+    "time_source",
+    "ambient_condition",
+    "upstream_verifier_endpoint"
+  ],
+  "evidence_requirements": {
+    "evidence_object_binding_required": true,
+    "required_classes": [
+      "dut_identity",
+      "environment",
+      "build_identity",
+      "observer_identity",
+      "starting_state",
+      "stimulus",
+      "observations",
+      "resulting_state",
+      "verifier_output",
+      "qualification_report"
+    ],
+    "missing_required_evidence_policy": "invalid",
+    "external_artifacts_allowed": true,
+    "raw_artifact_digest_required": true
+  },
+  "verifier_requirements": {
+    "independent_verification_required_for": ["qualified", "qualified_with_deviation"],
+    "immutable_verifier_identity_required": true,
+    "checks": [
+      "schema_conformance",
+      "artifact_presence",
+      "digest_validity",
+      "signature_validity",
+      "evidence_object_binding",
+      "test_case_completion",
+      "observation_result_linkage",
+      "deviation_policy",
+      "disposition_policy"
+    ],
+    "dut_runtime_may_be_trusted": false
+  },
+  "test_cases": [
+    {
+      "test_id": "EDGE-HQP-BLD-001",
+      "title": "Build identity and provenance are reproducible and retained",
+      "purpose": "Bind the DUT to an immutable software/configuration identity and retain build/SBOM/provenance material used by the qualification run.",
+      "required": true,
+      "stimulus_class": "build_identity_capture",
+      "required_observations": ["installed_build_identity", "configuration_identity", "sbom_or_provenance_presence"],
+      "required_resulting_state": ["build_identity_bound_to_run", "retained_build_material_reproducible"],
+      "pass_criteria": ["The installed commit/artifact/configuration digests are retained and unambiguous.", "Required SBOM/provenance material is retained or an explicit bounded deviation is recorded."],
+      "failure_policy": "invalidate",
+      "waivable": true,
+      "safety_boundary": "Read-only collection only; never expose signing keys, bootstrap secrets, or credentials in retained build evidence."
+    },
+    {
+      "test_id": "EDGE-HQP-ID-001",
+      "title": "Device identity, enrollment, and key custody remain bounded",
+      "purpose": "Prove stable device identity and enrollment while demonstrating declared signer/key custody and non-disclosure of reusable bootstrap material.",
+      "required": true,
+      "stimulus_class": "enrollment_and_identity_challenge",
+      "required_observations": ["pre_enrollment_identity", "enrollment_result", "post_enrollment_identity", "key_custody_posture", "bootstrap_secret_exposure_check"],
+      "required_resulting_state": ["stable_enrolled_device_identity", "declared_key_custody", "no_reusable_bootstrap_secret_retained"],
+      "pass_criteria": ["The device identity remains stable across the bounded enrollment/restart sequence.", "Key custody matches the declared signer profile.", "No reusable bootstrap secret is present in retained evidence/logs."],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Use synthetic enrollment material where possible; redact secrets before retention and never export private key bytes."
+    },
+    {
+      "test_id": "EDGE-HQP-SEC-001",
+      "title": "Boot and storage security posture matches the declared target",
+      "purpose": "Measure Secure Boot, encrypted/sealed storage, rollback-protection, and signer posture without treating their presence as a general security certification.",
+      "required": true,
+      "stimulus_class": "security_posture_measurement",
+      "required_observations": ["secure_boot_state", "storage_protection_state", "rollback_protection_state", "signer_security_element_state"],
+      "required_resulting_state": ["declared_security_posture_reproduced", "security_limitations_recorded"],
+      "pass_criteria": ["Observed security posture matches the target manifest and claim scope.", "Any absent optional control is represented as a deviation/limitation rather than silently assumed."],
+      "failure_policy": "fail",
+      "waivable": true,
+      "safety_boundary": "Do not change firmware security state merely to execute this case; posture transitions require a separately approved recovery plan."
+    },
+    {
+      "test_id": "EDGE-HQP-DUR-001",
+      "title": "Acknowledged committed evidence survives restart",
+      "purpose": "Prove that an acknowledged committed record remains recoverable and independently provable after a bounded process/host restart.",
+      "required": true,
+      "stimulus_class": "controlled_restart",
+      "required_observations": ["pre_restart_commit_acknowledgement", "restart_event", "post_restart_record_presence", "post_restart_proof"],
+      "required_resulting_state": ["committed_record_recoverable", "proof_bundle_exportable_after_restart"],
+      "pass_criteria": ["No acknowledged committed record is lost.", "Recovered identifiers/digests match retained pre-restart evidence.", "The post-restart proof is independently verifiable."],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Preserve storage and collect pre-stimulus state before restart; do not escalate to destructive repair during the test."
+    },
+    {
+      "test_id": "EDGE-HQP-PWR-001",
+      "title": "Abrupt power interruption preserves committed evidence or fails explicitly",
+      "purpose": "Exercise bounded physical power loss and recovery to measure durable commit semantics and recovery diagnostics.",
+      "required": true,
+      "stimulus_class": "abrupt_power_interruption",
+      "required_observations": ["pre_cut_commit_acknowledgement", "power_cut_event", "boot_recovery_diagnostics", "post_recovery_record_presence", "post_recovery_proof"],
+      "required_resulting_state": ["acknowledged_records_preserved", "recovery_state_explicit", "proof_continuity_after_power_loss"],
+      "pass_criteria": ["Acknowledged committed records survive the approved abrupt power interruption.", "Recovery state is explicit and contains no silent evidence loss.", "Retained proof/checkpoint material remains independently verifiable."],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Use an approved switched-power lab harness and recovery image/backup; never perform this case on an uncontrolled production device."
+    },
+    {
+      "test_id": "EDGE-HQP-DSK-001",
+      "title": "Disk watermark and exhaustion behavior fails boundedly",
+      "purpose": "Prove that storage pressure produces explicit degraded/backpressure behavior rather than silent loss after authoritative acknowledgement.",
+      "required": true,
+      "stimulus_class": "bounded_storage_exhaustion",
+      "required_observations": ["baseline_storage_state", "high_watermark_transition", "critical_watermark_transition", "ingress_response_under_pressure", "post_recovery_storage_state"],
+      "required_resulting_state": ["explicit_storage_degradation", "no_silent_acknowledged_loss", "recoverable_after_space_restoration"],
+      "pass_criteria": ["Configured high/critical thresholds are observable.", "Ingress/sync applies documented backpressure or rejection before unsafe acknowledgement.", "Normal operation can be restored without rewriting evidence history."],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Fill only a dedicated qualification volume or bounded filesystem allocation; preserve recovery headroom and never exhaust the host root filesystem unintentionally."
+    },
+    {
+      "test_id": "EDGE-HQP-BPR-001",
+      "title": "Bounded queue saturation produces explicit backpressure",
+      "purpose": "Prove queue item/byte limits and deterministic backpressure without silent drop or unbounded pending-state growth.",
+      "required": true,
+      "stimulus_class": "bounded_queue_saturation",
+      "required_observations": ["baseline_queue_state", "queue_limit_transition", "backpressure_response", "retained_pending_set", "queue_recovery_state"],
+      "required_resulting_state": ["queue_limit_enforced", "no_unintended_drop", "queue_returns_to_supported_state"],
+      "pass_criteria": ["Queue limits are enforced by item/byte policy.", "Saturation produces explicit backpressure/rejection.", "Previously accepted records remain present and recoverable."],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Use synthetic records and bounded configured limits so the test cannot consume uncontrolled storage or memory."
+    },
+    {
+      "test_id": "EDGE-HQP-OFF-001",
+      "title": "Local capture and proof remain available while upstream is offline",
+      "purpose": "Demonstrate the Edge local evidence boundary without a cloud dependency.",
+      "required": true,
+      "stimulus_class": "upstream_unavailable",
+      "required_observations": ["upstream_loss_observation", "offline_capture_receipt", "offline_local_proof", "offline_queue_state"],
+      "required_resulting_state": ["offline_capture_retained", "offline_proof_exportable", "pending_sync_state_bounded"],
+      "pass_criteria": ["Representative evidence can be committed while upstream is unavailable.", "A local proof/export is available without upstream trust.", "Pending synchronization remains bounded and explicit."],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Use a controlled network/upstream boundary; do not disrupt unrelated infrastructure."
+    },
+    {
+      "test_id": "EDGE-HQP-SYN-001",
+      "title": "Partitioned synchronization resumes idempotently",
+      "purpose": "Exercise interrupted synchronization and prove resumability, duplicate resistance, and checkpoint agreement after reconnect.",
+      "required": true,
+      "stimulus_class": "network_partition_and_reconnect",
+      "required_observations": ["pre_partition_sync_state", "partition_event", "retryable_sync_state", "reconnect_event", "resumed_sync_receipts", "post_sync_checkpoint_comparison"],
+      "required_resulting_state": ["no_unintended_duplicate_records", "resumable_sync_completed", "local_upstream_checkpoint_agreement"],
+      "pass_criteria": ["Interruption does not rewrite local sequence history.", "Reconnect resumes without unintended logical duplication.", "Local and upstream checkpoint/proof state can be independently compared."],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Partition only the dedicated qualification path and retain independent network-observer timestamps."
+    },
+    {
+      "test_id": "EDGE-HQP-CHK-001",
+      "title": "Checkpoint and proof continuity survive bounded disruption",
+      "purpose": "Prove inclusion/checkpoint continuity across restart, reconnect, and export boundaries.",
+      "required": true,
+      "stimulus_class": "checkpoint_continuity_challenge",
+      "required_observations": ["baseline_tree_head", "baseline_inclusion_proof", "post_disruption_tree_head", "post_disruption_inclusion_proof", "consistency_or_continuity_verification"],
+      "required_resulting_state": ["earlier_commitments_remain_verifiable", "checkpoint_progression_is_consistent"],
+      "pass_criteria": ["Pre-existing evidence remains provable after bounded disruption.", "Checkpoint progression is independently consistent with retained evidence."],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Read-only verification after the selected disruption; never repair or rewrite log history to force continuity."
+    },
+    {
+      "test_id": "EDGE-HQP-TIM-001",
+      "title": "Clock degradation and rollback are explicit",
+      "purpose": "Measure time-quality behavior so wall-clock faults cannot silently rewrite sequence/evidence interpretation.",
+      "required": true,
+      "stimulus_class": "controlled_clock_degradation",
+      "required_observations": ["baseline_clock_quality", "degraded_or_rollback_event", "event_time_metadata_under_fault", "monotonic_sequence_behavior", "clock_recovery_observation"],
+      "required_resulting_state": ["clock_fault_explicit", "sequence_history_not_rewritten", "time_uncertainty_retained"],
+      "pass_criteria": ["Clock degradation/rollback is visible in retained diagnostics or metadata.", "Monotonic evidence ordering is not silently rewritten by wall-clock change.", "Time uncertainty is retained for interpretation."],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Use an isolated test time source or namespace/VM where possible; do not alter enterprise time infrastructure."
+    },
+    {
+      "test_id": "EDGE-HQP-KEY-001",
+      "title": "Signer key unavailability and rotation fail closed",
+      "purpose": "Exercise signer loss/unavailability and approved rotation while preserving prior verification and explicit custody history.",
+      "required": true,
+      "stimulus_class": "signer_unavailability_and_rotation",
+      "required_observations": ["baseline_signer_identity", "signer_unavailable_event", "operation_under_key_loss", "rotation_event", "new_signer_identity", "prior_proof_verification_after_rotation"],
+      "required_resulting_state": ["key_loss_fails_closed", "rotation_history_retained", "prior_commitments_still_verifiable"],
+      "pass_criteria": ["Unavailable signing authority does not silently fall back to an undeclared signer.", "Rotation produces explicit identity/custody transition evidence.", "Previously signed checkpoints remain verifiable with retained historical key material."],
+      "failure_policy": "fail",
+      "waivable": true,
+      "safety_boundary": "Use dedicated qualification keys/security elements and documented recovery; never destroy sole production keys."
+    },
+    {
+      "test_id": "EDGE-HQP-TMP-001",
+      "title": "Storage corruption or tamper is detected and bounded",
+      "purpose": "Prove that selected metadata/proof/checkpoint corruption produces explicit integrity failure rather than silent acceptance.",
+      "required": true,
+      "stimulus_class": "controlled_storage_tamper",
+      "required_observations": ["baseline_integrity_state", "tamper_operation_receipt", "post_tamper_integrity_check", "operator_diagnostic", "untampered_reference_verification"],
+      "required_resulting_state": ["tamper_detected", "affected_claim_not_silently_accepted", "untampered_reference_remains_verifiable"],
+      "pass_criteria": ["The controlled mutation is detected by an applicable integrity/proof check.", "Affected evidence is not reported as verified.", "Diagnostic output identifies the bounded failure without asserting real-world cause."],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Operate on a cloned qualification store and preserve the pristine source image before mutation."
+    },
+    {
+      "test_id": "EDGE-HQP-UPD-001",
+      "title": "Update failure and rollback recover without committed evidence loss",
+      "purpose": "Exercise signed update/rollback/recovery behavior and downgrade protection for the declared appliance profile.",
+      "required": true,
+      "stimulus_class": "update_failure_and_recovery",
+      "required_observations": ["pre_update_build_and_evidence_state", "update_attempt", "failure_or_rollback_event", "recovered_build_identity", "post_recovery_evidence_verification", "downgrade_policy_result"],
+      "required_resulting_state": ["known_good_runtime_recovered", "committed_evidence_preserved", "downgrade_policy_explicit"],
+      "pass_criteria": ["A failed update can return to a declared known-good runtime or explicit failed state.", "Committed evidence remains independently verifiable after recovery.", "Downgrade acceptance/rejection matches the declared policy."],
+      "failure_policy": "fail",
+      "waivable": true,
+      "safety_boundary": "Use staged qualification images and tested recovery media; never test destructive update failure without a restore path."
+    },
+    {
+      "test_id": "EDGE-HQP-BKR-001",
+      "title": "Backup and restore reproduce retained evidence state",
+      "purpose": "Prove bounded backup/restore behavior without converting backup success into a broader disaster-recovery claim.",
+      "required": true,
+      "stimulus_class": "backup_restore_cycle",
+      "required_observations": ["pre_backup_evidence_state", "backup_receipt", "restore_operation", "post_restore_evidence_state", "post_restore_proof_verification"],
+      "required_resulting_state": ["restored_records_match_retained_identity", "restored_proofs_verify", "restore_limitations_recorded"],
+      "pass_criteria": ["Restored record/proof identities match retained pre-backup evidence for the selected scope.", "Independent verification succeeds for restored proof material.", "Excluded state and recovery-point limitations are explicitly recorded."],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Restore to an isolated qualification target or clean volume; preserve the original source until verification completes."
+    },
+    {
+      "test_id": "EDGE-HQP-CAP-001",
+      "title": "Capacity and soak limits are measured rather than assumed",
+      "purpose": "Measure sustained event/proof/sync/storage behavior and publish the bounded tested envelope for the named DUT.",
+      "required": true,
+      "stimulus_class": "bounded_capacity_soak",
+      "required_observations": ["baseline_resource_state", "workload_profile", "queue_and_storage_metrics", "proof_latency_metrics", "sync_throughput_metrics", "thermal_or_system_stability", "end_state_integrity_check"],
+      "required_resulting_state": ["tested_capacity_envelope_recorded", "no_unexplained_evidence_loss", "resource_limitations_recorded"],
+      "pass_criteria": ["The exact workload duration/rate and environment are retained.", "No unexplained acknowledged evidence loss or checkpoint divergence occurs within the tested envelope.", "Observed limits are published as measurements, not universal promises."],
+      "failure_policy": "fail",
+      "waivable": true,
+      "safety_boundary": "Bound workload duration/rate and monitor temperature/storage endurance; stop on hardware safety or data-integrity threshold breach."
+    },
+    {
+      "test_id": "EDGE-HQP-OPS-001",
+      "title": "Operator can trace source to proof/export and verify away from the DUT",
+      "purpose": "Exercise the local-first evidence workflow and demonstrate independent verification without trusting the Edge runtime narrative.",
+      "required": true,
+      "stimulus_class": "operator_source_to_proof_workflow",
+      "required_observations": ["source_capture_receipt", "canonical_event_view", "tree_head_and_proof_view", "export_bundle", "external_verifier_result", "role_boundary_observation"],
+      "required_resulting_state": ["source_to_export_trace_reproducible", "external_verification_succeeds", "trust_changing_action_boundary_preserved"],
+      "pass_criteria": ["The operator can trace one representative record from source/capture through event, tree head, inclusion proof, and export.", "The exported material verifies in an independent environment.", "Viewer/operator boundaries do not silently authorize trust-changing administration."],
+      "failure_policy": "fail",
+      "waivable": false,
+      "safety_boundary": "Use synthetic/non-sensitive evidence and a dedicated external verifier environment; do not retain credentials in exports."
+    }
+  ],
+  "disposition_policy": {
+    "allowed_final_states": ["lab_tested", "qualified", "qualified_with_deviation", "failed", "expired", "superseded"],
+    "missing_required_case_policy": "invalid",
+    "deviation_state": "qualified_with_deviation",
+    "non_waivable_failure_blocks_qualification": true
+  },
+  "validity_policy": {
+    "requalify_on_claim_critical_change": true,
+    "supersession_must_be_explicit": true,
+    "historical_results_immutable": true,
+    "maximum_validity_days": 180,
+    "additional_requalification_triggers": [
+      "edge_profile_requirement_change",
+      "verifier_contract_change",
+      "evidence_object_semantics_change",
+      "boot_or_storage_security_posture_change",
+      "signer_or_key_custody_change"
+    ]
+  },
+  "non_claims": [
+    "general_availability",
+    "legal_admissibility",
+    "regulatory_compliance",
+    "complete_observation",
+    "semantic_truth_of_source_assertions",
+    "production_readiness",
+    "qualification_of_untested_hardware_revisions"
+  ],
+  "traceability": {
+    "tracking_issue": "#796",
+    "source_requirements": ["#140", "#141", "#142", "#143", "#144", "#145"],
+    "authoritative_roadmap": "docs/PUBLIC_ROADMAP_STATUS.md",
+    "review_references": ["#790", "#794", "#795"]
+  }
+}
