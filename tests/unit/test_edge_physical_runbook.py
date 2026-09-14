@@ -27,7 +27,7 @@ def test_physical_runbook_covers_exact_edge_corpus_case_inventory() -> None:
     runbook = _RUNBOOK.read_text(encoding="utf-8")
 
     expected = set(corpus["case_order"])
-    observed = set(re.findall(r"EDGE-HQP-[A-Z]{3}-001", runbook))
+    observed = set(re.findall(r"EDGE-HQP-[A-Z]{2,3}-001", runbook))
 
     assert observed == expected
     assert len(expected) == 17
