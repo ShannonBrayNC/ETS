@@ -2,15 +2,16 @@
 
 **Status date:** 2026-09-14  
 **Tracking:** #790  
-**Authoritative capability-status companion:** `docs/PUBLIC_ROADMAP_STATUS.md`
+**Authoritative capability-status companion:** `docs/PUBLIC_ROADMAP_STATUS.md`  
+**Authoritative physical-claim publication index:** `docs/qualification/qualification-index.json`
 
 ## Purpose
 
 This note binds the public ETS roadmap maturity model to the common Hardware Qualification Profile without changing product maturity merely because HQP exists.
 
-The public roadmap remains authoritative for **capability maturity**. HQP artifacts become authoritative for **physical qualification state** of a named hardware/build/profile combination.
+The public roadmap remains authoritative for **capability maturity**. HQP artifacts become authoritative for **physical qualification state** of a named hardware/build/profile combination. HQP-5 controls whether a physical result may be published as a current qualification claim.
 
-The two dimensions must not be collapsed:
+The dimensions must not be collapsed:
 
 ```text
 capability maturity != hardware qualification state
@@ -26,20 +27,21 @@ Before additional physical feature expansion, the program establishes one qualif
 3. legacy hardware and adapter testing;
 4. later Ranger/VRX and physical ETS appliance work.
 
-HQP-0, HQP-1, and HQP-2 are complete. HQP-3 repository implementation is merged and awaits named physical Edge execution. HQP-4 is the active portability layer for Android and legacy hardware.
+HQP-0, HQP-1, and HQP-2 are complete. HQP-3 repository implementation is merged and awaits named physical Edge execution. HQP-4 portability infrastructure is merged and awaits named Android and legacy executions. HQP-5 now defines the publication/index boundary for all resulting claims.
 
 ## Roadmap interpretation
 
 Existing public-roadmap entries retain their September 13, 2026 maturity classifications. HQP does not automatically promote or demote any product.
 
-Where the roadmap states that a product is in `Development + Qualification`, `Qualification`, `Research`, or a pilot-candidate state, any future **physical qualification** claim should point to:
+Where the roadmap states that a product is in `Development + Qualification`, `Qualification`, `Research`, or a pilot-candidate state, a future **physical qualification** claim must point through the HQP-5 index to:
 
-- the HQP-derived profile identifier/version;
+- the HQP-derived profile identifier/version/digest;
 - named DUT/revision;
-- immutable software/build identity;
-- retained Evidence Objects/artifacts;
-- independent verifier identity/result;
-- qualification report/disposition.
+- immutable software/build/configuration identity;
+- retained Evidence Objects/artifacts and HQP-1 package;
+- independent HQP-2 verifier identity/result;
+- qualification report/disposition;
+- limitations, validity, and supersession state.
 
 A roadmap statement that implementation exists is not evidence that a physical profile has passed.
 
@@ -47,12 +49,12 @@ A roadmap statement that implementation exists is not evidence that a physical p
 
 | Roadmap item | Current roadmap gate | HQP relationship |
 |---|---|---|
-| ETS Edge | Repeatable live qualification of durability, recovery, identity, synchronization, and verifier-visible custody | #140 is qualification parent. HQP-3 profile/corpus derives from #140-#145 and defines 17 executable Edge cases under target class `EDGE-RT0`; repository implementation merged in #805, physical execution remains #796. |
-| Provenance / ETS Mobile | Physical Android Phase 1A qualification | HQP-4 profile `ets.provenance.android-phase1a.hardware-qualification.v1` binds the existing ETS-Mobile device qualification report into HQP-1/HQP-2 without changing MECB semantics. |
-| Legacy hardware lab | Hardware/adapter characterization and compatibility testing | HQP-4 profile `ets.legacy-network-syslog.hardware-qualification.v1` defines `LEGACY-NET-SYSLOG-RT0` for a named physical RFC 5424 UDP source while preserving unauthenticated-source identity boundaries. |
-| Ranger R0 | Physical terrestrial build and consequence-custody demonstration | Reuse HQP and add cyber-physical observation, uncertainty, actuator, safety, and consequence requirements. |
-| VectorRail / VRX | Replace simulated trials with calibrated physical measurements | Reuse HQP and add laboratory measurement/calibration requirements. |
-| AI Witness / Black Box / Fleet | Physical/live appliance qualification gates | Later product-specific profiles inherit HQP common evidence and claim-boundary rules. |
+| ETS Edge | Repeatable live qualification of durability, recovery, identity, synchronization, and verifier-visible custody | #140 is qualification parent. HQP-3 profile/corpus derives from #140-#145 and defines 17 executable Edge cases under target class `EDGE-RT0`; repository implementation merged in #805, physical execution remains #796. HQP-5 lists the target as pending, not qualified. |
+| Provenance / ETS Mobile | Physical Android Phase 1A qualification | HQP-4 profile `ets.provenance.android-phase1a.hardware-qualification.v1` binds the existing ETS-Mobile device qualification report into HQP-1/HQP-2 without changing MECB semantics. HQP-5 lists `ANDROID-PHASE1A-RT0` as pending physical execution. |
+| Legacy hardware lab | Hardware/adapter characterization and compatibility testing | HQP-4 profile `ets.legacy-network-syslog.hardware-qualification.v1` defines `LEGACY-NET-SYSLOG-RT0` for a named physical RFC 5424 UDP source while preserving unauthenticated-source identity boundaries. HQP-5 lists the target as not yet physically tested. |
+| Ranger R0 | Physical terrestrial build and consequence-custody demonstration | Reuse HQP and add cyber-physical observation, uncertainty, actuator, safety, and consequence requirements. A later qualified claim must publish through HQP-5. |
+| VectorRail / VRX | Replace simulated trials with calibrated physical measurements | Reuse HQP and add laboratory measurement/calibration requirements. A later qualified claim must publish through HQP-5. |
+| AI Witness / Black Box / Fleet | Physical/live appliance qualification gates | Later product-specific profiles inherit HQP common evidence and claim-boundary rules and publish physical claims only through HQP-5. |
 
 ## Edge HQP-3 reconciliation
 
@@ -89,8 +91,20 @@ The first legacy profile uses the existing Edge RFC 5424 UDP observation boundar
 
 Issue #797 remains open until one named physical Android device and one named physical legacy device each produce retained HQP-1 packages accepted by HQP-2 from an independent context.
 
-## Publication rule
+## HQP-5 publication rule
 
-Public material may say a capability is implemented, in qualification, or research when supported by the roadmap/status artifacts. It may say a named physical profile is **qualified** only when the applicable HQP evidence package and independent verifier result support that bounded claim.
+The canonical public qualification index is `docs/qualification/qualification-index.json`.
 
-No HQP result by itself establishes general availability, legal admissibility, regulatory compliance, complete observation, semantic truth, production readiness, or qualification of untested hardware revisions.
+The initial index contains **zero published physical qualified claims**. It separately lists Edge, Android Phase 1A, and legacy syslog target classes as pending physical gates.
+
+A public or internal statement may call a named physical target **qualified** only when an active index record binds that statement to the exact HQP profile, DUT/revision, immutable build, HQP-1 package, independent HQP-2 result, limitations, validity window, and current supersession state.
+
+Expired, superseded, failed, historical, and withdrawn records may remain visible for transparency but must not be presented as current qualification.
+
+Historical issue criteria remain requirements provenance. They do not become present-state evidence merely because the implementation later changes, and they are not retroactively rewritten to match current status.
+
+## Publication boundary
+
+Public material may say a capability is implemented, in qualification, or research when supported by the roadmap/status artifacts. A physical **qualified** statement additionally requires an active HQP-5 record.
+
+No HQP result or index entry by itself establishes general availability, legal admissibility, regulatory compliance, complete observation, semantic truth, production readiness, or qualification of untested hardware revisions.
