@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/qualification/v1/hardware-qualification-verification.schema.json",
+  "title": "ETS Hardware Qualification Independent Verification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "verification_id",
+    "verifier_id",
+    "verifier_build_digest_sha256",
+    "independent_execution_context",
+    "profile_id",
+    "profile_version",
+    "profile_digest_sha256",
+    "run_id",
+    "run_digest_sha256",
+    "report_id",
+    "report_digest_sha256",
+    "claimed_disposition",
+    "eligible_for_claimed_disposition",
+    "outcome",
+    "checks",
+    "verified_artifact_ids",
+    "missing_artifact_ids",
+    "mismatched_artifact_ids",
+    "verified_evidence_object_ids",
+    "invalid_evidence_object_ids",
+    "trust_boundary",
+    "verification_digest_sha256",
+    "claim_boundary"
+  ],
+  "properties": {
+    "schema_version": {"const": "ets.hardware-qualification-verification.v1"},
+    "verification_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "verifier_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "verifier_build_digest_sha256": {"$ref": "#/$defs/sha256"},
+    "independent_execution_context": {"type": "boolean"},
+    "challenge_nonce": {"type": ["string", "null"], "maxLength": 512},
+    "profile_id": {"type": ["string", "null"], "maxLength": 256},
+    "profile_version": {"type": ["string", "null"], "maxLength": 128},
+    "profile_digest_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+    "run_id": {"type": ["string", "null"], "maxLength": 256},
+    "run_digest_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+    "report_id": {"type": ["string", "null"], "maxLength": 256},
+    "report_digest_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+    "claimed_disposition": {"type": ["string", "null"], "maxLength": 128},
+    "eligible_for_claimed_disposition": {"type": "boolean"},
+    "outcome": {"enum": ["valid", "invalid", "indeterminate"]},
+    "checks": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/check"}
+    },
+    "verified_artifact_ids": {"$ref": "#/$defs/stringArray"},
+    "missing_artifact_ids": {"$ref": "#/$defs/stringArray"},
+    "mismatched_artifact_ids": {"$ref": "#/$defs/stringArray"},
+    "verified_evidence_object_ids": {"$ref": "#/$defs/stringArray"},
+    "invalid_evidence_object_ids": {"$ref": "#/$defs/stringArray"},
+    "trust_boundary": {"$ref": "#/$defs/stringArray"},
+    "verification_digest_sha256": {"$ref": "#/$defs/sha256"},
+    "claim_boundary": {
+      "const": "bounded_hqp_independent_verification_not_complete_observation_truth_compliance_safety_or_ga_proof"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "stringArray": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check_id", "status", "gating", "reason", "subjects"],
+      "properties": {
+        "check_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "status": {"enum": ["pass", "fail", "indeterminate"]},
+        "gating": {"type": "boolean"},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "subjects": {"$ref": "#/$defs/stringArray"}
+      }
+    }
+  }
+}
