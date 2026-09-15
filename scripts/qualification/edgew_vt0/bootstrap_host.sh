@@ -34,15 +34,13 @@ printf 'ETS EDGEW-RT0-VT0 dedicated host bootstrap\n'
 printf 'Ubuntu: %s\n' "${PRETTY_NAME:-unknown}"
 printf 'Operator: %s\n' "${OPERATOR}"
 
-# Fresh desktop/server installs can retain installation media as an active APT
-# source. Match cdrom: and any file:/.../cdrom slash normalization form.
+# Fresh installs can retain installation media as an active APT source.
 if sudo python3 - <<'PY'
 from pathlib import Path
 import re
 import sys
 
-MEDIA_RE = re.compile(r'(?i)(?:cdrom:|file:/+cdrom(?:/|\b))')
-
+media_re = re.compile(r'(?:cdrom:|file:/+cdrom)', re.IGNORECASE)
 paths = []
 main = Path('/etc/apt/sources.list')
 if main.exists():
@@ -57,7 +55,7 @@ for path in paths:
     text = path.read_text(errors='replace')
     if path.suffix == '.sources':
         for stanza in re.split(r'\n\s*\n', text):
-            if not MEDIA_RE.search(stanza):
+            if not media_re.search(stanza):
                 continue
             if re.search(r'(?mi)^Enabled:\s*no\s*$', stanza):
                 continue
@@ -67,7 +65,7 @@ for path in paths:
         for line in text.splitlines():
             if line.lstrip().startswith('#'):
                 continue
-            if MEDIA_RE.search(line):
+            if media_re.search(line):
                 active.append(str(path))
                 break
 
@@ -88,16 +86,41 @@ fi
 
 sudo apt-get update
 
-# Ubuntu 26.04 no longer exposes qemu-kvm as an installable package on amd64;
-# use qemu-system-x86 there. Retain qemu-kvm compatibility for older Ubuntu releases.
-if apt-cache show qemu-kvm >/dev/null 2>&1 && apt-cache policy qemu-kvm | grep -q 'Candidate: [^()]'; then
-  QEMU_PACKAGE="qemu-kvm"
-elif apt-cache show qemu-system-x86 >/dev/null 2>&1 && apt-cache policy qemu-system-x86 | grep -q 'Candidate: [^()]'; then
-  QEMU_PACKAGE="qemu-system-x86"
-elif apt-cache show qemu-system >/dev/null 2>&1 && apt-cache policy qemu-system | grep -q 'Candidate: [^()]'; then
-  QEMU_PACKAGE="qemu-system"
-else
-  echo "ERROR: no supported QEMU system package has an install candidate." >&2
+qemu_candidate() {
+  local pkg="$1"
+  apt-cache policy "${pkg}" 2>/dev/null | grep -Eq '^  Candidate: .+' && \
+    ! apt-cache policy "${pkg}" 2>/dev/null | grep -q '^  Candidate: (none)'
+}
+
+select_qemu_package() {
+  if qemu_candidate qemu-kvm; then
+    printf '%s' 'qemu-kvm'
+  elif qemu_candidate qemu-system-x86; then
+    printf '%s' 'qemu-system-x86'
+  elif qemu_candidate qemu-system-x86-hwe; then
+    printf '%s' 'qemu-system-x86-hwe'
+  elif qemu_candidate qemu-system; then
+    printf '%s' 'qemu-system'
+  else
+    return 1
+  fi
+}
+
+QEMU_PACKAGE="$(select_qemu_package || true)"
+
+# On Ubuntu 26.04, QEMU system packages are in Universe. Minimal/fresh installs
+# may expose only Main, so enable Universe once if no QEMU candidate exists.
+if [[ -z "${QEMU_PACKAGE}" ]]; then
+  echo "No QEMU system package candidate is visible; enabling Ubuntu Universe..."
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common
+  sudo add-apt-repository -y universe
+  sudo apt-get update
+  QEMU_PACKAGE="$(select_qemu_package || true)"
+fi
+
+if [[ -z "${QEMU_PACKAGE}" ]]; then
+  echo "ERROR: no supported QEMU system package has an install candidate after enabling Universe." >&2
+  echo "Inspect: apt-cache policy qemu-system-x86 qemu-system-x86-hwe" >&2
   exit 3
 fi
 
