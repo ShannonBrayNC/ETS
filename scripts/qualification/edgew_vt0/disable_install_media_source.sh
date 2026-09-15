@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Disable only active APT installer-media sources (cdrom:/ or file:/cdrom).
+# Disable only active APT installer-media sources (cdrom:/ or file:/.../cdrom).
 # Creates .pre-ets backups before changing any source file.
 
 if [[ "${EUID}" -eq 0 ]]; then
@@ -12,6 +12,8 @@ fi
 sudo python3 - <<'PY'
 from pathlib import Path
 import re
+
+MEDIA_RE = re.compile(r'(?i)(?:cdrom:|file:/+cdrom(?:/|\b))')
 
 paths = []
 main = Path('/etc/apt/sources.list')
@@ -25,7 +27,7 @@ if source_dir.exists():
 changed = []
 for path in paths:
     original = path.read_text(errors='replace')
-    if 'cdrom:' not in original and 'file:/cdrom' not in original:
+    if not MEDIA_RE.search(original):
         continue
 
     backup = Path(str(path) + '.pre-ets')
@@ -37,7 +39,7 @@ for path in paths:
         out = []
         modified = False
         for stanza in stanzas:
-            if ('cdrom:' in stanza or 'file:/cdrom' in stanza):
+            if MEDIA_RE.search(stanza):
                 if re.search(r'(?mi)^Enabled:\s*no\s*$', stanza):
                     out.append(stanza)
                     continue
@@ -50,10 +52,7 @@ for path in paths:
         modified = False
         for line in original.splitlines():
             stripped = line.lstrip()
-            active_media = (
-                ('cdrom:' in line or 'file:/cdrom' in line)
-                and not stripped.startswith('#')
-            )
+            active_media = MEDIA_RE.search(line) and not stripped.startswith('#')
             if active_media:
                 out.append('# ETS disabled install-media source: ' + line)
                 modified = True
@@ -73,11 +72,11 @@ else:
     print('No active installer-media APT source required modification.')
 PY
 
-printf '\nVerifying active APT sources...\n'
-if sudo grep -RnsE '^[[:space:]]*deb .*?(cdrom:|file:/cdrom)|^[[:space:]]*URIs:[[:space:]]*(cdrom:|file:/cdrom)' \
-  /etc/apt/sources.list /etc/apt/sources.list.d --include='*.list' --include='*.sources' 2>/dev/null; then
-  echo "NOTE: matching text remains above; .sources entries with 'Enabled: no' are expected and disabled." >&2
-fi
+printf '\nRemaining CD-ROM references under active APT source files:\n'
+sudo grep -RnsEi 'cdrom:|file:/+cdrom' \
+  /etc/apt/sources.list /etc/apt/sources.list.d \
+  --include='*.list' --include='*.sources' 2>/dev/null || true
 
+printf '\nVerifying active APT sources...\n'
 sudo apt-get update
 printf '\nAPT update succeeded without an active installer-media repository.\n'
