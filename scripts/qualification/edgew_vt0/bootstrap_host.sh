@@ -109,11 +109,19 @@ select_qemu_package() {
 QEMU_PACKAGE="$(select_qemu_package || true)"
 
 # Canonical publishes qemu-system-x86 for Ubuntu 26.04 (Resolute) amd64 in
-# the standard Ubuntu archive. If APT cannot see it, treat that as an index,
-# source-definition, architecture, mirror, or pinning problem. Do not mutate
-# repository components speculatively here.
+# the standard Ubuntu archive. If the source definition is valid but the local
+# cache cannot see it, rebuild APT package-list indexes once before failing.
+# /var/lib/apt/lists is cache state only; configured sources are not modified.
 if [[ -z "${QEMU_PACKAGE}" ]]; then
-  echo "ERROR: no supported QEMU system package has an install candidate." >&2
+  echo "No QEMU package candidate is visible; rebuilding local APT indexes once..."
+  sudo rm -rf /var/lib/apt/lists/*
+  sudo install -d -m 0755 /var/lib/apt/lists/partial
+  sudo apt-get update
+  QEMU_PACKAGE="$(select_qemu_package || true)"
+fi
+
+if [[ -z "${QEMU_PACKAGE}" ]]; then
+  echo "ERROR: no supported QEMU system package has an install candidate after a clean index rebuild." >&2
   echo "Ubuntu 26.04 amd64 should expose qemu-system-x86 from the Resolute archive." >&2
   echo "Run: bash ${SCRIPT_DIR}/diagnose_qemu_repository.sh" >&2
   exit 3
