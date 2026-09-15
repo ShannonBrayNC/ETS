@@ -7,6 +7,8 @@
 
 The active mobile gate remains **Android physical Phase 1A qualification**. The repository's common Hardware Qualification Profile already treats Provenance / ETS Mobile Android Phase 1A as a physical qualification target. BioWitness is deliberately downstream work.
 
+Android Beta 0 and Linux/legacy hardware qualification remain separate active execution lanes. BioWitness research must not serialize either lane.
+
 ## Mobile sequence
 
 ### M0 — Android Phase 1A — ACTIVE
@@ -100,13 +102,42 @@ Only after M5 identifies actual evidence gaps:
 - characterize sensor accuracy, repeatability, drift, clock behavior, loss/gaps, thermal/power effects and attachment/contact effects;
 - validate independent verification of sample-window commitments.
 
-### M8 — Comparative biophysical experiments (BW-E4–BW-E5)
+### M8 — Multi-observer BioWitness integration (BW-E6)
+
+Execute the **Multi-Observer Human Evidence Network** experiment using heterogeneous accessory and environmental observers:
+
+- ring;
+- watch;
+- phone running ETS Mobile;
+- AI glasses;
+- Ranger and/or fixed independent environmental observer;
+- dedicated BioWitness reference hardware when available.
+
+BW-E6 validates:
+
+- cross-device temporal ordering with explicit clock uncertainty;
+- observation ancestry and true versus apparent independence;
+- biophysical consequence custody;
+- raw/derived/classified/interpreted evidence separation;
+- AI/model Interpretation Objects;
+- Evidence Distance and Claim Ceiling behavior;
+- selective disclosure of biological evidence;
+- independent Gateway/Verify reconstruction.
+
+A commercial-device dry run is permitted before BioWitness reference hardware exists, provided every source is labeled according to its actual provenance grade.
+
+**Exit gate:** independently verifiable multi-observer Evidence Graph demonstrating that heterogeneous sensors increase evidence resolution without converting unsupported psychological inference into sensor fact.
+
+See `BW-E6_MULTI_OBSERVER_HUMAN_EVIDENCE_NETWORK.md`.
+
+### M9 — Comparative biophysical and interpretation-distance expansion (BW-E4–BW-E5)
 
 - simultaneously capture commercial wearable, phone, BioWitness and independent physical-observer data;
 - quantify information/metadata loss across the chain;
 - measure temporal alignment and uncertainty;
 - execute interpretation-distance experiments in which the retained observations stay fixed while classifiers/analysts may disagree;
-- preserve every inference as a derived claim with input references and algorithm/model identity.
+- preserve every inference as a derived claim with input references and algorithm/model identity;
+- use BW-E6 ancestry/independence semantics when multiple accessories participate.
 
 ## Mobile claim boundary
 
@@ -121,5 +152,9 @@ The mobile program MUST NOT state that a wearable directly observed deception, f
 ## Relationship to the public roadmap
 
 BioWitness should appear as **Future research — gated by Provenance iOS completion and commercial wearable experiments**. Its next meaningful gate is not hardware construction; it is completion of Android, iOS, and BW-E0/BW-E1–E3 evidence-gap characterization.
+
+The longer research progression is now:
+
+`Android -> iOS -> BW-E0 -> BW-E1/E2/E3 -> reference-device decision -> BioWitness prototype -> BW-E6 multi-observer integration -> BW-E4/BW-E5 comparative expansion`
 
 See `docs/research/biowitness/README.md` for requirements, provenance grades, claim ladder and experiment definitions.
