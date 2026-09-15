@@ -1,9 +1,9 @@
 """Wave 1 physical Edge Compact R0 bench bootstrap.
 
-This module deliberately stops before fault injection.  It may inspect the local Linux
+This module deliberately stops before fault injection. It may inspect the local Linux
 host using read-only interfaces, build a draft named-DUT/bench manifest, and determine
 whether the operator has supplied enough claim-critical information to begin the HQP-3
-physical corpus.  It never performs power cuts, time changes, storage filling, network
+physical corpus. It never performs power cuts, time changes, storage filling, network
 impairment, firmware changes, or recovery/reimage actions.
 
 A complete bench manifest is *bench readiness*, not a hardware qualification result.
@@ -15,13 +15,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import platform
 import re
 import socket
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
@@ -56,6 +55,7 @@ class StrictR0Model(BaseModel):
 
 class StorageDevice(StrictR0Model):
     name: str = Field(min_length=1, max_length=256)
+    vendor: str | None = Field(default=None, max_length=512)
     model: str | None = Field(default=None, max_length=512)
     serial: str | None = Field(default=None, max_length=512)
     firmware: str | None = Field(default=None, max_length=512)
@@ -102,7 +102,9 @@ class EdgeBuildBinding(StrictR0Model):
     @classmethod
     def validate_digest_shape(cls, value: str | None) -> str | None:
         if value is not None and not _SHA256_RE.fullmatch(value):
-            raise ValueError("digest must be a 64-character SHA-256 hex value, optionally prefixed sha256:")
+            raise ValueError(
+                "digest must be a 64-character SHA-256 hex value, optionally prefixed sha256:"
+            )
         return value
 
 
@@ -137,9 +139,11 @@ class BenchControl(StrictR0Model):
     bootstrap_cli_executes_action: Literal[False] = False
 
     @model_validator(mode="after")
-    def require_operator_gate_for_disruptive_control(self) -> "BenchControl":
+    def require_operator_gate_for_disruptive_control(self) -> BenchControl:
         if self.destructive_or_disruptive and not self.operator_approval_required:
-            raise ValueError("destructive/disruptive bench controls require explicit operator approval")
+            raise ValueError(
+                "destructive/disruptive bench controls require explicit operator approval"
+            )
         return self
 
 
@@ -159,11 +163,12 @@ class EdgeCompactR0BenchManifest(StrictR0Model):
     notes: tuple[str, ...] = ()
 
     @model_validator(mode="after")
-    def require_unique_controls(self) -> "EdgeCompactR0BenchManifest":
+    def require_unique_controls(self) -> EdgeCompactR0BenchManifest:
         kinds = [control.kind for control in self.controls]
         if len(kinds) != len(set(kinds)):
             raise ValueError("bench control kinds must be unique")
         return self
+
 
 
 def load_manifest(raw: bytes) -> EdgeCompactR0BenchManifest:
@@ -172,11 +177,15 @@ def load_manifest(raw: bytes) -> EdgeCompactR0BenchManifest:
     return EdgeCompactR0BenchManifest.model_validate_json(raw)
 
 
+
 def readiness_issues(manifest: EdgeCompactR0BenchManifest) -> tuple[str, ...]:
     """Return deterministic blockers that prevent starting physical HQP execution."""
 
     issues: list[str] = []
     dut = manifest.dut
+
+    if manifest.manifest_state is not ManifestState.READY_FOR_QUALIFICATION:
+        issues.append("manifest_state must be ready_for_qualification before physical execution")
 
     if dut.cpu_architecture.lower() not in {"x86_64", "amd64"}:
         issues.append("DUT CPU architecture must be x86-64/amd64 for EDGE_COMPACT_R0")
@@ -200,17 +209,23 @@ def readiness_issues(manifest: EdgeCompactR0BenchManifest) -> tuple[str, ...]:
 
     if not dut.storage:
         issues.append("no physical storage device is recorded")
-    else:
-        if not any(_present(item.model) for item in dut.storage):
-            issues.append("storage model is missing")
-        if not any(_present(item.firmware) for item in dut.storage):
-            issues.append("storage firmware is missing")
+    elif not any(_complete_storage_identity(item) for item in dut.storage):
+        issues.append(
+            "no storage device has complete vendor/model/firmware/capacity identity"
+        )
 
     if not dut.network:
         issues.append("no network interface is recorded")
 
-    if not any(_present(value) for key, value in dut.firmware.items() if "bios" in key or "uefi" in key):
-        issues.append("BIOS/UEFI firmware identity is missing")
+    bios_version = dut.firmware.get("bios_version") or dut.firmware.get("uefi_version")
+    if not _present(bios_version):
+        issues.append("BIOS/UEFI firmware version is missing")
+
+    runtime = manifest.runtime
+    if not _present(runtime.os_id):
+        issues.append("operating-system identifier is missing")
+    if not _present(runtime.os_version_id):
+        issues.append("operating-system version is missing")
 
     if not _present(manifest.build.source_revision):
         issues.append("Edge source revision is missing")
@@ -251,13 +266,12 @@ def readiness_issues(manifest: EdgeCompactR0BenchManifest) -> tuple[str, ...]:
             issues.append(f"bench control {kind} has no execution method")
         if not _present(control.independent_observation_method):
             issues.append(f"bench control {kind} has no independent observation method")
-        if control.bootstrap_cli_executes_action is not False:
-            issues.append(f"bench control {kind} must not be executable by bootstrap CLI")
 
     if manifest.manifest_state is ManifestState.READY_FOR_QUALIFICATION and issues:
         issues.append("manifest declares ready_for_qualification while readiness blockers remain")
 
     return tuple(issues)
+
 
 
 def assert_ready_for_qualification(manifest: EdgeCompactR0BenchManifest) -> None:
@@ -267,14 +281,19 @@ def assert_ready_for_qualification(manifest: EdgeCompactR0BenchManifest) -> None
         raise ValueError(f"Edge Compact R0 bench manifest is not ready:\n{rendered}")
 
 
-def fingerprint_local_linux(*, manifest_id: str | None = None, asset_id: str | None = None) -> EdgeCompactR0BenchManifest:
+
+def fingerprint_local_linux(
+    *,
+    manifest_id: str | None = None,
+    asset_id: str | None = None,
+) -> EdgeCompactR0BenchManifest:
     """Create a read-only best-effort draft fingerprint of the local host.
 
     The function reads procfs/sysfs and invokes read-only inventory commands when they
-    are available.  It never changes the host or qualification environment.
+    are available. It never changes the host or qualification environment.
     """
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     hostname = socket.gethostname() or "unknown-host"
     if manifest_id is None:
         stamp = now.strftime("%Y%m%dT%H%M%SZ")
@@ -318,7 +337,9 @@ def fingerprint_local_linux(*, manifest_id: str | None = None, asset_id: str | N
     )
 
     return EdgeCompactR0BenchManifest(
+        schema_version=R0_SCHEMA_VERSION,
         manifest_id=manifest_id,
+        qualification_class=R0_QUALIFICATION_CLASS,
         manifest_state=ManifestState.DRAFT,
         collected_at=now,
         dut=dut,
@@ -329,64 +350,58 @@ def fingerprint_local_linux(*, manifest_id: str | None = None, asset_id: str | N
         verifier=IndependentVerifier(),
         controls=_default_control_templates(),
         notes=(
-            "Read-only bootstrap fingerprint; operator confirmation is required before physical qualification.",
+            "Read-only bootstrap fingerprint; operator confirmation is required before "
+            "physical qualification.",
             "This manifest is not a qualification result.",
         ),
     )
 
 
+
 def _default_control_templates() -> tuple[BenchControl, ...]:
     return (
-        BenchControl(
-            kind=BenchControlKind.POWER,
-            control_id="r0-power-control",
-            method=None,
-            independent_observation_method=None,
-            destructive_or_disruptive=True,
-            operator_approval_required=True,
-        ),
-        BenchControl(
-            kind=BenchControlKind.NETWORK,
-            control_id="r0-network-control",
-            method=None,
-            independent_observation_method=None,
-            destructive_or_disruptive=True,
-            operator_approval_required=True,
-        ),
-        BenchControl(
-            kind=BenchControlKind.STORAGE,
-            control_id="r0-storage-control",
-            method=None,
-            independent_observation_method=None,
-            destructive_or_disruptive=True,
-            operator_approval_required=True,
-        ),
-        BenchControl(
-            kind=BenchControlKind.CLOCK,
-            control_id="r0-clock-control",
-            method=None,
-            independent_observation_method=None,
-            destructive_or_disruptive=True,
-            operator_approval_required=True,
-        ),
-        BenchControl(
-            kind=BenchControlKind.RECOVERY,
-            control_id="r0-recovery-control",
-            method=None,
-            independent_observation_method=None,
-            destructive_or_disruptive=True,
-            operator_approval_required=True,
-        ),
+        _control_template(BenchControlKind.POWER),
+        _control_template(BenchControlKind.NETWORK),
+        _control_template(BenchControlKind.STORAGE),
+        _control_template(BenchControlKind.CLOCK),
+        _control_template(BenchControlKind.RECOVERY),
     )
+
+
+
+def _control_template(kind: BenchControlKind) -> BenchControl:
+    return BenchControl(
+        kind=kind,
+        control_id=f"r0-{kind.value}-control",
+        method=None,
+        independent_observation_method=None,
+        destructive_or_disruptive=True,
+        operator_approval_required=True,
+        bootstrap_cli_executes_action=False,
+    )
+
 
 
 def _present(value: str | None) -> bool:
     return bool(value and value.strip())
 
 
+
+def _complete_storage_identity(device: StorageDevice) -> bool:
+    return bool(
+        _present(device.vendor)
+        and _present(device.model)
+        and _present(device.firmware)
+        and device.size_bytes is not None
+        and device.size_bytes > 0
+    )
+
+
+
 def _safe_id(value: str) -> str:
     rendered = _SAFE_ID_RE.sub("-", value.strip()).strip("-")
     return rendered or "host"
+
 
 
 def _read_sysfs_text(path: str) -> str | None:
@@ -395,6 +410,7 @@ def _read_sysfs_text(path: str) -> str | None:
     except (OSError, UnicodeError):
         return None
     return value or None
+
 
 
 def _collect_firmware() -> dict[str, str]:
@@ -414,11 +430,17 @@ def _collect_firmware() -> dict[str, str]:
     return result
 
 
+
 def _cpu_model() -> str | None:
     try:
-        for line in Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace").splitlines():
+        text = Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace")
+        for line in text.splitlines():
             key, separator, value = line.partition(":")
-            if separator and key.strip().lower() in {"model name", "hardware", "processor"}:
+            if separator and key.strip().lower() in {
+                "model name",
+                "hardware",
+                "processor",
+            }:
                 rendered = value.strip()
                 if rendered and not rendered.isdigit():
                     return rendered
@@ -427,9 +449,11 @@ def _cpu_model() -> str | None:
     return platform.processor() or None
 
 
+
 def _memory_bytes() -> int | None:
     try:
-        for line in Path("/proc/meminfo").read_text(encoding="utf-8", errors="replace").splitlines():
+        text = Path("/proc/meminfo").read_text(encoding="utf-8", errors="replace")
+        for line in text.splitlines():
             if not line.startswith("MemTotal:"):
                 continue
             parts = line.split()
@@ -438,6 +462,7 @@ def _memory_bytes() -> int | None:
     except (OSError, ValueError):
         return None
     return None
+
 
 
 def _run_read_only(command: list[str]) -> str | None:
@@ -456,9 +481,16 @@ def _run_read_only(command: list[str]) -> str | None:
     return completed.stdout
 
 
+
 def _collect_storage() -> tuple[StorageDevice, ...]:
     raw = _run_read_only(
-        ["lsblk", "-J", "-b", "-o", "NAME,TYPE,MODEL,SERIAL,REV,SIZE,TRAN"]
+        [
+            "lsblk",
+            "-J",
+            "-b",
+            "-o",
+            "NAME,TYPE,VENDOR,MODEL,SERIAL,REV,SIZE,TRAN",
+        ]
     )
     if not raw:
         return ()
@@ -482,6 +514,7 @@ def _collect_storage() -> tuple[StorageDevice, ...]:
         devices.append(
             StorageDevice(
                 name=name,
+                vendor=_nullable_string(item.get("vendor")),
                 model=_nullable_string(item.get("model")),
                 serial=_nullable_string(item.get("serial")),
                 firmware=_nullable_string(item.get("rev")),
@@ -490,6 +523,7 @@ def _collect_storage() -> tuple[StorageDevice, ...]:
             )
         )
     return tuple(devices)
+
 
 
 def _collect_network() -> tuple[NetworkInterface, ...]:
@@ -523,11 +557,13 @@ def _collect_network() -> tuple[NetworkInterface, ...]:
     return tuple(result)
 
 
+
 def _nullable_string(value: Any) -> str | None:
     if value is None:
         return None
     rendered = str(value).strip()
     return rendered or None
+
 
 
 def _parse_os_release() -> dict[str, str]:
@@ -546,6 +582,7 @@ def _parse_os_release() -> dict[str, str]:
     return result
 
 
+
 def _git_revision() -> str | None:
     raw = _run_read_only(["git", "rev-parse", "HEAD"])
     if not raw:
@@ -554,12 +591,14 @@ def _git_revision() -> str | None:
     return value or None
 
 
+
 def _write_manifest(path: Path, manifest: EdgeCompactR0BenchManifest) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(manifest.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
 
 
 def _render_readiness(manifest: EdgeCompactR0BenchManifest) -> dict[str, Any]:
@@ -573,8 +612,11 @@ def _render_readiness(manifest: EdgeCompactR0BenchManifest) -> dict[str, Any]:
     }
 
 
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="ETS Wave 1 physical Edge R0 bench bootstrap")
+    parser = argparse.ArgumentParser(
+        description="ETS Wave 1 physical Edge R0 bench bootstrap"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     fingerprint_parser = subparsers.add_parser(
@@ -601,7 +643,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "fingerprint":
-        manifest = fingerprint_local_linux(manifest_id=args.manifest_id, asset_id=args.asset_id)
+        manifest = fingerprint_local_linux(
+            manifest_id=args.manifest_id,
+            asset_id=args.asset_id,
+        )
         _write_manifest(args.output, manifest)
         print(json.dumps(_render_readiness(manifest), indent=2, sort_keys=True))
         return 0
@@ -617,7 +662,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.as_json:
             print(json.dumps(result, indent=2, sort_keys=True))
         elif result["ready_for_qualification"]:
-            print(f"{manifest.manifest_id}: ready for EDGE_COMPACT_R0 physical qualification")
+            print(
+                f"{manifest.manifest_id}: ready for EDGE_COMPACT_R0 physical qualification"
+            )
         else:
             for issue in result["blocking_issues"]:
                 print(f"BLOCKED: {issue}", file=sys.stderr)
