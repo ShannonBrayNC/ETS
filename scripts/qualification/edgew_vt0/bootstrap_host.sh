@@ -34,13 +34,14 @@ printf 'ETS EDGEW-RT0-VT0 dedicated host bootstrap\n'
 printf 'Ubuntu: %s\n' "${PRETTY_NAME:-unknown}"
 printf 'Operator: %s\n' "${OPERATOR}"
 
-# Fresh desktop/server installs can retain the installation ISO as an active
-# APT source. apt-get update will fail after successfully contacting Internet
-# mirrors, which previously made the virtualization failure look unrelated.
+# Fresh desktop/server installs can retain installation media as an active APT
+# source. Match cdrom: and any file:/.../cdrom slash normalization form.
 if sudo python3 - <<'PY'
 from pathlib import Path
 import re
 import sys
+
+MEDIA_RE = re.compile(r'(?i)(?:cdrom:|file:/+cdrom(?:/|\b))')
 
 paths = []
 main = Path('/etc/apt/sources.list')
@@ -56,7 +57,7 @@ for path in paths:
     text = path.read_text(errors='replace')
     if path.suffix == '.sources':
         for stanza in re.split(r'\n\s*\n', text):
-            if 'cdrom:' not in stanza and 'file:/cdrom' not in stanza:
+            if not MEDIA_RE.search(stanza):
                 continue
             if re.search(r'(?mi)^Enabled:\s*no\s*$', stanza):
                 continue
@@ -66,7 +67,7 @@ for path in paths:
         for line in text.splitlines():
             if line.lstrip().startswith('#'):
                 continue
-            if 'cdrom:' in line or 'file:/cdrom' in line:
+            if MEDIA_RE.search(line):
                 active.append(str(path))
                 break
 
@@ -121,8 +122,6 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   iperf3 \
   smartmontools
 
-# libvirt 12 on Ubuntu 26.04 still ships libvirtd.service/socket. Prefer socket
-# activation when present, with a service fallback for older supported releases.
 if systemctl list-unit-files --type=socket | grep -q '^libvirtd\.socket'; then
   sudo systemctl enable --now libvirtd.socket
 fi
@@ -173,9 +172,6 @@ printf '\nHost virtualization checks:\n'
 kvm-ok || true
 sudo virt-host-validate || true
 
-# The current shell will not yet have the newly-added libvirt/kvm groups, so
-# validate the system libvirt socket as root here. The operator validates
-# unprivileged virsh after re-login/reboot.
 if ! sudo virsh --connect qemu:///system version; then
   echo "ERROR: libvirt system connection is not available after installation." >&2
   echo "Inspect: systemctl status libvirtd.service libvirtd.socket --no-pager" >&2
