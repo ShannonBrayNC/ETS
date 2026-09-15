@@ -170,12 +170,10 @@ class EdgeCompactR0BenchManifest(StrictR0Model):
         return self
 
 
-
 def load_manifest(raw: bytes) -> EdgeCompactR0BenchManifest:
     """Load a strict R0 manifest without implying that it is ready."""
 
     return EdgeCompactR0BenchManifest.model_validate_json(raw)
-
 
 
 def readiness_issues(manifest: EdgeCompactR0BenchManifest) -> tuple[str, ...]:
@@ -273,13 +271,11 @@ def readiness_issues(manifest: EdgeCompactR0BenchManifest) -> tuple[str, ...]:
     return tuple(issues)
 
 
-
 def assert_ready_for_qualification(manifest: EdgeCompactR0BenchManifest) -> None:
     issues = readiness_issues(manifest)
     if issues:
         rendered = "\n".join(f"- {issue}" for issue in issues)
         raise ValueError(f"Edge Compact R0 bench manifest is not ready:\n{rendered}")
-
 
 
 def fingerprint_local_linux(
@@ -357,7 +353,6 @@ def fingerprint_local_linux(
     )
 
 
-
 def _default_control_templates() -> tuple[BenchControl, ...]:
     return (
         _control_template(BenchControlKind.POWER),
@@ -366,7 +361,6 @@ def _default_control_templates() -> tuple[BenchControl, ...]:
         _control_template(BenchControlKind.CLOCK),
         _control_template(BenchControlKind.RECOVERY),
     )
-
 
 
 def _control_template(kind: BenchControlKind) -> BenchControl:
@@ -381,10 +375,8 @@ def _control_template(kind: BenchControlKind) -> BenchControl:
     )
 
 
-
 def _present(value: str | None) -> bool:
     return bool(value and value.strip())
-
 
 
 def _complete_storage_identity(device: StorageDevice) -> bool:
@@ -397,11 +389,9 @@ def _complete_storage_identity(device: StorageDevice) -> bool:
     )
 
 
-
 def _safe_id(value: str) -> str:
     rendered = _SAFE_ID_RE.sub("-", value.strip()).strip("-")
     return rendered or "host"
-
 
 
 def _read_sysfs_text(path: str) -> str | None:
@@ -410,7 +400,6 @@ def _read_sysfs_text(path: str) -> str | None:
     except (OSError, UnicodeError):
         return None
     return value or None
-
 
 
 def _collect_firmware() -> dict[str, str]:
@@ -428,7 +417,6 @@ def _collect_firmware() -> dict[str, str]:
         if value:
             result[key] = value
     return result
-
 
 
 def _cpu_model() -> str | None:
@@ -449,7 +437,6 @@ def _cpu_model() -> str | None:
     return platform.processor() or None
 
 
-
 def _memory_bytes() -> int | None:
     try:
         text = Path("/proc/meminfo").read_text(encoding="utf-8", errors="replace")
@@ -462,7 +449,6 @@ def _memory_bytes() -> int | None:
     except (OSError, ValueError):
         return None
     return None
-
 
 
 def _run_read_only(command: list[str]) -> str | None:
@@ -479,7 +465,6 @@ def _run_read_only(command: list[str]) -> str | None:
     if completed.returncode != 0:
         return None
     return completed.stdout
-
 
 
 def _collect_storage() -> tuple[StorageDevice, ...]:
@@ -525,7 +510,6 @@ def _collect_storage() -> tuple[StorageDevice, ...]:
     return tuple(devices)
 
 
-
 def _collect_network() -> tuple[NetworkInterface, ...]:
     base = Path("/sys/class/net")
     if not base.exists():
@@ -557,13 +541,11 @@ def _collect_network() -> tuple[NetworkInterface, ...]:
     return tuple(result)
 
 
-
 def _nullable_string(value: Any) -> str | None:
     if value is None:
         return None
     rendered = str(value).strip()
     return rendered or None
-
 
 
 def _parse_os_release() -> dict[str, str]:
@@ -582,7 +564,6 @@ def _parse_os_release() -> dict[str, str]:
     return result
 
 
-
 def _git_revision() -> str | None:
     raw = _run_read_only(["git", "rev-parse", "HEAD"])
     if not raw:
@@ -591,14 +572,12 @@ def _git_revision() -> str | None:
     return value or None
 
 
-
 def _write_manifest(path: Path, manifest: EdgeCompactR0BenchManifest) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(manifest.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-
 
 
 def _render_readiness(manifest: EdgeCompactR0BenchManifest) -> dict[str, Any]:
@@ -610,7 +589,6 @@ def _render_readiness(manifest: EdgeCompactR0BenchManifest) -> dict[str, Any]:
         "blocking_issues": list(issues),
         "claim_boundary": "bench_readiness_only_not_a_qualification_result",
     }
-
 
 
 def main(argv: list[str] | None = None) -> int:
