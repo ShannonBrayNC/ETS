@@ -108,19 +108,14 @@ select_qemu_package() {
 
 QEMU_PACKAGE="$(select_qemu_package || true)"
 
-# On Ubuntu 26.04, QEMU system packages are in Universe. Minimal/fresh installs
-# may expose only Main, so enable Universe once if no QEMU candidate exists.
+# Canonical publishes qemu-system-x86 for Ubuntu 26.04 (Resolute) amd64 in
+# the standard Ubuntu archive. If APT cannot see it, treat that as an index,
+# source-definition, architecture, mirror, or pinning problem. Do not mutate
+# repository components speculatively here.
 if [[ -z "${QEMU_PACKAGE}" ]]; then
-  echo "No QEMU system package candidate is visible; enabling Ubuntu Universe..."
-  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common
-  sudo add-apt-repository -y universe
-  sudo apt-get update
-  QEMU_PACKAGE="$(select_qemu_package || true)"
-fi
-
-if [[ -z "${QEMU_PACKAGE}" ]]; then
-  echo "ERROR: no supported QEMU system package has an install candidate after enabling Universe." >&2
-  echo "Inspect: apt-cache policy qemu-system-x86 qemu-system-x86-hwe" >&2
+  echo "ERROR: no supported QEMU system package has an install candidate." >&2
+  echo "Ubuntu 26.04 amd64 should expose qemu-system-x86 from the Resolute archive." >&2
+  echo "Run: bash ${SCRIPT_DIR}/diagnose_qemu_repository.sh" >&2
   exit 3
 fi
 
