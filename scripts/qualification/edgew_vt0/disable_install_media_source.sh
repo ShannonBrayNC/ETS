@@ -1,19 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Disable only active APT installer-media sources (cdrom:/ or file:/.../cdrom).
-# Creates .pre-ets backups before changing any source file.
+# Disable only active APT installer-media sources (cdrom:/ or file:/+cdrom).
+# Backups are stored outside sources.list.d so APT does not warn about them.
 
 if [[ "${EUID}" -eq 0 ]]; then
   echo "Run as the normal operator account; this script uses sudo explicitly." >&2
   exit 2
 fi
 
-sudo python3 - <<'PY'
+BACKUP_DIR="/var/backups/ets-apt-sources"
+sudo install -d -m 0755 "${BACKUP_DIR}"
+
+# Move backups created by older versions of this script out of APT's source directory.
+shopt -s nullglob
+for legacy in /etc/apt/sources.list.d/*.pre-ets; do
+  base="$(basename "${legacy}")"
+  sudo mv "${legacy}" "${BACKUP_DIR}/${base}"
+  echo "Moved legacy backup: ${legacy} -> ${BACKUP_DIR}/${base}"
+done
+shopt -u nullglob
+
+sudo python3 - "${BACKUP_DIR}" <<'PY'
 from pathlib import Path
 import re
+import shutil
+import sys
 
-MEDIA_RE = re.compile(r'(?i)(?:cdrom:|file:/+cdrom(?:/|\b))')
+backup_dir = Path(sys.argv[1])
+media_re = re.compile(r'(?:cdrom:|file:/+cdrom)', re.IGNORECASE)
 
 paths = []
 main = Path('/etc/apt/sources.list')
@@ -27,19 +42,19 @@ if source_dir.exists():
 changed = []
 for path in paths:
     original = path.read_text(errors='replace')
-    if not MEDIA_RE.search(original):
+    if not media_re.search(original):
         continue
 
-    backup = Path(str(path) + '.pre-ets')
+    backup = backup_dir / (path.name + '.pre-ets')
     if not backup.exists():
-        backup.write_text(original)
+        shutil.copy2(path, backup)
 
     if path.suffix == '.sources':
         stanzas = re.split(r'\n\s*\n', original.strip())
         out = []
         modified = False
         for stanza in stanzas:
-            if MEDIA_RE.search(stanza):
+            if media_re.search(stanza):
                 if re.search(r'(?mi)^Enabled:\s*no\s*$', stanza):
                     out.append(stanza)
                     continue
@@ -52,7 +67,7 @@ for path in paths:
         modified = False
         for line in original.splitlines():
             stripped = line.lstrip()
-            active_media = MEDIA_RE.search(line) and not stripped.startswith('#')
+            active_media = media_re.search(line) and not stripped.startswith('#')
             if active_media:
                 out.append('# ETS disabled install-media source: ' + line)
                 modified = True
@@ -72,11 +87,40 @@ else:
     print('No active installer-media APT source required modification.')
 PY
 
-printf '\nRemaining CD-ROM references under active APT source files:\n'
-sudo grep -RnsEi 'cdrom:|file:/+cdrom' \
-  /etc/apt/sources.list /etc/apt/sources.list.d \
-  --include='*.list' --include='*.sources' 2>/dev/null || true
-
 printf '\nVerifying active APT sources...\n'
+sudo python3 - <<'PY'
+from pathlib import Path
+import re
+import sys
+
+media_re = re.compile(r'(?:cdrom:|file:/+cdrom)', re.IGNORECASE)
+paths = [Path('/etc/apt/sources.list')]
+d = Path('/etc/apt/sources.list.d')
+if d.exists():
+    paths += sorted(d.glob('*.list')) + sorted(d.glob('*.sources'))
+
+active = []
+for path in paths:
+    if not path.exists():
+        continue
+    text = path.read_text(errors='replace')
+    if path.suffix == '.sources':
+        for stanza in re.split(r'\n\s*\n', text):
+            if media_re.search(stanza) and not re.search(r'(?mi)^Enabled:\s*no\s*$', stanza):
+                active.append(str(path))
+                break
+    else:
+        for line in text.splitlines():
+            if not line.lstrip().startswith('#') and media_re.search(line):
+                active.append(str(path))
+                break
+
+if active:
+    print('ERROR: active installer-media source remains:', file=sys.stderr)
+    for path in sorted(set(active)):
+        print('  ' + path, file=sys.stderr)
+    sys.exit(1)
+PY
+
 sudo apt-get update
 printf '\nAPT update succeeded without an active installer-media repository.\n'
