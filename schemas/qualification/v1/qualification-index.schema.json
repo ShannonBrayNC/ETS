@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/qualification/v1/qualification-index.schema.json",
+  "title": "ETS Qualification Index v1",
+  "description": "Machine-readable registry of bounded ETS physical qualification claims. Capability maturity and qualification state are intentionally independent.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "index_id", "generated_at", "claims"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "index_id": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "claims": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/claim"}
+    }
+  },
+  "$defs": {
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_id",
+        "product",
+        "qualification_class",
+        "capability_maturity",
+        "qualification_state",
+        "profile",
+        "dut",
+        "build",
+        "evidence",
+        "verifier",
+        "limitations",
+        "validity",
+        "supersession"
+      ],
+      "properties": {
+        "claim_id": {"type": "string", "minLength": 1},
+        "product": {"type": "string", "minLength": 1},
+        "qualification_class": {"type": "string", "minLength": 1},
+        "capability_maturity": {"type": "string", "minLength": 1},
+        "qualification_state": {
+          "type": "string",
+          "enum": [
+            "not_tested",
+            "simulated",
+            "lab_tested",
+            "qualification_in_progress",
+            "qualified",
+            "qualified_with_deviation",
+            "failed",
+            "expired",
+            "superseded"
+          ]
+        },
+        "profile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["profile_id", "profile_version"],
+          "properties": {
+            "profile_id": {"type": "string", "minLength": 1},
+            "profile_version": {"type": "string", "minLength": 1}
+          }
+        },
+        "dut": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["manufacturer", "model", "hardware_revision", "asset_id", "firmware", "signer_profile"],
+          "properties": {
+            "manufacturer": {"type": "string", "minLength": 1},
+            "model": {"type": "string", "minLength": 1},
+            "hardware_revision": {"type": "string", "minLength": 1},
+            "asset_id": {"type": "string", "minLength": 1},
+            "firmware": {
+              "type": "object",
+              "additionalProperties": {"type": "string"}
+            },
+            "signer_profile": {"type": "string", "minLength": 1}
+          }
+        },
+        "build": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source_revision", "artifact_digest", "configuration_digest"],
+          "properties": {
+            "source_revision": {"type": "string", "minLength": 1},
+            "artifact_digest": {"type": "string", "minLength": 1},
+            "configuration_digest": {"type": "string", "minLength": 1}
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["run_package", "qualification_report", "artifact_manifest_digest", "evidence_object_ids"],
+          "properties": {
+            "run_package": {"type": "string", "minLength": 1},
+            "qualification_report": {"type": "string", "minLength": 1},
+            "artifact_manifest_digest": {"type": "string", "minLength": 1},
+            "evidence_object_ids": {
+              "type": "array",
+              "items": {"type": "string", "minLength": 1},
+              "uniqueItems": true
+            }
+          }
+        },
+        "verifier": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["identity", "result", "result_digest", "disposition_eligible"],
+          "properties": {
+            "identity": {"type": "string", "minLength": 1},
+            "result": {"type": "string", "minLength": 1},
+            "result_digest": {"type": "string", "minLength": 1},
+            "disposition_eligible": {"type": "boolean"}
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "validity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["effective_at", "expires_at"],
+          "properties": {
+            "effective_at": {"type": ["string", "null"], "format": "date-time"},
+            "expires_at": {"type": ["string", "null"], "format": "date-time"}
+          }
+        },
+        "supersession": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["supersedes", "superseded_by"],
+          "properties": {
+            "supersedes": {"type": ["string", "null"]},
+            "superseded_by": {"type": ["string", "null"]}
+          }
+        }
+      }
+    }
+  }
+}
