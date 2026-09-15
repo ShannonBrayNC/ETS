@@ -36,7 +36,6 @@ _DIGEST_A = "a" * 64
 _DIGEST_B = "b" * 64
 
 
-
 def _controls() -> tuple[BenchControl, ...]:
     return tuple(
         BenchControl(
@@ -50,7 +49,6 @@ def _controls() -> tuple[BenchControl, ...]:
         )
         for kind in BenchControlKind
     )
-
 
 
 def _ready_manifest() -> EdgeCompactR0BenchManifest:
@@ -123,13 +121,11 @@ def _ready_manifest() -> EdgeCompactR0BenchManifest:
     )
 
 
-
 def test_completed_manifest_is_ready_to_begin_physical_corpus() -> None:
     manifest = _ready_manifest()
 
     assert readiness_issues(manifest) == ()
     assert_ready_for_qualification(manifest)
-
 
 
 def test_repository_template_is_deliberately_blocked() -> None:
@@ -144,7 +140,6 @@ def test_repository_template_is_deliberately_blocked() -> None:
     assert "external observer is not declared independent from the DUT" in issues
 
 
-
 def test_complete_manifest_stays_blocked_until_operator_promotes_state() -> None:
     manifest = _ready_manifest().model_copy(
         update={"manifest_state": ManifestState.DRAFT}
@@ -153,7 +148,6 @@ def test_complete_manifest_stays_blocked_until_operator_promotes_state() -> None
     assert readiness_issues(manifest) == (
         "manifest_state must be ready_for_qualification before physical execution",
     )
-
 
 
 def test_ready_declaration_with_missing_build_is_rejected_by_readiness_gate() -> None:
@@ -174,11 +168,9 @@ def test_ready_declaration_with_missing_build_is_rejected_by_readiness_gate() ->
         assert_ready_for_qualification(manifest)
 
 
-
 def test_r0_trust_posture_cannot_claim_hardware_attestation() -> None:
     with pytest.raises(ValueError):
         EdgeR0TrustPosture(hardware_attested=True)  # type: ignore[arg-type]
-
 
 
 def test_disruptive_control_requires_operator_approval() -> None:
@@ -192,7 +184,6 @@ def test_disruptive_control_requires_operator_approval() -> None:
             operator_approval_required=False,
             bootstrap_cli_executes_action=False,
         )
-
 
 
 def test_dut_cannot_be_its_own_observer_or_verifier_host() -> None:
