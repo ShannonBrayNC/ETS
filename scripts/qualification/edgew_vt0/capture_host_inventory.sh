@@ -1,11 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OUT_DIR="${1:-/var/lib/ets-lab/inventory}"
+DEFAULT_OUT_DIR="/var/lib/ets-lab/inventory"
+OUT_DIR="${1:-${DEFAULT_OUT_DIR}}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT="${OUT_DIR}/edgew-vt0-host-${TIMESTAMP}.json"
 
-mkdir -p "${OUT_DIR}"
+if ! command -v virsh >/dev/null 2>&1; then
+  echo "virsh is not installed. Run ./scripts/qualification/edgew_vt0/bootstrap_host.sh first." >&2
+  exit 2
+fi
+
+if [[ "${OUT_DIR}" == "${DEFAULT_OUT_DIR}" && ! -d /var/lib/ets-lab ]]; then
+  echo "/var/lib/ets-lab does not exist. Run ./scripts/qualification/edgew_vt0/bootstrap_host.sh first." >&2
+  exit 2
+fi
+
+if ! mkdir -p "${OUT_DIR}" 2>/dev/null; then
+  echo "Cannot create inventory directory: ${OUT_DIR}" >&2
+  if [[ "${OUT_DIR}" == "${DEFAULT_OUT_DIR}" ]]; then
+    echo "Run ./scripts/qualification/edgew_vt0/bootstrap_host.sh first, then log out/in or reboot." >&2
+  fi
+  exit 2
+fi
+
+if [[ ! -w "${OUT_DIR}" ]]; then
+  echo "Inventory directory is not writable by $(id -un): ${OUT_DIR}" >&2
+  echo "After bootstrap, log out/in or reboot so libvirt group membership is refreshed." >&2
+  exit 2
+fi
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 
