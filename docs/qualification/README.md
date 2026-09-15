@@ -1,6 +1,6 @@
 # ETS Qualification Program
 
-This directory contains cross-product qualification contracts, execution packages, conformance fixtures, product-specific corpora, reuse bindings, and roadmap traceability artifacts.
+This directory contains cross-product qualification contracts, execution packages, conformance fixtures, product-specific corpora, reuse bindings, qualification-index governance, and roadmap traceability artifacts.
 
 ## Authoritative rule
 
@@ -27,6 +27,7 @@ device-under-test
 → Evidence Object(s)
 → independent verifier result
 → qualification report
+→ qualification index entry
 ```
 
 ## Wave 0 — Hardware Qualification Baseline
@@ -70,7 +71,7 @@ Merged by PR #804.
 
 HQP-2 consumes the HQP-1 run/report/fixture contract from a clean environment and determines structural completeness, digest integrity, Evidence Object bindings, reference integrity, test completion, observation/result linkage, deviation handling, and eligibility for the claimed disposition without trusting the DUT runtime or producer-side verifier narrative.
 
-### HQP-3 — Edge executable corpus — active physical gate
+### HQP-3 — Edge executable corpus — repository implementation complete; physical gate active
 
 Tracking issue: #796  
 Parent: #140  
@@ -88,9 +89,9 @@ HQP-3 translates requirements from #140-#145 into 17 versioned Edge cases coveri
 
 Repository CI proves the profile/corpus/tooling is internally executable. CI cannot satisfy the physical DUT execution gate. The producer tooling can seal a complete capture as `lab_tested` but deliberately cannot self-promote a DUT to `qualified`.
 
-### HQP-4 — Provenance Android and legacy hardware reuse — repository implementation active
+### HQP-4 — Provenance Android and legacy hardware reuse — repository implementation complete; physical claims pending
 
-Tracking issue: #797.
+Tracking issue: #797 (closed after repository implementation).
 
 - [`ETS_HQP_CROSS_PRODUCT_REUSE_V1.md`](ETS_HQP_CROSS_PRODUCT_REUSE_V1.md)
 - Android profile: `docs/qualification/profiles/ets-provenance-android-phase1a-hardware-qualification-v1.json`
@@ -105,21 +106,47 @@ HQP-4 keeps product-specific cases separate while requiring identical common HQP
 
 The Android binding consumes the existing ETS-Mobile Phase 1A physical-device qualification contract rather than creating a mobile-only evidence methodology. The first legacy target class is a named physical RFC 5424 UDP source observed by the existing Edge syslog boundary; UDP/message identity remains observational, not authenticated.
 
-Repository CI is not the HQP-4 exit gate. #797 remains open until one named physical Android target and one named physical legacy target each produce HQP-1 packages that pass HQP-2 independent verification.
+Closing #797 records completion of the shared repository contract. It does **not** publish a physical Android or legacy-hardware qualification claim. Those claims require named physical DUT runs, HQP-1 retained packages, HQP-2 independent verification, and a qualification-index entry.
 
-### HQP-5 — qualification index and roadmap governance
+### HQP-5 — qualification index and roadmap governance — active merge gate
 
 Tracking issue: #798.
 
-Publishes bounded claims tied to exact profile, DUT revision, immutable build, retained evidence, verifier result, limitations, expiry, and supersession state.
+- [`QUALIFICATION_INDEX_V1.md`](QUALIFICATION_INDEX_V1.md)
+- registry: `docs/qualification/qualification-index-v1.json`
+- schema: `schemas/qualification/v1/qualification-index.schema.json`
+
+HQP-5 publishes bounded claims tied to exact profile, DUT revision, immutable build, retained evidence, verifier result, limitations, validity, expiry, and supersession state. The registry starts empty by design: repository implementation, green CI, or a simulated/lab-only run cannot manufacture a physical qualification claim.
+
+## Wave 1 — Physical Edge
+
+Tracking issue: #814.
+
+- [`WAVE1_PHYSICAL_EDGE_EXECUTION_PLAN.md`](WAVE1_PHYSICAL_EDGE_EXECUTION_PLAN.md)
+
+Wave 1 first qualifies **Edge Compact R0**, a readily available physical x86-64 mini-PC/SFF class with SSD/NVMe and Ethernet. The first physical gate deliberately does not require TPM/Secure Boot/hardware-backed keys.
+
+The R0 trust declaration is explicit:
+
+```text
+identity_profile=software_volume
+hardware_attested=false
+secure_boot_verified=false
+hardware_key_protection=false
+qualification_class=EDGE_COMPACT_R0
+```
+
+The purpose is to prove that ETS Edge evidence semantics survive physical provisioning, capture, offline operation, reboot, abrupt power loss, disk/queue pressure, clock faults, interrupted synchronization, upgrade failure, recovery, and endurance testing while remaining independently verifiable away from the DUT.
+
+After R0 is clean, **Edge Enterprise R1** moves the root of identity/custody into TPM 2.0, Secure Boot, hardware-backed signing, and protected/encrypted storage. **Edge Compact ARM** remains a constrained/development profile until endurance, performance, thermal behavior, and key custody are independently demonstrated.
 
 ## Initial product traceability
 
-| Product / program | Qualification role | Current Wave 0 relationship |
+| Product / program | Qualification role | Current relationship |
 |---|---|---|
-| ETS Edge | First HQP specialization | #140 is the Edge qualification/pilot-readiness parent. #145 plus #141-#144 are the requirements provenance for HQP-3. |
-| Provenance / ETS Mobile | Second physical target | HQP-4 binds the existing Android Phase 1A device report into the common HQP run/report/verifier contract. |
-| Legacy hardware lab | Third physical target | HQP-4 defines `LEGACY-NET-SYSLOG-RT0` for a named physical RFC 5424 UDP source using the same HQP evidence/verifier chain. |
+| ETS Edge | First HQP specialization and Wave 1 physical target | #140 is the Edge qualification/pilot-readiness parent. #145 plus #141-#144 are requirements provenance for HQP-3. #814 executes Edge Compact R0 physically. |
+| Provenance / ETS Mobile | Parallel physical target | HQP-4 binds the existing Android Phase 1A device report into the common HQP run/report/verifier contract. Physical device execution remains required before a published claim. |
+| Legacy hardware lab | Parallel physical target | HQP-4 defines `LEGACY-NET-SYSLOG-RT0` for a named physical RFC 5424 UDP source using the same HQP evidence/verifier chain. |
 | Ranger / VRX | Cyber-physical research consumer | Physical experiments inherit HQP while adding motion, actuator, measurement, uncertainty, safety, and consequence-custody requirements. |
 | AI Witness / Black Box / Fleet | Later appliance consumers | Product-specific profiles may add stricter controls but may not silently weaken common HQP evidence requirements. |
 
