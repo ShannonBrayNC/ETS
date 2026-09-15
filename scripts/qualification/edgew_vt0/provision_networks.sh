@@ -9,8 +9,20 @@ if [[ "${EUID}" -eq 0 ]]; then
   exit 2
 fi
 
+if ! command -v virsh >/dev/null 2>&1; then
+  echo "virsh is not installed. Run ./scripts/qualification/edgew_vt0/bootstrap_host.sh first." >&2
+  exit 2
+fi
+
+if ! systemctl is-active --quiet libvirtd 2>/dev/null; then
+  echo "libvirtd is not active. Run ./scripts/qualification/edgew_vt0/bootstrap_host.sh first." >&2
+  exit 2
+fi
+
 if ! virsh --connect qemu:///system list --all >/dev/null 2>&1; then
-  echo "Cannot access qemu:///system. Log out/back in after bootstrap or check libvirt group membership." >&2
+  echo "Cannot access qemu:///system." >&2
+  echo "After bootstrap, log out/in or reboot so libvirt/kvm group membership is refreshed." >&2
+  echo "Current groups: $(id -nG)" >&2
   exit 2
 fi
 
