@@ -108,9 +108,10 @@ The Android binding consumes the existing ETS-Mobile Phase 1A physical-device qu
 
 Closing #797 records completion of the shared repository contract. It does **not** publish a physical Android or legacy-hardware qualification claim. Those claims require named physical DUT runs, HQP-1 retained packages, HQP-2 independent verification, and a qualification-index entry.
 
-### HQP-5 — qualification index and roadmap governance — active merge gate
+### HQP-5 — qualification index and roadmap governance — complete
 
-Tracking issue: #798.
+Tracking issue: #798.  
+Merged by PR #815.
 
 - [`QUALIFICATION_INDEX_V1.md`](QUALIFICATION_INDEX_V1.md)
 - registry: `docs/qualification/qualification-index-v1.json`
@@ -123,6 +124,12 @@ HQP-5 publishes bounded claims tied to exact profile, DUT revision, immutable bu
 Tracking issue: #814.
 
 - [`WAVE1_PHYSICAL_EDGE_EXECUTION_PLAN.md`](WAVE1_PHYSICAL_EDGE_EXECUTION_PLAN.md)
+- [`WAVE1_R0_BENCH_BOOTSTRAP.md`](WAVE1_R0_BENCH_BOOTSTRAP.md)
+- R0 bench manifest schema: `schemas/qualification/v1/edge-compact-r0-bench-manifest.schema.json`
+- R0 draft template: `docs/qualification/manifests/edge-compact-r0-template.json`
+- bootstrap runtime: `ets/qualification/physical_edge.py`
+- CLI: `python -m ets.physical_edge`
+- bootstrap tracking: #816, #817, #818
 
 Wave 1 first qualifies **Edge Compact R0**, a readily available physical x86-64 mini-PC/SFF class with SSD/NVMe and Ethernet. The first physical gate deliberately does not require TPM/Secure Boot/hardware-backed keys.
 
@@ -136,7 +143,9 @@ hardware_key_protection=false
 qualification_class=EDGE_COMPACT_R0
 ```
 
-The purpose is to prove that ETS Edge evidence semantics survive physical provisioning, capture, offline operation, reboot, abrupt power loss, disk/queue pressure, clock faults, interrupted synchronization, upgrade failure, recovery, and endurance testing while remaining independently verifiable away from the DUT.
+The W1-1 bootstrap only identifies a named DUT, immutable build/configuration, external observer/verifier, and the five physical control boundaries required before the HQP-3 fault corpus may begin. Its CLI is read-only inventory/validation tooling; it cannot inject a power, network, storage, clock, firmware, or recovery fault.
+
+The purpose of the physical corpus is to prove that ETS Edge evidence semantics survive physical provisioning, capture, offline operation, reboot, abrupt power loss, disk/queue pressure, clock faults, interrupted synchronization, upgrade failure, recovery, and endurance testing while remaining independently verifiable away from the DUT.
 
 After R0 is clean, **Edge Enterprise R1** moves the root of identity/custody into TPM 2.0, Secure Boot, hardware-backed signing, and protected/encrypted storage. **Edge Compact ARM** remains a constrained/development profile until endurance, performance, thermal behavior, and key custody are independently demonstrated.
 
