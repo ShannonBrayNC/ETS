@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/qualification/v1/edge-compact-r0-bench-manifest.schema.json",
+  "title": "ETS Edge Compact R0 Bench Manifest v1",
+  "description": "Named-DUT and independent bench-control contract for beginning Wave 1 physical Edge Compact R0 qualification. A valid manifest establishes bench readiness only; it is not a qualification result.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "manifest_id",
+    "qualification_class",
+    "manifest_state",
+    "collected_at",
+    "dut",
+    "runtime",
+    "build",
+    "trust",
+    "observer",
+    "verifier",
+    "controls",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"const": "ets.edge-compact-r0-bench-manifest.v1"},
+    "manifest_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "qualification_class": {"const": "EDGE_COMPACT_R0"},
+    "manifest_state": {
+      "type": "string",
+      "enum": ["draft", "ready_for_qualification"]
+    },
+    "collected_at": {"type": "string", "format": "date-time"},
+    "dut": {"$ref": "#/$defs/dut"},
+    "runtime": {"$ref": "#/$defs/runtime"},
+    "build": {"$ref": "#/$defs/build"},
+    "trust": {"$ref": "#/$defs/trust"},
+    "observer": {"$ref": "#/$defs/observer"},
+    "verifier": {"$ref": "#/$defs/verifier"},
+    "controls": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {"$ref": "#/$defs/control"}
+    },
+    "notes": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "$defs": {
+    "nullableString": {
+      "type": ["string", "null"],
+      "maxLength": 2048
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "model", "serial", "firmware", "size_bytes", "transport"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 256},
+        "model": {"type": ["string", "null"], "maxLength": 512},
+        "serial": {"type": ["string", "null"], "maxLength": 512},
+        "firmware": {"type": ["string", "null"], "maxLength": 512},
+        "size_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "transport": {"type": ["string", "null"], "maxLength": 128}
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "mac_address", "driver", "firmware"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 256},
+        "mac_address": {"type": ["string", "null"], "maxLength": 128},
+        "driver": {"type": ["string", "null"], "maxLength": 256},
+        "firmware": {"type": ["string", "null"], "maxLength": 512}
+      }
+    },
+    "dut": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manufacturer",
+        "model",
+        "hardware_revision",
+        "asset_id",
+        "cpu_architecture",
+        "cpu_model",
+        "memory_bytes",
+        "storage",
+        "network",
+        "firmware",
+        "claim_critical_fields_confirmed_by_operator"
+      ],
+      "properties": {
+        "manufacturer": {"type": ["string", "null"], "maxLength": 512},
+        "model": {"type": ["string", "null"], "maxLength": 512},
+        "hardware_revision": {"type": ["string", "null"], "maxLength": 512},
+        "asset_id": {"type": ["string", "null"], "maxLength": 256},
+        "cpu_architecture": {"type": "string", "minLength": 1, "maxLength": 128},
+        "cpu_model": {"type": ["string", "null"], "maxLength": 512},
+        "memory_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "storage": {"type": "array", "items": {"$ref": "#/$defs/storage"}},
+        "network": {"type": "array", "items": {"$ref": "#/$defs/network"}},
+        "firmware": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
+        "claim_critical_fields_confirmed_by_operator": {"type": "boolean"}
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "os_id",
+        "os_version_id",
+        "os_pretty_name",
+        "kernel_release",
+        "python_version",
+        "hostname"
+      ],
+      "properties": {
+        "os_id": {"type": ["string", "null"], "maxLength": 128},
+        "os_version_id": {"type": ["string", "null"], "maxLength": 128},
+        "os_pretty_name": {"type": ["string", "null"], "maxLength": 512},
+        "kernel_release": {"type": "string", "minLength": 1, "maxLength": 256},
+        "python_version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "hostname": {"type": "string", "minLength": 1, "maxLength": 256}
+      }
+    },
+    "sha256": {
+      "type": ["string", "null"],
+      "pattern": "^(?:sha256:)?[0-9a-fA-F]{64}$"
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_revision", "artifact_digest", "configuration_digest"],
+      "properties": {
+        "source_revision": {"type": ["string", "null"], "maxLength": 256},
+        "artifact_digest": {"$ref": "#/$defs/sha256"},
+        "configuration_digest": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "trust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity_profile",
+        "hardware_attested",
+        "secure_boot_verified",
+        "hardware_key_protection"
+      ],
+      "properties": {
+        "identity_profile": {"const": "software_volume"},
+        "hardware_attested": {"const": false},
+        "secure_boot_verified": {"const": false},
+        "hardware_key_protection": {"const": false}
+      }
+    },
+    "observer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observer_id",
+        "observer_host_id",
+        "observation_method",
+        "independent_from_dut"
+      ],
+      "properties": {
+        "observer_id": {"type": ["string", "null"], "maxLength": 256},
+        "observer_host_id": {"type": ["string", "null"], "maxLength": 256},
+        "observation_method": {"$ref": "#/$defs/nullableString"},
+        "independent_from_dut": {"type": "boolean"}
+      }
+    },
+    "verifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verifier_host_id",
+        "verifier_identity",
+        "command",
+        "independent_from_dut"
+      ],
+      "properties": {
+        "verifier_host_id": {"type": ["string", "null"], "maxLength": 256},
+        "verifier_identity": {"type": ["string", "null"], "maxLength": 256},
+        "command": {"const": "python -m ets.hqp_verify"},
+        "independent_from_dut": {"type": "boolean"}
+      }
+    },
+    "control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "control_id",
+        "method",
+        "independent_observation_method",
+        "destructive_or_disruptive",
+        "operator_approval_required",
+        "bootstrap_cli_executes_action"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["power", "network", "storage", "clock", "recovery"]
+        },
+        "control_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "method": {"$ref": "#/$defs/nullableString"},
+        "independent_observation_method": {"$ref": "#/$defs/nullableString"},
+        "destructive_or_disruptive": {"type": "boolean"},
+        "operator_approval_required": {"type": "boolean"},
+        "bootstrap_cli_executes_action": {"const": false}
+      }
+    }
+  }
+}
