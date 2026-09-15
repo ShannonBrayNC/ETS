@@ -34,9 +34,26 @@ printf 'Ubuntu: %s\n' "${PRETTY_NAME:-unknown}"
 printf 'Operator: %s\n' "${OPERATOR}"
 
 sudo apt-get update
+
+# Ubuntu 26.04 no longer exposes qemu-kvm as an installable package on amd64;
+# use qemu-system-x86 there. Retain qemu-kvm compatibility for older Ubuntu releases.
+if apt-cache show qemu-kvm >/dev/null 2>&1 && apt-cache policy qemu-kvm | grep -q 'Candidate: [^()]'; then
+  QEMU_PACKAGE="qemu-kvm"
+elif apt-cache show qemu-system-x86 >/dev/null 2>&1 && apt-cache policy qemu-system-x86 | grep -q 'Candidate: [^()]'; then
+  QEMU_PACKAGE="qemu-system-x86"
+elif apt-cache show qemu-system >/dev/null 2>&1 && apt-cache policy qemu-system | grep -q 'Candidate: [^()]'; then
+  QEMU_PACKAGE="qemu-system"
+else
+  echo "ERROR: no supported QEMU system package has an install candidate." >&2
+  exit 3
+fi
+
+printf 'Selected QEMU package: %s\n' "${QEMU_PACKAGE}"
+
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  qemu-kvm \
+  "${QEMU_PACKAGE}" \
   libvirt-daemon-system \
+  libvirt-daemon-common \
   libvirt-clients \
   virtinst \
   ovmf \
@@ -52,7 +69,24 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   iperf3 \
   smartmontools
 
-sudo systemctl enable --now libvirtd
+# libvirt 12 on Ubuntu 26.04 still ships libvirtd.service/socket. Prefer socket
+# activation when present, with a service fallback for older supported releases.
+if systemctl list-unit-files --type=socket | grep -q '^libvirtd\.socket'; then
+  sudo systemctl enable --now libvirtd.socket
+fi
+if systemctl list-unit-files --type=service | grep -q '^libvirtd\.service'; then
+  sudo systemctl enable --now libvirtd.service
+fi
+
+if ! getent group libvirt >/dev/null 2>&1; then
+  echo "ERROR: libvirt group was not created by package installation." >&2
+  exit 3
+fi
+if ! getent group kvm >/dev/null 2>&1; then
+  echo "ERROR: kvm group is absent even though /dev/kvm is expected." >&2
+  exit 3
+fi
+
 sudo usermod -aG libvirt,kvm "${OPERATOR}"
 
 sudo install -d -m 0750 -o "${OPERATOR}" -g libvirt "${STATE_DIR}"
@@ -74,11 +108,30 @@ if [[ ! -e /dev/kvm ]]; then
   exit 3
 fi
 
+if ! command -v virsh >/dev/null 2>&1; then
+  echo "ERROR: virsh was not installed successfully." >&2
+  exit 3
+fi
+if ! command -v virt-host-validate >/dev/null 2>&1; then
+  echo "ERROR: virt-host-validate was not installed successfully." >&2
+  exit 3
+fi
+
 printf '\nHost virtualization checks:\n'
 kvm-ok || true
-virsh --connect qemu:///system version
+sudo virt-host-validate || true
+
+# The current shell will not yet have the newly-added libvirt/kvm groups, so
+# validate the system libvirt socket as root here. The operator validates
+# unprivileged virsh after re-login/reboot.
+if ! sudo virsh --connect qemu:///system version; then
+  echo "ERROR: libvirt system connection is not available after installation." >&2
+  echo "Inspect: systemctl status libvirtd.service libvirtd.socket --no-pager" >&2
+  exit 3
+fi
 
 printf '\nState directory: %s\n' "${STATE_DIR}"
 printf 'Physical host networking was NOT modified.\n'
+printf 'Bootstrap package/service checks passed.\n'
 printf 'Log out and back in (or reboot) before relying on the new libvirt/kvm group membership.\n'
-printf 'Next: run capture_host_inventory.sh, then provision_networks.sh.\n'
+printf 'Next after re-login: run capture_host_inventory.sh, then provision_networks.sh.\n'
