@@ -39,7 +39,34 @@
       "type": "array",
       "minItems": 5,
       "maxItems": 5,
-      "items": {"$ref": "#/$defs/control"}
+      "items": {"$ref": "#/$defs/control"},
+      "allOf": [
+        {
+          "contains": {"type": "object", "properties": {"kind": {"const": "power"}}},
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {"type": "object", "properties": {"kind": {"const": "network"}}},
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {"type": "object", "properties": {"kind": {"const": "storage"}}},
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {"type": "object", "properties": {"kind": {"const": "clock"}}},
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {"type": "object", "properties": {"kind": {"const": "recovery"}}},
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
     },
     "notes": {
       "type": "array",
@@ -54,9 +81,18 @@
     "storage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "model", "serial", "firmware", "size_bytes", "transport"],
+      "required": [
+        "name",
+        "vendor",
+        "model",
+        "serial",
+        "firmware",
+        "size_bytes",
+        "transport"
+      ],
       "properties": {
         "name": {"type": "string", "minLength": 1, "maxLength": 256},
+        "vendor": {"type": ["string", "null"], "maxLength": 512},
         "model": {"type": ["string", "null"], "maxLength": 512},
         "serial": {"type": ["string", "null"], "maxLength": 512},
         "firmware": {"type": ["string", "null"], "maxLength": 512},
@@ -213,7 +249,18 @@
         "destructive_or_disruptive": {"type": "boolean"},
         "operator_approval_required": {"type": "boolean"},
         "bootstrap_cli_executes_action": {"const": false}
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"destructive_or_disruptive": {"const": true}},
+            "required": ["destructive_or_disruptive"]
+          },
+          "then": {
+            "properties": {"operator_approval_required": {"const": true}}
+          }
+        }
+      ]
     }
   }
 }
