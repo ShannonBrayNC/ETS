@@ -44,7 +44,7 @@ class MicrosoftSourceEnvelopeV1(StrictAgent365Model):
     """Immutable source-preservation envelope created before ETS interpretation."""
 
     schema_version: Literal["ets.connector.microsoft.agent365.source_envelope.v1"] = (
-        AGENT365_SOURCE_ENVELOPE_SCHEMA_VERSION
+        "ets.connector.microsoft.agent365.source_envelope.v1"
     )
     source: Literal["microsoft.agent365"] = "microsoft.agent365"
     source_type: Agent365SourceType
@@ -53,7 +53,7 @@ class MicrosoftSourceEnvelopeV1(StrictAgent365Model):
     microsoft_event_time: datetime | None = None
     api_version: str = Field(min_length=1, max_length=32)
     api_maturity: Agent365ApiMaturity
-    endpoint_family: Literal["copilot.admin.catalog.packages"] = AGENT365_ENDPOINT_FAMILY
+    endpoint_family: Literal["copilot.admin.catalog.packages"] = "copilot.admin.catalog.packages"
     request_path: str = Field(min_length=1, max_length=2048)
     payload_retention: Agent365PayloadRetention
     raw_payload_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -101,7 +101,7 @@ class MicrosoftAgent365PackageV1(StrictAgent365Model):
     """Normalized package summary while the source envelope retains the original record."""
 
     schema_version: Literal["ets.connector.microsoft.agent365.package.v1"] = (
-        AGENT365_PACKAGE_SCHEMA_VERSION
+        "ets.connector.microsoft.agent365.package.v1"
     )
     package_id: str = Field(min_length=1, max_length=512)
     display_name: str | None = Field(default=None, max_length=1024)
@@ -135,7 +135,7 @@ class MicrosoftAgent365PackageV1(StrictAgent365Model):
 
 class MicrosoftAgent365InventoryPageV1(StrictAgent365Model):
     schema_version: Literal["ets.connector.microsoft.agent365.inventory_page.v1"] = (
-        AGENT365_INVENTORY_PAGE_SCHEMA_VERSION
+        "ets.connector.microsoft.agent365.inventory_page.v1"
     )
     packages: tuple[MicrosoftAgent365PackageV1, ...]
     next_link: str | None = Field(default=None, max_length=4096)
@@ -143,7 +143,7 @@ class MicrosoftAgent365InventoryPageV1(StrictAgent365Model):
 
 class MicrosoftAgent365PackageDetailV1(StrictAgent365Model):
     schema_version: Literal["ets.connector.microsoft.agent365.package_detail.v1"] = (
-        AGENT365_DETAIL_SCHEMA_VERSION
+        "ets.connector.microsoft.agent365.package_detail.v1"
     )
     package: MicrosoftAgent365PackageV1
     long_description_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -381,23 +381,34 @@ def _normalize_package(raw: Mapping[str, object]) -> MicrosoftAgent365PackageV1:
     modified = _optional_datetime(raw.get("lastModifiedDateTime"))
     supported_hosts = _string_tuple(raw.get("supportedHosts"), maximum_items=128)
     element_types = _string_tuple(raw.get("elementTypes"), maximum_items=128)
+    display_name = _optional_string(raw.get("displayName"), maximum=1024)
+    package_type = _optional_string(raw.get("type"), maximum=128)
+    publisher = _optional_string(raw.get("publisher"), maximum=1024)
+    available_to = _optional_string(raw.get("availableTo"), maximum=128)
+    deployed_to = _optional_string(raw.get("deployedTo"), maximum=128)
+    platform = _optional_string(raw.get("platform"), maximum=512)
+    version = _optional_string(raw.get("version"), maximum=256)
+    manifest_version = _optional_string(raw.get("manifestVersion"), maximum=256)
+    manifest_id = _optional_string(raw.get("manifestId"), maximum=1024)
+    app_id = _optional_string(raw.get("appId"), maximum=512)
+    asset_id = _optional_string(raw.get("assetId"), maximum=1024)
 
-    normalized_material = {
+    normalized_material: dict[str, object] = {
         "id": package_id,
-        "displayName": _optional_string(raw.get("displayName"), maximum=1024),
-        "type": _optional_string(raw.get("type"), maximum=128),
+        "displayName": display_name,
+        "type": package_type,
         "isBlocked": is_blocked,
         "supportedHosts": supported_hosts,
-        "publisher": _optional_string(raw.get("publisher"), maximum=1024),
-        "availableTo": _optional_string(raw.get("availableTo"), maximum=128),
-        "deployedTo": _optional_string(raw.get("deployedTo"), maximum=128),
+        "publisher": publisher,
+        "availableTo": available_to,
+        "deployedTo": deployed_to,
         "elementTypes": element_types,
-        "platform": _optional_string(raw.get("platform"), maximum=512),
-        "version": _optional_string(raw.get("version"), maximum=256),
-        "manifestVersion": _optional_string(raw.get("manifestVersion"), maximum=256),
-        "manifestId": _optional_string(raw.get("manifestId"), maximum=1024),
-        "appId": _optional_string(raw.get("appId"), maximum=512),
-        "assetId": _optional_string(raw.get("assetId"), maximum=1024),
+        "platform": platform,
+        "version": version,
+        "manifestVersion": manifest_version,
+        "manifestId": manifest_id,
+        "appId": app_id,
+        "assetId": asset_id,
         "lastModifiedDateTime": modified.isoformat() if modified is not None else None,
     }
 
@@ -411,20 +422,20 @@ def _normalize_package(raw: Mapping[str, object]) -> MicrosoftAgent365PackageV1:
 
     return MicrosoftAgent365PackageV1(
         package_id=package_id,
-        display_name=normalized_material["displayName"],
-        package_type=normalized_material["type"],
+        display_name=display_name,
+        package_type=package_type,
         is_blocked=is_blocked,
         supported_hosts=supported_hosts,
         element_types=element_types,
-        publisher=normalized_material["publisher"],
-        platform=normalized_material["platform"],
-        version=normalized_material["version"],
-        manifest_version=normalized_material["manifestVersion"],
-        manifest_id=normalized_material["manifestId"],
-        app_id=normalized_material["appId"],
-        asset_id=normalized_material["assetId"],
-        available_to=normalized_material["availableTo"],
-        deployed_to=normalized_material["deployedTo"],
+        publisher=publisher,
+        platform=platform,
+        version=version,
+        manifest_version=manifest_version,
+        manifest_id=manifest_id,
+        app_id=app_id,
+        asset_id=asset_id,
+        available_to=available_to,
+        deployed_to=deployed_to,
         last_modified_date_time=modified,
         source_record_sha256=_sha256_canonical(raw),
         normalized_configuration_sha256=_sha256_canonical(normalized_material),
