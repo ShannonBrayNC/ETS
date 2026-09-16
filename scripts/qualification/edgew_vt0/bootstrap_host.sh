@@ -86,10 +86,11 @@ fi
 
 sudo apt-get update
 
+# Ask APT's dependency resolver directly instead of parsing apt-cache policy text.
+# This avoids false negatives caused by output-format changes across APT releases.
 qemu_candidate() {
   local pkg="$1"
-  apt-cache policy "${pkg}" 2>/dev/null | grep -Eq '^  Candidate: .+' && \
-    ! apt-cache policy "${pkg}" 2>/dev/null | grep -q '^  Candidate: (none)'
+  sudo apt-get -s -o Debug::NoLocking=true install "${pkg}" >/dev/null 2>&1
 }
 
 select_qemu_package() {
@@ -113,7 +114,7 @@ QEMU_PACKAGE="$(select_qemu_package || true)"
 # cache cannot see it, rebuild APT package-list indexes once before failing.
 # /var/lib/apt/lists is cache state only; configured sources are not modified.
 if [[ -z "${QEMU_PACKAGE}" ]]; then
-  echo "No QEMU package candidate is visible; rebuilding local APT indexes once..."
+  echo "No installable QEMU package is visible to APT; rebuilding local indexes once..."
   sudo rm -rf /var/lib/apt/lists/*
   sudo install -d -m 0755 /var/lib/apt/lists/partial
   sudo apt-get update
@@ -121,9 +122,10 @@ if [[ -z "${QEMU_PACKAGE}" ]]; then
 fi
 
 if [[ -z "${QEMU_PACKAGE}" ]]; then
-  echo "ERROR: no supported QEMU system package has an install candidate after a clean index rebuild." >&2
+  echo "ERROR: APT cannot resolve any supported QEMU system package after a clean index rebuild." >&2
   echo "Ubuntu 26.04 amd64 should expose qemu-system-x86 from the Resolute archive." >&2
   echo "Run: bash ${SCRIPT_DIR}/diagnose_qemu_repository.sh" >&2
+  echo "Also inspect: sudo apt-get -s install qemu-system-x86" >&2
   exit 3
 fi
 
