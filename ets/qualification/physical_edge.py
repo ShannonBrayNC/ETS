@@ -27,7 +27,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-
 R0_SCHEMA_VERSION = "ets.edge-compact-r0-bench-manifest.v1"
 R0_QUALIFICATION_CLASS = "EDGE_COMPACT_R0"
 HQP_VERIFY_COMMAND = "python -m ets.hqp_verify"
