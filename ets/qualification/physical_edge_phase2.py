@@ -394,7 +394,9 @@ def evaluate_r0_3(
         if record.session_id != session.session_id:
             issues.append(f"R0.3: capture record {record.record_id} belongs to another session")
         if not record.authoritative_acknowledged or not record.local_commit_observed:
-            issues.append(f"R0.3: capture record {record.record_id} lacks authoritative commit evidence")
+            issues.append(
+                f"R0.3: capture record {record.record_id} lacks authoritative commit evidence"
+            )
 
     if len(records) != session.attempted_event_count:
         issues.append(
@@ -423,7 +425,9 @@ def evaluate_r0_3(
         if not receipt.independent_execution_context:
             issues.append(f"R0.3: verifier was not independent for {record.record_id}")
         if verifier_host is None or receipt.verifier_host_id != verifier_host:
-            issues.append(f"R0.3: verifier host does not match bench binding for {record.record_id}")
+            issues.append(
+                f"R0.3: verifier host does not match bench binding for {record.record_id}"
+            )
 
     unknown_receipts = sorted(set(receipts_by_record) - set(record_ids))
     if unknown_receipts:
