@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 AGENT365_DEFAULT_MAXIMUM_BODY_BYTES = 8 * 1024 * 1024
 AGENT365_ENDPOINT_FAMILY = "copilot.admin.catalog.packages"
@@ -475,7 +475,9 @@ def _object_array_count(value: object) -> int:
     if value is None:
         return 0
     if not isinstance(value, list) or len(value) > 4096:
-        raise MicrosoftAgent365SourceError("Agent 365 object-array field is outside the bounded profile")
+        raise MicrosoftAgent365SourceError(
+            "Agent 365 object-array field is outside the bounded profile"
+        )
     if any(not isinstance(item, Mapping) for item in value):
         raise MicrosoftAgent365SourceError("Agent 365 object-array contains a non-object item")
     return len(value)
