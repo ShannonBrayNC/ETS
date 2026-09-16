@@ -82,7 +82,7 @@ class MicrosoftSourceEnvelopeV1(StrictAgent365Model):
         return value.astimezone(UTC)
 
     @model_validator(mode="after")
-    def validate_retention_shape(self) -> "MicrosoftSourceEnvelopeV1":
+    def validate_retention_shape(self) -> MicrosoftSourceEnvelopeV1:
         if self.payload_retention == "inline":
             if self.raw_payload_utf8 is None or self.protected_payload_reference is not None:
                 raise ValueError("inline retention requires raw_payload_utf8 only")
