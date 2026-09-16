@@ -404,27 +404,30 @@ def evaluate_r0_3(
         )
 
     receipts_by_record: dict[str, EdgeR0IndependentProofReceipt] = {}
-    for receipt in proof_receipts:
-        if receipt.record_id in receipts_by_record:
-            issues.append(f"R0.3: duplicate proof verification for {receipt.record_id}")
+    for proof_receipt in proof_receipts:
+        if proof_receipt.record_id in receipts_by_record:
+            issues.append(f"R0.3: duplicate proof verification for {proof_receipt.record_id}")
             continue
-        receipts_by_record[receipt.record_id] = receipt
+        receipts_by_record[proof_receipt.record_id] = proof_receipt
 
     verifier_host = manifest.verifier.verifier_host_id
     for record in records:
-        receipt = receipts_by_record.get(record.record_id)
-        if receipt is None:
+        verification_receipt = receipts_by_record.get(record.record_id)
+        if verification_receipt is None:
             issues.append(f"R0.3: missing independent proof verification for {record.record_id}")
             continue
-        if receipt.session_id != session.session_id or receipt.event_id != record.event_id:
+        if (
+            verification_receipt.session_id != session.session_id
+            or verification_receipt.event_id != record.event_id
+        ):
             issues.append(f"R0.3: proof verification binding mismatch for {record.record_id}")
-        if receipt.proof_artifact_sha256 != record.proof_artifact_sha256:
+        if verification_receipt.proof_artifact_sha256 != record.proof_artifact_sha256:
             issues.append(f"R0.3: proof artifact digest mismatch for {record.record_id}")
-        if not receipt.inclusion_valid:
+        if not verification_receipt.inclusion_valid:
             issues.append(f"R0.3: inclusion proof failed verification for {record.record_id}")
-        if not receipt.independent_execution_context:
+        if not verification_receipt.independent_execution_context:
             issues.append(f"R0.3: verifier was not independent for {record.record_id}")
-        if verifier_host is None or receipt.verifier_host_id != verifier_host:
+        if verifier_host is None or verification_receipt.verifier_host_id != verifier_host:
             issues.append(
                 f"R0.3: verifier host does not match bench binding for {record.record_id}"
             )
@@ -433,14 +436,18 @@ def evaluate_r0_3(
     if unknown_receipts:
         issues.append(f"R0.3: proof receipts reference unknown capture records: {unknown_receipts}")
 
-    verified_count = sum(
-        1
-        for record in records
-        if (receipt := receipts_by_record.get(record.record_id)) is not None
-        and receipt.inclusion_valid
-        and receipt.independent_execution_context
-        and receipt.proof_artifact_sha256 == record.proof_artifact_sha256
-    )
+    verified_count = 0
+    for record in records:
+        verification_receipt = receipts_by_record.get(record.record_id)
+        if verification_receipt is None:
+            continue
+        if (
+            verification_receipt.inclusion_valid
+            and verification_receipt.independent_execution_context
+            and verification_receipt.proof_artifact_sha256 == record.proof_artifact_sha256
+        ):
+            verified_count += 1
+
     passed = not issues
     seed = {
         "manifest_id": manifest.manifest_id,
