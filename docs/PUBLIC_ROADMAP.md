@@ -22,6 +22,18 @@ The roadmap is organized by capability maturity rather than promised ship dates.
 
 Phases may overlap. A later research track may begin before an earlier product track is commercially available, but no later phase should be treated as a production dependency until its own evidence gates are satisfied.
 
+## Current top-priority workstreams
+
+The following workstreams are maintained as concurrent **P0 program priorities** because together they exercise Evidence Architecture across the three environments ETS most needs to prove: near-source physical capture, commercial AI-agent control planes, and mobile provenance.
+
+1. **Physical ETS Edge qualification** — prove identical evidence semantics on real hardware, including device identity, local commit, disruption/recovery, offline continuity, synchronization, and independent verification.
+2. **Microsoft Agent 365 Evidence Acquisition** — capture and preserve Agent 365, Entra Agent ID, Microsoft Graph, OpenTelemetry, Defender, Purview, and target-resource observations; correlate them without collapsing observer provenance; and independently verify resulting Microsoft 365 resource state where possible.
+3. **ETS Mobile / Provenance qualification** — complete the Android qualification path and establish device-bound mobile provenance before expanding the wearable/BioWitness surface.
+
+ETS Core, Verify, Gateway, identity, and custody work remain common dependencies for all three lanes. No P0 lane is allowed to redefine a source-system log as independent evidence merely because ETS has copied it.
+
+The Agent 365 workstream remains P0 until ETS demonstrates a bounded end-to-end chain from **agent identity and authority → runtime execution → tool/action observation → target-resource resulting state → ETS independent observation → portable independent verification**.
+
 ---
 
 ## Phase 0 — ETS Core and independent verification
@@ -93,17 +105,71 @@ Gateway work includes:
 
 The first major enterprise connector track is Microsoft 365. Research and qualification work covers SharePoint, Microsoft Graph, Purview-related activity, identity, retrieval provenance, and the distinction between discovery metadata and independently retrieved evidence content.
 
+This Microsoft 365 connector foundation is also the resource-observation layer for the Agent 365 workstream. Agent 365 runtime claims about an external Microsoft 365 consequence should be correlated with independently retrieved target-resource state wherever the API and policy boundary permit it.
+
 Additional connectors can follow the same model after the Gateway boundary is proven reusable.
 
 **Gate to advance:** source retrieval, evidence creation, custody, and verification must remain distinguishable end to end.
 
 ---
 
-## Phase 3 — ETS AI Witness and accountable agents
+## Phase 3 — Microsoft Agent 365 Evidence Acquisition and ETS AI Witness
 
-**Primary objective:** make AI and agent activity inspectable without relying on the AI system to be the sole historian of its own behavior.
+**Primary objective:** make AI and agent activity inspectable without relying on the agent runtime, control plane, or AI system to be the sole historian of its own behavior.
 
-Research areas include:
+Microsoft Agent 365 is a P0 reference integration because it provides a commercial control plane with rich identity, inventory, authorization, execution, security, compliance, and target-resource surfaces that can be compared with an independent ETS evidence plane.
+
+The architectural distinction is:
+
+**Agent 365 governs the agent. ETS preserves, correlates, and independently verifies what can be proven about the agent's execution and consequences.**
+
+### Agent 365 evidence acquisition
+
+The acquisition plane should capture every available evidence-bearing signal class while preserving observer identity and explicit policy boundaries for sensitive content.
+
+Priority sources include:
+
+- Agent 365 Agent Registry and detailed agent inventory/configuration metadata;
+- Microsoft Graph agent detail surfaces;
+- Entra Agent ID, agent identity blueprints, blueprint principals, agent identities, and agent-user relationships;
+- owners, sponsors, permissions, delegated/application authority, RBAC, and policy context where available;
+- Entra agent sign-in and audit observations;
+- Agent 365 OpenTelemetry traces for invocations, sessions, conversations, inference/model spans, tool executions, agent-to-agent calls, exceptions, status, and timing;
+- Defender security observations and gateway/tool activity;
+- Purview audit, DLP, and compliance observations;
+- independently retrieved target Microsoft resource state through the Microsoft 365 connector;
+- ETS witness observations and verifier outputs.
+
+ETS should preserve Microsoft's original/source representation before normalization. Unknown source fields should survive collection even when the current ETS schema does not yet interpret them. Depending on policy, sensitive prompts, responses, secrets, PII, or document bodies may be retained as protected payloads, stable commitments/hashes, selected normalized fields, or custody references rather than unrestricted plaintext.
+
+### Dual observation and consequence custody
+
+A successful Agent 365 tool call is not automatically proof that the intended external consequence occurred. For supported Microsoft resource mutations ETS should attempt to retain:
+
+`pre-state → agent identity/authority → invocation → tool/action → Microsoft response → post-state → ETS independent observation → verification`
+
+Agent 365, Entra, Defender, Purview, the target Microsoft resource, and ETS remain distinct observers. Their records should be correlated, not collapsed into one generic Microsoft event.
+
+Contradiction is itself evidence. If Agent 365 reports a successful action but the expected target state cannot be established, ETS should surface a bounded mismatch rather than silently treating the tool result as proof of consequence.
+
+### Agent 365 qualification sequence
+
+The P0 workstream advances through:
+
+1. **A365-Q0 — Inventory and source preservation:** Agent Registry/detail collection, immutable SourceEnvelope, configuration hashing, change detection, unknown-field retention, deterministic normalization.
+2. **A365-Q1 — Identity and authority:** Entra Agent ID/blueprint lineage, owner/sponsor relationships, permissions, roles, and retained authority-state evidence.
+3. **A365-Q2 — Authentication and audit:** sign-in/audit ingestion, initiator/performer/target relationships, identity/configuration change history, API/version maturity labeling.
+4. **A365-Q3 — Runtime/OpenTelemetry:** invocation/session/conversation traces, inference/model spans, tool execution, A2A activity, exceptions, trace/span hierarchy, privacy-safe payload policy.
+5. **A365-Q4 — Microsoft resource consequence custody:** bounded pre/post-state observers beginning with SharePoint/OneDrive and then other Microsoft resources where evidence value justifies support.
+6. **A365-Q5 — End-to-end independent verification:** cross-observer Evidence Graph, contradiction detection, portable verification bundle, deterministic verifier output, independent reproduction instructions.
+
+The first commercial demonstration should deliberately remain narrow: a governed Agent 365 agent performs a controlled SharePoint action; ETS captures identity/authority and runtime observations, independently retrieves the SharePoint resulting state, projects the evidence into ETS, and an external verifier reproduces the bounded result.
+
+The detailed workstream is maintained in [`integrations/MICROSOFT_AGENT_365_EVIDENCE_ACQUISITION.md`](integrations/MICROSOFT_AGENT_365_EVIDENCE_ACQUISITION.md).
+
+### ETS AI Witness
+
+General AI Witness research continues beyond the Microsoft-specific integration and includes:
 
 - agent identity and delegated authority;
 - policy evaluation evidence;
@@ -115,11 +181,11 @@ Research areas include:
 - chain-of-custody across agent, tool, target, and verifier;
 - alignment with emerging agent-control and Zero Trust architectures.
 
-The central Evidence Architecture distinction is:
+The central Evidence Architecture distinction remains:
 
 **Control governs what an agent may do. Evidence establishes what can later be independently proven about what occurred.**
 
-**Gate to advance:** action records must be correlated with external observations or resulting state when the claimed consequence exists outside the agent itself.
+**Gate to advance:** action records must be correlated with external observations or resulting state when the claimed consequence exists outside the agent itself. The Agent 365 P0 lane remains active through A365-Q5 rather than being considered complete at telemetry ingestion.
 
 ---
 
@@ -360,7 +426,8 @@ These tracks apply across the roadmap rather than belonging to one phase:
 - human governance and dispute handling;
 - research publication and dissertation work;
 - patent/IP preparation;
-- standards alignment for AI agents, identity, Zero Trust, and evidence systems.
+- standards alignment for AI agents, identity, Zero Trust, and evidence systems;
+- Agent 365 / Entra / OpenTelemetry source-contract tracking and API-maturity versioning.
 
 ---
 
@@ -378,6 +445,7 @@ Public rollout should favor evidence over announcements. As stages mature, the p
 - threat models;
 - Evidence Architecture lectures/manual material;
 - Ranger and cyber-physical research results;
+- Agent 365 control-plane-versus-evidence-plane demonstrations;
 - research papers and dissertation artifacts.
 
 Some implementation, security, customer, infrastructure, or IP-sensitive details may remain private even when the architectural result is public.
@@ -388,4 +456,4 @@ This document is not a release schedule, procurement commitment, safety certific
 
 The ETS program is intentionally evidence-gated. A capability moves forward when its claims can be tested, its assumptions are visible, its failures can be recorded, and an independent party can verify the evidence that supports the claimed result.
 
-That principle applies to everything from a Microsoft 365 event to an AI agent action to a Ranger actuator moving a physical machine.
+That principle applies to everything from a Microsoft 365 event to an Agent 365 execution to a Ranger actuator moving a physical machine.
