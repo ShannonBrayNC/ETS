@@ -83,6 +83,17 @@ Expected minimum conditions before VM creation:
 - sufficient storage exists for a 64 GiB OS image, sparse 512 GiB qualification disk, snapshots, and retained artifacts;
 - the host's management path is stable before physical fault-network work begins.
 
+### Interpreting `virt-host-validate`
+
+For the VT0 KVM/libvirt path, QEMU/KVM results are the gate. In particular, hardware virtualization, `/dev/kvm` existence/accessibility, cgroup support needed by QEMU, and usable IOMMU support should pass.
+
+Two non-green checks can be non-blocking when the lab is using QEMU/KVM rather than LXC or confidential-guest features:
+
+- a QEMU warning that no SEV/SEV-ES/SEV-SNP/TDX secure-guest technology is available does not block ordinary VT0 virtualization; those technologies are not a VT0 requirement;
+- an LXC `freezer` cgroup failure does not block VT0 when no LXC container case depends on that controller. Record it as a host observation rather than silently discarding it.
+
+Do not reinterpret these exceptions as blanket permission to ignore `virt-host-validate` failures. Any QEMU/KVM, `/dev/kvm`, IOMMU, device-node, or required-cgroup failure remains a blocker until explicitly bounded and documented.
+
 ## Resource policy
 
 Because this server is dedicated to ETS, VT0 may consume most of its resources. However:
