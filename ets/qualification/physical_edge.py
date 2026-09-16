@@ -27,9 +27,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-R0_SCHEMA_VERSION = "ets.edge-compact-r0-bench-manifest.v1"
-R0_QUALIFICATION_CLASS = "EDGE_COMPACT_R0"
-HQP_VERIFY_COMMAND = "python -m ets.hqp_verify"
+R0_SCHEMA_VERSION: Literal["ets.edge-compact-r0-bench-manifest.v1"] = (
+    "ets.edge-compact-r0-bench-manifest.v1"
+)
+R0_QUALIFICATION_CLASS: Literal["EDGE_COMPACT_R0"] = "EDGE_COMPACT_R0"
+HQP_VERIFY_COMMAND: Literal["python -m ets.hqp_verify"] = "python -m ets.hqp_verify"
 _REQUIRED_CONTROL_KINDS = {"power", "network", "storage", "clock", "recovery"}
 _SHA256_RE = re.compile(r"^(?:sha256:)?[0-9a-fA-F]{64}$")
 _SAFE_ID_RE = re.compile(r"[^A-Za-z0-9._-]+")
