@@ -1,13 +1,9 @@
 """Wave 1 Edge Compact R0 controlled network-loss evidence.
 
-W1-4 covers R0.4 only. It records an externally observed upstream-loss stimulus,
-continued local capture/proof generation while the upstream path is unavailable,
-reconnection, exact-once synchronization, and independent verification away from
-the DUT.
-
-The tooling records and evaluates evidence. It does not alter networking, interrupt
-power, fill storage, manipulate time, perform upgrades, or make a hardware
-qualification claim.
+R0.4 is the first deliberate physical fault gate. The evidence tooling records an
+externally controlled upstream outage, continued local capture/proof generation,
+reconnection, and exact-once synchronization. It never manipulates networking or
+other hardware itself and cannot publish a hardware qualification claim.
 """
 
 from __future__ import annotations
@@ -39,7 +35,7 @@ _PHASE3_CLAIM_BOUNDARY: Literal[
 _PHASE3_DISPOSITION: Literal["phase_evidence_only"] = "phase_evidence_only"
 _MIN_OFFLINE_EVENTS = 10
 _MIN_OFFLINE_SECONDS = 30
-_ALLOWED_OFFLINE_SYNC_STATES = {"pending", "retryable_failure"}
+OfflineSyncState = Literal["pending", "retryable_failure"]
 
 
 class StrictPhase3Model(BaseModel):
@@ -80,8 +76,6 @@ class EdgeR0NetworkLossObservation(StrictPhase3Model):
     operator_approved: Literal[True] = True
     controller_receipt_sha256: str = Field(pattern=_SHA256_RE)
     independent_observation_sha256: str = Field(pattern=_SHA256_RE)
-    credentials_embedded: Literal[False] = False
-    private_keys_embedded: Literal[False] = False
     claim_boundary: Literal[
         "r0_4_phase_evidence_not_a_physical_qualification_result"
     ] = _PHASE3_CLAIM_BOUNDARY
@@ -115,8 +109,6 @@ class EdgeR0OfflineCaptureWindow(StrictPhase3Model):
     pre_loss_queue: EdgeSyncStatusEvidence
     outage_queue: EdgeSyncStatusEvidence
     resource_observation_sha256: str = Field(pattern=_SHA256_RE)
-    credentials_embedded: Literal[False] = False
-    private_keys_embedded: Literal[False] = False
     claim_boundary: Literal[
         "r0_4_phase_evidence_not_a_physical_qualification_result"
     ] = _PHASE3_CLAIM_BOUNDARY
@@ -130,8 +122,7 @@ class EdgeR0OfflineCaptureWindow(StrictPhase3Model):
     def require_meaningful_window(self) -> EdgeR0OfflineCaptureWindow:
         if self.completed_at < self.started_at:
             raise ValueError("offline completed_at must not precede started_at")
-        elapsed = (self.completed_at - self.started_at).total_seconds()
-        if elapsed < _MIN_OFFLINE_SECONDS:
+        if (self.completed_at - self.started_at).total_seconds() < _MIN_OFFLINE_SECONDS:
             raise ValueError(f"R0.4 requires at least {_MIN_OFFLINE_SECONDS} offline seconds")
         if self.attempted_event_count < _MIN_OFFLINE_EVENTS:
             raise ValueError(f"R0.4 requires at least {_MIN_OFFLINE_EVENTS} offline captures")
@@ -154,12 +145,10 @@ class EdgeR0OfflineCaptureRecord(StrictPhase3Model):
     event_hash: str = Field(pattern=_SHA256_RE)
     content_hash: str = Field(pattern=_SHA256_RE)
     proof_artifact_sha256: str = Field(pattern=_SHA256_RE)
-    sync_state_at_capture: Literal["pending", "retryable_failure"]
+    sync_state_at_capture: OfflineSyncState
     local_commit_observed: Literal[True] = True
     local_proof_observed: Literal[True] = True
     upstream_reachable_at_capture: Literal[False] = False
-    credentials_embedded: Literal[False] = False
-    private_keys_embedded: Literal[False] = False
     claim_boundary: Literal[
         "r0_4_phase_evidence_not_a_physical_qualification_result"
     ] = _PHASE3_CLAIM_BOUNDARY
@@ -406,6 +395,14 @@ def build_offline_window(
     )
 
 
+def _offline_sync_state(value: str) -> OfflineSyncState:
+    if value == "pending":
+        return "pending"
+    if value == "retryable_failure":
+        return "retryable_failure"
+    raise ValueError("offline capture must be pending or retryable_failure")
+
+
 def build_offline_capture_record(
     window: EdgeR0OfflineCaptureWindow,
     receipt: WebhookCaptureReceipt,
@@ -416,10 +413,7 @@ def build_offline_capture_record(
     receipt_artifact_sha256: str,
     proof_artifact_sha256: str,
 ) -> EdgeR0OfflineCaptureRecord:
-    if receipt.sync_state not in _ALLOWED_OFFLINE_SYNC_STATES:
-        raise ValueError("offline capture must be pending or retryable_failure")
-    request_digest = _validate_sha256(request_payload_sha256)
-    content_digest = _validate_sha256(receipt.content_hash)
+    sync_state = _offline_sync_state(receipt.sync_state)
     seed = {
         "window_id": window.window_id,
         "sequence_number": sequence_number,
@@ -431,15 +425,15 @@ def build_offline_capture_record(
         window_id=window.window_id,
         sequence_number=sequence_number,
         captured_at=captured_at,
-        request_payload_sha256=request_digest,
+        request_payload_sha256=_validate_sha256(request_payload_sha256),
         receipt_artifact_sha256=_validate_sha256(receipt_artifact_sha256),
         event_id=receipt.event_id,
         evidence_id=receipt.evidence_id,
         log_index=receipt.log_index,
         event_hash=_validate_sha256(receipt.event_hash),
-        content_hash=content_digest,
+        content_hash=_validate_sha256(receipt.content_hash),
         proof_artifact_sha256=_validate_sha256(proof_artifact_sha256),
-        sync_state_at_capture=receipt.sync_state,
+        sync_state_at_capture=sync_state,
     )
 
 
@@ -476,6 +470,63 @@ def build_offline_proof_receipt(
     )
 
 
+def build_upstream_acceptance(
+    record: EdgeR0OfflineCaptureRecord,
+    *,
+    idempotency_key: str,
+    accepted_at: datetime,
+    acknowledgement_hash: str,
+    upstream_artifact_sha256: str,
+    upstream_observer_id: str,
+) -> EdgeR0UpstreamAcceptanceReceipt:
+    seed = {
+        "record_id": record.record_id,
+        "event_id": record.event_id,
+        "idempotency_key": idempotency_key,
+        "accepted_at": accepted_at.isoformat(),
+    }
+    return EdgeR0UpstreamAcceptanceReceipt(
+        acceptance_id=f"edge-r0-upstream-{canonical_sha256(seed)[:24]}",
+        record_id=record.record_id,
+        event_id=record.event_id,
+        idempotency_key=idempotency_key,
+        accepted_at=accepted_at,
+        acknowledgement_hash=_validate_sha256(acknowledgement_hash),
+        upstream_artifact_sha256=_validate_sha256(upstream_artifact_sha256),
+        upstream_observer_id=upstream_observer_id,
+    )
+
+
+def build_reconnect_summary(
+    window: EdgeR0OfflineCaptureWindow,
+    *,
+    reconnect_observed_at: datetime,
+    sync_completed_at: datetime,
+    independent_reconnect_observation_sha256: str,
+    initial_queue: EdgeSyncStatusEvidence,
+    final_queue: EdgeSyncStatusEvidence,
+    sync_run_artifact_sha256: tuple[str, ...],
+) -> EdgeR0ReconnectSyncSummary:
+    seed = {
+        "window_id": window.window_id,
+        "reconnect_observed_at": reconnect_observed_at.isoformat(),
+        "sync_completed_at": sync_completed_at.isoformat(),
+        "sync_runs": list(sync_run_artifact_sha256),
+    }
+    return EdgeR0ReconnectSyncSummary(
+        summary_id=f"edge-r0-reconnect-{canonical_sha256(seed)[:24]}",
+        window_id=window.window_id,
+        reconnect_observed_at=reconnect_observed_at,
+        sync_completed_at=sync_completed_at,
+        independent_reconnect_observation_sha256=_validate_sha256(
+            independent_reconnect_observation_sha256
+        ),
+        initial_queue=initial_queue,
+        final_queue=final_queue,
+        sync_run_artifact_sha256=sync_run_artifact_sha256,
+    )
+
+
 def evaluate_r0_4(
     manifest: EdgeCompactR0BenchManifest,
     phase2: EdgeR0Phase2Evaluation,
@@ -498,140 +549,135 @@ def evaluate_r0_4(
     if phase2.manifest_id != manifest.manifest_id or phase2.asset_id != asset_id:
         issues.append("R0.4: R0.3 evaluation is bound to another DUT")
 
-    expected_phase2_digest = canonical_sha256(phase2.model_dump(mode="json"))
     if window.phase2_evaluation_id != phase2.evaluation_id:
         issues.append("R0.4: offline window references another R0.3 evaluation")
-    if window.phase2_evaluation_sha256 != expected_phase2_digest:
+    if window.phase2_evaluation_sha256 != canonical_sha256(phase2.model_dump(mode="json")):
         issues.append("R0.4: R0.3 digest binding mismatch")
     if window.manifest_id != manifest.manifest_id or window.asset_id != asset_id:
         issues.append("R0.4: offline window is bound to another DUT")
 
-    expected_observation_digest = canonical_sha256(observation.model_dump(mode="json"))
     if window.network_observation_id != observation.observation_id:
         issues.append("R0.4: offline window references another network-loss observation")
-    if window.network_observation_sha256 != expected_observation_digest:
+    if window.network_observation_sha256 != canonical_sha256(
+        observation.model_dump(mode="json")
+    ):
         issues.append("R0.4: network-loss observation digest mismatch")
     if window.started_at < observation.loss_confirmed_at:
-        issues.append("R0.4: offline capture began before upstream loss was independently confirmed")
+        issues.append("R0.4: capture began before upstream loss was independently confirmed")
 
     network_control = next(
         (control for control in manifest.controls if control.kind is BenchControlKind.NETWORK),
         None,
     )
     if network_control is None or observation.network_control_id != network_control.control_id:
-        issues.append("R0.4: network-loss observation does not bind to W1-1 network control")
+        issues.append("R0.4: observation does not bind to the W1-1 network control")
     if observation.observer_id != manifest.observer.observer_id:
         issues.append("R0.4: network-loss observer does not match bench observer")
 
     if window.outage_queue.upstream_status not in {"offline", "degraded", "unknown"}:
-        issues.append("R0.4: outage queue did not record an unavailable/degraded upstream")
+        issues.append("R0.4: outage queue did not record unavailable/degraded upstream")
     if window.outage_queue.terminal_failure != 0:
-        issues.append("R0.4: terminal queue failure occurred during upstream outage")
+        issues.append("R0.4: terminal queue failure occurred during outage")
 
     record_ids = [item.record_id for item in captures]
     event_ids = [item.event_id for item in captures]
     log_indices = [item.log_index for item in captures]
     sequences = [item.sequence_number for item in captures]
     if len(captures) != window.attempted_event_count:
-        issues.append("R0.4: local capture count does not equal attempted offline event count")
+        issues.append("R0.4: local capture count differs from attempted event count")
     if len(record_ids) != len(set(record_ids)):
-        issues.append("R0.4: offline capture record IDs are not unique")
+        issues.append("R0.4: offline capture IDs are not unique")
     if len(event_ids) != len(set(event_ids)):
-        issues.append("R0.4: offline Edge event IDs are not unique")
+        issues.append("R0.4: offline event IDs are not unique")
     if len(log_indices) != len(set(log_indices)):
-        issues.append("R0.4: offline Edge log indices are not unique")
-    expected_sequences = list(range(1, window.attempted_event_count + 1))
-    if sorted(sequences) != expected_sequences:
-        issues.append("R0.4: offline captures do not cover every attempted sequence exactly once")
+        issues.append("R0.4: offline log indices are not unique")
+    if sorted(sequences) != list(range(1, window.attempted_event_count + 1)):
+        issues.append("R0.4: offline sequence coverage is incomplete or duplicated")
     for record in captures:
         if record.window_id != window.window_id:
             issues.append(f"R0.4: capture {record.record_id} belongs to another window")
         if not (window.started_at <= record.captured_at <= window.completed_at):
-            issues.append(f"R0.4: capture {record.record_id} lies outside the outage window")
+            issues.append(f"R0.4: capture {record.record_id} lies outside outage window")
 
     proofs_by_record: dict[str, EdgeR0OfflineProofReceipt] = {}
-    for proof in proofs:
-        if proof.record_id in proofs_by_record:
-            issues.append(f"R0.4: duplicate proof verification for {proof.record_id}")
+    for proof_receipt in proofs:
+        if proof_receipt.record_id in proofs_by_record:
+            issues.append(f"R0.4: duplicate proof verification for {proof_receipt.record_id}")
             continue
-        proofs_by_record[proof.record_id] = proof
+        proofs_by_record[proof_receipt.record_id] = proof_receipt
+
     verified_count = 0
     verifier_host = manifest.verifier.verifier_host_id
     for record in captures:
-        proof = proofs_by_record.get(record.record_id)
-        if proof is None:
-            issues.append(f"R0.4: missing independent local proof verification for {record.record_id}")
+        proof_receipt = proofs_by_record.get(record.record_id)
+        if proof_receipt is None:
+            issues.append(f"R0.4: missing proof verification for {record.record_id}")
             continue
-        if proof.window_id != window.window_id or proof.event_id != record.event_id:
+        if proof_receipt.window_id != window.window_id or proof_receipt.event_id != record.event_id:
             issues.append(f"R0.4: proof binding mismatch for {record.record_id}")
-        if proof.proof_artifact_sha256 != record.proof_artifact_sha256:
-            issues.append(f"R0.4: proof artifact digest mismatch for {record.record_id}")
-        if not proof.inclusion_valid or not proof.independent_execution_context:
-            issues.append(f"R0.4: local proof verification failed for {record.record_id}")
-        if verifier_host is None or proof.verifier_host_id != verifier_host:
+        if proof_receipt.proof_artifact_sha256 != record.proof_artifact_sha256:
+            issues.append(f"R0.4: proof digest mismatch for {record.record_id}")
+        if not proof_receipt.inclusion_valid or not proof_receipt.independent_execution_context:
+            issues.append(f"R0.4: independent proof verification failed for {record.record_id}")
+        if verifier_host is None or proof_receipt.verifier_host_id != verifier_host:
             issues.append(f"R0.4: verifier host mismatch for {record.record_id}")
         if (
-            proof.inclusion_valid
-            and proof.independent_execution_context
-            and proof.verifier_host_id == verifier_host
+            proof_receipt.inclusion_valid
+            and proof_receipt.independent_execution_context
+            and proof_receipt.verifier_host_id == verifier_host
         ):
             verified_count += 1
 
     if reconnect.window_id != window.window_id:
         issues.append("R0.4: reconnect summary references another outage window")
     if reconnect.reconnect_observed_at < window.completed_at:
-        issues.append("R0.4: reconnect was recorded before the offline window completed")
-    if reconnect.final_queue.queue_depth != 0:
+        issues.append("R0.4: reconnect predates completion of offline capture window")
+    final_queue = reconnect.final_queue
+    if final_queue.queue_depth != 0:
         issues.append("R0.4: synchronization backlog remains after reconnect")
-    if reconnect.final_queue.pending != 0 or reconnect.final_queue.in_flight != 0:
+    if final_queue.pending != 0 or final_queue.in_flight != 0:
         issues.append("R0.4: pending/in-flight queue state remains after reconnect")
-    if reconnect.final_queue.retryable_failure != 0:
-        issues.append("R0.4: retryable queue failures remain after reconnect")
-    if reconnect.final_queue.terminal_failure != 0:
-        issues.append("R0.4: terminal queue failures exist after reconnect")
-    if reconnect.final_queue.upstream_status != "online":
+    if final_queue.retryable_failure != 0 or final_queue.terminal_failure != 0:
+        issues.append("R0.4: failed queue state remains after reconnect")
+    if final_queue.upstream_status != "online":
         issues.append("R0.4: upstream did not return to online state")
 
     acceptances_by_record: dict[str, EdgeR0UpstreamAcceptanceReceipt] = {}
-    acceptance_event_ids: list[str] = []
     idempotency_keys: list[str] = []
+    acceptance_event_ids: list[str] = []
     for acceptance in acceptances:
         if acceptance.record_id in acceptances_by_record:
             issues.append(f"R0.4: duplicate upstream acceptance for {acceptance.record_id}")
             continue
         acceptances_by_record[acceptance.record_id] = acceptance
-        acceptance_event_ids.append(acceptance.event_id)
         idempotency_keys.append(acceptance.idempotency_key)
-
+        acceptance_event_ids.append(acceptance.event_id)
     if len(idempotency_keys) != len(set(idempotency_keys)):
-        issues.append("R0.4: duplicate idempotency keys observed after reconnect")
+        issues.append("R0.4: duplicate idempotency keys observed")
     if set(acceptance_event_ids) != set(event_ids):
-        issues.append("R0.4: upstream accepted event set does not exactly match outage event set")
+        issues.append("R0.4: upstream event set does not exactly match outage event set")
 
     exactly_once_count = 0
     for record in captures:
         acceptance = acceptances_by_record.get(record.record_id)
         if acceptance is None:
-            issues.append(f"R0.4: no upstream acceptance retained for {record.record_id}")
+            issues.append(f"R0.4: missing upstream acceptance for {record.record_id}")
             continue
         if acceptance.event_id != record.event_id:
-            issues.append(f"R0.4: upstream acceptance event mismatch for {record.record_id}")
+            issues.append(f"R0.4: acceptance event mismatch for {record.record_id}")
             continue
         if acceptance.accepted_at < reconnect.reconnect_observed_at:
-            issues.append(f"R0.4: upstream acceptance predates reconnect for {record.record_id}")
+            issues.append(f"R0.4: acceptance predates reconnect for {record.record_id}")
             continue
         exactly_once_count += 1
 
     unknown_proofs = sorted(set(proofs_by_record) - set(record_ids))
     if unknown_proofs:
-        issues.append(f"R0.4: proof receipts reference unknown captures: {unknown_proofs}")
+        issues.append(f"R0.4: proofs reference unknown captures: {unknown_proofs}")
     unknown_acceptances = sorted(set(acceptances_by_record) - set(record_ids))
     if unknown_acceptances:
-        issues.append(
-            f"R0.4: upstream acceptances reference unknown captures: {unknown_acceptances}"
-        )
+        issues.append(f"R0.4: acceptances reference unknown captures: {unknown_acceptances}")
 
-    passed = not issues
     seed = {
         "manifest_id": manifest.manifest_id,
         "phase2_evaluation_id": phase2.evaluation_id,
@@ -652,7 +698,7 @@ def evaluate_r0_4(
         locally_committed_count=len(captures),
         independently_verified_count=verified_count,
         synchronized_exactly_once_count=exactly_once_count,
-        r0_4_passed=passed,
+        r0_4_passed=not issues,
         issues=tuple(issues),
     )
 
@@ -748,6 +794,25 @@ def main(argv: list[str] | None = None) -> int:
     proof_parser.add_argument("--independent", action="store_true")
     proof_parser.add_argument("--output", type=Path, required=True)
 
+    acceptance_parser = subparsers.add_parser("record-upstream-acceptance")
+    acceptance_parser.add_argument("--capture-record", type=Path, required=True)
+    acceptance_parser.add_argument("--idempotency-key", required=True)
+    acceptance_parser.add_argument("--accepted-at", required=True)
+    acceptance_parser.add_argument("--acknowledgement-hash", required=True)
+    acceptance_parser.add_argument("--upstream-artifact", type=Path, required=True)
+    acceptance_parser.add_argument("--upstream-observer-id", required=True)
+    acceptance_parser.add_argument("--output", type=Path, required=True)
+
+    reconnect_parser = subparsers.add_parser("record-reconnect")
+    reconnect_parser.add_argument("--window", type=Path, required=True)
+    reconnect_parser.add_argument("--reconnect-observed-at", required=True)
+    reconnect_parser.add_argument("--sync-completed-at", required=True)
+    reconnect_parser.add_argument("--reconnect-observation", type=Path, required=True)
+    reconnect_parser.add_argument("--initial-queue", type=Path, required=True)
+    reconnect_parser.add_argument("--final-queue", type=Path, required=True)
+    reconnect_parser.add_argument("--sync-run-artifact", type=Path, action="append", required=True)
+    reconnect_parser.add_argument("--output", type=Path, required=True)
+
     evaluate_parser = subparsers.add_parser("evaluate-r0-4")
     evaluate_parser.add_argument("--manifest", type=Path, required=True)
     evaluate_parser.add_argument("--phase2-evaluation", type=Path, required=True)
@@ -773,17 +838,11 @@ def main(argv: list[str] | None = None) -> int:
             controller_receipt_sha256=sha256_file(args.controller_receipt),
             independent_observation_sha256=sha256_file(args.independent_observation),
         )
-        _write_json(args.output, result)
-        return 0
-
-    if args.command == "record-offline-window":
-        manifest = load_manifest(args.manifest.read_bytes())
-        phase2 = load_phase2_evaluation(args.phase2_evaluation.read_bytes())
-        observation = load_network_observation(args.network_observation.read_bytes())
+    elif args.command == "record-offline-window":
         result = build_offline_window(
-            manifest,
-            phase2,
-            observation,
+            load_manifest(args.manifest.read_bytes()),
+            load_phase2_evaluation(args.phase2_evaluation.read_bytes()),
+            load_network_observation(args.network_observation.read_bytes()),
             window_id=args.window_id,
             started_at=_parse_datetime(args.started_at),
             completed_at=_parse_datetime(args.completed_at),
@@ -792,30 +851,21 @@ def main(argv: list[str] | None = None) -> int:
             outage_queue=_load_sync_status(args.outage_queue),
             resource_observation_sha256=sha256_file(args.resource_observation),
         )
-        _write_json(args.output, result)
-        return 0
-
-    if args.command == "record-offline-capture":
-        window = load_offline_window(args.window.read_bytes())
-        receipt = WebhookCaptureReceipt.model_validate_json(args.receipt.read_bytes())
+    elif args.command == "record-offline-capture":
         result = build_offline_capture_record(
-            window,
-            receipt,
+            load_offline_window(args.window.read_bytes()),
+            WebhookCaptureReceipt.model_validate_json(args.receipt.read_bytes()),
             sequence_number=args.sequence,
             captured_at=_parse_datetime(args.captured_at),
             request_payload_sha256=sha256_file(args.request_payload),
             receipt_artifact_sha256=sha256_file(args.receipt),
             proof_artifact_sha256=sha256_file(args.proof),
         )
-        _write_json(args.output, result)
-        return 0
-
-    if args.command == "record-offline-proof":
+    elif args.command == "record-offline-proof":
         record = load_offline_capture(args.capture_record.read_bytes())
-        verification_result = _load_json_object(args.verification_result)
         result = build_offline_proof_receipt(
             record,
-            verification_result,
+            _load_json_object(args.verification_result),
             verifier_id=args.verifier_id,
             verifier_host_id=args.verifier_host_id,
             verifier_build_sha256=args.verifier_build_digest,
@@ -823,37 +873,52 @@ def main(argv: list[str] | None = None) -> int:
             verified_at=_parse_datetime(args.verified_at),
             independent_execution_context=args.independent,
         )
-        _write_json(args.output, result)
-        return 0
-
-    if args.command == "evaluate-r0-4":
-        manifest = load_manifest(args.manifest.read_bytes())
-        phase2 = load_phase2_evaluation(args.phase2_evaluation.read_bytes())
-        observation = load_network_observation(args.network_observation.read_bytes())
-        window = load_offline_window(args.window.read_bytes())
-        captures = tuple(load_offline_capture(path.read_bytes()) for path in args.capture_record)
-        proofs = tuple(load_offline_proof(path.read_bytes()) for path in args.proof_receipt)
-        reconnect = load_reconnect_summary(args.reconnect_summary.read_bytes())
-        acceptances = tuple(
-            load_upstream_acceptance(path.read_bytes()) for path in args.upstream_acceptance
+    elif args.command == "record-upstream-acceptance":
+        result = build_upstream_acceptance(
+            load_offline_capture(args.capture_record.read_bytes()),
+            idempotency_key=args.idempotency_key,
+            accepted_at=_parse_datetime(args.accepted_at),
+            acknowledgement_hash=args.acknowledgement_hash,
+            upstream_artifact_sha256=sha256_file(args.upstream_artifact),
+            upstream_observer_id=args.upstream_observer_id,
         )
-        evaluated_at = (
-            _parse_datetime(args.evaluated_at)
-            if args.evaluated_at is not None
-            else datetime.now(UTC)
+    elif args.command == "record-reconnect":
+        result = build_reconnect_summary(
+            load_offline_window(args.window.read_bytes()),
+            reconnect_observed_at=_parse_datetime(args.reconnect_observed_at),
+            sync_completed_at=_parse_datetime(args.sync_completed_at),
+            independent_reconnect_observation_sha256=sha256_file(
+                args.reconnect_observation
+            ),
+            initial_queue=_load_sync_status(args.initial_queue),
+            final_queue=_load_sync_status(args.final_queue),
+            sync_run_artifact_sha256=tuple(
+                sha256_file(path) for path in args.sync_run_artifact
+            ),
         )
+    elif args.command == "evaluate-r0-4":
         result = evaluate_r0_4(
-            manifest,
-            phase2,
-            observation,
-            window,
-            captures,
-            proofs,
-            reconnect,
-            acceptances,
-            evaluated_at=evaluated_at,
+            load_manifest(args.manifest.read_bytes()),
+            load_phase2_evaluation(args.phase2_evaluation.read_bytes()),
+            load_network_observation(args.network_observation.read_bytes()),
+            load_offline_window(args.window.read_bytes()),
+            tuple(load_offline_capture(path.read_bytes()) for path in args.capture_record),
+            tuple(load_offline_proof(path.read_bytes()) for path in args.proof_receipt),
+            load_reconnect_summary(args.reconnect_summary.read_bytes()),
+            tuple(
+                load_upstream_acceptance(path.read_bytes())
+                for path in args.upstream_acceptance
+            ),
+            evaluated_at=(
+                _parse_datetime(args.evaluated_at)
+                if args.evaluated_at is not None
+                else datetime.now(UTC)
+            ),
         )
-        _write_json(args.output, result)
-        return 0 if result.r0_4_passed else 2
+    else:
+        raise AssertionError(f"unhandled command: {args.command}")
 
-    raise AssertionError(f"unhandled command: {args.command}")
+    _write_json(args.output, result)
+    if isinstance(result, EdgeR0Phase3Evaluation):
+        return 0 if result.r0_4_passed else 2
+    return 0
