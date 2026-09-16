@@ -22,7 +22,9 @@ TENANT_ID = "11111111-2222-3333-4444-555555555555"
 def _inventory_payload() -> bytes:
     return json.dumps(
         {
-            "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#copilot/admin/catalog/packages",
+            "@odata.context": (
+                "https://graph.microsoft.com/v1.0/$metadata#copilot/admin/catalog/packages"
+            ),
             "value": [
                 {
                     "id": "pkg-001",
