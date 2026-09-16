@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -21,6 +22,7 @@ from ets.qualification.physical_edge import (
 )
 from ets.qualification.physical_edge_phase1 import (
     BootTransition,
+    EdgeR0ProvisioningReceipt,
     build_identity_snapshot,
     build_provisioning_receipt,
     evaluate_phase1,
@@ -120,7 +122,7 @@ def _ready_manifest() -> EdgeCompactR0BenchManifest:
     )
 
 
-def _receipt(manifest: EdgeCompactR0BenchManifest):
+def _receipt(manifest: EdgeCompactR0BenchManifest) -> EdgeR0ProvisioningReceipt:
     return build_provisioning_receipt(
         manifest,
         receipt_id="r0-provision-001",
