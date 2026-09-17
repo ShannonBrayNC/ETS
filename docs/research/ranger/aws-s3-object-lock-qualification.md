@@ -308,6 +308,27 @@ is not a signature and does not establish provenance or authenticity. Effective 
 provider execution, completeness, physical WORM custody, and physical outcome remain unproven.
 See [ADR 0023](adr/0023-secret-free-aws-qualification-evidence-manifest.md).
 
+## Signed manifest custody acceptance
+
+[`ets.ranger.aws_qualification_manifest_custody`](../../../ets/ranger/aws_qualification_manifest_custody.py)
+defines `ets.ranger.aws-qualification-manifest-custody-receipt.v1`. A configured custodian signs
+the exact manifest record, its successful verification finding, package and qualification
+identifiers, a verifier-controlled custody-target identifier, the acceptance time, and the
+requested retention deadline. The receipt therefore prevents a valid signature for one package,
+verification finding, target, or retention request from being reused for another.
+
+Issuance requires a self-consistent manifest and a successful complete manifest-verification
+finding. Offline verification checks the complete record digests, Ed25519 signature and key
+fingerprint against a configured policy, including the expected custodian identity, key, target,
+acceptance window, and minimum retention deadline. The target identifier is deliberately an
+opaque policy value rather than a credential-bearing provider URL.
+
+This proves only that the configured key accepted the exact verified manifest for the declared
+target and retention request. It does not prove a storage write, continued retention,
+organizational independence, trusted custodian time, physical WORM behavior, provider execution,
+or a physical outcome. Those claims require separate provider and custody observations. See
+[ADR 0024](adr/0024-signed-aws-qualification-manifest-custody.md).
+
 A controlled live trial remains separate work. It must run in an explicitly authorized,
 non-production qualification account/namespace with a fresh verifier challenge, a small synthetic
 archive bundle, minimum approved retention, exact versioned delete, post-denial retrieval, and
