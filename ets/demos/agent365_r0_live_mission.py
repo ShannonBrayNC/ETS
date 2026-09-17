@@ -45,7 +45,6 @@ from ets.ranger.agent365_r0_evidence_v2 import (
 )
 from ets.ranger.agent365_r0_mission_store import SQLiteRangerR0MissionBundleStore
 from ets.ranger.agent365_r0_physical import (
-    RangerR0ActuatorReceiptV1,
     RangerR0PhysicalActuator,
     RangerR0PhysicalClock,
     RangerR0PhysicalSensors,
@@ -380,7 +379,10 @@ def _validate_qualified_inputs(
         raise Agent365R0LiveMissionError(
             "Agent 365 correlation disagrees with the qualified authorization commitment"
         )
-    if correlation_bundle.sharepoint_source_payload_sha256 != packet.sharepoint_source_payload_sha256:
+    if (
+        correlation_bundle.sharepoint_source_payload_sha256
+        != packet.sharepoint_source_payload_sha256
+    ):
         raise Agent365R0LiveMissionError(
             "Agent 365 correlation is not bound to the qualified SharePoint source"
         )
@@ -389,9 +391,15 @@ def _validate_qualified_inputs(
             "Agent 365 correlation bases differ from the qualified profile packet"
         )
 
-    identity_ids = tuple(sorted(item.observation_id for item in correlation_bundle.identity_observations))
-    runtime_ids = tuple(sorted(item.observation_id for item in correlation_bundle.runtime_observations))
-    tool_ids = tuple(sorted(item.observation_id for item in correlation_bundle.tool_observations))
+    identity_ids = tuple(
+        sorted(item.observation_id for item in correlation_bundle.identity_observations)
+    )
+    runtime_ids = tuple(
+        sorted(item.observation_id for item in correlation_bundle.runtime_observations)
+    )
+    tool_ids = tuple(
+        sorted(item.observation_id for item in correlation_bundle.tool_observations)
+    )
     if identity_ids != packet.identity_observation_ids:
         raise Agent365R0LiveMissionError("qualified identity observation set changed")
     if runtime_ids != packet.runtime_observation_ids:
