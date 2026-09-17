@@ -1,11 +1,11 @@
 """Ranger R0 receipt and bounded-motion boundary for the frozen Agent 365 demo.
 
-The Gateway proves that a mission was authorized for dispatch.  This module starts a
+The Gateway proves that a mission was authorized for dispatch. This module starts a
 new trust boundary on the robot: exact command receipt, execution-once semantics,
 local motion authorization, sensor-observed motion, stop-condition evaluation,
 stop actuation, and independent observation of the resulting stopped state.
 
-A stop command is evidence of actuation intent only.  It is never treated as proof
+A stop command is evidence of actuation intent only. It is never treated as proof
 that the chassis stopped.
 """
 
@@ -70,7 +70,7 @@ class RangerR0MotionDirectiveV1(StrictModel):
     issued_at: datetime
     issued_monotonic_ns: int = Field(ge=0)
     linear_speed_mps: float = Field(gt=0.0, le=0.25)
-    yaw_rate_rad_s: Literal[0.0] = 0.0
+    yaw_rate_rad_s: float = Field(default=0.0, ge=0.0, le=0.0)
     max_distance_m: float = Field(gt=0.0, le=2.0)
     max_duration_s: int = Field(ge=1, le=20)
     stop_distance_m: float = Field(ge=0.45, le=2.0)
@@ -94,8 +94,8 @@ class RangerR0StopDirectiveV1(StrictModel):
     stop_reason: RangerR0StopReason
     issued_at: datetime
     issued_monotonic_ns: int = Field(ge=0)
-    linear_speed_mps: Literal[0.0] = 0.0
-    yaw_rate_rad_s: Literal[0.0] = 0.0
+    linear_speed_mps: float = Field(default=0.0, ge=0.0, le=0.0)
+    yaw_rate_rad_s: float = Field(default=0.0, ge=0.0, le=0.0)
     claim_boundary: Literal["stop_actuation_command_not_proof_chassis_stopped"] = (
         "stop_actuation_command_not_proof_chassis_stopped"
     )
@@ -197,13 +197,7 @@ class RangerR0StopActuationResultV1(StrictModel):
 
 
 class SqliteRangerR0ReceiptLedger:
-    """Durable execution-once boundary across Gateway transport retries.
-
-    A new Gateway delivery may be recorded for the same mission only when it is an
-    explicit retry of a previously accepted delivery and carries the same semantic
-    command and authorization commitment.  A retry is never permission to execute
-    the physical mission again.
-    """
+    """Durable execution-once boundary across Gateway transport retries."""
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
