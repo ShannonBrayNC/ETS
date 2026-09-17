@@ -6,16 +6,28 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "qualification" / "edgew_vt0" / "provision_vt0_dut.sh"
+STORAGE_SCRIPT = (
+    ROOT / "scripts" / "qualification" / "edgew_vt0" / "prepare_vt0_storage.sh"
+)
 
 
-def test_provisioner_has_valid_bash_syntax() -> None:
-    result = subprocess.run(
-        ["bash", "-n", str(SCRIPT)],
+def _bash_syntax_ok(path: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", "-n", str(path)],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
     )
+
+
+def test_provisioner_has_valid_bash_syntax() -> None:
+    result = _bash_syntax_ok(SCRIPT)
+    assert result.returncode == 0, result.stderr
+
+
+def test_storage_preparer_has_valid_bash_syntax() -> None:
+    result = _bash_syntax_ok(STORAGE_SCRIPT)
     assert result.returncode == 0, result.stderr
 
 
@@ -42,3 +54,17 @@ def test_provisioner_preserves_vt0_safety_and_topology_contract() -> None:
     assert 'MOUNT_TARGET" == "/"' in text
     assert "refusing overwrite" in text.lower()
     assert "not physical qualification" in text
+
+
+def test_storage_preparer_requires_explicit_destructive_apply() -> None:
+    text = STORAGE_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'TARGET="/dev/mapper/vg_comfy-lv_comfy"' in text
+    assert 'MOUNTPOINT="/srv/ets-lab"' in text
+    assert "--apply" in text
+    assert 'if [[ "$TARGET_REAL" == "$ROOT_REAL" ]]' in text
+    assert "REFUSING: target resolves to the host root filesystem device." in text
+    assert 'if [[ "$APPLY" -ne 1 ]]' in text
+    assert "PLAN ONLY: no storage changes were made." in text
+    assert "mkfs.ext4 -F -L ETS_LAB" in text
+    assert "fstab entry (not written automatically)" in text
