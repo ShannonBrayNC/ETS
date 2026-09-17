@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal, Protocol, TypeVar
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -40,9 +40,6 @@ class StrictCorrelationModel(BaseModel):
 
 class _ObservationWithId(Protocol):
     observation_id: str
-
-
-ObservationT = TypeVar("ObservationT", bound=_ObservationWithId)
 
 
 class Agent365RetainedSourceRefV1(StrictCorrelationModel):
@@ -361,8 +358,8 @@ def _require_tenant(
             )
 
 
-def _dedupe_observations(items: tuple[ObservationT, ...]) -> tuple[ObservationT, ...]:
-    retained: dict[str, ObservationT] = {}
+def _dedupe_observations[T: _ObservationWithId](items: tuple[T, ...]) -> tuple[T, ...]:
+    retained: dict[str, T] = {}
     for item in items:
         observation_id = item.observation_id
         previous = retained.get(observation_id)
