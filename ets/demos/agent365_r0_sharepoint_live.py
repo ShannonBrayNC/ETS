@@ -443,7 +443,11 @@ def parse_retained_sharepoint_mission(
     """Interpret retained source bytes only after their custody envelope exists."""
 
     actual_digest = hashlib.sha256(raw_payload).hexdigest()
-    if actual_digest != envelope.raw_payload_sha256 or len(raw_payload) != envelope.raw_payload_size:
+    source_changed = (
+        actual_digest != envelope.raw_payload_sha256
+        or len(raw_payload) != envelope.raw_payload_size
+    )
+    if source_changed:
         raise MicrosoftSharePointMissionSourceError(
             "retained SharePoint mission bytes do not match the source custody envelope"
         )
