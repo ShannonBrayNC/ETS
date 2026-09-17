@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ets.capture.otlp import OtlpObservationV1
 from ets.demos.agent365_r0_correlation import (
@@ -78,6 +78,7 @@ class Agent365OtlpProjectionV1(BaseModel):
     runtime_observations: tuple[Agent365RuntimeObservationV1, ...]
     tool_observations: tuple[Agent365ToolObservationV1, ...]
     source_record_ordinals: tuple[int, ...]
+    source_record_refs: tuple[str, ...]
     claim_boundary: Literal["configured_semantic_projection_of_retained_otlp_only"] = (
         "configured_semantic_projection_of_retained_otlp_only"
     )
@@ -183,19 +184,21 @@ def project_agent365_otlp(
         tool_observation_from_otlp(observation, source, profile)
         for observation, source in tool_spans
     )
-    ordinals = tuple(
-        observation.record_ordinal
-        for observation, _ in (*runtime_spans, *tool_spans)
+    source_rows = (*runtime_spans, *tool_spans)
+    record_refs = tuple(
+        f"{source.source_envelope_sha256}:{observation.record_ordinal}"
+        for observation, source in source_rows
     )
-    if len(ordinals) != len(set(ordinals)):
+    if len(record_refs) != len(set(record_refs)):
         raise Agent365R0OtlpMappingError(
-            "one OTLP record ordinal cannot be projected as more than one Agent 365 proposition"
+            "one retained OTLP source record cannot be projected more than once"
         )
     return Agent365OtlpProjectionV1(
         profile_id=profile.profile_id,
         runtime_observations=runtime,
         tool_observations=tools,
-        source_record_ordinals=ordinals,
+        source_record_ordinals=tuple(observation.record_ordinal for observation, _ in source_rows),
+        source_record_refs=record_refs,
     )
 
 
