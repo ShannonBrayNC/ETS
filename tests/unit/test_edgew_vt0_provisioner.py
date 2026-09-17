@@ -64,6 +64,8 @@ def test_provisioner_preserves_vt0_safety_and_topology_contract() -> None:
     assert "QEMU runtime account lacks read/write access" in text
     assert "execute-only traversal on parent directories" in text
     assert 'f"u:{user}:x"' in text
+    assert "QEMU runtime path traversal/stat preflight passed." in text
+    assert "QEMU runtime qcow2 read/write preflight passed." in text
 
 
 def test_storage_preparer_requires_explicit_destructive_apply() -> None:
