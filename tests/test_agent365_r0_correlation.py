@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Literal
 
 import pytest
 
@@ -23,9 +24,15 @@ AUTH_DIGEST = "1" * 64
 SOURCE_DIGEST = "2" * 64
 T0 = datetime(2026, 9, 17, 22, 0, tzinfo=UTC)
 
+SourceFamily = Literal[
+    "agent365.catalog",
+    "agent365.runtime.otel",
+    "agent365.tool.otel",
+]
+
 
 def _source(
-    family: str,
+    family: SourceFamily,
     *,
     suffix: str,
 ) -> Agent365RetainedSourceRefV1:
