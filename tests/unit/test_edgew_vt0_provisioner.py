@@ -62,6 +62,8 @@ def test_provisioner_preserves_vt0_safety_and_topology_contract() -> None:
     assert "libvirt-qemu" in text
     assert "setfacl" in text
     assert "QEMU runtime account lacks read/write access" in text
+    assert "execute-only traversal on parent directories" in text
+    assert 'f"u:{user}:x"' in text
 
 
 def test_storage_preparer_requires_explicit_destructive_apply() -> None:
