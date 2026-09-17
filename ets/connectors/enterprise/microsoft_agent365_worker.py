@@ -20,10 +20,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from ets.connectors.credentials.azure_managed_identity import (
     MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
 )
-from ets.connectors.credentials.models import (
-    CREDENTIAL_REFERENCE_SCHEMA_VERSION,
-    CredentialReferenceV1,
-)
+from ets.connectors.credentials.models import CredentialReferenceV1
 from ets.connectors.credentials.provider import CredentialProvider
 from ets.connectors.enterprise.microsoft_agent365 import (
     Agent365SourceType,
@@ -305,7 +302,7 @@ class MicrosoftAgent365HostedWorker:
             None if previous_checkpoint is None else previous_checkpoint.last_envelope_hash
         )
         reference = CredentialReferenceV1(
-            schema_version=CREDENTIAL_REFERENCE_SCHEMA_VERSION,
+            schema_version="ets.connector.credential_ref.v1",
             ref=MICROSOFT_GRAPH_CREDENTIAL_REFERENCE,
         )
         with self._credential_provider.resolve(reference) as lease:
@@ -359,10 +356,10 @@ def _protect_and_rechain_snapshot(
     protected_pages: list[MicrosoftAgent365InventoryAcquisition] = []
     protected_details: list[MicrosoftAgent365DetailAcquisition] = []
 
-    for acquisition in snapshot.inventory_pages:
+    for page_acquisition in snapshot.inventory_pages:
         envelope = _protect_and_rechain_envelope(
-            acquisition.envelope,
-            acquisition.response.body,
+            page_acquisition.envelope,
+            page_acquisition.response.body,
             expected_source_type="agent365.package_inventory",
             protected_payload_store=protected_payload_store,
             tenant_id=tenant_id,
@@ -371,18 +368,18 @@ def _protect_and_rechain_snapshot(
         )
         protected_pages.append(
             MicrosoftAgent365InventoryAcquisition(
-                response=acquisition.response,
+                response=page_acquisition.response,
                 envelope=envelope,
-                page=acquisition.page,
+                page=page_acquisition.page,
             )
         )
         sequence += 1
         previous_hash = envelope.envelope_hash
 
-    for acquisition in snapshot.package_details:
+    for detail_acquisition in snapshot.package_details:
         envelope = _protect_and_rechain_envelope(
-            acquisition.envelope,
-            acquisition.response.body,
+            detail_acquisition.envelope,
+            detail_acquisition.response.body,
             expected_source_type="agent365.package_detail",
             protected_payload_store=protected_payload_store,
             tenant_id=tenant_id,
@@ -391,9 +388,9 @@ def _protect_and_rechain_snapshot(
         )
         protected_details.append(
             MicrosoftAgent365DetailAcquisition(
-                response=acquisition.response,
+                response=detail_acquisition.response,
                 envelope=envelope,
-                detail=acquisition.detail,
+                detail=detail_acquisition.detail,
             )
         )
         sequence += 1
