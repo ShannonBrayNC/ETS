@@ -13,6 +13,7 @@ proof material instead of treating attachment presence as evidence of truth.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final, Literal
@@ -317,7 +318,9 @@ def verify_agent365_r0_evidence_v2(
             "attached v1 proof material is not an Evidence Object JSON object",
         )
     try:
-        attached_v1 = EvidenceObject.model_validate(raw_attached_v1)
+        attached_v1 = EvidenceObject.model_validate_json(
+            json.dumps(raw_attached_v1, separators=(",", ":"), sort_keys=True)
+        )
     except ValueError as exc:
         raise RangerR0EvidenceV2Error(
             "invalid_v1_proof_material",
