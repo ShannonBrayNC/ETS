@@ -133,3 +133,23 @@ ip -br addr
 This VM is a software/virtualization twin. Successful creation or successful HQP rehearsal does not establish physical power-loss durability, physical TPM custody, Secure Boot implementation on the future appliance, NVMe endurance, thermal limits, physical NIC reliability, pilot readiness, or production readiness.
 
 The future physical `EDGEW-RT0-DUT` must execute a new exact-identity HQP run. VT0 results remain historical simulated evidence and are never promoted into a physical qualification result.
+
+
+## Partial-run recovery and QEMU datastore permissions
+
+If qcow2 disks were created but libvirt did not define the domain, do not delete or overwrite them automatically. Inspect the retained `virt-install.log` first.
+
+The provisioner supports bounded recovery:
+
+```bash
+bash scripts/qualification/edgew_vt0/provision_vt0_dut.sh \
+  --storage-root /srv/ets-lab \
+  --resume-partial \
+  --apply
+```
+
+`--resume-partial` requires both expected qcow2 files and validates their format and virtual sizes before reuse.
+
+System libvirt runs QEMU as a non-root runtime identity. The provisioner resolves the local QEMU service account (normally `libvirt-qemu` on Ubuntu), grants a narrow POSIX ACL for traversal of the ETS storage root and read/write access to the VM directory/disks, and verifies access as that runtime account before calling `virt-install`.
+
+Do not solve datastore access failures by making the ETS datastore world-writable. If the ACL preflight succeeds but VM start is still denied, inspect the retained `virt-install.log` and Ubuntu AppArmor audit messages separately; DAC and AppArmor are distinct enforcement layers.
