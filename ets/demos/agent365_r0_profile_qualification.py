@@ -19,14 +19,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from ets.capture.otlp import OtlpObservationV1
 from ets.demos.agent365_r0_correlation import (
     Agent365IdentityObservationV1,
-    Agent365R0CorrelationBundleV1,
     Agent365RetainedSourceRefV1,
     SharePointMissionCorrelationAnchorV1,
     correlate_agent365_to_r0_mission,
 )
 from ets.demos.agent365_r0_otel import (
     Agent365OtlpAttributeProfileV1,
-    Agent365OtlpProjectionV1,
     project_agent365_otlp,
 )
 
@@ -271,7 +269,9 @@ def _string_attribute_keys(metadata: Mapping[str, Any]) -> tuple[str, ...]:
         if not isinstance(key, str) or not key:
             raise Agent365ProfileQualificationError("OTLP attribute key is not a non-empty string")
         if not isinstance(wrapped, Mapping):
-            raise Agent365ProfileQualificationError("OTLP attribute value is not an AnyValue mapping")
+            raise Agent365ProfileQualificationError(
+                "OTLP attribute value is not an AnyValue mapping"
+            )
         if set(wrapped) != {"string_value"}:
             continue
         value = wrapped.get("string_value")
