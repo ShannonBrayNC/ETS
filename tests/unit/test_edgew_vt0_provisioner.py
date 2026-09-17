@@ -50,9 +50,15 @@ def test_provisioner_preserves_vt0_safety_and_topology_contract() -> None:
     assert "--tpm backend.type=emulator,backend.version=2.0,model=tpm-crb" in text
     assert "Ubuntu 24.04 LTS" in text
     assert "--allow-root-storage" in text
+    assert "--resume-partial" in text
     assert 'MOUNT_TARGET" == "/"' in text
     assert "refusing overwrite" in text.lower()
     assert "not physical qualification" in text
+    assert "--dry-run" in text
+    assert "--print-xml" in text
+    assert "virt-install-preflight.xml" in text
+    assert "virt-install.log" in text
+    assert "Validated retained partial-run qcow2 disks." in text
 
 
 def test_storage_preparer_requires_explicit_destructive_apply() -> None:
