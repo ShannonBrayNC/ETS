@@ -1,8 +1,8 @@
 """Ranger R0 receipt/motion boundary for the frozen Agent 365 P0 demonstration.
 
-This module deliberately separates controller intent, actuator acknowledgement, and observed
-physical result. A STOP command or motor-controller acknowledgement never becomes an implicit
-claim that the chassis actually stopped; a later sensor observation is required.
+The boundary keeps controller intent, actuator acknowledgement, and observed physical result
+separate. A STOP command or controller acknowledgement never becomes an implicit claim that
+the chassis actually stopped; a later observation from a distinct observer is required.
 """
 
 from __future__ import annotations
@@ -129,7 +129,7 @@ class RangerR0MotionStartReceiptV1(StrictModel):
     actuator_id: str = Field(min_length=1, max_length=256)
     actuator_command_id: str = Field(min_length=1, max_length=256)
     commanded_linear_speed_mps: float = Field(gt=0.0, le=0.25)
-    commanded_yaw_rate_rad_s: Literal[0.0] = 0.0
+    commanded_yaw_rate_rad_s: float = Field(default=0.0, ge=0.0, le=0.0)
     controller_acknowledged: bool
     acknowledged_at: datetime
     acknowledged_monotonic_ns: int = Field(ge=0)
@@ -206,8 +206,8 @@ class RangerR0StopActuationReceiptV1(StrictModel):
     delivery_id: str = Field(min_length=1, max_length=256)
     actuator_id: str = Field(min_length=1, max_length=256)
     actuator_command_id: str = Field(min_length=1, max_length=256)
-    commanded_linear_speed_mps: Literal[0.0] = 0.0
-    commanded_yaw_rate_rad_s: Literal[0.0] = 0.0
+    commanded_linear_speed_mps: float = Field(default=0.0, ge=0.0, le=0.0)
+    commanded_yaw_rate_rad_s: float = Field(default=0.0, ge=0.0, le=0.0)
     controller_acknowledged: bool
     acknowledged_at: datetime
     acknowledged_monotonic_ns: int = Field(ge=0)
@@ -445,7 +445,24 @@ class RangerR0MotionBoundary:
             raise RangerR0MotionBoundaryError(
                 "invalid_monotonic_time", "received_monotonic_ns cannot be negative"
             )
+        if (
+            command.retry_of_delivery_id is None
+            and self._state is not RangerR0MotionState.WAITING_FOR_COMMAND
+        ):
+            raise RangerR0MotionBoundaryError(
+                "boundary_busy", "Ranger boundary already owns a mission execution"
+            )
 
+        receipt = RangerR0CommandReceiptV1(
+            mission_id=command.mission_id,
+            delivery_id=command.delivery_id,
+            vehicle_id=self.vehicle_id,
+            boot_id=self.boot_id,
+            gateway_command_sha256=command.payload_sha256(),
+            execution_material_sha256=execution_material_sha256(command),
+            received_at=received_at,
+            received_monotonic_ns=received_monotonic_ns,
+        )
         transport_retry = self._ledger.consume(command, received_at=received_at)
         if transport_retry:
             payload = {
@@ -471,20 +488,6 @@ class RangerR0MotionBoundary:
                 transport_retry=True,
             )
 
-        if self._state is not RangerR0MotionState.WAITING_FOR_COMMAND:
-            raise RangerR0MotionBoundaryError(
-                "boundary_busy", "Ranger boundary already owns a mission execution"
-            )
-        receipt = RangerR0CommandReceiptV1(
-            mission_id=command.mission_id,
-            delivery_id=command.delivery_id,
-            vehicle_id=self.vehicle_id,
-            boot_id=self.boot_id,
-            gateway_command_sha256=command.payload_sha256(),
-            execution_material_sha256=execution_material_sha256(command),
-            received_at=received_at,
-            received_monotonic_ns=received_monotonic_ns,
-        )
         event = _envelope(
             command=command,
             event_id=self._next_event_id(command, "received"),
@@ -510,8 +513,9 @@ class RangerR0MotionBoundary:
         evaluated_monotonic_ns: int,
     ) -> MissionCorrelationEnvelopeV1:
         command = self._require_state(RangerR0MotionState.RECEIVED)
-        self._accept_monotonic(evaluated_monotonic_ns)
-        decision = "ALLOW" if local_motion_ready and not hardware_estop_asserted else "DENY"
+        decision: Literal["ALLOW", "DENY"] = (
+            "ALLOW" if local_motion_ready and not hardware_estop_asserted else "DENY"
+        )
         if hardware_estop_asserted:
             reason = "hardware_estop_asserted"
         elif not local_motion_ready:
@@ -528,6 +532,7 @@ class RangerR0MotionBoundary:
             evaluated_at=evaluated_at,
             evaluated_monotonic_ns=evaluated_monotonic_ns,
         )
+        self._accept_monotonic(authorization.evaluated_monotonic_ns)
         event = self._append_event(
             command,
             label="authorized" if decision == "ALLOW" else "authorization-denied",
@@ -558,7 +563,6 @@ class RangerR0MotionBoundary:
         acknowledged_monotonic_ns: int,
     ) -> MissionCorrelationEnvelopeV1:
         command = self._require_state(RangerR0MotionState.AUTHORIZED)
-        self._accept_monotonic(acknowledged_monotonic_ns)
         if commanded_linear_speed_mps > command.command_parameters.max_speed_mps:
             raise RangerR0MotionBoundaryError(
                 "start_speed_exceeds_authorization",
@@ -574,6 +578,7 @@ class RangerR0MotionBoundary:
             acknowledged_at=acknowledged_at,
             acknowledged_monotonic_ns=acknowledged_monotonic_ns,
         )
+        self._accept_monotonic(receipt.acknowledged_monotonic_ns)
         event = self._append_event(
             command,
             label="motion-start",
@@ -600,10 +605,7 @@ class RangerR0MotionBoundary:
     ) -> MissionCorrelationEnvelopeV1:
         command = self._require_state(RangerR0MotionState.MOTION_STARTED)
         observation = RangerR0StopObservationV1.model_validate(observation.model_dump())
-        self._require_command_binding(
-            command, observation.mission_id, observation.delivery_id
-        )
-        self._accept_monotonic(observation.observed_monotonic_ns)
+        self._require_command_binding(command, observation.mission_id, observation.delivery_id)
         if (
             observation.condition is RangerR0StopCondition.OBSTACLE
             and observation.obstacle_distance_m is not None
@@ -613,6 +615,7 @@ class RangerR0MotionBoundary:
                 "obstacle_outside_stop_threshold",
                 "obstacle observation is outside the authorized stop distance",
             )
+        self._accept_monotonic(observation.observed_monotonic_ns)
         event = self._append_event(
             command,
             label="stop-observed",
@@ -636,7 +639,6 @@ class RangerR0MotionBoundary:
             raise RangerR0MotionBoundaryError(
                 "missing_stop_observation", "stop decision requires retained observation"
             )
-        self._accept_monotonic(decided_monotonic_ns)
         decision = RangerR0StopDecisionV1(
             mission_id=command.mission_id,
             delivery_id=command.delivery_id,
@@ -645,6 +647,7 @@ class RangerR0MotionBoundary:
             decided_at=decided_at,
             decided_monotonic_ns=decided_monotonic_ns,
         )
+        self._accept_monotonic(decision.decided_monotonic_ns)
         event = self._append_event(
             command,
             label="stop-decided",
@@ -666,7 +669,6 @@ class RangerR0MotionBoundary:
         acknowledged_monotonic_ns: int,
     ) -> MissionCorrelationEnvelopeV1:
         command = self._require_state(RangerR0MotionState.STOP_DECIDED)
-        self._accept_monotonic(acknowledged_monotonic_ns)
         if self._actuator_id is not None and actuator_id != self._actuator_id:
             raise RangerR0MotionBoundaryError(
                 "actuator_identity_changed",
@@ -681,6 +683,7 @@ class RangerR0MotionBoundary:
             acknowledged_at=acknowledged_at,
             acknowledged_monotonic_ns=acknowledged_monotonic_ns,
         )
+        self._accept_monotonic(receipt.acknowledged_monotonic_ns)
         event = self._append_event(
             command,
             label="stop-actuated",
@@ -706,15 +709,13 @@ class RangerR0MotionBoundary:
     ) -> MissionCorrelationEnvelopeV1:
         command = self._require_state(RangerR0MotionState.STOP_ACTUATED)
         observation = RangerR0ResultObservationV1.model_validate(observation.model_dump())
-        self._require_command_binding(
-            command, observation.mission_id, observation.delivery_id
-        )
-        self._accept_monotonic(observation.observed_monotonic_ns)
+        self._require_command_binding(command, observation.mission_id, observation.delivery_id)
         if self._actuator_id is not None and observation.observer_id == self._actuator_id:
             raise RangerR0MotionBoundaryError(
                 "actuator_cannot_self_attest_result",
                 "result observation must not use the actuator identity as observer",
             )
+        self._accept_monotonic(observation.observed_monotonic_ns)
         successful = (
             observation.observer_independent_of_actuator
             and observation.stationary_within_p0_threshold
