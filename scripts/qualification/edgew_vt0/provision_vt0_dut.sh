@@ -223,10 +223,22 @@ sudo setfacl -m "u:${QEMU_RUNTIME_USER}:rx" "$STORAGE_ROOT"
 sudo setfacl -m "u:${QEMU_RUNTIME_USER}:rwx" "$VM_DIR"
 sudo setfacl -m "d:u:${QEMU_RUNTIME_USER}:rwx" "$VM_DIR"
 
-if ! sudo -u "$QEMU_RUNTIME_USER" test -x "$STORAGE_ROOT"; then
-  echo "ERROR: QEMU runtime account still cannot traverse storage root: $STORAGE_ROOT" >&2
-  namei -l "$STORAGE_ROOT" >&2 || true
-  getfacl -p "$STORAGE_ROOT" >&2 || true
+if ! sudo -u "$QEMU_RUNTIME_USER" python3 - "$STORAGE_ROOT" "$VM_DIR" <<'PY'
+from pathlib import Path
+import os
+import sys
+
+for value in sys.argv[1:]:
+    path = Path(value)
+    os.stat(path)
+    if not path.is_dir():
+        raise SystemExit(f"expected directory: {path}")
+print("QEMU runtime path traversal/stat preflight passed.")
+PY
+then
+  echo "ERROR: QEMU runtime path traversal/stat preflight failed." >&2
+  namei -l "$STORAGE_ROOT" "$VM_DIR" >&2 || true
+  getfacl -p "$STORAGE_ROOT" "$VM_DIR" >&2 || true
   exit 2
 fi
 
@@ -343,14 +355,23 @@ fi
 
 # Ensure the runtime QEMU identity can open the retained/new qcow2 disks read-write.
 sudo setfacl -m "u:${QEMU_RUNTIME_USER}:rw-" "$OS_DISK" "$QUAL_DISK"
-for disk in "$OS_DISK" "$QUAL_DISK"; do
-  if ! sudo -u "$QEMU_RUNTIME_USER" test -r "$disk" || ! sudo -u "$QEMU_RUNTIME_USER" test -w "$disk"; then
-    echo "ERROR: QEMU runtime account lacks read/write access to $disk" >&2
-    namei -l "$disk" >&2 || true
-    getfacl -p "$disk" >&2 || true
-    exit 2
-  fi
-done
+if ! sudo -u "$QEMU_RUNTIME_USER" python3 - "$OS_DISK" "$QUAL_DISK" <<'PY'
+from pathlib import Path
+import os
+import sys
+
+for value in sys.argv[1:]:
+    path = Path(value)
+    with path.open("r+b", buffering=0) as handle:
+        os.fstat(handle.fileno())
+print("QEMU runtime qcow2 read/write preflight passed.")
+PY
+then
+  echo "ERROR: QEMU runtime account cannot open the VT0 qcow2 disks read/write." >&2
+  namei -l "$OS_DISK" "$QUAL_DISK" >&2 || true
+  getfacl -p "$OS_DISK" "$QUAL_DISK" >&2 || true
+  exit 2
+fi
 
 virt_args=(
   --connect qemu:///system
