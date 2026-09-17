@@ -155,7 +155,9 @@ def run_agent365_r0_qualification_from_mission(
             "qualification requires the pre-dispatch AUTHORIZED mission status"
         )
     if mission.policy_version != POLICY_VERSION:
-        raise Agent365R0QualificationError("mission policy_version differs from the frozen P0 policy")
+        raise Agent365R0QualificationError(
+            "mission policy_version differs from the frozen P0 policy"
+        )
     try:
         FrozenR0CommandParameters.model_validate(mission.command_parameters)
     except ValueError as exc:
