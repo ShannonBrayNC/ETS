@@ -246,7 +246,10 @@ def test_http_error_classification_is_bounded() -> None:
         client.close()
 
 
-def test_live_sharepoint_input_enters_existing_downstream_qualification(tmp_path, monkeypatch) -> None:
+def test_live_sharepoint_input_enters_existing_downstream_qualification(
+    tmp_path,
+    monkeypatch,
+) -> None:
     mission = _authorized_mission()
     body = _source_bytes(mission=mission)
     response = _raw_response(body)
