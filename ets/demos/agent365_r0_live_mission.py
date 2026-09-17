@@ -409,12 +409,16 @@ def _validate_qualified_inputs(
 
     source_envelopes = {
         observation.source.source_envelope_sha256
-        for observation in (
-            *correlation_bundle.identity_observations,
-            *correlation_bundle.runtime_observations,
-            *correlation_bundle.tool_observations,
-        )
+        for observation in correlation_bundle.identity_observations
     }
+    source_envelopes.update(
+        observation.source.source_envelope_sha256
+        for observation in correlation_bundle.runtime_observations
+    )
+    source_envelopes.update(
+        observation.source.source_envelope_sha256
+        for observation in correlation_bundle.tool_observations
+    )
     if tuple(sorted(source_envelopes)) != packet.source_envelope_sha256s:
         raise Agent365R0LiveMissionError(
             "Agent 365 retained source commitments changed after profile qualification"
