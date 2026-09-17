@@ -18,6 +18,7 @@ BASE_IMAGE=""
 SSH_KEY=""
 APPLY=0
 ALLOW_ROOT_STORAGE=0
+RESUME_PARTIAL=0
 
 usage() {
   cat <<'EOF'
@@ -33,6 +34,7 @@ Options:
   --cpuset LIST            Host CPU set; default 0,2,4,6
   --numa-node N            Host NUMA node; default 0
   --apply                  Create disks and define/start the VM
+  --resume-partial         Reuse validated existing VT0 disks after a prior partial run
   --allow-root-storage     Explicitly allow storage rooted on / (not recommended)
   -h, --help               Show help
 
@@ -48,6 +50,7 @@ while [[ $# -gt 0 ]]; do
     --cpuset) CPUSET="${2:-}"; shift 2 ;;
     --numa-node) NUMA_NODE="${2:-}"; shift 2 ;;
     --apply) APPLY=1; shift ;;
+    --resume-partial) RESUME_PARTIAL=1; shift ;;
     --allow-root-storage) ALLOW_ROOT_STORAGE=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -234,37 +237,97 @@ PY
   fi
 fi
 
-if [[ -e "$OS_DISK" || -e "$QUAL_DISK" ]]; then
-  echo "ERROR: target disk already exists; refusing overwrite." >&2
+existing_os=0
+existing_qual=0
+[[ -e "$OS_DISK" ]] && existing_os=1
+[[ -e "$QUAL_DISK" ]] && existing_qual=1
+
+if [[ "$existing_os" -eq 1 || "$existing_qual" -eq 1 ]]; then
+  if [[ "$RESUME_PARTIAL" -ne 1 ]]; then
+    echo "ERROR: target disk already exists; refusing overwrite." >&2
+    echo "If this is the retained output of a prior partial VT0 run, inspect it and rerun with --resume-partial." >&2
+    exit 2
+  fi
+  if [[ "$existing_os" -ne 1 || "$existing_qual" -ne 1 ]]; then
+    echo "ERROR: --resume-partial requires both expected VT0 disks to exist." >&2
+    exit 2
+  fi
+
+  python3 - "$OS_DISK" "$QUAL_DISK" <<'PY'
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+expected = {
+    Path(sys.argv[1]): 64 * 1024**3,
+    Path(sys.argv[2]): 512 * 1024**3,
+}
+for path, expected_size in expected.items():
+    result = subprocess.run(
+        ["qemu-img", "info", "--output=json", str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    info = json.loads(result.stdout)
+    if info.get("format") != "qcow2":
+        raise SystemExit(f"{path}: expected qcow2, got {info.get('format')!r}")
+    if info.get("virtual-size") != expected_size:
+        raise SystemExit(
+            f"{path}: expected virtual size {expected_size}, got {info.get('virtual-size')}"
+        )
+print("Validated retained partial-run qcow2 disks.")
+PY
+else
+  qemu-img convert -p -O qcow2 "$BASE_IMAGE" "$OS_DISK"
+  qemu-img resize "$OS_DISK" "$OS_SIZE"
+  qemu-img create -f qcow2 "$QUAL_DISK" "$QUAL_SIZE"
+fi
+
+virt_args=(
+  --connect qemu:///system
+  --name "$VM_NAME"
+  --memory "$MEM_MIB"
+  --vcpus "${VCPUS},cpuset=${CPUSET},sockets=1,cores=${VCPUS},threads=1"
+  --numatune "${NUMA_NODE},memory.mode=strict"
+  --cpu host-passthrough
+  --machine q35
+  --boot uefi
+  --tpm backend.type=emulator,backend.version=2.0,model=tpm-crb
+  --disk "path=${OS_DISK},format=qcow2,bus=virtio,cache=none,io=native"
+  --disk "path=${QUAL_DISK},format=qcow2,bus=virtio,cache=none,io=native"
+  --network network=edgew-vt-mgmt,model=virtio
+  --network network=edgew-vt-source,model=virtio
+  --network network=edgew-vt-upstream,model=virtio
+  --network network=edgew-vt-fault,model=virtio
+  --osinfo detect=on,name=ubuntu24.04
+  --import
+  --cloud-init "clouduser-ssh-key=${SSH_KEY},disable=on"
+  --graphics none
+  --console pty,target.type=serial
+  --noautoconsole
+)
+
+PRECHECK_XML="${VM_DIR}/virt-install-preflight.xml"
+PRECHECK_ERR="${VM_DIR}/virt-install-preflight.err"
+INSTALL_LOG="${VM_DIR}/virt-install.log"
+
+echo "Running virt-install configuration preflight..."
+if ! virt-install "${virt_args[@]}" --dry-run --print-xml >"$PRECHECK_XML" 2>"$PRECHECK_ERR"; then
+  echo "ERROR: virt-install preflight failed before domain creation." >&2
+  echo "Diagnostic: $PRECHECK_ERR" >&2
+  cat "$PRECHECK_ERR" >&2
   exit 2
 fi
 
-qemu-img convert -p -O qcow2 "$BASE_IMAGE" "$OS_DISK"
-qemu-img resize "$OS_DISK" "$OS_SIZE"
-qemu-img create -f qcow2 "$QUAL_DISK" "$QUAL_SIZE"
-
-virt-install \
-  --connect qemu:///system \
-  --name "$VM_NAME" \
-  --memory "$MEM_MIB" \
-  --vcpus "${VCPUS},cpuset=${CPUSET},sockets=1,cores=${VCPUS},threads=1" \
-  --numatune "${NUMA_NODE},memory.mode=strict" \
-  --cpu host-passthrough \
-  --machine q35 \
-  --boot uefi \
-  --tpm backend.type=emulator,backend.version=2.0,model=tpm-crb \
-  --disk "path=${OS_DISK},format=qcow2,bus=virtio,cache=none,io=native" \
-  --disk "path=${QUAL_DISK},format=qcow2,bus=virtio,cache=none,io=native" \
-  --network network=edgew-vt-mgmt,model=virtio \
-  --network network=edgew-vt-source,model=virtio \
-  --network network=edgew-vt-upstream,model=virtio \
-  --network network=edgew-vt-fault,model=virtio \
-  --osinfo detect=on,name=ubuntu24.04 \
-  --import \
-  --cloud-init "clouduser-ssh-key=${SSH_KEY},disable=on" \
-  --graphics none \
-  --console pty,target.type=serial \
-  --noautoconsole
+echo "virt-install preflight passed; retained XML: $PRECHECK_XML"
+echo "Defining and starting VT0; diagnostic log: $INSTALL_LOG"
+if ! virt-install --debug "${virt_args[@]}" > >(tee "$INSTALL_LOG") 2>&1; then
+  echo "ERROR: virt-install failed. No overwrite/retry was attempted." >&2
+  echo "Retained diagnostic log: $INSTALL_LOG" >&2
+  exit 2
+fi
 
 virsh --connect qemu:///system autostart "$VM_NAME"
 
