@@ -108,7 +108,9 @@ class SharePointMissionArtifactV1(BaseModel):
 
         if self.status == MissionStatus.AUTHORIZED:
             if self.authorization_state != MissionAuthorizationState.AUTHORIZED:
-                raise ValueError("AUTHORIZED mission status requires AUTHORIZED authorization state")
+                raise ValueError(
+                    "AUTHORIZED mission status requires AUTHORIZED authorization state"
+                )
         if self.status in {
             MissionStatus.DISPATCHED,
             MissionStatus.EXECUTING,
@@ -294,7 +296,7 @@ def _required_string(fields: Mapping[str, object], name: str) -> str:
 
 def _optional_string(fields: Mapping[str, object], name: str) -> str | None:
     value = fields.get(name)
-    if value in {None, ""}:
+    if value is None or value == "":
         return None
     if not isinstance(value, str):
         raise ValueError(f"SharePoint field {name} must be a string when present")
