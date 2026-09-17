@@ -334,7 +334,7 @@ def test_revoked_authorization_is_rejected(tmp_path) -> None:
     mission = _authorized_mission()
     values = mission.model_dump(mode="python")
     values["authorization_state"] = MissionAuthorizationState.REVOKED
-    values["status"] = MissionStatus.AUTHORIZED
+    values["status"] = MissionStatus.ABORTED_POLICY
     revoked = SharePointMissionArtifactV1.model_validate(values)
     guard = GatewayR0MissionGuard(SqliteMissionDispatchLedger(tmp_path / "dispatch.db"))
 
