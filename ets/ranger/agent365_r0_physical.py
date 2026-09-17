@@ -180,8 +180,9 @@ def execute_physical_r0_mission(
         observed_monotonic_ns=local_clock.monotonic_ns(),
         hardware_estop_asserted=False,
     )
-    motion_applied = False
+    motion_command_attempted = False
     try:
+        motion_command_attempted = True
         motion_receipt = actuator.apply_motion(authorized.directive)
         _require_actuator_receipt(
             motion_receipt,
@@ -189,7 +190,6 @@ def execute_physical_r0_mission(
             actuator_id=actuator.actuator_id,
             command_kind="motion",
         )
-        motion_applied = True
 
         motion_observation = sensors.observe_motion_start(mission_id, authorized.directive)
         motion_started = boundary.record_motion_started(motion_observation)
@@ -197,7 +197,6 @@ def execute_physical_r0_mission(
         stop_observed: RangerR0BoundaryRecordV1 | None = None
         for _ in range(maximum_stop_observations):
             if sensors.hardware_estop_asserted():
-                _fail_safe_stop(actuator, mission_id, "hardware_estop_asserted_during_motion")
                 raise RangerR0PhysicalExecutionError(
                     "hardware_estop_asserted_during_motion",
                     "local E-stop asserted during motion; mission cannot claim normal completion",
@@ -207,7 +206,6 @@ def execute_physical_r0_mission(
             if stop_observed is not None:
                 break
         if stop_observed is None:
-            _fail_safe_stop(actuator, mission_id, "stop_observation_budget_exhausted")
             raise RangerR0PhysicalExecutionError(
                 "stop_observation_budget_exhausted",
                 "no qualified stop condition was observed within the bounded sample budget",
@@ -234,7 +232,7 @@ def execute_physical_r0_mission(
         result_observation = sensors.observe_result(mission_id, stop_authorized.directive)
         result_observed = boundary.record_result_observed(result_observation)
     except Exception:
-        if motion_applied:
+        if motion_command_attempted:
             _fail_safe_stop(actuator, mission_id, "physical_execution_exception")
         raise
 
