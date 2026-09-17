@@ -77,11 +77,12 @@ class MicrosoftAgent365CustodyStore:
         *,
         completed_at_utc: datetime,
     ) -> MicrosoftAgent365SnapshotCheckpointV1:
-        acquisitions = (*snapshot.inventory_pages, *snapshot.package_details)
-        if not acquisitions:
+        envelopes = tuple(item.envelope for item in snapshot.inventory_pages) + tuple(
+            item.envelope for item in snapshot.package_details
+        )
+        if not envelopes:
             raise ValueError("Agent 365 snapshot must contain at least one acquisition")
 
-        envelopes = tuple(item.envelope for item in acquisitions)
         tenant_id = envelopes[0].tenant_id
         if any(item.tenant_id != tenant_id for item in envelopes):
             raise MicrosoftAgent365CustodyConflict("snapshot contains more than one tenant")
