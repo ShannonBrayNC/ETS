@@ -367,7 +367,7 @@ for value in sys.argv[1:]:
 print("QEMU runtime qcow2 read/write preflight passed.")
 PY
 then
-  echo "ERROR: QEMU runtime account cannot open the VT0 qcow2 disks read/write." >&2
+  echo "ERROR: QEMU runtime account lacks read/write access to the VT0 qcow2 disks." >&2
   namei -l "$OS_DISK" "$QUAL_DISK" >&2 || true
   getfacl -p "$OS_DISK" "$QUAL_DISK" >&2 || true
   exit 2
