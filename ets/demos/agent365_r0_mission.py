@@ -219,6 +219,14 @@ def sharepoint_create_item_body(mission: SharePointMissionArtifactV1) -> dict[st
 def parse_sharepoint_fields(fields: Mapping[str, object]) -> SharePointMissionArtifactV1:
     """Validate fields returned by Graph instead of trusting mutable SharePoint state."""
 
+    scenario_id = _required_string(fields, "ScenarioId")
+    if scenario_id != MISSION_SCENARIO_ID:
+        raise ValueError("ScenarioId is outside the frozen P0 scenario")
+
+    requested_action = _required_string(fields, "RequestedAction")
+    if requested_action != MISSION_REQUESTED_ACTION:
+        raise ValueError("RequestedAction is outside the frozen P0 action")
+
     command_parameters_text = _required_string(fields, "CommandParameters")
     try:
         command_parameters = json.loads(command_parameters_text)
@@ -232,8 +240,6 @@ def parse_sharepoint_fields(fields: Mapping[str, object]) -> SharePointMissionAr
 
     return SharePointMissionArtifactV1(
         mission_id=_required_string(fields, "MissionId"),
-        scenario_id=_required_string(fields, "ScenarioId"),
-        requested_action=_required_string(fields, "RequestedAction"),
         authorization_state=MissionAuthorizationState(
             _required_string(fields, "AuthorizationState")
         ),
