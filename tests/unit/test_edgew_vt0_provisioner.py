@@ -59,6 +59,9 @@ def test_provisioner_preserves_vt0_safety_and_topology_contract() -> None:
     assert "virt-install-preflight.xml" in text
     assert "virt-install.log" in text
     assert "Validated retained partial-run qcow2 disks." in text
+    assert "libvirt-qemu" in text
+    assert "setfacl" in text
+    assert "QEMU runtime account lacks read/write access" in text
 
 
 def test_storage_preparer_requires_explicit_destructive_apply() -> None:
