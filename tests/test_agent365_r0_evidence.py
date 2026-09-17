@@ -11,6 +11,7 @@ from ets.demos.agent365_r0_mission import (
     authorize_mission,
     create_pending_mission,
 )
+from ets.evidence_object.canonical import object_hash
 from ets.gateway.agent365_r0_mission import (
     FrozenR0CommandParameters,
     GatewayR0DispatchBundle,
@@ -206,7 +207,7 @@ def test_closure_retains_all_authoritative_source_bytes(tmp_path) -> None:
     assert closure.evidence_object.identity.evidence_id == (
         f"ranger-r0:{MISSION_ID}:consequence-closure"
     )
-    assert closure.evidence_object_hash.startswith("sha256:")
+    assert closure.evidence_object_hash == object_hash(closure.evidence_object)
 
 
 def test_stop_command_remains_distinct_from_independent_result_proof(tmp_path) -> None:
