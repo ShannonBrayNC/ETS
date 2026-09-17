@@ -1,13 +1,14 @@
 """Repeatable end-to-end qualification for the frozen Agent 365 + Ranger R0 demo.
 
-This harness is intentionally bounded.  It exercises the exact reference mission used by
-our P0 demonstration from Microsoft-side authorization through Gateway dispatch, Ranger
-R0 motion/stop evidence, Evidence Object v1/v2 closure, durable custody, process-style
-store reopen, and mission_id reconstruction.
+This harness is intentionally bounded. It exercises the exact frozen mission contract from
+Microsoft-side authorization through Gateway dispatch, Ranger R0 motion/stop evidence,
+Evidence Object v1/v2 closure, durable custody, process-style store reopen, and mission_id
+reconstruction.
 
-It is a software/reference qualification, not a substitute for live-tenant Graph/Agent
-365 acquisition or a physical-hardware run.  Those observations can replace the bounded
-reference inputs without changing the mission/evidence contracts exercised here.
+The reference wrapper builds a deterministic Microsoft-side mission. Live Microsoft inputs
+may call ``run_agent365_r0_qualification_from_mission`` after their source bytes have been
+retained and their SharePoint fields have been validated. Downstream Gateway/R0/evidence
+contracts are identical in both cases.
 """
 
 from __future__ import annotations
@@ -22,6 +23,8 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict
 
 from ets.demos.agent365_r0_mission import (
+    MissionAuthorizationState,
+    MissionStatus,
     SharePointMissionArtifactV1,
     authorize_mission,
     create_pending_mission,
@@ -65,7 +68,7 @@ DEFAULT_PARAMETERS = {
 
 
 class Agent365R0QualificationError(RuntimeError):
-    """Raised when the reference mission cannot complete the frozen P0 evidence chain."""
+    """Raised when a mission cannot complete the frozen P0 evidence chain."""
 
 
 class Agent365R0QualificationReport(BaseModel):
@@ -93,7 +96,7 @@ class Agent365R0QualificationReport(BaseModel):
     physical_result_supported: Literal[True] = True
     truth_claim_supported: Literal[False] = False
     claim_boundary: str = (
-        "reference_qualification_proves_contract_correlation_integrity_durable_reconstruction_"
+        "qualification_proves_contract_correlation_integrity_durable_reconstruction_"
         "and_independent_stopped_result_observation_but_not_unbounded_physical_truth"
     )
 
@@ -115,18 +118,56 @@ def run_agent365_r0_reference_qualification(
     started_at: datetime | None = None,
     authorization_artifact_ref: str = DEFAULT_ARTIFACT_REF,
 ) -> Agent365R0QualificationReport:
-    """Run the frozen reference mission and prove it survives durable reconstruction."""
+    """Build the frozen reference mission, then execute the common qualification path."""
 
     actual_mission_id = mission_id or str(uuid4())
     if not actual_mission_id.strip():
         raise Agent365R0QualificationError("mission_id must be a non-empty string")
+    t0 = (started_at or datetime.now(UTC)).astimezone(UTC)
+    mission = _authorized_mission(actual_mission_id, t0)
+    return run_agent365_r0_qualification_from_mission(
+        workdir,
+        mission,
+        started_at=t0,
+        authorization_artifact_ref=authorization_artifact_ref,
+    )
+
+
+def run_agent365_r0_qualification_from_mission(
+    workdir: str | Path,
+    mission: SharePointMissionArtifactV1,
+    *,
+    started_at: datetime | None = None,
+    authorization_artifact_ref: str = DEFAULT_ARTIFACT_REF,
+) -> Agent365R0QualificationReport:
+    """Execute the frozen downstream chain from an already validated Microsoft mission.
+
+    Callers supplying a live Microsoft mission are responsible for retaining the exact source
+    response before interpretation and for comparing the observed authorization commitment with
+    the previously authorized baseline. This function deliberately starts at the normalized,
+    validated mission boundary so reference and live inputs share identical downstream behavior.
+    """
+
+    if mission.authorization_state != MissionAuthorizationState.AUTHORIZED:
+        raise Agent365R0QualificationError("qualification requires an AUTHORIZED mission")
+    if mission.status != MissionStatus.AUTHORIZED:
+        raise Agent365R0QualificationError(
+            "qualification requires the pre-dispatch AUTHORIZED mission status"
+        )
+    if mission.policy_version != POLICY_VERSION:
+        raise Agent365R0QualificationError("mission policy_version differs from the frozen P0 policy")
+    try:
+        FrozenR0CommandParameters.model_validate(mission.command_parameters)
+    except ValueError as exc:
+        raise Agent365R0QualificationError(
+            "mission command parameters exceed the frozen R0 safety profile"
+        ) from exc
 
     t0 = (started_at or datetime.now(UTC)).astimezone(UTC)
-    base = Path(workdir)
-    run_dir = base / actual_mission_id
+    actual_mission_id = mission.mission_id
+    run_dir = Path(workdir) / actual_mission_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    mission = _authorized_mission(actual_mission_id, t0)
     dispatch = _dispatch(
         run_dir,
         mission,
@@ -156,7 +197,6 @@ def run_agent365_r0_reference_qualification(
     finally:
         store.close()
 
-    # Treat reopen as the minimum restart boundary: only durable bytes are available now.
     reopened = SQLiteRangerR0MissionBundleStore(store_path)
     try:
         retained_ids = reopened.mission_ids()
@@ -216,10 +256,11 @@ def _dispatch(
     observed_at: datetime,
     authorization_artifact_ref: str,
 ) -> GatewayR0DispatchBundle:
+    command_parameters = FrozenR0CommandParameters.model_validate(mission.command_parameters)
     request = GatewayR0MotionRequestV1(
         mission_id=mission.mission_id,
         policy_version=POLICY_VERSION,
-        command_parameters=FrozenR0CommandParameters.model_validate(DEFAULT_PARAMETERS),
+        command_parameters=command_parameters,
         authorization_material_sha256=mission.authorization_material_sha256(),
         authorization_artifact_ref=authorization_artifact_ref,
         delivery_id=f"qualification:{mission.mission_id}",
@@ -344,5 +385,6 @@ if __name__ == "__main__":
 __all__ = [
     "Agent365R0QualificationError",
     "Agent365R0QualificationReport",
+    "run_agent365_r0_qualification_from_mission",
     "run_agent365_r0_reference_qualification",
 ]
