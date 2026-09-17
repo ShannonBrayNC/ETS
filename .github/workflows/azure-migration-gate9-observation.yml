@@ -1,0 +1,280 @@
+name: Azure Migration Gate 9 Observation and Decommission Readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: Exact reviewed main commit authorized for Gate 9 readiness
+        required: true
+        type: string
+      baseline_gate8_run_id:
+        description: Earlier successful Gate 8 public verification workflow run ID
+        required: true
+        type: string
+      observation_gate8_run_id:
+        description: Later successful Gate 8 public verification workflow run ID
+        required: true
+        type: string
+      historical_key_run_id:
+        description: Successful historical-key offline verification workflow run ID
+        required: true
+        type: string
+      ops_readiness_relative_path:
+        description: Protected Gate 9 operations-readiness JSON path under GATE4_OPERATOR_ROOT
+        required: true
+        type: string
+      ops_readiness_sha256:
+        description: Exact SHA-256 of protected operations-readiness JSON
+        required: true
+        type: string
+      authorization:
+        description: Type GATE9_SOURCE_DECOMMISSION_READINESS_AUTHORIZED exactly
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate9-observation
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    name: Prove destination-only observation and authorize retirement readiness
+    runs-on: [self-hosted, linux, x64, ets-migration-gate4]
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 35
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      BASELINE_GATE8_RUN_ID: ${{ inputs.baseline_gate8_run_id }}
+      OBSERVATION_GATE8_RUN_ID: ${{ inputs.observation_gate8_run_id }}
+      HISTORICAL_KEY_RUN_ID: ${{ inputs.historical_key_run_id }}
+      OPS_READINESS_REL: ${{ inputs.ops_readiness_relative_path }}
+      OPS_READINESS_SHA256: ${{ inputs.ops_readiness_sha256 }}
+      AUTHORIZATION: ${{ inputs.authorization }}
+      DEST_RESOURCE_GROUP: rg-ets-prod-eastus
+      BASELINE_DIR: ${{ runner.temp }}/gate9-baseline
+      OBSERVATION_DIR: ${{ runner.temp }}/gate9-observation
+      BASELINE_REPORT: ${{ runner.temp }}/gate9-baseline/ets-gate8-public-cutover-verification.json
+      OBSERVATION_REPORT: ${{ runner.temp }}/gate9-observation/ets-gate8-public-cutover-verification.json
+      RUNTIME_REPORT: ${{ runner.temp }}/ets-gate9-runtime-audit.json
+      HISTORICAL_MARKER: ${{ runner.temp }}/ets-gate9-historical-key-marker.json
+      FINAL_REPORT: ${{ runner.temp }}/ets-gate9-decommission-readiness.json
+
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head or unsafe inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$AUTHORIZATION" == "GATE9_SOURCE_DECOMMISSION_READINESS_AUTHORIZED" ]]
+          [[ "$BASELINE_GATE8_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$OBSERVATION_GATE8_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$HISTORICAL_KEY_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$BASELINE_GATE8_RUN_ID" != "$OBSERVATION_GATE8_RUN_ID" ]]
+          [[ "$OPS_READINESS_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ -n '${{ vars.AZURE_CLIENT_ID }}' ]]
+          [[ -n "${GATE4_OPERATOR_ROOT:-}" ]]
+          [[ -d "$GATE4_OPERATOR_ROOT" ]]
+          [[ -n "$OPS_READINESS_REL" ]]
+          case "$OPS_READINESS_REL" in
+            /*|../*|*/../*|*/..|..)
+              echo 'Gate 9 operations-readiness path must remain under operator root' >&2
+              exit 2
+              ;;
+          esac
+          OPS_READINESS_PATH="$GATE4_OPERATOR_ROOT/$OPS_READINESS_REL"
+          [[ -f "$OPS_READINESS_PATH" ]]
+          echo "OPS_READINESS_PATH=$OPS_READINESS_PATH" >> "$GITHUB_ENV"
+
+      - name: Validate prerequisite workflow identities
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from urllib.request import Request, urlopen
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GITHUB_TOKEN"]
+          checks = (
+              (
+                  os.environ["BASELINE_GATE8_RUN_ID"],
+                  "Azure Migration Gate 8C Public Cutover Verification",
+                  ".github/workflows/azure-migration-gate8c-public-verify.yml",
+              ),
+              (
+                  os.environ["OBSERVATION_GATE8_RUN_ID"],
+                  "Azure Migration Gate 8C Public Cutover Verification",
+                  ".github/workflows/azure-migration-gate8c-public-verify.yml",
+              ),
+              (
+                  os.environ["HISTORICAL_KEY_RUN_ID"],
+                  "Azure Migration Historical Key Offline Verification",
+                  ".github/workflows/azure-migration-historical-key-offline-verify.yml",
+              ),
+          )
+          for run_id, expected_name, expected_path in checks:
+              request = Request(
+                  f"https://api.github.com/repos/{repo}/actions/runs/{run_id}",
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urlopen(request, timeout=20) as response:
+                  run = json.load(response)
+              required = {
+                  "name": expected_name,
+                  "path": expected_path,
+                  "status": "completed",
+                  "conclusion": "success",
+                  "event": "workflow_dispatch",
+                  "head_branch": "main",
+              }
+              for key, expected in required.items():
+                  if run.get(key) != expected:
+                      raise SystemExit(
+                          f"Gate 9 prerequisite workflow {run_id} failed {key} validation"
+                      )
+          PY
+
+      - name: Download baseline Gate 8 completion evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate8-public-cutover-verification
+          path: ${{ runner.temp }}/gate9-baseline
+          run-id: ${{ inputs.baseline_gate8_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download observation Gate 8 completion evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate8-public-cutover-verification
+          path: ${{ runner.temp }}/gate9-observation
+          run-id: ${{ inputs.observation_gate8_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Require exact Gate 8 evidence files
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -f "$BASELINE_REPORT" ]]
+          [[ -f "$OBSERVATION_REPORT" ]]
+
+      - name: Bind successful offline historical verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$HISTORICAL_KEY_RUN_ID" "$HISTORICAL_MARKER" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = {
+              "schema_version": "ets.azure-migration.gate9-historical-key-marker.v1",
+              "claim": "historical_source_evidence_verifies_without_source_key_vault",
+              "workflow_run_id": sys.argv[1],
+              "historical_offline_verification": True,
+              "source_key_vault_required": False,
+              "source_mutation_performed": False,
+          }
+          path = Path(sys.argv[2])
+          path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+          path.chmod(0o600)
+          PY
+
+      - name: Verify protected operations-readiness digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          observed="$(sha256sum "$OPS_READINESS_PATH" | awk '{print $1}')"
+          [[ "$observed" == "$OPS_READINESS_SHA256" ]]
+
+      - name: Azure login with destination identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Prove active destination runtime has no source-Azure dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate9_observation runtime-audit \
+            --resource-group "$DEST_RESOURCE_GROUP" \
+            --expected-tenant "$DEST_TENANT_ID" \
+            --expected-subscription "$DEST_SUBSCRIPTION_ID" \
+            --output "$RUNTIME_REPORT"
+
+      - name: Finalize Gate 9 decommission-readiness authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate9_observation finalize \
+            --baseline "$BASELINE_REPORT" \
+            --observation "$OBSERVATION_REPORT" \
+            --runtime "$RUNTIME_REPORT" \
+            --ops-readiness "$OPS_READINESS_PATH" \
+            --ops-readiness-sha256 "$OPS_READINESS_SHA256" \
+            --historical "$HISTORICAL_MARKER" \
+            --authorization "$AUTHORIZATION" \
+            --output "$FINAL_REPORT"
+
+      - name: Retain sanitized Gate 9 readiness evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-migration-gate9-decommission-readiness
+          path: ${{ runner.temp }}/ets-gate9-decommission-readiness.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove runner-local evidence copies
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$BASELINE_DIR" "$OBSERVATION_DIR"
+          rm -f "$RUNTIME_REPORT" "$HISTORICAL_MARKER" "$FINAL_REPORT"
+
+      - name: Clear destination Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert Gate 9 non-destructive boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 9 readiness boundary
+
+          - repeated destination-only observation: `verified`
+          - source fenced/dark/frozen across observation: `verified by Gate 8 artifacts`
+          - destination runtime source dependency: `not detected`
+          - historical source evidence offline verification: `verified`
+          - operations-readiness evidence: `digest-bound and verified`
+          - source decommission authorized: `true`
+          - source resource deletion: `not performed`
+          - source subscription cancellation: `not performed`
+
+          This workflow produces authorization evidence only. Destructive Azure retirement requires
+          a separate explicitly authorized execution workflow and post-retirement verification.
+          EOF

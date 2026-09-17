@@ -1,0 +1,24 @@
+{
+  "schema_version": "ets.azure-migration.gate9-ops-readiness.v1",
+  "claim": "destination_operations_ready_for_source_retirement",
+  "monitoring_operational": false,
+  "alerts_operational": false,
+  "cost_controls_operational": false,
+  "certificate_monitoring_operational": false,
+  "backup_or_bounded_readback_qualified": false,
+  "deployment_automation_destination_native": false,
+  "no_source_management_or_data_plane_use": false,
+  "rollback_evidence_retained": false,
+  "stale_source_writer_rollback_forbidden": false,
+  "evidence_refs": {
+    "monitoring_operational": "",
+    "alerts_operational": "",
+    "cost_controls_operational": "",
+    "certificate_monitoring_operational": "",
+    "backup_or_bounded_readback_qualified": "",
+    "deployment_automation_destination_native": "",
+    "no_source_management_or_data_plane_use": "",
+    "rollback_evidence_retained": "",
+    "stale_source_writer_rollback_forbidden": ""
+  }
+}
