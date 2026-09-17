@@ -105,7 +105,11 @@ def _worker(
     *,
     factory: _ClientFactory,
     provider: _FixtureProvider,
-) -> tuple[MicrosoftAgent365HostedWorker, MicrosoftAgent365CustodyStore, MicrosoftAgent365EncryptedPayloadStore]:
+) -> tuple[
+    MicrosoftAgent365HostedWorker,
+    MicrosoftAgent365CustodyStore,
+    MicrosoftAgent365EncryptedPayloadStore,
+]:
     custody = MicrosoftAgent365CustodyStore(tmp_path / "custody.sqlite")
     protected = MicrosoftAgent365EncryptedPayloadStore(tmp_path / "protected", b"K" * 32)
     worker = MicrosoftAgent365HostedWorker(
