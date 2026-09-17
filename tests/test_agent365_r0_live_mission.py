@@ -467,7 +467,7 @@ def test_changed_correlation_observation_set_fails_before_motion(tmp_path) -> No
     changed_runtime = correlation.runtime_observations[0].model_copy(
         update={"observation_id": "runtime:changed"}
     )
-    changed_correlation = correlation.model_copy(runtime_observations=(changed_runtime,))
+    changed_correlation = correlation.model_copy(\n        update={"runtime_observations": (changed_runtime,)}\n    )
     actuator = ScriptActuator()
 
     with pytest.raises(Agent365R0LiveMissionError, match="runtime observation set changed"):
