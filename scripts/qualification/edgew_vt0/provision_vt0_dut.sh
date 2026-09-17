@@ -191,15 +191,42 @@ fi
 
 mkdir -p "$VM_DIR" "$CACHE_DIR"
 
-# The system libvirt QEMU process runs as a non-root service account. Grant only
-# the traversal/read-write access needed for this VT0 datastore rather than
-# opening the datastore globally.
+# The system libvirt QEMU process runs as a non-root service account. Grant
+# execute-only traversal on parent directories when needed, then read/write
+# access only to the ETS datastore/VM path. Do not make these paths globally
+# writable.
+python3 - "$STORAGE_ROOT" "$QEMU_RUNTIME_USER" <<'PY'
+from pathlib import Path
+import subprocess
+import sys
+
+storage = Path(sys.argv[1]).resolve()
+user = sys.argv[2]
+
+# Walk from / down to the parent of the storage root. If the QEMU account
+# cannot traverse a component, add only an execute ACL for that user.
+current = Path("/")
+for part in storage.parts[1:-1]:
+    current /= part
+    probe = subprocess.run(
+        ["sudo", "-u", user, "test", "-x", str(current)],
+        check=False,
+    )
+    if probe.returncode != 0:
+        subprocess.run(
+            ["sudo", "setfacl", "-m", f"u:{user}:x", str(current)],
+            check=True,
+        )
+PY
+
 sudo setfacl -m "u:${QEMU_RUNTIME_USER}:rx" "$STORAGE_ROOT"
 sudo setfacl -m "u:${QEMU_RUNTIME_USER}:rwx" "$VM_DIR"
 sudo setfacl -m "d:u:${QEMU_RUNTIME_USER}:rwx" "$VM_DIR"
 
 if ! sudo -u "$QEMU_RUNTIME_USER" test -x "$STORAGE_ROOT"; then
-  echo "ERROR: QEMU runtime account cannot traverse storage root: $STORAGE_ROOT" >&2
+  echo "ERROR: QEMU runtime account still cannot traverse storage root: $STORAGE_ROOT" >&2
+  namei -l "$STORAGE_ROOT" >&2 || true
+  getfacl -p "$STORAGE_ROOT" >&2 || true
   exit 2
 fi
 
