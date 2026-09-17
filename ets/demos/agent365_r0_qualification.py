@@ -51,7 +51,7 @@ from ets.ranger.agent365_r0_evidence_v2 import (
 )
 from ets.ranger.agent365_r0_mission_store import SQLiteRangerR0MissionBundleStore
 
-POLICY_VERSION = "r0-forward-stop-policy.v1"
+POLICY_VERSION: Literal["r0-forward-stop-policy.v1"] = "r0-forward-stop-policy.v1"
 DEFAULT_AUTHORIZER_ID = "11111111-1111-4111-8111-111111111111"
 DEFAULT_ARTIFACT_REF = "sharepoint://ETS-R0-Missions/items/reference"
 DEFAULT_VEHICLE_ID = "ets-ranger:r0-demo"
