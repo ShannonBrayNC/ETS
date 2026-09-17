@@ -165,7 +165,7 @@ def test_obstacle_stop_preserves_mission_across_complete_robot_chain(tmp_path) -
     assert len(transcript.events) == 7
     assert all(event.mission_id == MISSION_ID for event in transcript.events)
     assert transcript.events[0].previous_event_digest == dispatch.egress_event.canonical_digest()
-    for previous, current in zip(transcript.events, transcript.events[1:]):
+    for previous, current in zip(transcript.events, transcript.events[1:], strict=False):
         assert current.parent_event_id == previous.event_id
         assert current.previous_event_digest == previous.canonical_digest()
     assert transcript.events[-1].event_type == "ranger.result.stationary.observed"
