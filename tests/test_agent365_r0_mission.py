@@ -136,6 +136,22 @@ def test_graph_fields_round_trip_preserves_authorized_material() -> None:
     assert_authorized_material_unchanged(authorized, observed)
 
 
+def test_parse_rejects_scenario_or_action_scope_drift() -> None:
+    body = sharepoint_create_item_body(_pending())
+    fields = body["fields"]
+    assert isinstance(fields, dict)
+
+    changed_scenario = dict(fields)
+    changed_scenario["ScenarioId"] = "agent365-r0-route-around-obstacle-v1"
+    with pytest.raises(ValueError, match="frozen P0 scenario"):
+        parse_sharepoint_fields(changed_scenario)
+
+    changed_action = dict(fields)
+    changed_action["RequestedAction"] = "TURN_AND_REROUTE"
+    with pytest.raises(ValueError, match="frozen P0 action"):
+        parse_sharepoint_fields(changed_action)
+
+
 def test_material_change_after_authorization_fails_closed() -> None:
     authorized = _authorized()
     values = authorized.model_dump(mode="python")
@@ -163,4 +179,14 @@ def test_parse_rejects_invalid_command_parameters_json() -> None:
     fields["CommandParameters"] = "not-json"
 
     with pytest.raises(ValueError, match="valid JSON"):
+        parse_sharepoint_fields(fields)
+
+
+def test_parse_rejects_non_string_optional_sharepoint_values() -> None:
+    body = sharepoint_create_item_body(_pending())
+    fields = body["fields"]
+    assert isinstance(fields, dict)
+    fields["EvidenceObjectId"] = {"unexpected": "shape"}
+
+    with pytest.raises(ValueError, match="EvidenceObjectId must be a string"):
         parse_sharepoint_fields(fields)
