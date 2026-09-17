@@ -182,7 +182,7 @@ def test_live_snapshot_chains_inventory_pages_and_detail_fanout() -> None:
     acquisitions = (*snapshot.inventory_pages, *snapshot.package_details)
     assert [item.envelope.acquisition_sequence for item in acquisitions] == [0, 1, 2, 3]
     assert acquisitions[0].envelope.previous_envelope_hash is None
-    for previous, current in zip(acquisitions, acquisitions[1:], strict=True):
+    for previous, current in zip(acquisitions[:-1], acquisitions[1:], strict=True):
         assert current.envelope.previous_envelope_hash == previous.envelope.envelope_hash
     assert snapshot.inventory_pages[0].envelope.raw_payload_utf8 == page_one.decode("utf-8")
     assert snapshot.package_details[1].detail.package.package_id == "pkg-2"
