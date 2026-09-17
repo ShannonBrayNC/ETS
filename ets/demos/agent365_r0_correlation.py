@@ -351,10 +351,20 @@ def _require_tenant(
     runtime: tuple[Agent365RuntimeObservationV1, ...],
     tools: tuple[Agent365ToolObservationV1, ...],
 ) -> None:
-    for observation in (*identities, *runtime, *tools):
+    for observation in identities:
         if observation.source.tenant_id != tenant_id:
             raise Agent365R0CorrelationError(
-                "Agent 365 observation tenant differs from the SharePoint mission tenant"
+                "Agent 365 identity observation tenant differs from the SharePoint mission tenant"
+            )
+    for observation in runtime:
+        if observation.source.tenant_id != tenant_id:
+            raise Agent365R0CorrelationError(
+                "Agent 365 runtime observation tenant differs from the SharePoint mission tenant"
+            )
+    for observation in tools:
+        if observation.source.tenant_id != tenant_id:
+            raise Agent365R0CorrelationError(
+                "Agent 365 tool observation tenant differs from the SharePoint mission tenant"
             )
 
 
