@@ -310,7 +310,10 @@ class SqliteMissionDispatchLedger:
                 if retry_of_delivery_id is None:
                     raise GatewayMissionEnforcementError(
                         "authorization_already_consumed",
-                        "mission authorization was already consumed; explicit retry linkage required",
+                        (
+                            "mission authorization was already consumed; "
+                            "explicit retry linkage required"
+                        ),
                     )
                 if existing[0] != authorization_material_sha256:
                     raise GatewayMissionEnforcementError(
@@ -400,11 +403,21 @@ class GatewayR0MissionGuard:
         ingress_id = f"gateway:{request.delivery_id}:ingress"
         decision_id = f"gateway:{request.delivery_id}:decision"
         egress_id = f"gateway:{request.delivery_id}:egress"
+        ingress_event_type = (
+            "gateway.command.retry.received"
+            if transport_retry
+            else "gateway.command.received"
+        )
+        egress_event_type = (
+            "gateway.command.retry.accepted"
+            if transport_retry
+            else "gateway.command.accepted"
+        )
 
         ingress = MissionCorrelationEnvelopeV1(
             mission_id=request.mission_id,
             event_id=ingress_id,
-            event_type="gateway.command.retry.received" if transport_retry else "gateway.command.received",
+            event_type=ingress_event_type,
             source_domain=GATEWAY_SOURCE_DOMAIN,
             observed_at=observed_at,
             payload_sha256=command_payload_sha256,
@@ -448,7 +461,7 @@ class GatewayR0MissionGuard:
             mission_id=request.mission_id,
             event_id=egress_id,
             parent_event_id=decision.event_id,
-            event_type="gateway.command.retry.accepted" if transport_retry else "gateway.command.accepted",
+            event_type=egress_event_type,
             source_domain=GATEWAY_SOURCE_DOMAIN,
             observed_at=observed_at,
             payload_sha256=command.payload_sha256(),
