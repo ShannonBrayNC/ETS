@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.org/schemas/demos/agent365-r0-mission-event.v1.schema.json",
+  "title": "Agent 365 R0 Mission Correlation Event v1",
+  "description": "P0 cross-domain correlation envelope for the frozen Agent 365 + M365 + ETS + Ranger R0 demonstration.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "mission_id",
+    "event_id",
+    "event_type",
+    "source_domain",
+    "observed_at",
+    "payload_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "ets.demo.agent365-r0.mission-event.v1"
+    },
+    "mission_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "scenario_id": {
+      "const": "agent365-r0-forward-stop-v1",
+      "default": "agent365-r0-forward-stop-v1"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "parent_event_id": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 512,
+      "default": null
+    },
+    "event_type": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "source_domain": {
+      "type": "string",
+      "enum": [
+        "microsoft.sharepoint",
+        "microsoft.graph",
+        "microsoft.agent365",
+        "ets.microsoft-collector",
+        "ets.gateway",
+        "ranger.r0",
+        "ranger.sensor",
+        "ets.evidence-object",
+        "ets.verifier"
+      ]
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_time": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "default": null
+    },
+    "source_event_id": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 2048,
+      "default": null
+    },
+    "payload_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "payload_ref": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 4096,
+      "default": null
+    },
+    "authorization_artifact_ref": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 4096,
+      "default": null
+    },
+    "collector_identity": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 512,
+      "default": null
+    },
+    "collector_version": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 256,
+      "default": null
+    },
+    "correlation_basis": {
+      "type": ["string", "null"],
+      "enum": [
+        "native_mission_id",
+        "controlled_request_context",
+        "authorization_artifact",
+        "native_parent_identifier",
+        "ets_parent_event",
+        "not_applicable",
+        null
+      ],
+      "default": null
+    },
+    "previous_event_digest": {
+      "type": ["string", "null"],
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "default": null
+    }
+  }
+}
