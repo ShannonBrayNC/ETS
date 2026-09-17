@@ -47,7 +47,6 @@ from ets.ranger.evidence_object_adapter import ranger_decision_event_to_evidence
 from ets.ranger.evidence_object_verifier import verify_ranger_evidence_object
 from ets.ranger.source_evidence_verifier import verify_ranger_source_evidence
 
-
 _AUTH_ARTIFACT_ID: Final = "source:sharepoint-authorization"
 _GATEWAY_INGRESS_ID: Final = "source:gateway-ingress"
 _GATEWAY_DECISION_ID: Final = "source:gateway-decision"
