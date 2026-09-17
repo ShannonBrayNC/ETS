@@ -63,7 +63,7 @@ if [[ -z "${STORAGE_ROOT}" ]]; then
   exit 2
 fi
 
-for cmd in virsh virt-install qemu-img python3 findmnt ssh-keygen; do
+for cmd in virsh virt-install qemu-img python3 findmnt ssh-keygen getent setfacl; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "ERROR: required command not found: $cmd" >&2; exit 2; }
 done
 
@@ -141,6 +141,22 @@ CACHE_DIR="${STORAGE_ROOT}/cloud-images"
 OS_DISK="${VM_DIR}/${VM_NAME}-os.qcow2"
 QUAL_DISK="${VM_DIR}/${VM_NAME}-qualification.qcow2"
 DEFAULT_IMAGE="${CACHE_DIR}/noble-server-cloudimg-amd64.img"
+
+QEMU_RUNTIME_USER=""
+for candidate in libvirt-qemu qemu; do
+  if getent passwd "$candidate" >/dev/null 2>&1; then
+    QEMU_RUNTIME_USER="$candidate"
+    break
+  fi
+done
+if [[ -z "$QEMU_RUNTIME_USER" ]]; then
+  echo "ERROR: could not resolve the host QEMU runtime account (tried libvirt-qemu, qemu)." >&2
+  echo "Inspect /etc/libvirt/qemu.conf and the libvirt package runtime identity before continuing." >&2
+  exit 2
+fi
+QEMU_RUNTIME_UID="$(id -u "$QEMU_RUNTIME_USER")"
+QEMU_RUNTIME_GID="$(id -g "$QEMU_RUNTIME_USER")"
+QEMU_RUNTIME_GROUP="$(id -gn "$QEMU_RUNTIME_USER")"
 IMAGE_URL="https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
 SUMS_URL="https://cloud-images.ubuntu.com/noble/current/SHA256SUMS"
 
@@ -163,6 +179,7 @@ EDGEW-RT0-VT0 DUT provisioning plan
   TPM:                 swtpm TPM 2.0 / CRB
   guest:               Ubuntu 24.04 LTS amd64 cloud image
   networks:            mgmt, source, upstream, fault
+  QEMU runtime:        ${QEMU_RUNTIME_USER} (uid ${QEMU_RUNTIME_UID}, gid ${QEMU_RUNTIME_GID}/${QEMU_RUNTIME_GROUP})
   claim state:         simulated VT0 only; not physical qualification
 EOF
 
@@ -173,6 +190,18 @@ if [[ "$APPLY" -ne 1 ]]; then
 fi
 
 mkdir -p "$VM_DIR" "$CACHE_DIR"
+
+# The system libvirt QEMU process runs as a non-root service account. Grant only
+# the traversal/read-write access needed for this VT0 datastore rather than
+# opening the datastore globally.
+sudo setfacl -m "u:${QEMU_RUNTIME_USER}:rx" "$STORAGE_ROOT"
+sudo setfacl -m "u:${QEMU_RUNTIME_USER}:rwx" "$VM_DIR"
+sudo setfacl -m "d:u:${QEMU_RUNTIME_USER}:rwx" "$VM_DIR"
+
+if ! sudo -u "$QEMU_RUNTIME_USER" test -x "$STORAGE_ROOT"; then
+  echo "ERROR: QEMU runtime account cannot traverse storage root: $STORAGE_ROOT" >&2
+  exit 2
+fi
 
 if [[ ! -f "$SSH_KEY" ]]; then
   if [[ "$SSH_KEY" != "${HOME}/.ssh/edgew_vt0.pub" ]]; then
@@ -284,6 +313,17 @@ else
   qemu-img resize "$OS_DISK" "$OS_SIZE"
   qemu-img create -f qcow2 "$QUAL_DISK" "$QUAL_SIZE"
 fi
+
+# Ensure the runtime QEMU identity can open the retained/new qcow2 disks read-write.
+sudo setfacl -m "u:${QEMU_RUNTIME_USER}:rw-" "$OS_DISK" "$QUAL_DISK"
+for disk in "$OS_DISK" "$QUAL_DISK"; do
+  if ! sudo -u "$QEMU_RUNTIME_USER" test -r "$disk" || ! sudo -u "$QEMU_RUNTIME_USER" test -w "$disk"; then
+    echo "ERROR: QEMU runtime account lacks read/write access to $disk" >&2
+    namei -l "$disk" >&2 || true
+    getfacl -p "$disk" >&2 || true
+    exit 2
+  fi
+done
 
 virt_args=(
   --connect qemu:///system
