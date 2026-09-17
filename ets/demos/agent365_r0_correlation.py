@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -36,6 +36,13 @@ class Agent365ToolStatus(StrEnum):
 
 class StrictCorrelationModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+
+class _ObservationWithId(Protocol):
+    observation_id: str
+
+
+ObservationT = TypeVar("ObservationT", bound=_ObservationWithId)
 
 
 class Agent365RetainedSourceRefV1(StrictCorrelationModel):
@@ -311,10 +318,7 @@ def correlate_agent365_to_r0_mission(
     bound_identities = tuple(
         item
         for item in identities
-        if (
-            item.package_id in referenced_packages
-            or item.agent_identity_id in referenced_agents
-        )
+        if item.package_id in referenced_packages or item.agent_identity_id in referenced_agents
     )
     if not bound_identities:
         raise Agent365R0CorrelationError(
@@ -357,10 +361,10 @@ def _require_tenant(
             )
 
 
-def _dedupe_observations[T: BaseModel](items: tuple[T, ...]) -> tuple[T, ...]:
-    retained: dict[str, T] = {}
+def _dedupe_observations(items: tuple[ObservationT, ...]) -> tuple[ObservationT, ...]:
+    retained: dict[str, ObservationT] = {}
     for item in items:
-        observation_id = getattr(item, "observation_id")
+        observation_id = item.observation_id
         previous = retained.get(observation_id)
         if previous is not None and previous != item:
             raise Agent365R0CorrelationError(
