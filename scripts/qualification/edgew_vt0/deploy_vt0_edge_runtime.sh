@@ -74,7 +74,14 @@ echo "--- filesystems ---"
 df -h / "$QUAL_MOUNT" || true
 echo "--- root block topology ---"
 lsblk -b -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS /dev/vda || true
-command -v growpart || true
+echo "--- root partition table ---"
+sudo sfdisk -d /dev/vda || true
+echo "--- growpart dry-run ---"
+if command -v growpart >/dev/null 2>&1; then
+  sudo growpart -N /dev/vda 1 2>&1 || true
+else
+  echo "growpart_not_installed"
+fi
 echo "--- docker/containerd commands ---"
 command -v docker || true
 command -v containerd || true
@@ -187,7 +194,25 @@ if [[ "$ROOT_SOURCE" == "/dev/vda1" && "$ROOT_FSTYPE" == "ext4" &&       "$ROOT_
     df -hT /
   } | sudo tee "$ROOT_RECOVERY/before.txt" >/dev/null
 
-  echo "Expanding VT0 root partition /dev/vda1 to the available 64 GiB OS-disk boundary..."
+  GROWPART_DRYRUN="$(sudo growpart -N /dev/vda 1 2>&1 || true)"
+  printf '%s\n' "$GROWPART_DRYRUN" \
+    | sudo tee "$ROOT_RECOVERY/growpart-dry-run.txt" >/dev/null
+
+  if grep -q '^CHANGE:' <<<"$GROWPART_DRYRUN"; then
+    echo "growpart dry-run confirms /dev/vda1 can expand."
+  elif grep -q '^NOCHANGE:' <<<"$GROWPART_DRYRUN"; then
+    echo "ERROR: bounded root expansion is not possible without moving another partition." >&2
+    echo "$GROWPART_DRYRUN" >&2
+    echo "No partition-table change was attempted." >&2
+    exit 3
+  else
+    echo "ERROR: could not establish a safe growpart plan for /dev/vda1." >&2
+    echo "$GROWPART_DRYRUN" >&2
+    echo "No partition-table change was attempted." >&2
+    exit 3
+  fi
+
+  echo "Expanding VT0 root partition /dev/vda1 to the dry-run-approved boundary..."
   sudo growpart /dev/vda 1
   sudo udevadm settle
   sudo resize2fs /dev/vda1
