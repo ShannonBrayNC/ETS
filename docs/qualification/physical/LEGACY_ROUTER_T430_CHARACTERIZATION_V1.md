@@ -29,6 +29,31 @@ The intended topology is:
 
 The first path remains untouched. The second path is the isolated characterization path.
 
+## When both physical NICs currently have default routes
+
+The current T430 baseline may show both `eno1` and `eno2` receiving DHCP/default routes on the normal LAN. In that state **neither interface is eligible for router fault testing**.
+
+Keep `eno1` as management and convert `eno2` into an isolated lab NIC only after a plan review:
+
+```bash
+python3 scripts/qualification/legacy_lab/prepare_lab_nic.py \
+  --interface eno2
+```
+
+The default plan uses `192.168.77.2/24`, creates no gateway, sets `ipv4.never-default=yes`, and does not change anything without `--apply`. It refuses apply if no other interface currently provides a default route.
+
+After reviewing the plan:
+
+```bash
+python3 scripts/qualification/legacy_lab/prepare_lab_nic.py \
+  --interface eno2 \
+  --apply
+```
+
+A successful conversion ends with `LAB_NIC_READY=true` and prints the original NetworkManager connection name plus a rollback command.
+
+Do not paste documentation placeholders such as `<DEDICATED_LAB_NIC>` literally into Bash: angle brackets are shell redirection operators. Substitute the actual interface name, for example `eno2`.
+
 ## Record the physical device first
 
 Before changing firmware or factory-resetting anything, record locally:
