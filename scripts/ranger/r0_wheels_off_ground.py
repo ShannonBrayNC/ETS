@@ -4,12 +4,17 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from ets.ranger.agent365_r0_bench_hardware import (
     GpioZeroDrv8833Backend,
     GpioZeroNormallyClosedEstop,
     create_dual_vl53l0x_backends,
+)
+from ets.ranger.agent365_r0_hardware_config import (
+    hardware_config_sha256,
+    load_r0_bench_hardware_config,
 )
 from ets.ranger.agent365_r0_wheels_off_ground import (
     R0WheelsOffGroundConfigV1,
@@ -25,17 +30,8 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument("--execute-wheels-off-ground", action="store_true")
+    parser.add_argument("--hardware-config", type=Path, required=True)
     parser.add_argument("--output-json", type=Path, required=True)
-    parser.add_argument("--left-in1", type=int, required=True)
-    parser.add_argument("--left-in2", type=int, required=True)
-    parser.add_argument("--right-in1", type=int, required=True)
-    parser.add_argument("--right-in2", type=int, required=True)
-    parser.add_argument("--estop-pin", type=int, required=True)
-    parser.add_argument("--front-xshut", type=int, required=True)
-    parser.add_argument("--rear-xshut", type=int, required=True)
-    parser.add_argument("--duty-cycle", type=float, default=0.20)
-    parser.add_argument("--pulse-seconds", type=float, default=0.40)
-    parser.add_argument("--max-rear-translation-m", type=float, default=0.03)
     return parser
 
 
@@ -46,25 +42,29 @@ def main() -> int:
             "Refusing motor initialization without --execute-wheels-off-ground"
         )
 
+    hardware = load_r0_bench_hardware_config(args.hardware_config)
+    gpio = hardware.gpio
     config = R0WheelsOffGroundConfigV1(
-        duty_cycle=args.duty_cycle,
-        pulse_seconds=args.pulse_seconds,
-        max_rear_translation_m=args.max_rear_translation_m,
+        duty_cycle=hardware.wheels_off_ground_duty_cycle,
+        pulse_seconds=hardware.wheels_off_ground_pulse_seconds,
+        max_rear_translation_m=hardware.wheels_off_ground_max_rear_translation_m,
     )
 
     motor: GpioZeroDrv8833Backend | None = None
     estop: GpioZeroNormallyClosedEstop | None = None
     try:
         motor = GpioZeroDrv8833Backend(
-            left_in1_pin=args.left_in1,
-            left_in2_pin=args.left_in2,
-            right_in1_pin=args.right_in1,
-            right_in2_pin=args.right_in2,
+            left_in1_pin=gpio.left_in1_bcm,
+            left_in2_pin=gpio.left_in2_bcm,
+            right_in1_pin=gpio.right_in1_bcm,
+            right_in2_pin=gpio.right_in2_bcm,
         )
-        estop = GpioZeroNormallyClosedEstop(args.estop_pin)
+        estop = GpioZeroNormallyClosedEstop(gpio.estop_bcm)
         front, rear = create_dual_vl53l0x_backends(
-            front_xshut_pin=args.front_xshut,
-            rear_xshut_pin=args.rear_xshut,
+            front_xshut_pin=gpio.front_xshut_bcm,
+            rear_xshut_pin=gpio.rear_xshut_bcm,
+            front_address=hardware.front_vl53l0x_address,
+            rear_address=hardware.rear_vl53l0x_address,
         )
         result = run_wheels_off_ground_pulse(
             motor=motor,
@@ -73,7 +73,16 @@ def main() -> int:
             estop=estop,
             config=config,
         )
-        payload = result.model_dump_json(indent=2) + "\n"
+        payload_obj = result.model_dump(mode="json")
+        payload_obj["hardware_config_sha256"] = hardware_config_sha256(
+            args.hardware_config
+        )
+        payload_obj["gpio"] = gpio.model_dump(mode="json")
+        payload = json.dumps(
+            payload_obj,
+            indent=2,
+            sort_keys=True,
+        ) + "\n"
         args.output_json.parent.mkdir(parents=True, exist_ok=True)
         args.output_json.write_text(payload, encoding="utf-8")
         print(payload, end="")

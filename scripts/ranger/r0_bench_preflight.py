@@ -16,6 +16,10 @@ from ets.ranger.agent365_r0_bench_hardware import (
     R0BenchCalibrationV1,
     create_dual_vl53l0x_backends,
 )
+from ets.ranger.agent365_r0_hardware_config import (
+    hardware_config_sha256,
+    load_r0_bench_hardware_config,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -25,38 +29,34 @@ def build_parser() -> argparse.ArgumentParser:
             "without authorizing motion."
         )
     )
-    parser.add_argument("--left-in1", type=int, required=True)
-    parser.add_argument("--left-in2", type=int, required=True)
-    parser.add_argument("--right-in1", type=int, required=True)
-    parser.add_argument("--right-in2", type=int, required=True)
-    parser.add_argument("--estop-pin", type=int, required=True)
-    parser.add_argument("--front-xshut", type=int, required=True)
-    parser.add_argument("--rear-xshut", type=int, required=True)
-    parser.add_argument("--calibrated-max-speed-mps", type=float, default=0.15)
-    parser.add_argument("--max-duty-cycle", type=float, default=0.55)
+    parser.add_argument("--hardware-config", type=Path, required=True)
     parser.add_argument("--output-json", type=Path, default=None)
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
+    hardware = load_r0_bench_hardware_config(args.hardware_config)
+    gpio = hardware.gpio
     calibration = R0BenchCalibrationV1(
-        calibrated_max_speed_mps=args.calibrated_max_speed_mps,
-        max_duty_cycle=args.max_duty_cycle,
+        calibrated_max_speed_mps=hardware.calibrated_max_speed_mps,
+        max_duty_cycle=hardware.max_duty_cycle,
     )
 
     motor = GpioZeroDrv8833Backend(
-        left_in1_pin=args.left_in1,
-        left_in2_pin=args.left_in2,
-        right_in1_pin=args.right_in1,
-        right_in2_pin=args.right_in2,
+        left_in1_pin=gpio.left_in1_bcm,
+        left_in2_pin=gpio.left_in2_bcm,
+        right_in1_pin=gpio.right_in1_bcm,
+        right_in2_pin=gpio.right_in2_bcm,
     )
-    estop = GpioZeroNormallyClosedEstop(args.estop_pin)
+    estop = GpioZeroNormallyClosedEstop(gpio.estop_bcm)
     try:
         motor.stop()
         front, rear = create_dual_vl53l0x_backends(
-            front_xshut_pin=args.front_xshut,
-            rear_xshut_pin=args.rear_xshut,
+            front_xshut_pin=gpio.front_xshut_bcm,
+            rear_xshut_pin=gpio.rear_xshut_bcm,
+            front_address=hardware.front_vl53l0x_address,
+            rear_address=hardware.rear_vl53l0x_address,
         )
         sensors = DualRangeR0PhysicalSensors(
             front_sensor=front,
@@ -84,7 +84,9 @@ def main() -> int:
 
         payload = json.dumps(
             {
-                "profile": "r0-bench-pi-drv8833-dual-vl53l0x.v1",
+                "profile": hardware.profile,
+                "hardware_config_sha256": hardware_config_sha256(args.hardware_config),
+                "gpio": gpio.model_dump(mode="json"),
                 "motion_authorized": False,
                 "estop_circuit_closed": True,
                 "actuator_outputs_forced_stopped": True,
@@ -96,7 +98,7 @@ def main() -> int:
             },
             indent=2,
             sort_keys=True,
-        ) + "\\n"
+        ) + "\n"
         if args.output_json is not None:
             args.output_json.parent.mkdir(parents=True, exist_ok=True)
             args.output_json.write_text(payload, encoding="utf-8")
