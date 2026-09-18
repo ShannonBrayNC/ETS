@@ -49,25 +49,39 @@ They implement the existing `RangerR0PhysicalActuator` and `RangerR0PhysicalSens
 
 ## Wiring contract
 
-Choose BCM GPIO pins appropriate for the actual Pi and record them in the retained run notes. Do not rely on an undocumented breadboard layout.
+The Developer Preview uses one canonical 40-pin Raspberry Pi BCM map. Do not substitute pins during qualification without creating a new retained hardware-config artifact.
 
-The required logical connections are:
+| Function | BCM | Physical pin | Connection |
+| --- | ---: | ---: | --- |
+| I2C SDA | 2 | 3 | both VL53L0X SDA |
+| I2C SCL | 3 | 5 | both VL53L0X SCL |
+| DRV8833 left IN1 | 12 | 32 | left motor channel input 1 |
+| DRV8833 left IN2 | 16 | 36 | left motor channel input 2 |
+| DRV8833 right IN1 | 13 | 33 | right motor channel input 1 |
+| DRV8833 right IN2 | 19 | 35 | right motor channel input 2 |
+| E-stop input | 17 | 11 | normally-closed switch to ground |
+| front VL53L0X XSHUT | 22 | 15 | front sensor shutdown/address control |
+| rear VL53L0X XSHUT | 27 | 13 | rear sensor shutdown/address control |
+| 3.3 V | — | 1 | VL53L0X logic/sensor supply |
+| Ground | — | 6 | Pi/sensor/DRV8833 common reference |
 
-| Function | R0 connection |
-| --- | --- |
-| DRV8833 left IN1 | Pi PWM-capable GPIO |
-| DRV8833 left IN2 | Pi GPIO |
-| DRV8833 right IN1 | Pi PWM-capable GPIO |
-| DRV8833 right IN2 | Pi GPIO |
-| front VL53L0X XSHUT | Pi GPIO |
-| rear VL53L0X XSHUT | Pi GPIO |
-| VL53L0X SDA/SCL | Pi I2C bus |
-| E-stop input | Pi GPIO with pull-up |
-| E-stop return | Ground through normally-closed switch |
+DRV8833 motor outputs connect to the two DC motors: channel A to the left motor and channel B to the right motor. The motor supply connects only to the DRV8833 motor-power input. The Raspberry Pi remains on its own USB power supply. The Pi ground and DRV8833 ground must share a common reference, but the motor supply must never be connected to the Pi 5 V or 3.3 V rail.
 
-The normally-closed E-stop is fail-closed: a healthy circuit pulls the configured input low. Pressing/opening the E-stop, disconnecting the wire, or losing the return path leaves the pull-up high and motion must be denied.
+If the specific DRV8833 breakout exposes a board-specific sleep/enable input, follow that breakout's documentation before Phase A; the ETS canonical interface controls only IN1/IN2 for each motor channel.
 
-Do not energize the motors until motor power, Pi ground, DRV8833 ground, and logic ground have been checked with the multimeter.
+The normally-closed E-stop is fail-closed: a healthy circuit pulls BCM17 low through the closed switch. Pressing/opening the E-stop, disconnecting the wire, or losing the ground return leaves the internal pull-up high and motion must be denied.
+
+Before energizing the motor supply, use the multimeter to confirm:
+
+1. no continuity exists between motor-supply positive and Pi 5 V/3.3 V;
+2. Pi ground, DRV8833 ground, and sensor ground share continuity;
+3. the E-stop reads closed to ground when healthy and open when pressed;
+4. motor outputs are not shorted to ground or logic rails;
+5. the two VL53L0X sensors are on the Pi 3.3 V/I2C domain.
+
+The canonical retained file is:
+
+`config/ranger/r0-bench-pi-drv8833-dual-vl53l0x.v1.json`
 
 ## Retained Phase A/B campaign
 
@@ -81,9 +95,12 @@ python scripts/ranger/r0_qualification_campaign.py init \
   --root "$ETS_R0_CAMPAIGN" \
   --campaign-id "agent365-r0-physical-001" \
   --code-sha "$ETS_CODE_SHA"
+
+cp config/ranger/r0-bench-pi-drv8833-dual-vl53l0x.v1.json \
+  "$ETS_R0_CAMPAIGN/hardware-config.json"
 ```
 
-All Phase A/B JSON artifacts must be written under that directory. The recorder hashes them into
+All Phase A/B JSON artifacts and the exact hardware configuration must be retained under that directory. The recorder hashes them into
 `campaign.json` and updates `campaign.sha256`. Phase records are append-only.
 
 ## Gate 0 — no-motion preflight
@@ -92,15 +109,7 @@ Run this **before installing wheels on the floor**:
 
 ```bash
 python scripts/ranger/r0_bench_preflight.py \
-  --left-in1 <BCM> \
-  --left-in2 <BCM> \
-  --right-in1 <BCM> \
-  --right-in2 <BCM> \
-  --estop-pin <BCM> \
-  --front-xshut <BCM> \
-  --rear-xshut <BCM> \
-  --calibrated-max-speed-mps 0.15 \
-  --max-duty-cycle 0.55 \
+  --hardware-config "$ETS_R0_CAMPAIGN/hardware-config.json" \
   --output-json "$ETS_R0_CAMPAIGN/phase-a/preflight.json"
 ```
 
@@ -111,6 +120,7 @@ python scripts/ranger/r0_qualification_campaign.py record-phase \
   --root "$ETS_R0_CAMPAIGN" \
   --phase A_preflight \
   --state pass \
+  --artifact "$ETS_R0_CAMPAIGN/hardware-config.json" \
   --artifact "$ETS_R0_CAMPAIGN/phase-a/preflight.json"
 ```
 
@@ -145,17 +155,8 @@ rotation cannot propel the robot:
 ```bash
 python scripts/ranger/r0_wheels_off_ground.py \
   --execute-wheels-off-ground \
-  --output-json "$ETS_R0_CAMPAIGN/phase-b/wheels-off-ground.json" \
-  --left-in1 <BCM> \
-  --left-in2 <BCM> \
-  --right-in1 <BCM> \
-  --right-in2 <BCM> \
-  --estop-pin <BCM> \
-  --front-xshut <BCM> \
-  --rear-xshut <BCM> \
-  --duty-cycle 0.20 \
-  --pulse-seconds 0.40 \
-  --max-rear-translation-m 0.03
+  --hardware-config "$ETS_R0_CAMPAIGN/hardware-config.json" \
+  --output-json "$ETS_R0_CAMPAIGN/phase-b/wheels-off-ground.json"
 ```
 
 The automated result can prove that the E-stop stayed healthy, the stop command completed, and
