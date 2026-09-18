@@ -10,8 +10,8 @@ from pydantic import ValidationError
 
 from ets.qualification.legacy_http import (
     IndependentFlowObservationV1,
-    LegacyHttpEndpointKind,
     LegacyHttpCaptureV1,
+    LegacyHttpEndpointKind,
     build_capture,
     correlate_outgoing_assertion,
     correlate_system_tcp_assertion,
