@@ -76,6 +76,11 @@ def test_phase_a_maps_to_canonical_hqp_cases_without_overclaiming() -> None:
     assert "software_volume" in text
     assert "hardware_attested" in text
     assert "secret_exposure_scan_clear" in text
+    assert "expected_secret_files_not_found" in text
+    assert "secret_value_too_short" in text
+    assert "EXPOSED secret=" in text
+    assert "grep -RIlF -- \"$secret_value\"" in text
+    assert "BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY" in text
     assert "tpm0" in text
     assert "tpmrm0" in text
     assert "all_phase_a_cases_pass" in text
