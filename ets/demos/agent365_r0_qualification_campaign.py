@@ -122,7 +122,9 @@ def retain_artifacts(
         try:
             relative = path.relative_to(campaign_root)
         except ValueError as exc:
-            raise ValueError("qualification artifacts must remain inside the campaign root") from exc
+            raise ValueError(
+                "qualification artifacts must remain inside the campaign root"
+            ) from exc
         if not path.is_file():
             raise ValueError(f"qualification artifact is not a file: {relative}")
         payload = path.read_bytes()
