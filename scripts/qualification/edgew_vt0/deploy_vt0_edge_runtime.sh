@@ -361,24 +361,50 @@ cd /opt/ets/current
 sudo docker compose -f edge-demo/docker-compose.yml build   2>&1 | sudo tee "$EVIDENCE/docker-build.log"
 sudo docker compose -f edge-demo/docker-compose.yml up -d   2>&1 | sudo tee "$EVIDENCE/docker-up.log"
 
+# Retained deployment evidence stays root-owned. Capture payloads through
+# privileged writes instead of making the evidence directory operator-writable.
+ready_ok=0
 for _ in {1..60}; do
-  if curl -fsS http://127.0.0.1:8400/ready >"$EVIDENCE/ready.json" 2>/dev/null; then
+  if ready_payload="$(curl -fsS http://127.0.0.1:8400/ready 2>/dev/null)"; then
+    printf '%s\n' "$ready_payload" | sudo tee "$EVIDENCE/ready.json" >/dev/null
+    ready_ok=1
     break
   fi
   sleep 2
 done
 
-curl -fsS http://127.0.0.1:8400/ready >"$EVIDENCE/ready.json"
-curl -fsS http://127.0.0.1:8400/version >"$EVIDENCE/version.json"
-curl -fsS http://127.0.0.1:8400/edge/v1/device/identity >"$EVIDENCE/device-identity.json"
-sudo docker compose -f edge-demo/docker-compose.yml ps --format json >"$EVIDENCE/compose-ps.jsonl"
-sudo docker image inspect   "$(sudo docker compose -f edge-demo/docker-compose.yml images -q | sort -u)"   >"$EVIDENCE/image-inspect.json" 2>/dev/null || true
+[[ "$ready_ok" -eq 1 ]] || {
+  echo "ERROR: Edge API /ready did not become healthy within 120 seconds." >&2
+  sudo docker compose -f edge-demo/docker-compose.yml ps >&2 || true
+  sudo docker compose -f edge-demo/docker-compose.yml logs --tail=200 >&2 || true
+  exit 5
+}
 
-(
-  cd "$EVIDENCE"
-  find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%P
-'     | sort | xargs -r sha256sum > SHA256SUMS
-)
+curl -fsS http://127.0.0.1:8400/ready \
+  | sudo tee "$EVIDENCE/ready.json" >/dev/null
+curl -fsS http://127.0.0.1:8400/version \
+  | sudo tee "$EVIDENCE/version.json" >/dev/null
+curl -fsS http://127.0.0.1:8400/edge/v1/device/identity \
+  | sudo tee "$EVIDENCE/device-identity.json" >/dev/null
+sudo docker compose -f edge-demo/docker-compose.yml ps --format json \
+  | sudo tee "$EVIDENCE/compose-ps.jsonl" >/dev/null
+
+image_ids="$(sudo docker compose -f edge-demo/docker-compose.yml images -q | sort -u)"
+if [[ -n "$image_ids" ]]; then
+  sudo docker image inspect $image_ids \
+    | sudo tee "$EVIDENCE/image-inspect.json" >/dev/null
+else
+  printf '[]\n' | sudo tee "$EVIDENCE/image-inspect.json" >/dev/null
+fi
+
+find "$EVIDENCE" -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' \
+  | sort \
+  | while IFS= read -r name; do
+      sudo sha256sum "$EVIDENCE/$name"
+    done \
+  | sudo tee "$EVIDENCE/SHA256SUMS" >/dev/null
+
+sudo chmod 0644 "$EVIDENCE"/*.json "$EVIDENCE"/*.jsonl "$EVIDENCE"/SHA256SUMS 2>/dev/null || true
 
 echo "Edge runtime deployed from exact commit: $SOURCE_SHA"
 echo "Deployment evidence: $EVIDENCE"
