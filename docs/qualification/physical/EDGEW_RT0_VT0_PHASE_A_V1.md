@@ -163,3 +163,17 @@ topology. For the known VT0 layout only (`/dev/vda1`, ext4, 64 GiB parent
 The helper does not apply a generic partition-growth algorithm to unknown disk
 layouts. A topology different from the bounded VT0 layout is an execution
 stop, not a reason to resize an arbitrary partition.
+
+
+### Root-growth dry-run gate
+
+The VT0 image contains multiple boot-related partitions in addition to the ext4
+root partition. Partition numbers alone do not prove physical on-disk ordering,
+so the helper must not infer that partition 1 can consume the remaining virtual
+disk.
+
+Plan mode now retains/displays `sfdisk -d /dev/vda` and a read-only
+`growpart -N /dev/vda 1` result. Apply mode repeats that dry run and requires
+an explicit `CHANGE:` result before modifying the partition table. A
+`NOCHANGE:` result or an indeterminate result stops execution with no
+partition-table mutation.
