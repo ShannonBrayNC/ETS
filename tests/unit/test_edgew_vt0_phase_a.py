@@ -31,6 +31,11 @@ def test_runtime_deployment_binds_exact_build_and_qualification_storage() -> Non
     assert "git rev-parse HEAD" in text
     assert "uncommitted changes" in text
     assert "/var/lib/ets-qualification/docker" in text
+    assert "/var/lib/ets-qualification/containerd" in text
+    assert "legacy-containerd-root.txt" in text
+    assert "systemctl stop containerd.service" in text
+    assert "docker info --format" in text
+    assert "less than 100 GiB free" in text
     assert "/opt/ets/releases/$SOURCE_SHA" in text
     assert ".ets-build-commit" in text
     assert ".ets-source-archive-sha256" in text
