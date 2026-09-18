@@ -50,6 +50,13 @@ def test_runtime_deployment_binds_exact_build_and_qualification_storage() -> Non
     assert "docker compose -f edge-demo/docker-compose.yml build" in text
     assert "edge/v1/device/identity" in text
     assert "No API key or signing private-key bytes were copied" in text
+    assert "Retained deployment evidence stays root-owned" in text
+    assert 'sudo tee "$EVIDENCE/ready.json"' in text
+    assert 'sudo tee "$EVIDENCE/version.json"' in text
+    assert 'sudo tee "$EVIDENCE/device-identity.json"' in text
+    assert 'sudo tee "$EVIDENCE/compose-ps.jsonl"' in text
+    assert 'sudo tee "$EVIDENCE/SHA256SUMS"' in text
+    assert 'ready.json" 2>/dev/null' not in text
     assert "not physical EDGE-RT0 qualification" in text
 
 
