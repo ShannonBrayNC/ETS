@@ -17,11 +17,8 @@ The runtime capture verifies:
 - domain state is running;
 - four vCPUs;
 - 16 GiB guest memory;
-- vCPU pinning:
-  - vCPU 0 -> host CPU 0
-  - vCPU 1 -> host CPU 2
-  - vCPU 2 -> host CPU 4
-  - vCPU 3 -> host CPU 6
+- all four vCPUs constrained to host CPU set `0,2,4,6`;
+- runtime vCPU affinity remains bounded to that CPU set;
 - strict NUMA allocation to node 0;
 - four virtual networks:
   - `edgew-vt-mgmt`
@@ -51,11 +48,19 @@ The default output is retained under:
 /var/lib/ets-lab/evidence/vt0-runtime/
 ```
 
-The package contains the libvirt domain XML, domain state, CPU pinning, NUMA policy, block-device binding, interface binding, management DHCP leases, qemu image metadata, libvirt/host version observations, a machine-readable summary, and a SHA-256 manifest.
+The package contains the libvirt domain XML, domain state and reason, CPU-set/affinity observations, NUMA policy, block-device binding, interface binding, management DHCP leases, qemu image metadata, libvirt/host version observations, a machine-readable summary, and a SHA-256 manifest.
+
+The capture performs its own SHA-256 verification from inside the evidence directory. For later manual verification, change into the evidence directory first:
+
+```bash
+(cd "$LATEST" && sha256sum -c SHA256SUMS)
+```
+
+The filenames in `SHA256SUMS` are package-relative by design.
 
 ## Interpretation
 
-`all_structural_checks_pass=true` means the currently observed virtual domain matches the bounded VT0 resource/topology contract.
+`all_structural_checks_pass=true` means the currently observed virtual domain matches the bounded VT0 resource/topology contract. A non-running domain remains a structural baseline failure and must be investigated rather than normalized away.
 
 It does **not** mean:
 
