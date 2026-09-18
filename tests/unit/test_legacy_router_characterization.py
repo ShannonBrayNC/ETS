@@ -1,22 +1,28 @@
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
-
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
-CAPTURE_PATH = ROOT / "scripts" / "qualification" / "legacy_lab" / "capture_udp_syslog.py"
-HARNESS_PATH = ROOT / "scripts" / "qualification" / "legacy_lab" / "characterize_router.py"
-LAB_NIC_PATH = ROOT / "scripts" / "qualification" / "legacy_lab" / "prepare_lab_nic.py"
+CAPTURE_PATH = (
+    ROOT / "scripts" / "qualification" / "legacy_lab" / "capture_udp_syslog.py"
+)
+HARNESS_PATH = (
+    ROOT / "scripts" / "qualification" / "legacy_lab" / "characterize_router.py"
+)
+LAB_NIC_PATH = (
+    ROOT / "scripts" / "qualification" / "legacy_lab" / "prepare_lab_nic.py"
+)
 
 
-def _load_capture_module():
-    spec = importlib.util.spec_from_file_location("capture_udp_syslog", CAPTURE_PATH)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def _load_capture_module() -> SimpleNamespace:
+    namespace: dict[str, object] = {
+        "__name__": "capture_udp_syslog_test",
+        "__file__": str(CAPTURE_PATH),
+    }
+    source = CAPTURE_PATH.read_text(encoding="utf-8")
+    exec(compile(source, str(CAPTURE_PATH), "exec"), namespace)
+    return SimpleNamespace(**namespace)
 
 
 def test_syslog_classifier_detects_rfc5424_after_exact_byte_boundary() -> None:
@@ -42,7 +48,9 @@ def test_syslog_classifier_detects_rfc3164_like() -> None:
 
 def test_syslog_classifier_preserves_vendor_specific_boundary() -> None:
     module = _load_capture_module()
-    classification, observations = module.classify(b"vendor-specific synthetic message")
+    classification, observations = module.classify(
+        b"vendor-specific synthetic message"
+    )
 
     assert classification == "vendor_specific_or_unclassified"
     assert observations["identity_boundary"].endswith("not_authenticated_identity")
