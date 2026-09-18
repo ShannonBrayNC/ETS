@@ -163,12 +163,12 @@ Canonical mapping:
 
 | Role | Libvirt network | Guest behavior |
 |---|---|---|
-| management | `edgew-vt-mgmt` | DHCPv4; only default-route candidate |
+| management | `edgew-vt-mgmt` | static `192.168.250.10/24`; default route via `192.168.250.1` |
 | source | `edgew-vt-source` | static `192.168.251.10/24`; no default route |
 | upstream | `edgew-vt-upstream` | static `192.168.252.10/24`; no default route |
 | fault | `edgew-vt-fault` | static `192.168.253.10/24`; no default route |
 
-The provisioner binds each role by a deterministic libvirt MAC address and passes the matching network configuration into the first-boot NoCloud ISO.
+The provisioner binds each role by a deterministic libvirt MAC address and passes the matching network configuration into the first-boot NoCloud ISO. The management address is deliberately outside the libvirt DHCP pool (`.100-.199`) so the baseline does not depend on DHCP timing or lease retention.
 
 ### Existing VM recovery
 
