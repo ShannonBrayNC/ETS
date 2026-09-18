@@ -11,6 +11,7 @@ This directory contains operator-facing preparation material for named physical 
 - `EDGEW_RT0_VIRTUAL_TWIN_V1.md` — `EDGEW-RT0-VT0` pre-hardware KVM/QEMU virtual-twin plan with explicit simulated-vs-physical claim boundaries.
 - `EDGEW_RT0_DEDICATED_HOST_BOOTSTRAP_V1.md` — runbook for assigning a fresh Ubuntu physical server as the dedicated VT0 lab host, including resource, trust-separation, NIC, and first-run rules.
 - `LEGACY_ROUTER_LAB_INVENTORY_TEMPLATE.md` — characterization worksheet for existing Linksys/D-Link equipment used as hybrid network-fault infrastructure and possible bounded legacy-source candidates.
+- `LEGACY_ROUTER_T430_CHARACTERIZATION_V1.md` — executable T430 workflow for safe NIC inventory, exact-byte UDP syslog capture/classification, and bounded device-role disposition before any legacy qualification claim.
 
 Host bootstrap tooling lives under `scripts/qualification/edgew_vt0/`:
 
