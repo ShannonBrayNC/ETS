@@ -9,11 +9,10 @@ plus a normally-closed hardware E-stop input.
 from __future__ import annotations
 
 import math
-from collections.abc import Protocol
 from datetime import UTC, datetime
 from importlib import import_module
 from time import monotonic_ns, sleep
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
