@@ -47,11 +47,11 @@ def authorize_live_hardware_launch(
         raise Agent365R0LiveLaunchError(
             "sanitized Agent 365 correlation belongs to another mission_id"
         )
-    if packet.tenant_id != sharepoint_observation.tenant_id:
+    if packet.tenant_id != sharepoint_observation.source.tenant_id:
         raise Agent365R0LiveLaunchError(
             "qualified Agent 365 packet belongs to another Microsoft tenant"
         )
-    if correlation_bundle.tenant_id != sharepoint_observation.tenant_id:
+    if correlation_bundle.tenant_id != sharepoint_observation.source.tenant_id:
         raise Agent365R0LiveLaunchError(
             "sanitized Agent 365 correlation belongs to another Microsoft tenant"
         )
