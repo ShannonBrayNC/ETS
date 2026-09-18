@@ -226,20 +226,50 @@ else
   )"
 fi
 
+CREATE_GUEST_USER=0
 if [[ -z "$GUEST_USER" ]]; then
-  echo "ERROR: no normal interactive guest account was discovered in /etc/passwd." >&2
-  echo "Candidate human accounts:" >&2
-  awk -F: '$3 >= 1000 && $3 < 65534 {print $1 ":" $3 ":" $6 ":" $7}' <<<"$GUEST_PASSWD" >&2
-  exit 4
+  GUEST_USER="etsadmin"
+  CREATE_GUEST_USER=1
+  echo "No normal interactive guest account exists; canonical VT0 account will be created: $GUEST_USER"
+else
+  echo "Detected guest SSH account: $GUEST_USER"
 fi
 
-echo "Detected guest SSH account: $GUEST_USER"
+GUEST_ACCOUNT_ARGS=()
+if [[ "$CREATE_GUEST_USER" -eq 1 ]]; then
+  GUEST_ACCOUNT_ARGS+=(
+    --run-command "useradd -m -s /bin/bash -G sudo $GUEST_USER"
+    --run-command "passwd -l $GUEST_USER"
+    --run-command "printf '%s\\n' '$GUEST_USER ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-ets-vt0"
+    --run-command "chmod 0440 /etc/sudoers.d/90-ets-vt0"
+  )
+fi
+
+echo "VT0 SSH account: $GUEST_USER"
 echo "Applying deterministic guest network configuration and SSH access offline..."
 echo "  supermin kernel:  $SUPERMIN_KERNEL_COPY"
 echo "  supermin modules: $HOST_MODULES"
 echo "  log:              $CUSTOMIZE_LOG"
 
-if ! env   SUPERMIN_KERNEL="$SUPERMIN_KERNEL_COPY"   SUPERMIN_MODULES="$HOST_MODULES"   LIBGUESTFS_BACKEND=direct   virt-customize     -a "$OS_DISK"     --run-command 'rm -f /etc/netplan/50-cloud-init.yaml'     --upload "$NETPLAN:/etc/netplan/90-ets-vt0.yaml"     --chmod 0600:/etc/netplan/90-ets-vt0.yaml     --upload "$CLOUDCFG:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg"     --chmod 0644:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg     --run-command 'netplan generate'     --install openssh-server     --ssh-inject "$GUEST_USER:file:$SSH_PUB"     --run-command 'ssh-keygen -A'     --run-command 'systemctl enable ssh.socket 2>/dev/null || systemctl enable ssh.service'     --run-command 'test -x /usr/sbin/sshd'     > >(tee "$CUSTOMIZE_LOG") 2>&1
+if ! env \
+  SUPERMIN_KERNEL="$SUPERMIN_KERNEL_COPY" \
+  SUPERMIN_MODULES="$HOST_MODULES" \
+  LIBGUESTFS_BACKEND=direct \
+  virt-customize \
+    -a "$OS_DISK" \
+    --run-command 'rm -f /etc/netplan/50-cloud-init.yaml' \
+    --upload "$NETPLAN:/etc/netplan/90-ets-vt0.yaml" \
+    --chmod 0600:/etc/netplan/90-ets-vt0.yaml \
+    --upload "$CLOUDCFG:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg" \
+    --chmod 0644:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg \
+    --run-command 'netplan generate' \
+    --install openssh-server \
+    "${GUEST_ACCOUNT_ARGS[@]}" \
+    --ssh-inject "$GUEST_USER:file:$SSH_PUB" \
+    --run-command 'ssh-keygen -A' \
+    --run-command 'systemctl enable ssh.socket 2>/dev/null || systemctl enable ssh.service' \
+    --run-command 'test -x /usr/sbin/sshd' \
+    > >(tee "$CUSTOMIZE_LOG") 2>&1
 then
   echo "ERROR: offline guest customization failed." >&2
   echo "Retained log: $CUSTOMIZE_LOG" >&2
