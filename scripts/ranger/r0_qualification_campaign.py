@@ -29,10 +29,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     record = subparsers.add_parser("record-phase")
     record.add_argument("--root", type=Path, required=True)
-    record.add_argument("--phase", choices=[phase.value for phase in R0QualificationPhase], required=True)
+    record.add_argument(
+        "--phase",
+        choices=[phase.value for phase in R0QualificationPhase],
+        required=True,
+    )
     record.add_argument(
         "--state",
-        choices=[state.value for state in R0QualificationPhaseState if state is not R0QualificationPhaseState.NOT_RUN],
+        choices=[
+            state.value
+            for state in R0QualificationPhaseState
+            if state is not R0QualificationPhaseState.NOT_RUN
+        ],
         required=True,
     )
     record.add_argument("--artifact", type=Path, action="append", default=[])
