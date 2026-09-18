@@ -47,6 +47,12 @@ def test_phase_b_preflight_binds_normative_cases_and_boundaries() -> None:
     assert "No Docker volumes will be deleted." in text
     assert "private signing key bytes will not enter host evidence" in text
     assert "claim_state=simulated" in text
+    assert "queue_status_gate=PASS" in text
+    assert "protected sync status returned an empty body" in text
+    assert "queue_depth" in text
+    assert "max_items" in text
+    assert "max_bytes" in text
+    assert "upstream_status" in text
     assert "PHASE_B_PREFLIGHT_READY=true" in text
 
 
