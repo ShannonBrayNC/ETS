@@ -51,10 +51,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _read_model(path: Path, model_type: type[Agent365ProfileQualificationResultV1]) -> object:
-    return model_type.model_validate_json(path.read_text(encoding="utf-8"))
-
-
 def main() -> int:
     args = build_parser().parse_args()
 
