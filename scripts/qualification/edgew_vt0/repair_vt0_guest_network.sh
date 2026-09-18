@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for cmd in virsh virt-customize qemu-img awk mktemp; do
+for cmd in virsh virt-customize qemu-img awk mktemp uname install; do
   command -v "$cmd" >/dev/null 2>&1 || {
     echo "ERROR: required command not found: $cmd" >&2
     if [[ "$cmd" == "virt-customize" ]]; then
@@ -153,13 +153,58 @@ if [[ "$state" != "shut off" ]]; then
 fi
 
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-BACKUP="${OS_DISK}.pre-network-${TIMESTAMP}.qcow2"
+shopt -s nullglob
+existing_backups=("${OS_DISK}.pre-network-"*.qcow2)
+shopt -u nullglob
 
-echo "Creating stopped-guest qcow2 backup: $BACKUP"
-qemu-img convert -p -O qcow2 "$OS_DISK" "$BACKUP"
+if (( ${#existing_backups[@]} > 0 )); then
+  BACKUP="${existing_backups[${#existing_backups[@]}-1]}"
+  echo "Reusing retained pre-network backup: $BACKUP"
+else
+  BACKUP="${OS_DISK}.pre-network-${TIMESTAMP}.qcow2"
+  echo "Creating stopped-guest qcow2 backup: $BACKUP"
+  qemu-img convert -p -O qcow2 "$OS_DISK" "$BACKUP"
+fi
+
+VM_DIR="$(dirname "$OS_DISK")"
+LIBGUESTFS_DIR="${STORAGE_ROOT}/libguestfs"
+KVER="$(uname -r)"
+HOST_KERNEL="/boot/vmlinuz-${KVER}"
+HOST_MODULES="/lib/modules/${KVER}"
+SUPERMIN_KERNEL_COPY="${LIBGUESTFS_DIR}/vmlinuz-${KVER}"
+CUSTOMIZE_LOG="${VM_DIR}/virt-customize-network-repair.log"
+
+if [[ ! -f "$HOST_KERNEL" ]]; then
+  echo "ERROR: running-kernel image not found: $HOST_KERNEL" >&2
+  exit 4
+fi
+if [[ ! -d "$HOST_MODULES" ]]; then
+  echo "ERROR: running-kernel modules not found: $HOST_MODULES" >&2
+  exit 4
+fi
+
+mkdir -p "$LIBGUESTFS_DIR"
+if [[ ! -r "$HOST_KERNEL" ]]; then
+  echo "Host kernel is not readable by the operator; creating a controlled readable copy for supermin."
+  sudo install -m 0644 "$HOST_KERNEL" "$SUPERMIN_KERNEL_COPY"
+else
+  install -m 0644 "$HOST_KERNEL" "$SUPERMIN_KERNEL_COPY"
+fi
 
 echo "Applying deterministic guest network configuration offline..."
-virt-customize   -a "$OS_DISK"   --run-command 'rm -f /etc/netplan/50-cloud-init.yaml'   --upload "$NETPLAN:/etc/netplan/90-ets-vt0.yaml"   --chmod 0600:/etc/netplan/90-ets-vt0.yaml   --upload "$CLOUDCFG:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg"   --chmod 0644:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg
+echo "  supermin kernel:  $SUPERMIN_KERNEL_COPY"
+echo "  supermin modules: $HOST_MODULES"
+echo "  log:              $CUSTOMIZE_LOG"
+
+if ! env   SUPERMIN_KERNEL="$SUPERMIN_KERNEL_COPY"   SUPERMIN_MODULES="$HOST_MODULES"   LIBGUESTFS_BACKEND=direct   virt-customize     -a "$OS_DISK"     --run-command 'rm -f /etc/netplan/50-cloud-init.yaml'     --upload "$NETPLAN:/etc/netplan/90-ets-vt0.yaml"     --chmod 0600:/etc/netplan/90-ets-vt0.yaml     --upload "$CLOUDCFG:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg"     --chmod 0644:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg     > >(tee "$CUSTOMIZE_LOG") 2>&1
+then
+  echo "ERROR: offline guest customization failed." >&2
+  echo "Retained log: $CUSTOMIZE_LOG" >&2
+  echo "Backup remains untouched: $BACKUP" >&2
+  echo "For deeper diagnostics, run:" >&2
+  echo "  LIBGUESTFS_DEBUG=1 LIBGUESTFS_TRACE=1 SUPERMIN_KERNEL='$SUPERMIN_KERNEL_COPY' SUPERMIN_MODULES='$HOST_MODULES' LIBGUESTFS_BACKEND=direct virt-customize -v -x -a '$OS_DISK' ..." >&2
+  exit 4
+fi
 
 echo "Starting guest..."
 virsh --connect qemu:///system start "$VM_NAME"
