@@ -196,9 +196,7 @@ def parse_snmpv1_trap(payload: bytes) -> dict[str, Any]:
         "generic_trap_observation": decode_integer(generic.value),
         "specific_trap_observation": decode_integer(specific.value),
         "timeticks_observation": int.from_bytes(timestamp.value, "big"),
-        "varbinds": parse_varbinds(bytes([0x30, len(varbinds.value)]) + varbinds.value)
-        if len(varbinds.value) < 128
-        else _parse_varbind_sequence_value(varbinds.value),
+        "varbinds": _parse_varbind_sequence_value(varbinds.value),
         "authenticated_source_identity_claim": False,
         "semantic_truth_claim": False,
     }
