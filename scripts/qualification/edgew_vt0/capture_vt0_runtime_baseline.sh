@@ -36,6 +36,9 @@ capture domblklist.txt virsh --connect qemu:///system domblklist "$VM_NAME" --de
 capture domiflist.txt virsh --connect qemu:///system domiflist "$VM_NAME"
 capture domstats.txt virsh --connect qemu:///system domstats "$VM_NAME"
 capture mgmt-dhcp-leases.txt virsh --connect qemu:///system net-dhcp-leases edgew-vt-mgmt
+capture source-dhcp-leases.txt virsh --connect qemu:///system net-dhcp-leases edgew-vt-source
+capture upstream-dhcp-leases.txt virsh --connect qemu:///system net-dhcp-leases edgew-vt-upstream
+capture fault-dhcp-leases.txt virsh --connect qemu:///system net-dhcp-leases edgew-vt-fault
 capture libvirt-version.txt virsh --connect qemu:///system version
 uname -a >"${OUT_DIR}/host-uname.txt"
 date -u --iso-8601=seconds >"${OUT_DIR}/captured-at.txt"
@@ -170,8 +173,17 @@ checks = {
     ),
 }
 
-lease_text = (out_dir / "mgmt-dhcp-leases.txt").read_text(errors="replace")
-has_mgmt_lease = bool(re.search(r"\b192\.168\.250\.\d+/\d+\b", lease_text))
+lease_specs = {
+    "mgmt": ("mgmt-dhcp-leases.txt", r"\b192\.168\.250\.\d+/\d+\b"),
+    "source": ("source-dhcp-leases.txt", r"\b192\.168\.251\.\d+/\d+\b"),
+    "upstream": ("upstream-dhcp-leases.txt", r"\b192\.168\.252\.\d+/\d+\b"),
+    "fault": ("fault-dhcp-leases.txt", r"\b192\.168\.253\.\d+/\d+\b"),
+}
+dhcp_leases_observed = {}
+for name, (filename, pattern) in lease_specs.items():
+    lease_text = (out_dir / filename).read_text(errors="replace")
+    dhcp_leases_observed[name] = bool(re.search(pattern, lease_text))
+has_mgmt_lease = dhcp_leases_observed["mgmt"]
 
 summary = {
     "schema": "ets.edgew.vt0.runtime-baseline.v1",
@@ -182,6 +194,7 @@ summary = {
     "domain_state_reason": state_reason_text,
     "configured_cpu_set": sorted(configured_cpu_set),
     "management_dhcp_lease_observed": has_mgmt_lease,
+    "dhcp_leases_observed": dhcp_leases_observed,
     "claim_state": "simulated",
     "claim_boundary": (
         "vt0_runtime_baseline_only_not_physical_hardware_qualification_"
