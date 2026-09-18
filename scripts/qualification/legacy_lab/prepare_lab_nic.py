@@ -53,7 +53,7 @@ def main() -> int:
     parser.add_argument("--interface", required=True)
     parser.add_argument("--address", default="192.168.77.2/24")
     parser.add_argument("--connection-name")
-    parser.add_argument("--record-root", type=Path, default=Path("/srv/ets-lab/evidence/network-baseline"))
+    parser.add_argument(\n        "--record-root",\n        type=Path,\n        default=Path("/srv/ets-lab/evidence/network-baseline"),\n    )
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
 
