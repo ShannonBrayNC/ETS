@@ -184,6 +184,7 @@ EDGEW-RT0-VT0 DUT provisioning plan
   guest:               Ubuntu 24.04 LTS amd64 cloud image
   networks:            mgmt, source, upstream, fault
   guest network:       static .10 addresses; default route on mgmt only
+  guest operator:      etsadmin (SSH key only; password locked)
   QEMU runtime:        ${QEMU_RUNTIME_USER} (uid ${QEMU_RUNTIME_UID}, gid ${QEMU_RUNTIME_GID}/${QEMU_RUNTIME_GROUP})
   claim state:         simulated VT0 only; not physical qualification
 EOF
@@ -197,6 +198,31 @@ fi
 mkdir -p "$VM_DIR" "$CACHE_DIR"
 
 NETWORK_CONFIG="$VM_DIR/cloud-init-network-config.yaml"
+USER_DATA="$VM_DIR/cloud-init-user-data.yaml"
+SSH_PUBLIC_KEY="$(cat "$SSH_KEY.pub")"
+
+cat >"$USER_DATA" <<EOF
+#cloud-config
+users:
+  - name: etsadmin
+    gecos: ETS VT0 Operator
+    groups:
+      - adm
+      - sudo
+    shell: /bin/bash
+    lock_passwd: true
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - $SSH_PUBLIC_KEY
+ssh_pwauth: false
+disable_root: true
+packages:
+  - openssh-server
+runcmd:
+  - [ssh-keygen, -A]
+  - [systemctl, enable, --now, ssh.socket]
+EOF
+
 cat >"$NETWORK_CONFIG" <<EOF
 version: 2
 ethernets:
@@ -436,7 +462,7 @@ virt_args=(
   --network "network=edgew-vt-fault,model=virtio,mac=$FAULT_MAC"
   --osinfo detect=on,name=ubuntu24.04
   --import
-  --cloud-init "clouduser-ssh-key=${SSH_KEY},disable=on,network-config=${NETWORK_CONFIG}"
+  --cloud-init "user-data=${USER_DATA},network-config=${NETWORK_CONFIG},disable=on"
   --graphics none
   --console pty,target.type=serial
   --noautoconsole
