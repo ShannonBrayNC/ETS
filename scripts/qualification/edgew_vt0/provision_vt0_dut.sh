@@ -183,7 +183,7 @@ EDGEW-RT0-VT0 DUT provisioning plan
   TPM:                 swtpm TPM 2.0 / CRB
   guest:               Ubuntu 24.04 LTS amd64 cloud image
   networks:            mgmt, source, upstream, fault
-  guest network:       mgmt DHCP; source/upstream/fault static .10 addresses
+  guest network:       static .10 addresses; default route on mgmt only
   QEMU runtime:        ${QEMU_RUNTIME_USER} (uid ${QEMU_RUNTIME_UID}, gid ${QEMU_RUNTIME_GID}/${QEMU_RUNTIME_GROUP})
   claim state:         simulated VT0 only; not physical qualification
 EOF
@@ -204,9 +204,15 @@ ethernets:
     match:
       macaddress: "$MGMT_MAC"
     set-name: vtmgmt
-    dhcp4: true
-    dhcp4-overrides:
-      route-metric: 100
+    addresses:
+      - 192.168.250.10/24
+    routes:
+      - to: default
+        via: 192.168.250.1
+        metric: 100
+    nameservers:
+      addresses:
+        - 192.168.250.1
   vtsource:
     match:
       macaddress: "$SOURCE_MAC"
