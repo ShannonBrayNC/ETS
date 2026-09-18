@@ -164,6 +164,19 @@ sudo systemctl stop containerd.service 2>/dev/null || true
 sudo install -d -m 0750 -o root -g docker /var/lib/ets-qualification/docker
 sudo install -d -m 0711 -o root -g root /var/lib/ets-qualification/containerd
 
+# Free the 64 GiB guest root before writing daemon configuration. This path
+# contains only disposable containerd cache/content on the isolated VT0 guest.
+if [[ -d /var/lib/containerd && ! -L /var/lib/containerd ]]; then
+  sudo install -d -m 0755 /var/lib/ets-qualification/runtime-recovery
+  {
+    echo "captured_at=$(date -u --iso-8601=seconds)"
+    sudo du -sh /var/lib/containerd 2>/dev/null || true
+    sudo find /var/lib/containerd -maxdepth 2 -mindepth 1 -printf '%p %s\n' 2>/dev/null | head -5000 || true
+  } | sudo tee /var/lib/ets-qualification/runtime-recovery/legacy-containerd-root.txt >/dev/null
+  sudo rm -rf /var/lib/containerd/*
+fi
+sudo apt-get clean || true
+
 if [[ -s /etc/docker/daemon.json ]]; then
   current="$(sudo jq -r '."data-root" // empty' /etc/docker/daemon.json 2>/dev/null || true)"
   if [[ -n "$current" && "$current" != "/var/lib/ets-qualification/docker" ]]; then
@@ -191,20 +204,6 @@ else
     | sudo tee -a /etc/containerd/config.toml >/dev/null
 fi
 
-# The old path contains cache/content only for this isolated qualification VM.
-# Retain a bounded diagnostic inventory, then remove it while both daemons are
-# stopped so a failed build cannot strand the guest root filesystem at 100%.
-if [[ -d /var/lib/containerd && ! -L /var/lib/containerd ]]; then
-  sudo install -d -m 0755 /var/lib/ets-qualification/runtime-recovery
-  {
-    echo "captured_at=$(date -u --iso-8601=seconds)"
-    sudo du -sh /var/lib/containerd 2>/dev/null || true
-    sudo find /var/lib/containerd -maxdepth 2 -mindepth 1 -printf '%p %s\n' 2>/dev/null | head -5000 || true
-  } | sudo tee /var/lib/ets-qualification/runtime-recovery/legacy-containerd-root.txt >/dev/null
-  sudo rm -rf /var/lib/containerd/*
-fi
-
-sudo apt-get clean || true
 sudo systemctl enable --now containerd.service
 sudo systemctl enable --now docker.service
 sudo usermod -aG docker "$USER"
