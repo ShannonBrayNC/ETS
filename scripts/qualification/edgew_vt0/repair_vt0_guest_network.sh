@@ -84,9 +84,15 @@ network:
       match:
         macaddress: "$MGMT_MAC"
       set-name: vtmgmt
-      dhcp4: true
-      dhcp4-overrides:
-        route-metric: 100
+      addresses:
+        - 192.168.250.10/24
+      routes:
+        - to: default
+          via: 192.168.250.1
+          metric: 100
+      nameservers:
+        addresses:
+          - 192.168.250.1
       optional: false
     vtsource:
       match:
@@ -119,7 +125,7 @@ EOF
 echo "EDGEW-RT0-VT0 guest-network repair plan"
 echo "  domain:      $VM_NAME"
 echo "  OS disk:     $OS_DISK"
-echo "  management:  $MGMT_MAC -> DHCP on edgew-vt-mgmt"
+echo "  management:  $MGMT_MAC -> 192.168.250.10/24 via 192.168.250.1"
 echo "  source:      $SOURCE_MAC -> 192.168.251.10/24"
 echo "  upstream:    $UPSTREAM_MAC -> 192.168.252.10/24"
 echo "  fault:       $FAULT_MAC -> 192.168.253.10/24"
@@ -209,19 +215,22 @@ fi
 echo "Starting guest..."
 virsh --connect qemu:///system start "$VM_NAME"
 
-echo "Waiting for management DHCP lease..."
+MGMT_IP="192.168.250.10"
+echo "Waiting for deterministic management address: $MGMT_IP"
 for _ in {1..30}; do
-  lease="$(virsh --connect qemu:///system net-dhcp-leases edgew-vt-mgmt     | awk -v mac="$MGMT_MAC" 'tolower($2) == tolower(mac) {print $5; exit}')"
-  if [[ -n "$lease" ]]; then
-    echo "Management lease observed: $lease"
-    echo "SSH with: ssh -i ~/.ssh/edgew_vt0 ubuntu@${lease%/*}"
+  if ping -c 1 -W 1 "$MGMT_IP" >/dev/null 2>&1; then
+    echo "Management address reachable: $MGMT_IP"
+    echo "SSH with: ssh -i ~/.ssh/edgew_vt0 ubuntu@$MGMT_IP"
     echo "Backup retained: $BACKUP"
     exit 0
   fi
   sleep 2
 done
 
-echo "WARNING: guest restarted but no management DHCP lease was observed within 60 seconds." >&2
+echo "WARNING: guest restarted but $MGMT_IP did not answer within 60 seconds." >&2
+echo "Host route/neighbor observations:" >&2
+ip route get "$MGMT_IP" >&2 || true
+ip neigh show dev virbr250 >&2 || true
 echo "Inspect with: virsh --connect qemu:///system console $VM_NAME" >&2
 echo "Backup retained: $BACKUP" >&2
 exit 4
