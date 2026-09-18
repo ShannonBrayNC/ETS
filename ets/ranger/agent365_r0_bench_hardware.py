@@ -12,7 +12,7 @@ import math
 from collections.abc import Protocol
 from datetime import UTC, datetime
 from time import monotonic_ns, sleep
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -184,7 +184,7 @@ class Drv8833R0Actuator:
         self,
         mission_id: str,
         *,
-        command_kind: str,
+        command_kind: Literal["motion", "stop", "fail_safe_stop"],
         accepted: bool,
         reason: str | None,
     ) -> RangerR0ActuatorReceiptV1:
