@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from ets.ranger.agent365_r0_bench_hardware import (
@@ -77,7 +78,7 @@ def main() -> int:
             args.hardware_config
         )
         payload_obj["gpio"] = gpio.model_dump(mode="json")
-        payload = __import__("json").dumps(
+        payload = json.dumps(
             payload_obj,
             indent=2,
             sort_keys=True,
