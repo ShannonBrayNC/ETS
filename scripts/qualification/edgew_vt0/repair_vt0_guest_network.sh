@@ -202,7 +202,7 @@ echo "  supermin kernel:  $SUPERMIN_KERNEL_COPY"
 echo "  supermin modules: $HOST_MODULES"
 echo "  log:              $CUSTOMIZE_LOG"
 
-if ! env   SUPERMIN_KERNEL="$SUPERMIN_KERNEL_COPY"   SUPERMIN_MODULES="$HOST_MODULES"   LIBGUESTFS_BACKEND=direct   virt-customize     -a "$OS_DISK"     --run-command 'rm -f /etc/netplan/50-cloud-init.yaml'     --upload "$NETPLAN:/etc/netplan/90-ets-vt0.yaml"     --chmod 0600:/etc/netplan/90-ets-vt0.yaml     --upload "$CLOUDCFG:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg"     --chmod 0644:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg     > >(tee "$CUSTOMIZE_LOG") 2>&1
+if ! env   SUPERMIN_KERNEL="$SUPERMIN_KERNEL_COPY"   SUPERMIN_MODULES="$HOST_MODULES"   LIBGUESTFS_BACKEND=direct   virt-customize     -a "$OS_DISK"     --run-command 'rm -f /etc/netplan/50-cloud-init.yaml'     --upload "$NETPLAN:/etc/netplan/90-ets-vt0.yaml"     --chmod 0600:/etc/netplan/90-ets-vt0.yaml     --upload "$CLOUDCFG:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg"     --chmod 0644:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg     --run-command 'netplan generate'     > >(tee "$CUSTOMIZE_LOG") 2>&1
 then
   echo "ERROR: offline guest customization failed." >&2
   echo "Retained log: $CUSTOMIZE_LOG" >&2
