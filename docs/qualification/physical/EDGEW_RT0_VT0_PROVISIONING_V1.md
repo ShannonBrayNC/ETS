@@ -210,3 +210,20 @@ On Ubuntu hosts, `virt-customize` may fail while building its supermin helper ap
 If a previous repair attempt already created a `.pre-network-<timestamp>.qcow2` backup, the script reuses the newest retained backup instead of producing another full copy.
 
 If libguestfs still fails, the script retains `virt-customize-network-repair.log` beside the VT0 disks and prints the environment required for a verbose diagnostic rerun.
+
+
+## Canonical VT0 operator account
+
+The VT0 guest must expose one deterministic management account: `etsadmin`.
+
+Security posture:
+
+- password is locked;
+- SSH public-key authentication uses the dedicated host key `~/.ssh/edgew_vt0.pub`;
+- direct root SSH is disabled;
+- `etsadmin` is a member of `sudo`;
+- passwordless sudo is permitted only for this isolated qualification VM so automated HQP cases can perform bounded privileged operations without storing a password.
+
+New VT0 guests receive `etsadmin` through cloud-init user-data. For an already-created guest with no normal interactive account, the offline repair creates `etsadmin` before SSH key injection.
+
+The account is a lab-management identity only; it is not the Edge device cryptographic identity and must not be represented as evidence of device identity, key custody, or production access control.
