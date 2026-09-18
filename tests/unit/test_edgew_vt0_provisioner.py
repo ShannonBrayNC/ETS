@@ -58,6 +58,10 @@ def test_provisioner_preserves_vt0_safety_and_topology_contract() -> None:
     assert "refusing overwrite" in text.lower()
     assert "not physical qualification" in text
     assert "network-config=${NETWORK_CONFIG}" in text
+    assert "cloud-init-user-data.yaml" in text
+    assert "user-data=${USER_DATA}" in text
+    assert "name: etsadmin" in text
+    assert "lock_passwd: true" in text
     assert "52:54:00:97:be:12" in text
     assert "52:54:00:43:19:c6" in text
     assert "52:54:00:92:fa:95" in text
@@ -117,7 +121,10 @@ def test_guest_network_repair_preserves_safety_and_role_contract() -> None:
     assert '--ssh-inject "$GUEST_USER:file:$SSH_PUB"' in text
     assert "virt-cat" in text
     assert "Detected guest SSH account: $GUEST_USER" in text
-    assert "no normal interactive guest account was discovered" in text
+    assert "canonical VT0 account will be created" in text
+    assert 'GUEST_USER="etsadmin"' in text
+    assert "useradd -m -s /bin/bash -G sudo" in text
+    assert "NOPASSWD:ALL" in text
     assert "ssh-keygen -A" in text
     assert "systemctl enable ssh.socket" in text
     assert "SSH port reachable: $MGMT_IP:22" in text
