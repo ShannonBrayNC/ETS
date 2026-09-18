@@ -177,3 +177,25 @@ Plan mode now retains/displays `sfdisk -d /dev/vda` and a read-only
 an explicit `CHANGE:` result before modifying the partition table. A
 `NOCHANGE:` result or an indeterminate result stops execution with no
 partition-table mutation.
+
+
+## Deployment evidence ownership
+
+Deployment evidence under `ETS_QUAL/deployment-evidence/<commit>/` is retained
+as root-owned material. The guest operator must not be granted write ownership
+merely to simplify capture.
+
+The live VT0 deployment exposed this boundary when shell redirection by
+`etsadmin` attempted to create `ready.json` in the root-owned evidence
+directory and failed with `Permission denied`.
+
+The deployment helper now:
+
+- captures readiness/version/device-identity payloads through privileged
+  `tee` writes;
+- captures Compose/image metadata through the same root-owned path;
+- creates the SHA-256 manifest through privileged writes;
+- leaves the evidence directory root-owned rather than weakening permissions.
+
+A write failure in this directory is an evidence-retention defect, not proof
+that the Edge runtime itself failed readiness.
