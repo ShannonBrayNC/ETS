@@ -9,6 +9,7 @@ plus a normally-closed hardware E-stop input.
 from __future__ import annotations
 
 import math
+from importlib import import_module
 from collections.abc import Protocol
 from datetime import UTC, datetime
 from time import monotonic_ns, sleep
@@ -383,16 +384,17 @@ class GpioZeroDrv8833Backend:
         frequency_hz: int = 1000,
     ) -> None:
         try:
-            from gpiozero import PWMOutputDevice
+            gpiozero = import_module("gpiozero")
         except ImportError as exc:
             raise RuntimeError(
                 "gpiozero is required for the Raspberry Pi DRV8833 backend"
             ) from exc
+        pwm_output_device = getattr(gpiozero, "PWMOutputDevice")
 
-        self._left_in1 = PWMOutputDevice(left_in1_pin, frequency=frequency_hz)
-        self._left_in2 = PWMOutputDevice(left_in2_pin, frequency=frequency_hz)
-        self._right_in1 = PWMOutputDevice(right_in1_pin, frequency=frequency_hz)
-        self._right_in2 = PWMOutputDevice(right_in2_pin, frequency=frequency_hz)
+        self._left_in1 = pwm_output_device(left_in1_pin, frequency=frequency_hz)
+        self._left_in2 = pwm_output_device(left_in2_pin, frequency=frequency_hz)
+        self._right_in1 = pwm_output_device(right_in1_pin, frequency=frequency_hz)
+        self._right_in2 = pwm_output_device(right_in2_pin, frequency=frequency_hz)
         self.stop()
 
     def drive_forward(self, duty_cycle: float) -> None:
@@ -430,10 +432,11 @@ class GpioZeroNormallyClosedEstop:
 
     def __init__(self, pin: int, *, bounce_time_s: float = 0.02) -> None:
         try:
-            from gpiozero import DigitalInputDevice
+            gpiozero = import_module("gpiozero")
         except ImportError as exc:
             raise RuntimeError("gpiozero is required for the Raspberry Pi E-stop backend") from exc
-        self._input = DigitalInputDevice(pin, pull_up=True, bounce_time=bounce_time_s)
+        digital_input_device = getattr(gpiozero, "DigitalInputDevice")
+        self._input = digital_input_device(pin, pull_up=True, bounce_time=bounce_time_s)
 
     def circuit_closed(self) -> bool:
         return not bool(self._input.value)
@@ -473,27 +476,30 @@ def create_dual_vl53l0x_backends(
     if front_address == rear_address or front_address == 0x29 or rear_address == 0x29:
         raise ValueError("front/rear addresses must be distinct and must not remain at 0x29")
     try:
-        import adafruit_vl53l0x
-        import board
-        from gpiozero import DigitalOutputDevice
+        adafruit_vl53l0x = import_module("adafruit_vl53l0x")
+        board = import_module("board")
+        gpiozero = import_module("gpiozero")
     except ImportError as exc:
         raise RuntimeError(
             "adafruit-circuitpython-vl53l0x, Adafruit-Blinka, and gpiozero are required"
         ) from exc
+    digital_output_device = getattr(gpiozero, "DigitalOutputDevice")
+    vl53l0x_type = getattr(adafruit_vl53l0x, "VL53L0X")
+    i2c_factory = getattr(board, "I2C")
 
-    front_gate = DigitalOutputDevice(front_xshut_pin, initial_value=False)
-    rear_gate = DigitalOutputDevice(rear_xshut_pin, initial_value=False)
+    front_gate = digital_output_device(front_xshut_pin, initial_value=False)
+    rear_gate = digital_output_device(rear_xshut_pin, initial_value=False)
     sleep(0.05)
-    i2c = board.I2C()
+    i2c = i2c_factory()
 
     front_gate.on()
     sleep(0.05)
-    front_sensor = adafruit_vl53l0x.VL53L0X(i2c)
+    front_sensor = vl53l0x_type(i2c)
     front_sensor.set_address(front_address)
 
     rear_gate.on()
     sleep(0.05)
-    rear_sensor = adafruit_vl53l0x.VL53L0X(i2c)
+    rear_sensor = vl53l0x_type(i2c)
     rear_sensor.set_address(rear_address)
 
     keepalive = (front_gate, rear_gate, i2c)
