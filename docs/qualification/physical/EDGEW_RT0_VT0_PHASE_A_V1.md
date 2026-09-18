@@ -113,3 +113,28 @@ It does not establish physical:
 - compliance, safety, production readiness, or GA.
 
 The later physical EDGE-RT0 campaign must repeat the normative cases on the exact physical DUT and feed HQP-1/HQP-2 independently.
+
+
+## Container runtime storage boundary
+
+Docker `data-root` and containerd's content store are separate storage decisions on Ubuntu.
+
+The first live VT0 build demonstrated this boundary: Docker was configured under
+`/var/lib/ets-qualification/docker`, but BuildKit/containerd still attempted to
+write layer content under `/var/lib/containerd` on the 64 GiB guest OS disk and
+failed with `no space left on device`.
+
+Before any retry, the deployment helper now:
+
+1. stops Docker and containerd;
+2. retains a bounded inventory of the abandoned root-filesystem containerd cache
+   under `/var/lib/ets-qualification/runtime-recovery/`;
+3. removes that disposable failed-build cache while both daemons are stopped;
+4. configures Docker data-root as `/var/lib/ets-qualification/docker`;
+5. configures containerd root as `/var/lib/ets-qualification/containerd`;
+6. restarts both daemons and verifies the configured roots;
+7. requires at least 100 GiB available on the qualification filesystem before
+   building the images.
+
+This correction is part of the simulated VT0 storage/runtime contract. It is not
+a physical storage-endurance or capacity qualification result.
