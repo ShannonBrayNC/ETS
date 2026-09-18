@@ -10,7 +10,10 @@ NIC no longer carries a default route.
 from __future__ import annotations
 
 import argparse
+import grp
 import json
+import os
+import pwd
 import shutil
 import subprocess
 from datetime import UTC, datetime
@@ -48,12 +51,41 @@ def interface_exists(interface: str) -> bool:
     return result.returncode == 0
 
 
+def ensure_record_dir(record_dir: Path) -> None:
+    """Create the local evidence directory without weakening ownership."""
+
+    if record_dir.exists():
+        return
+
+    user = pwd.getpwuid(os.getuid()).pw_name
+    group = grp.getgrgid(os.getgid()).gr_name
+    run(
+        [
+            "sudo",
+            "-n",
+            "install",
+            "-d",
+            "-m",
+            "0700",
+            "-o",
+            user,
+            "-g",
+            group,
+            str(record_dir),
+        ]
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--interface", required=True)
     parser.add_argument("--address", default="192.168.77.2/24")
     parser.add_argument("--connection-name")
-    parser.add_argument(\n        "--record-root",\n        type=Path,\n        default=Path("/srv/ets-lab/evidence/network-baseline"),\n    )
+    parser.add_argument(
+        "--record-root",
+        type=Path,
+        default=Path("/srv/ets-lab/evidence/network-baseline"),
+    )
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
 
@@ -97,14 +129,21 @@ def main() -> int:
             "no other interface currently provides a default route."
         )
 
+    if subprocess.run(["sudo", "-n", "true"], check=False).returncode != 0:
+        raise SystemExit("ERROR: sudo credentials are not active. Run sudo -v and retry.")
+
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     record_dir = args.record_root.expanduser().resolve()
-    run(["sudo", "-n", "install", "-d", "-m", "0700", "-o", str(Path.home().owner()), str(record_dir)], check=False)
-    # Do not depend on the install command above for ownership semantics; mkdir is
-    # intentionally performed by the operator if the parent already exists.
-    record_dir.mkdir(parents=True, exist_ok=True)
+    ensure_record_dir(record_dir)
+
+    original_profile = run(["nmcli", "connection", "show", original], check=False)
+
     record = record_dir / f"{args.interface}-{timestamp}.json"
-    record.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+    record_payload = {
+        "plan": plan,
+        "original_connection_profile": original_profile,
+    }
+    record.write_text(json.dumps(record_payload, indent=2) + "\n", encoding="utf-8")
 
     existing = run(["nmcli", "-t", "-f", "NAME", "connection", "show"]).splitlines()
     if connection_name in existing:
