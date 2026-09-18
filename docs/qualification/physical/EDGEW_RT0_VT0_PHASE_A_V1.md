@@ -138,3 +138,28 @@ Before any retry, the deployment helper now:
 
 This correction is part of the simulated VT0 storage/runtime contract. It is not
 a physical storage-endurance or capacity qualification result.
+
+
+## Cloud-image root filesystem expansion
+
+The first live retry also exposed a separate guest-image boundary: the virtual OS
+disk is 64 GiB, but the Ubuntu cloud-image root partition remained at roughly
+2.5 GiB because cloud-init growroot was not allowed to run after the bounded
+first-boot provisioning path. The resulting root filesystem reached 100% usage
+even though the 512 GiB qualification volume was essentially empty.
+
+Before package/runtime work, the deployment helper now verifies the exact root
+topology. For the known VT0 layout only (`/dev/vda1`, ext4, 64 GiB parent
+`/dev/vda`, root partition <16 GiB), it:
+
+1. retains pre-expansion `lsblk`, `sfdisk`, and `df` observations under
+   `ETS_QUAL/runtime-recovery/root-expansion/`;
+2. requires the existing `growpart` utility rather than installing tooling into
+   an already-full root filesystem;
+3. grows partition 1 and then expands ext4 with `resize2fs`;
+4. retains the post-expansion topology;
+5. requires at least 8 GiB free on `/` before continuing.
+
+The helper does not apply a generic partition-growth algorithm to unknown disk
+layouts. A topology different from the bounded VT0 layout is an execution
+stop, not a reason to resize an arbitrary partition.
