@@ -41,6 +41,10 @@ def test_vt0_runtime_capture_preserves_baseline_contract() -> None:
     assert "tpm-crb" in text
     assert "tpm_2_0_present" in text
     assert "management_dhcp_lease_observed" in text
+    assert "dhcp_leases_observed" in text
+    assert "source-dhcp-leases.txt" in text
+    assert "upstream-dhcp-leases.txt" in text
+    assert "fault-dhcp-leases.txt" in text
     assert "SHA256SUMS" in text
     assert "SHA256SUMS.verify.txt" in text
     assert "domstate-reason.txt" in text
