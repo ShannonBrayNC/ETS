@@ -10,16 +10,16 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html.parser
 import ipaddress
 import json
 import os
 import re
+import urllib.parse
 from datetime import UTC, datetime
 from enum import StrEnum
-from html.parser import HTMLParser
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -75,7 +75,7 @@ class LegacyHttpCaptureV1(StrictLegacyModel):
     @field_validator("source_url")
     @classmethod
     def reject_credentials_in_url(cls, value: str) -> str:
-        parsed = urlsplit(value)
+        parsed = urllib.parse.urlsplit(value)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("source_url must be an absolute HTTP(S) URL")
         if parsed.username is not None or parsed.password is not None:
@@ -171,7 +171,7 @@ class LegacyHttpCorrelationV1(StrictLegacyModel):
     semantic_truth_proven: Literal[False] = False
 
 
-class _TableParser(HTMLParser):
+class _TableParser(html.parser.HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.rows: list[tuple[str, ...]] = []
@@ -206,7 +206,7 @@ class _TableParser(HTMLParser):
             self._cell = None
 
 
-class _VisibleTextParser(HTMLParser):
+class _VisibleTextParser(html.parser.HTMLParser):
     _BREAK_TAGS = frozenset({"br", "p", "div", "tr", "li", "pre", "textarea"})
 
     def __init__(self) -> None:
