@@ -69,6 +69,23 @@ The normally-closed E-stop is fail-closed: a healthy circuit pulls the configure
 
 Do not energize the motors until motor power, Pi ground, DRV8833 ground, and logic ground have been checked with the multimeter.
 
+## Retained Phase A/B campaign
+
+Create one qualification directory before touching the hardware:
+
+```bash
+export ETS_R0_CAMPAIGN="$HOME/ets-r0-qualification"
+export ETS_CODE_SHA="$(git rev-parse HEAD)"
+
+python scripts/ranger/r0_qualification_campaign.py init \
+  --root "$ETS_R0_CAMPAIGN" \
+  --campaign-id "agent365-r0-physical-001" \
+  --code-sha "$ETS_CODE_SHA"
+```
+
+All Phase A/B JSON artifacts must be written under that directory. The recorder hashes them into
+`campaign.json` and updates `campaign.sha256`. Phase records are append-only.
+
 ## Gate 0 — no-motion preflight
 
 Run this **before installing wheels on the floor**:
@@ -83,7 +100,18 @@ python scripts/ranger/r0_bench_preflight.py \
   --front-xshut <BCM> \
   --rear-xshut <BCM> \
   --calibrated-max-speed-mps 0.15 \
-  --max-duty-cycle 0.55
+  --max-duty-cycle 0.55 \
+  --output-json "$ETS_R0_CAMPAIGN/phase-a/preflight.json"
+```
+
+Retain Phase A only after the command succeeds:
+
+```bash
+python scripts/ranger/r0_qualification_campaign.py record-phase \
+  --root "$ETS_R0_CAMPAIGN" \
+  --phase A_preflight \
+  --state pass \
+  --artifact "$ETS_R0_CAMPAIGN/phase-a/preflight.json"
 ```
 
 This command must not authorize motion. It:
@@ -110,6 +138,43 @@ Use a deliberately low frozen calibration ceiling. Confirm:
 5. the rear sensor does not falsely claim chassis translation while the wheels spin off-ground.
 
 That fifth condition is important. Wheel rotation is not physical travel.
+
+Run the bounded supported-chassis pulse only after placing the chassis securely so wheel
+rotation cannot propel the robot:
+
+```bash
+python scripts/ranger/r0_wheels_off_ground.py \
+  --execute-wheels-off-ground \
+  --output-json "$ETS_R0_CAMPAIGN/phase-b/wheels-off-ground.json" \
+  --left-in1 <BCM> \
+  --left-in2 <BCM> \
+  --right-in1 <BCM> \
+  --right-in2 <BCM> \
+  --estop-pin <BCM> \
+  --front-xshut <BCM> \
+  --rear-xshut <BCM> \
+  --duty-cycle 0.20 \
+  --pulse-seconds 0.40 \
+  --max-rear-translation-m 0.03
+```
+
+The automated result can prove that the E-stop stayed healthy, the stop command completed, and
+the rear range witness did not observe chassis translation beyond the frozen limit. It cannot
+infer wheel direction. After visually confirming that both wheels rotated forward, retain Phase B:
+
+```bash
+python scripts/ranger/r0_qualification_campaign.py record-phase \
+  --root "$ETS_R0_CAMPAIGN" \
+  --phase B_wheels_off_ground \
+  --state pass \
+  --artifact "$ETS_R0_CAMPAIGN/phase-b/wheels-off-ground.json" \
+  --operator-observation both_wheels_forward
+
+python scripts/ranger/r0_qualification_campaign.py status \
+  --root "$ETS_R0_CAMPAIGN"
+```
+
+The status must report `ready_for_phase_c_live_mission: true` before proceeding.
 
 ## Gate 2 — bounded floor motion
 
