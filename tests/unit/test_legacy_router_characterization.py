@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CAPTURE_PATH = ROOT / "scripts" / "qualification" / "legacy_lab" / "capture_udp_syslog.py"
 HARNESS_PATH = ROOT / "scripts" / "qualification" / "legacy_lab" / "characterize_router.py"
+LAB_NIC_PATH = ROOT / "scripts" / "qualification" / "legacy_lab" / "prepare_lab_nic.py"
 
 
 def _load_capture_module():
