@@ -201,3 +201,12 @@ The repair:
 5. restarts the guest and waits for the management DHCP lease.
 
 `virt-customize` must never be run against a live guest disk.
+
+
+### Ubuntu supermin/libguestfs kernel readability
+
+On Ubuntu hosts, `virt-customize` may fail while building its supermin helper appliance if the operator cannot read the selected host kernel under `/boot`. The repair script does not relax `/boot` permissions globally. It copies the currently running kernel to controlled ETS storage with mode `0644`, points `SUPERMIN_KERNEL` at that copy, points `SUPERMIN_MODULES` at the matching `/lib/modules/<running-kernel>` tree, and uses the direct libguestfs backend.
+
+If a previous repair attempt already created a `.pre-network-<timestamp>.qcow2` backup, the script reuses the newest retained backup instead of producing another full copy.
+
+If libguestfs still fails, the script retains `virt-customize-network-repair.log` beside the VT0 disks and prints the environment required for a verbose diagnostic rerun.
