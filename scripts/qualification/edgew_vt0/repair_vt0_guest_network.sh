@@ -48,7 +48,11 @@ fi
 
 mac_for_network() {
   local network="$1"
-  virsh --connect qemu:///system domiflist "$VM_NAME"     | awk -v want="$network" '$3 == want {print $5; exit}'
+  # Consume the complete virsh stream. Do not exit awk early: with
+  # set -o pipefail, an early consumer exit can SIGPIPE virsh and cause a
+  # silent set -e termination inside command substitution.
+  virsh --connect qemu:///system domiflist "$VM_NAME" \
+    | awk -v want="$network" '$3 == want && !found {print $5; found=1}'
 }
 
 MGMT_MAC="$(mac_for_network edgew-vt-mgmt)"
