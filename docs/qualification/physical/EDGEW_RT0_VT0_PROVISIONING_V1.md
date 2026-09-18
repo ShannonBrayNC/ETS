@@ -153,3 +153,51 @@ bash scripts/qualification/edgew_vt0/provision_vt0_dut.sh \
 System libvirt runs QEMU as a non-root runtime identity. The provisioner resolves the local QEMU service account (normally `libvirt-qemu` on Ubuntu), grants a narrow POSIX ACL for traversal of the ETS storage root and read/write access to the VM directory/disks, and verifies access as that runtime account before calling `virt-install`.
 
 Do not solve datastore access failures by making the ETS datastore world-writable. If the ACL preflight succeeds but VM start is still denied, inspect the retained `virt-install.log` and Ubuntu AppArmor audit messages separately; DAC and AppArmor are distinct enforcement layers.
+
+
+## Deterministic guest networking
+
+VT0 uses four distinct guest NIC roles. The provisioner must provide an explicit cloud-init `network-config`; multi-NIC fallback selection is not an acceptable qualification baseline.
+
+Canonical mapping:
+
+| Role | Libvirt network | Guest behavior |
+|---|---|---|
+| management | `edgew-vt-mgmt` | DHCPv4; only default-route candidate |
+| source | `edgew-vt-source` | static `192.168.251.10/24`; no default route |
+| upstream | `edgew-vt-upstream` | static `192.168.252.10/24`; no default route |
+| fault | `edgew-vt-fault` | static `192.168.253.10/24`; no default route |
+
+The provisioner binds each role by a deterministic libvirt MAC address and passes the matching network configuration into the first-boot NoCloud ISO.
+
+### Existing VM recovery
+
+A VT0 VM created before explicit network configuration may boot successfully but have no DHCP/ARP observations on any of the four networks. Do not set a console password merely to repair networking.
+
+Install the offline guest-disk tooling on the host:
+
+```bash
+sudo apt-get install -y libguestfs-tools
+```
+
+Plan the repair:
+
+```bash
+bash scripts/qualification/edgew_vt0/repair_vt0_guest_network.sh
+```
+
+After verifying the discovered libvirt MAC-to-role mapping:
+
+```bash
+bash scripts/qualification/edgew_vt0/repair_vt0_guest_network.sh --apply
+```
+
+The repair:
+
+1. requests a graceful shutdown and refuses to force-destroy the VM;
+2. creates a stopped-guest qcow2 backup of the OS disk;
+3. writes MAC-bound Netplan configuration offline with `virt-customize`;
+4. disables cloud-init network rewriting;
+5. restarts the guest and waits for the management DHCP lease.
+
+`virt-customize` must never be run against a live guest disk.
