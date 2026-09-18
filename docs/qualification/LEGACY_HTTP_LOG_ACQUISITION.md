@@ -58,6 +58,24 @@ directory.
 Use only the isolated/authorized lab topology. Keep the T430 management path
 separate from the Linksys test interface.
 
+The Ubuntu T430 uses `python3`. A fresh Git worktree does not automatically
+inherit Python packages from another checkout, so bootstrap an isolated virtual
+environment before running the qualification helper:
+
+~~~bash
+cd ~/Desktop/ETS-legacy-http
+
+python3 -m venv .venv
+source .venv/bin/activate
+
+python3 -m pip install --upgrade pip
+python3 -m pip install -e .
+~~~
+
+Do not use `sudo pip`. If Ubuntu reports that the `venv` module is unavailable,
+install the distribution package `python3-venv` and repeat the bootstrap.
+
+
 ### 1. Establish the bounded route
 
 ~~~bash
@@ -121,7 +139,7 @@ firmware. Do not assume every BEFSR41 revision uses the same CGI path.
 ### 5. Preserve before interpretation
 
 ~~~bash
-python -m ets.qualification.legacy_http capture \\
+python3 -m ets.qualification.legacy_http capture \\
   --input /tmp/befsr41-outgoing.html \\
   --output-dir ~/Desktop/ETS/artifacts/befsr41-http/outgoing \\
   --source-label 'linksys-befsr41v3-fw-1.04.12' \\
@@ -136,7 +154,7 @@ normalized-record path.
 ### 6. Verify retained bytes
 
 ~~~bash
-python -m ets.qualification.legacy_http verify \\
+python3 -m ets.qualification.legacy_http verify \\
   --metadata /path/to/capture.json \\
   --raw /path/to/raw.http-body.bin
 ~~~
