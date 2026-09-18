@@ -72,6 +72,9 @@ set -euo pipefail
 findmnt -n -o SOURCE,FSTYPE,TARGET "$QUAL_MOUNT" || true
 echo "--- filesystems ---"
 df -h / "$QUAL_MOUNT" || true
+echo "--- root block topology ---"
+lsblk -b -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS /dev/vda || true
+command -v growpart || true
 echo "--- docker/containerd commands ---"
 command -v docker || true
 command -v containerd || true
@@ -105,13 +108,14 @@ $REMOTE_STATE
 
 Actions on --apply:
   1. Verify $QUAL_MOUNT is backed by /dev/vdb1 and labeled ETS_QUAL.
-  2. Install docker.io and docker-compose-v2 if required.
-  3. Configure Docker data-root and containerd content root under the dedicated qualification volume.
-  4. Remove only stale/incomplete containerd cache from the guest root filesystem after both daemons are stopped.
-  5. Transfer an exact git archive of commit $SOURCE_SHA.
-  6. Retain archive/configuration hashes without copying credentials or private keys.
-  7. Build and start the four-service Edge Virtual stack.
-  8. Require /ready and public device identity endpoints to respond.
+  2. Expand the cloud-image root partition/filesystem if it is still at the ~2.5 GiB image size.
+  3. Install docker.io and docker-compose-v2 if required.
+  4. Configure Docker data-root and containerd content root under the dedicated qualification volume.
+  5. Remove only stale/incomplete containerd cache from the guest root filesystem after both daemons are stopped.
+  6. Transfer an exact git archive of commit $SOURCE_SHA.
+  7. Retain archive/configuration hashes without copying credentials or private keys.
+  8. Build and start the four-service Edge Virtual stack.
+  9. Require /ready and public device identity endpoints to respond.
 
 Claim boundary: simulated VT0 build/runtime preparation only; not physical EDGE-RT0 qualification.
 EOF
@@ -150,7 +154,63 @@ label="$(sudo blkid -s LABEL -o value "$source_line")"
   exit 3
 }
 
-# A failed BuildKit/containerd pull can fill the 64 GiB OS disk even when
+# The Ubuntu cloud image starts with a small root partition even though the
+# virtual OS disk is 64 GiB. Because cloud-init was deliberately disabled after
+# provisioning, automatic growroot did not occur on this VT0 instance.
+ROOT_SOURCE="$(findmnt -n -o SOURCE /)"
+ROOT_FSTYPE="$(findmnt -n -o FSTYPE /)"
+ROOT_PARENT_NAME="$(lsblk -no PKNAME "$ROOT_SOURCE" 2>/dev/null | head -1)"
+ROOT_PARENT="/dev/${ROOT_PARENT_NAME}"
+ROOT_PART_BYTES="$(sudo blockdev --getsize64 "$ROOT_SOURCE")"
+ROOT_DISK_BYTES="$(sudo blockdev --getsize64 "$ROOT_PARENT")"
+ROOT_RECOVERY="$QUAL_MOUNT/runtime-recovery/root-expansion"
+
+if [[ "$ROOT_SOURCE" == "/dev/vda1" && "$ROOT_FSTYPE" == "ext4" &&       "$ROOT_DISK_BYTES" -eq $((64 * 1024 * 1024 * 1024)) &&       "$ROOT_PART_BYTES" -lt $((16 * 1024 * 1024 * 1024)) ]]; then
+  command -v growpart >/dev/null 2>&1 || {
+    echo "ERROR: /dev/vda1 is undersized but growpart is not installed." >&2
+    echo "Install cloud-guest-utils only after freeing sufficient root space." >&2
+    exit 3
+  }
+
+  sudo install -d -m 0755 "$ROOT_RECOVERY"
+  {
+    echo "captured_at=$(date -u --iso-8601=seconds)"
+    echo "root_source=$ROOT_SOURCE"
+    echo "root_fstype=$ROOT_FSTYPE"
+    echo "root_partition_bytes=$ROOT_PART_BYTES"
+    echo "root_disk_bytes=$ROOT_DISK_BYTES"
+    echo "--- lsblk ---"
+    lsblk -b -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS /dev/vda
+    echo "--- sfdisk ---"
+    sudo sfdisk -d /dev/vda
+    echo "--- df ---"
+    df -hT /
+  } | sudo tee "$ROOT_RECOVERY/before.txt" >/dev/null
+
+  echo "Expanding VT0 root partition /dev/vda1 to the available 64 GiB OS-disk boundary..."
+  sudo growpart /dev/vda 1
+  sudo udevadm settle
+  sudo resize2fs /dev/vda1
+
+  {
+    echo "captured_at=$(date -u --iso-8601=seconds)"
+    echo "--- lsblk ---"
+    lsblk -b -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS /dev/vda
+    echo "--- sfdisk ---"
+    sudo sfdisk -d /dev/vda
+    echo "--- df ---"
+    df -hT /
+  } | sudo tee "$ROOT_RECOVERY/after.txt" >/dev/null
+fi
+
+ROOT_AVAIL_BYTES="$(df -B1 --output=avail / | tail -1 | tr -d ' ')"
+[[ "$ROOT_AVAIL_BYTES" -ge $((8 * 1024 * 1024 * 1024)) ]] || {
+  echo "ERROR: less than 8 GiB free remains on guest root after expansion/recovery." >&2
+  df -hT / >&2
+  exit 3
+}
+
+# A failed BuildKit/containerd pull can fill the OS filesystem even when
 # Docker's data-root is redirected. Re-home containerd separately before retry.
 if ! command -v docker >/dev/null 2>&1 || ! command -v containerd >/dev/null 2>&1; then
   sudo apt-get update
@@ -188,6 +248,7 @@ printf '%s
 ' '{"data-root":"/var/lib/ets-qualification/docker"}' \
   | sudo tee /etc/docker/daemon.json >/dev/null
 
+sudo install -d -m 0755 /etc/containerd
 if [[ -f /etc/containerd/config.toml ]]; then
   sudo cp -a /etc/containerd/config.toml /etc/containerd/config.toml.pre-ets-vt0
 else
