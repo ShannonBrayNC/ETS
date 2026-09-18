@@ -76,13 +76,18 @@ Retain packet evidence separately from the router assertion:
 mkdir -p ~/Desktop/ETS/artifacts/befsr41-http
 chmod 700 ~/Desktop/ETS/artifacts/befsr41-http
 
-sudo timeout 45 tcpdump -ni eno2 -s 0   -w ~/Desktop/ETS/artifacts/befsr41-http/independent-flow.pcap   'host 1.1.1.1'
+sudo timeout 45 tcpdump -ni eno2 -s 0 \\
+  -w ~/Desktop/ETS/artifacts/befsr41-http/independent-flow.pcap \\
+  'host 1.1.1.1'
 ~~~
 
 ### 3. Generate one bounded LAN-to-WAN event
 
 ~~~bash
-curl -4   --interface 192.168.1.2   --max-time 10   -I http://1.1.1.1/ || true
+curl -4 \\
+  --interface 192.168.1.2 \\
+  --max-time 10 \\
+  -I http://1.1.1.1/ || true
 ~~~
 
 The network response is independent T430 observation. It does not prove what the
@@ -98,9 +103,11 @@ A shell prompt keeps the password out of shell history:
 ~~~bash
 read -rsp 'Linksys password: ' LINKSYS_PASSWORD
 echo
-export LINKSYS_PASSWORD
 
-curl --fail --silent --show-error   --user ":$LINKSYS_PASSWORD"   --output /tmp/befsr41-outgoing.html   http://192.168.1.1/outLogTable.htm
+curl --fail --silent --show-error \\
+  --user ":$LINKSYS_PASSWORD" \\
+  --output /tmp/befsr41-outgoing.html \\
+  http://192.168.1.1/outLogTable.htm
 
 unset LINKSYS_PASSWORD
 ~~~
@@ -114,7 +121,13 @@ firmware. Do not assume every BEFSR41 revision uses the same CGI path.
 ### 5. Preserve before interpretation
 
 ~~~bash
-python -m ets.qualification.legacy_http capture   --input /tmp/befsr41-outgoing.html   --output-dir ~/Desktop/ETS/artifacts/befsr41-http/outgoing   --source-label 'linksys-befsr41v3-fw-1.04.12'   --source-url 'http://192.168.1.1/outLogTable.htm'   --endpoint-kind outgoing_log   --observer-id 't430-eno2'
+python -m ets.qualification.legacy_http capture \\
+  --input /tmp/befsr41-outgoing.html \\
+  --output-dir ~/Desktop/ETS/artifacts/befsr41-http/outgoing \\
+  --source-label 'linksys-befsr41v3-fw-1.04.12' \\
+  --source-url 'http://192.168.1.1/outLogTable.htm' \\
+  --endpoint-kind outgoing_log \\
+  --observer-id 't430-eno2'
 ~~~
 
 The command emits the capture ID, SHA-256, raw-artifact path, metadata path and
@@ -123,7 +136,9 @@ normalized-record path.
 ### 6. Verify retained bytes
 
 ~~~bash
-python -m ets.qualification.legacy_http verify   --metadata /path/to/capture.json   --raw /path/to/raw.http-body.bin
+python -m ets.qualification.legacy_http verify \\
+  --metadata /path/to/capture.json \\
+  --raw /path/to/raw.http-body.bin
 ~~~
 
 Exit code 0 means the current bytes match the retained SHA-256 and byte length. A
