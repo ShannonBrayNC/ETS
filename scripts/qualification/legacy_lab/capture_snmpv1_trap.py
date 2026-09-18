@@ -297,6 +297,11 @@ def capture(args: argparse.Namespace) -> dict[str, Any]:
         "schema": "ets.legacy.snmpv1-trap-characterization.v1",
         "session_started_utc": started,
         "session_completed_utc": utc_now(),
+        "device_label": args.device_label,
+        "manufacturer": args.manufacturer,
+        "model": args.model,
+        "hardware_revision": args.hardware_revision,
+        "firmware": args.firmware,
         "bind_ip": args.bind_ip,
         "interface": args.interface,
         "port": args.port,
@@ -318,6 +323,11 @@ def capture(args: argparse.Namespace) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--device-label", required=True)
+    parser.add_argument("--manufacturer", default="")
+    parser.add_argument("--model", default="")
+    parser.add_argument("--hardware-revision", default="")
+    parser.add_argument("--firmware", default="")
     parser.add_argument("--bind-ip", required=True)
     parser.add_argument("--interface")
     parser.add_argument("--port", type=int, default=162)
