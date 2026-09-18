@@ -54,6 +54,14 @@ def test_provisioner_preserves_vt0_safety_and_topology_contract() -> None:
     assert 'MOUNT_TARGET" == "/"' in text
     assert "refusing overwrite" in text.lower()
     assert "not physical qualification" in text
+    assert "network-config=${NETWORK_CONFIG}" in text
+    assert "52:54:00:97:be:12" in text
+    assert "52:54:00:43:19:c6" in text
+    assert "52:54:00:92:fa:95" in text
+    assert "52:54:00:75:b7:33" in text
+    assert "192.168.251.10/24" in text
+    assert "192.168.252.10/24" in text
+    assert "192.168.253.10/24" in text
     assert "--dry-run" in text
     assert "--print-xml" in text
     assert "virt-install-preflight.xml" in text
