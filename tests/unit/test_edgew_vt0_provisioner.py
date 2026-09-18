@@ -113,6 +113,11 @@ def test_guest_network_repair_preserves_safety_and_role_contract() -> None:
     assert "Reusing retained pre-network backup" in text
     assert "virt-customize-network-repair.log" in text
     assert "netplan generate" in text
+    assert "--install openssh-server" in text
+    assert '--ssh-inject "ubuntu:file:$SSH_PUB"' in text
+    assert "ssh-keygen -A" in text
+    assert "systemctl enable ssh.socket" in text
+    assert "SSH port reachable: $MGMT_IP:22" in text
     assert "qemu-img convert" in text
     assert "virt-customize" in text
     assert "rm -f /etc/netplan/50-cloud-init.yaml" in text
