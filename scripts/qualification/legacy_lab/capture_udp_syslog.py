@@ -58,7 +58,9 @@ def classify(payload: bytes) -> tuple[str, dict[str, Any]]:
                 "app_name_observation": _bounded_ascii(groups["app_name"]),
                 "procid_observation": _bounded_ascii(groups["procid"]),
                 "msgid_observation": _bounded_ascii(groups["msgid"]),
-                "identity_boundary": "message_fields_are_observations_not_authenticated_identity",
+                "identity_boundary": (
+                    "message_fields_are_observations_not_authenticated_identity"
+                ),
             },
         )
 
@@ -76,14 +78,18 @@ def classify(payload: bytes) -> tuple[str, dict[str, Any]]:
                         _bounded_ascii(groups["time"]),
                     )
                 ),
-                "identity_boundary": (\n                    "legacy_message_fields_are_observations_not_authenticated_identity"\n                ),
+                "identity_boundary": (
+                    "legacy_message_fields_are_observations_not_authenticated_identity"
+                ),
             },
         )
 
     return (
         "vendor_specific_or_unclassified",
         {
-            "identity_boundary": (\n                "transport_and_message_fields_are_observations_not_authenticated_identity"\n            )
+            "identity_boundary": (
+                "transport_and_message_fields_are_observations_not_authenticated_identity"
+            )
         },
     )
 
@@ -100,7 +106,11 @@ def capture(args: argparse.Namespace) -> dict[str, Any]:
     if args.interface:
         # Linux-specific and intentionally explicit. Binding failure is safer than
         # silently receiving from a different interface.
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, args.interface.encode() + b"\0")
+        sock.setsockopt(
+            socket.SOL_SOCKET,
+            socket.SO_BINDTODEVICE,
+            args.interface.encode() + b"\0",
+        )
     sock.bind((args.bind_ip, args.port))
     sock.settimeout(min(1.0, args.seconds))
 
