@@ -4,7 +4,7 @@
 **Workstream:** Legacy hardware qualification  
 **Target:** Linksys BEFSR41 v3, firmware 1.04.12  
 **Issue:** #882  
-**Status:** Initial bounded implementation
+**Status:** Physical characterization completed on T430 lab
 
 ## Objective
 
@@ -26,12 +26,24 @@ The T430 lab has established that:
 - the LAN management endpoint is reachable on the isolated Linksys LAN;
 - WAN DHCP, routing, NAT and a bounded LAN-to-WAN HTTP flow work;
 - the Outgoing Log records 192.168.1.2 -> 1.1.1.1 -> HTTP;
-- the System Log records a more detailed TCP tuple;
+- the System Log can record detailed TCP tuples, but is not complete for every tested
+  outbound flow;
 - router System Log time is relative/weak and is not authoritative wall-clock time;
-- a later dedicated UDP/162 LogViewer reproduction captured zero packets with zero
-  kernel drops.
+- the firmware-defined System Log Clear operation is a GET form submission with
+  Log_Page_Num=0 and LogClear=1;
+- after that exact Clear operation, an immediate readback produced a new artifact
+  with zero parsed TCP assertions, proving a known-empty baseline;
+- from that empty baseline, the T430 independently captured the bounded flow
+  192.168.1.2:56082 -> 1.1.1.1:80 and its return traffic, while the immediate System
+  Log readback remained at the same post-clear digest with zero parsed records;
+- a dedicated UDP/162 LogViewer reproduction captured zero packets with zero kernel
+  drops.
 
-The current engineering path therefore does not depend on LogViewer push export.
+The bounded conclusion is that, for this BEFSR41 v3 / firmware 1.04.12 lab profile,
+the System Log is selective or incomplete for the tested outbound HTTP event class.
+This result does not imply that every System Log event class is incomplete. The
+current engineering path therefore does not depend on either LogViewer push export
+or System Log completeness.
 
 ## Preservation boundary
 
@@ -214,15 +226,16 @@ T430 independently observes the network flow
                |
                v
 DEVICE ASSERTION
-BEFSR41 Outgoing/System Log asserts a corresponding flow
+BEFSR41 Outgoing/System Log may assert a corresponding flow
                |
                v
 ETS ACQUISITION
 exact HTTP bytes + observer UTC + SHA-256 + bounded parser
                |
                v
-CORRELATION
-explicit matching fields without identity/completeness/truth upgrade
+CORRELATION OR CONTRADICTION
+explicit matching fields, including preserved absence/non-match,
+without identity/completeness/truth upgrade
 ~~~
 
 This lets a legacy device participate in Evidence Architecture even with weak time,
@@ -236,7 +249,8 @@ This implementation does not claim that:
 - the BEFSR41 is an authenticated source;
 - HTTP Basic authentication protects the evidence channel;
 - source IP or MAC identifies a physical device;
-- router logs are complete;
+- router logs are complete; the physical 56082 test demonstrates a bounded
+  counterexample for the tested System Log event class;
 - a missing log entry proves an event did not occur;
 - a present log entry proves semantic truth;
 - observer receipt time equals event occurrence time;
