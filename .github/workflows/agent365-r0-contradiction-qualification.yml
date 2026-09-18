@@ -1,0 +1,52 @@
+name: Agent 365 R0 Contradiction Qualification
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent365-r0-contradictions-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualification:
+    name: Live mission contradiction and soak-entry gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ETS
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run frozen contradiction gates
+        run: |
+          pytest -q \
+            tests/test_agent365_r0_live_mission.py \
+            tests/test_agent365_r0_live_runner.py \
+            tests/test_agent365_r0_bench_hardware.py \
+            tests/test_agent365_r0_qualification_campaign.py \
+            --junitxml=qualification-output/agent365-r0-contradictions.xml
+
+      - name: Upload contradiction qualification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent365-r0-contradiction-qualification
+          path: qualification-output/agent365-r0-contradictions.xml
+          if-no-files-found: error
