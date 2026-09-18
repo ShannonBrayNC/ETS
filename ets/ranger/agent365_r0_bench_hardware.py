@@ -259,7 +259,7 @@ class DualRangeR0PhysicalSensors:
             now_ns = self._clock.monotonic_ns()
             rear_m = self._read_range(self._rear, "rear")
             travelled_m = max(0.0, rear_m - baseline)
-            elapsed_s = max((now_ns - start_ns) / 1_000_000_000, self._calibration.sample_interval_s)
+            elapsed_s = max(\n                (now_ns - start_ns) / 1_000_000_000,\n                self._calibration.sample_interval_s,\n            )
             if travelled_m >= self._calibration.motion_start_delta_m:
                 self._mission_id = mission_id
                 self._motion_start_ns = start_ns
