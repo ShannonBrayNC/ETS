@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 from time import sleep
 
 from ets.ranger.agent365_r0_bench_hardware import (
@@ -33,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rear-xshut", type=int, required=True)
     parser.add_argument("--calibrated-max-speed-mps", type=float, default=0.15)
     parser.add_argument("--max-duty-cycle", type=float, default=0.55)
+    parser.add_argument("--output-json", type=Path, default=None)
     return parser
 
 
@@ -80,23 +82,25 @@ def main() -> int:
             )
             sleep(0.10)
 
-        print(
-            json.dumps(
-                {
-                    "profile": "r0-bench-pi-drv8833-dual-vl53l0x.v1",
-                    "motion_authorized": False,
-                    "estop_circuit_closed": True,
-                    "actuator_outputs_forced_stopped": True,
-                    "calibration": calibration.model_dump(mode="json"),
-                    "range_samples": samples,
-                    "claim_boundary": (
-                        "preflight_only_no_motor_motion_or_physical_mission_claim"
-                    ),
-                },
-                indent=2,
-                sort_keys=True,
-            )
-        )
+        payload = json.dumps(
+            {
+                "profile": "r0-bench-pi-drv8833-dual-vl53l0x.v1",
+                "motion_authorized": False,
+                "estop_circuit_closed": True,
+                "actuator_outputs_forced_stopped": True,
+                "calibration": calibration.model_dump(mode="json"),
+                "range_samples": samples,
+                "claim_boundary": (
+                    "preflight_only_no_motor_motion_or_physical_mission_claim"
+                ),
+            },
+            indent=2,
+            sort_keys=True,
+        ) + "\\n"
+        if args.output_json is not None:
+            args.output_json.parent.mkdir(parents=True, exist_ok=True)
+            args.output_json.write_text(payload, encoding="utf-8")
+        print(payload, end="")
         return 0
     finally:
         motor.stop()
