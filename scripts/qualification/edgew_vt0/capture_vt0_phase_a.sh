@@ -110,8 +110,62 @@ done
 capture_guest id-key-metadata-after.txt "sudo stat -c '%n mode=%a uid=%u gid=%g size=%s' $QUAL_MOUNT/docker/volumes/*/_data/edge-demo-signing-key.hex 2>/dev/null || true"
 capture_guest id-api-key-metadata-after.txt "sudo stat -c '%n mode=%a uid=%u gid=%g size=%s' $QUAL_MOUNT/docker/volumes/*/_data/edge-local-api-key 2>/dev/null || true"
 
-# Search only retained evidence/config/log material, never secret file contents.
-capture_guest id-secret-exposure-scan.txt "grep -RIlE 'BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|edge-local-api-key[[:space:]]*=' $QUAL_MOUNT/deployment-evidence /opt/ets/current 2>/dev/null || true"
+# Search retained evidence/config/log material for the *actual* secret values
+# without emitting those values. Filename/string references are not leaks.
+"${SSH[@]}" 'sudo bash -s' >"$OUT_DIR/id-secret-exposure-scan.txt" 2>&1 <<'REMOTE'
+set -euo pipefail
+
+QUAL_MOUNT=/var/lib/ets-qualification
+SECRET_ROOT="$QUAL_MOUNT/docker/volumes"
+SCAN_TARGETS=(
+  "$QUAL_MOUNT/deployment-evidence"
+  "/opt/ets/current"
+)
+
+mapfile -d '' -t SECRET_FILES < <(
+  find "$SECRET_ROOT" -type f \
+    \( -name 'edge-demo-signing-key.hex' -o -name 'edge-local-api-key' \) \
+    -print0 2>/dev/null
+)
+
+if (( ${#SECRET_FILES[@]} == 0 )); then
+  echo "SCAN_ERROR expected_secret_files_not_found"
+  exit 0
+fi
+
+for secret_file in "${SECRET_FILES[@]}"; do
+  secret_name="$(basename "$secret_file")"
+  secret_value="$(cat "$secret_file")"
+
+  if (( ${#secret_value} < 16 )); then
+    echo "SCAN_ERROR secret_value_too_short source=$secret_name"
+    unset secret_value
+    continue
+  fi
+
+  for target in "${SCAN_TARGETS[@]}"; do
+    [[ -e "$target" ]] || continue
+    while IFS= read -r matched_file; do
+      [[ -n "$matched_file" ]] || continue
+      echo "EXPOSED secret=$secret_name target=$matched_file"
+    done < <(grep -RIlF -- "$secret_value" "$target" 2>/dev/null || true)
+  done
+
+  unset secret_value
+done
+
+# PEM/OpenSSH private-key material must never appear in retained deployment
+# evidence, independent of the current Edge secret representation.
+if [[ -d "$QUAL_MOUNT/deployment-evidence" ]]; then
+  while IFS= read -r matched_file; do
+    [[ -n "$matched_file" ]] || continue
+    echo "EXPOSED private_key_marker target=$matched_file"
+  done < <(
+    grep -RIlE 'BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY' \
+      "$QUAL_MOUNT/deployment-evidence" 2>/dev/null || true
+  )
+fi
+REMOTE
 
 # SEC-001: observation only. No firmware/security mutation.
 capture_guest sec-uefi.txt "test -d /sys/firmware/efi && echo uefi_present=true || echo uefi_present=false"
