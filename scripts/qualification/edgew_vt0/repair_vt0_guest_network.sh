@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for cmd in virsh virt-customize qemu-img awk mktemp uname install ping ip timeout bash; do
+for cmd in virsh virt-customize virt-cat qemu-img awk mktemp uname install ping ip timeout bash grep; do
   command -v "$cmd" >/dev/null 2>&1 || {
     echo "ERROR: required command not found: $cmd" >&2
     if [[ "$cmd" == "virt-customize" ]]; then
@@ -202,12 +202,44 @@ else
   install -m 0644 "$HOST_KERNEL" "$SUPERMIN_KERNEL_COPY"
 fi
 
-echo "Applying deterministic guest network configuration offline..."
+echo "Discovering guest SSH account..."
+GUEST_PASSWD="$(
+  env \
+    SUPERMIN_KERNEL="$SUPERMIN_KERNEL_COPY" \
+    SUPERMIN_MODULES="$HOST_MODULES" \
+    LIBGUESTFS_BACKEND=direct \
+    virt-cat -a "$OS_DISK" /etc/passwd
+)"
+
+if grep -q '^ubuntu:' <<<"$GUEST_PASSWD"; then
+  GUEST_USER="ubuntu"
+else
+  GUEST_USER="$(
+    awk -F: '
+      $3 >= 1000 && $3 < 65534 &&
+      $6 ~ /^\/home\// &&
+      $7 !~ /(nologin|false)$/ {
+        print $1
+        exit
+      }
+    ' <<<"$GUEST_PASSWD"
+  )"
+fi
+
+if [[ -z "$GUEST_USER" ]]; then
+  echo "ERROR: no normal interactive guest account was discovered in /etc/passwd." >&2
+  echo "Candidate human accounts:" >&2
+  awk -F: '$3 >= 1000 && $3 < 65534 {print $1 ":" $3 ":" $6 ":" $7}' <<<"$GUEST_PASSWD" >&2
+  exit 4
+fi
+
+echo "Detected guest SSH account: $GUEST_USER"
+echo "Applying deterministic guest network configuration and SSH access offline..."
 echo "  supermin kernel:  $SUPERMIN_KERNEL_COPY"
 echo "  supermin modules: $HOST_MODULES"
 echo "  log:              $CUSTOMIZE_LOG"
 
-if ! env   SUPERMIN_KERNEL="$SUPERMIN_KERNEL_COPY"   SUPERMIN_MODULES="$HOST_MODULES"   LIBGUESTFS_BACKEND=direct   virt-customize     -a "$OS_DISK"     --run-command 'rm -f /etc/netplan/50-cloud-init.yaml'     --upload "$NETPLAN:/etc/netplan/90-ets-vt0.yaml"     --chmod 0600:/etc/netplan/90-ets-vt0.yaml     --upload "$CLOUDCFG:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg"     --chmod 0644:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg     --run-command 'netplan generate'     --install openssh-server     --ssh-inject "ubuntu:file:$SSH_PUB"     --run-command 'ssh-keygen -A'     --run-command 'systemctl enable ssh.socket 2>/dev/null || systemctl enable ssh.service'     --run-command 'test -x /usr/sbin/sshd'     > >(tee "$CUSTOMIZE_LOG") 2>&1
+if ! env   SUPERMIN_KERNEL="$SUPERMIN_KERNEL_COPY"   SUPERMIN_MODULES="$HOST_MODULES"   LIBGUESTFS_BACKEND=direct   virt-customize     -a "$OS_DISK"     --run-command 'rm -f /etc/netplan/50-cloud-init.yaml'     --upload "$NETPLAN:/etc/netplan/90-ets-vt0.yaml"     --chmod 0600:/etc/netplan/90-ets-vt0.yaml     --upload "$CLOUDCFG:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg"     --chmod 0644:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg     --run-command 'netplan generate'     --install openssh-server     --ssh-inject "$GUEST_USER:file:$SSH_PUB"     --run-command 'ssh-keygen -A'     --run-command 'systemctl enable ssh.socket 2>/dev/null || systemctl enable ssh.service'     --run-command 'test -x /usr/sbin/sshd'     > >(tee "$CUSTOMIZE_LOG") 2>&1
 then
   echo "ERROR: offline guest customization failed." >&2
   echo "Retained log: $CUSTOMIZE_LOG" >&2
@@ -234,7 +266,7 @@ for _ in {1..30}; do
   if [[ "$ping_ok" -eq 1 && "$ssh_ok" -eq 1 ]]; then
     echo "Management address reachable: $MGMT_IP"
     echo "SSH port reachable: $MGMT_IP:22"
-    echo "SSH with: ssh -o IdentitiesOnly=yes -i ~/.ssh/edgew_vt0 ubuntu@$MGMT_IP"
+    echo "SSH with: ssh -o IdentitiesOnly=yes -i ~/.ssh/edgew_vt0 $GUEST_USER@$MGMT_IP"
     echo "Backup retained: $BACKUP"
     exit 0
   fi
