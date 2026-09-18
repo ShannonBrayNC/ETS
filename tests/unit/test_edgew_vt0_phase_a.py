@@ -32,6 +32,9 @@ def test_runtime_deployment_binds_exact_build_and_qualification_storage() -> Non
     assert "uncommitted changes" in text
     assert "/var/lib/ets-qualification/docker" in text
     assert "/var/lib/ets-qualification/containerd" in text
+    assert "growpart -N /dev/vda 1" in text
+    assert "growpart-dry-run.txt" in text
+    assert "No partition-table change was attempted." in text
     assert "growpart /dev/vda 1" in text
     assert "resize2fs /dev/vda1" in text
     assert "root-expansion" in text
