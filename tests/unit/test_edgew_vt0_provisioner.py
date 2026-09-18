@@ -110,6 +110,8 @@ def test_guest_network_repair_preserves_safety_and_role_contract() -> None:
     assert "rm -f /etc/netplan/50-cloud-init.yaml" in text
     assert "90-ets-vt0.yaml" in text
     assert "edgew-vt-mgmt" in text
+    assert "print $5; found=1" in text
+    assert "print $5; exit" not in text
     assert "edgew-vt-source" in text
     assert "edgew-vt-upstream" in text
     assert "edgew-vt-fault" in text
