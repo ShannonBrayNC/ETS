@@ -199,3 +199,28 @@ The deployment helper now:
 
 A write failure in this directory is an evidence-retention defect, not proof
 that the Edge runtime itself failed readiness.
+
+
+## Secret-exposure scan semantics
+
+The first live Phase A capture produced a false-negative case result because the
+scanner treated source/config references to secret filenames as if they were
+secret-value disclosure.
+
+The corrected scan distinguishes a reference from exposure:
+
+- the actual local API-key and software signing-key values are read only inside
+  the guest;
+- those values are never printed or copied into host evidence;
+- retained deployment evidence and installed source/config material are searched
+  for exact matches to those values;
+- only the secret type/name and matching target path are reported if exposure is
+  found;
+- PEM/OpenSSH private-key markers are independently prohibited in retained
+  deployment evidence;
+- missing or implausibly short secret material produces a scan error rather than
+  a false pass.
+
+A filename such as `edge-local-api-key` appearing in source, documentation, or
+configuration is therefore not itself evidence that the credential value was
+disclosed.
