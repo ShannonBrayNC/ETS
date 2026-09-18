@@ -23,7 +23,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
 _SYSTEM_TCP_RE = re.compile(
     r"(?P<relative_time>\d{2}:\d{2}:\d{2})\s+TCP\s+from\s+"
     r"(?P<source_ip>\d{1,3}(?:\.\d{1,3}){3}):(?P<source_port>\d{1,5})\s+"
