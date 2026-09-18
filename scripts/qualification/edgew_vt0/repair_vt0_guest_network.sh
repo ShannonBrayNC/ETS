@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for cmd in virsh virt-customize qemu-img awk mktemp uname install ping ip; do
+for cmd in virsh virt-customize qemu-img awk mktemp uname install ping ip timeout bash; do
   command -v "$cmd" >/dev/null 2>&1 || {
     echo "ERROR: required command not found: $cmd" >&2
     if [[ "$cmd" == "virt-customize" ]]; then
@@ -41,8 +41,13 @@ if ! virsh --connect qemu:///system dominfo "$VM_NAME" >/dev/null 2>&1; then
 fi
 
 OS_DISK="${STORAGE_ROOT}/${VM_NAME}/${VM_NAME}-os.qcow2"
+SSH_PUB="${HOME}/.ssh/edgew_vt0.pub"
 if [[ ! -f "$OS_DISK" ]]; then
   echo "ERROR: expected OS disk not found: $OS_DISK" >&2
+  exit 2
+fi
+if [[ ! -r "$SSH_PUB" ]]; then
+  echo "ERROR: dedicated VT0 SSH public key not found: $SSH_PUB" >&2
   exit 2
 fi
 
@@ -202,7 +207,7 @@ echo "  supermin kernel:  $SUPERMIN_KERNEL_COPY"
 echo "  supermin modules: $HOST_MODULES"
 echo "  log:              $CUSTOMIZE_LOG"
 
-if ! env   SUPERMIN_KERNEL="$SUPERMIN_KERNEL_COPY"   SUPERMIN_MODULES="$HOST_MODULES"   LIBGUESTFS_BACKEND=direct   virt-customize     -a "$OS_DISK"     --run-command 'rm -f /etc/netplan/50-cloud-init.yaml'     --upload "$NETPLAN:/etc/netplan/90-ets-vt0.yaml"     --chmod 0600:/etc/netplan/90-ets-vt0.yaml     --upload "$CLOUDCFG:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg"     --chmod 0644:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg     --run-command 'netplan generate'     > >(tee "$CUSTOMIZE_LOG") 2>&1
+if ! env   SUPERMIN_KERNEL="$SUPERMIN_KERNEL_COPY"   SUPERMIN_MODULES="$HOST_MODULES"   LIBGUESTFS_BACKEND=direct   virt-customize     -a "$OS_DISK"     --run-command 'rm -f /etc/netplan/50-cloud-init.yaml'     --upload "$NETPLAN:/etc/netplan/90-ets-vt0.yaml"     --chmod 0600:/etc/netplan/90-ets-vt0.yaml     --upload "$CLOUDCFG:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg"     --chmod 0644:/etc/cloud/cloud.cfg.d/99-ets-network-config.cfg     --run-command 'netplan generate'     --install openssh-server     --ssh-inject "ubuntu:file:$SSH_PUB"     --run-command 'ssh-keygen -A'     --run-command 'systemctl enable ssh.socket 2>/dev/null || systemctl enable ssh.service'     --run-command 'test -x /usr/sbin/sshd'     > >(tee "$CUSTOMIZE_LOG") 2>&1
 then
   echo "ERROR: offline guest customization failed." >&2
   echo "Retained log: $CUSTOMIZE_LOG" >&2
@@ -216,21 +221,32 @@ echo "Starting guest..."
 virsh --connect qemu:///system start "$VM_NAME"
 
 MGMT_IP="192.168.250.10"
-echo "Waiting for deterministic management address: $MGMT_IP"
+echo "Waiting for deterministic management address and SSH: $MGMT_IP"
 for _ in {1..30}; do
+  ping_ok=0
+  ssh_ok=0
   if ping -c 1 -W 1 "$MGMT_IP" >/dev/null 2>&1; then
+    ping_ok=1
+  fi
+  if timeout 2 bash -c "cat < /dev/null > /dev/tcp/${MGMT_IP}/22" >/dev/null 2>&1; then
+    ssh_ok=1
+  fi
+  if [[ "$ping_ok" -eq 1 && "$ssh_ok" -eq 1 ]]; then
     echo "Management address reachable: $MGMT_IP"
-    echo "SSH with: ssh -i ~/.ssh/edgew_vt0 ubuntu@$MGMT_IP"
+    echo "SSH port reachable: $MGMT_IP:22"
+    echo "SSH with: ssh -o IdentitiesOnly=yes -i ~/.ssh/edgew_vt0 ubuntu@$MGMT_IP"
     echo "Backup retained: $BACKUP"
     exit 0
   fi
   sleep 2
 done
 
-echo "WARNING: guest restarted but $MGMT_IP did not answer within 60 seconds." >&2
+echo "WARNING: guest restarted but management readiness did not complete within 60 seconds." >&2
 echo "Host route/neighbor observations:" >&2
 ip route get "$MGMT_IP" >&2 || true
 ip neigh show dev virbr250 >&2 || true
+echo "SSH probe:" >&2
+timeout 2 bash -c "cat < /dev/null > /dev/tcp/${MGMT_IP}/22" >&2 || true
 echo "Inspect with: virsh --connect qemu:///system console $VM_NAME" >&2
 echo "Backup retained: $BACKUP" >&2
 exit 4
