@@ -57,3 +57,17 @@ def test_characterization_harness_preserves_safety_and_claim_boundaries() -> Non
     assert "rfc5424_profile_candidate" in text
     assert "bounded_adapter_or_fault_infrastructure_candidate" in text
     assert "no_remote_syslog_observed" in text
+
+
+def test_lab_nic_preparation_is_plan_gated_and_preserves_management_route() -> None:
+    text = LAB_NIC_PATH.read_text(encoding="utf-8")
+
+    assert '"--apply"' in text
+    assert "PLAN ONLY: no network configuration was changed." in text
+    assert "alternate_default_route_interfaces" in text
+    assert "no other interface currently provides a default route" in text
+    assert '"ipv4.never-default"' in text
+    assert '"yes"' in text
+    assert "LAB_NIC_READY=true" in text
+    assert "Rollback:" in text
+    assert "lab_network_preparation_only_not_hardware_qualification" in text
