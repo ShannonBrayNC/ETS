@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,7 +33,9 @@ def test_vt0_runtime_capture_preserves_baseline_contract() -> None:
     assert "edgew-vt-source" in text
     assert "edgew-vt-upstream" in text
     assert "edgew-vt-fault" in text
-    assert '"0": "0", "1": "2", "2": "4", "3": "6"' in text
+    assert "expected_cpuset = {0, 2, 4, 6}" in text
+    assert "cpu_cpuset_matches_baseline" in text
+    assert "runtime_cpu_affinity_bounded_to_cpuset" in text
     assert "16 * 1024 * 1024" in text
     assert "64 * 1024**3" in text
     assert "512 * 1024**3" in text
@@ -41,5 +43,7 @@ def test_vt0_runtime_capture_preserves_baseline_contract() -> None:
     assert "tpm_2_0_present" in text
     assert "management_dhcp_lease_observed" in text
     assert "SHA256SUMS" in text
+    assert "SHA256SUMS.verify.txt" in text
+    assert "domstate-reason.txt" in text
     assert '"claim_state": "simulated"' in text
     assert "not_physical_hardware_qualification" in text
