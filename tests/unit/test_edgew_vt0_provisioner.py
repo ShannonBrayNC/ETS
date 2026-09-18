@@ -62,6 +62,8 @@ def test_provisioner_preserves_vt0_safety_and_topology_contract() -> None:
     assert "52:54:00:43:19:c6" in text
     assert "52:54:00:92:fa:95" in text
     assert "52:54:00:75:b7:33" in text
+    assert "192.168.250.10/24" in text
+    assert "via: 192.168.250.1" in text
     assert "192.168.251.10/24" in text
     assert "192.168.252.10/24" in text
     assert "192.168.253.10/24" in text
@@ -115,6 +117,7 @@ def test_guest_network_repair_preserves_safety_and_role_contract() -> None:
     assert "rm -f /etc/netplan/50-cloud-init.yaml" in text
     assert "90-ets-vt0.yaml" in text
     assert "edgew-vt-mgmt" in text
+    assert "Management address reachable: $MGMT_IP" in text
     assert "print $5; found=1" in text
     assert "print $5; exit" not in text
     assert "edgew-vt-source" in text
