@@ -18,16 +18,11 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Final, Literal
+from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
-LEGACY_HTTP_CAPTURE_SCHEMA_VERSION: Final = "ets.legacy-http.capture.v1"
-LEGACY_HTTP_OUTGOING_ASSERTION_SCHEMA_VERSION: Final = "ets.legacy-http.outgoing-log.v1"
-LEGACY_HTTP_SYSTEM_TCP_ASSERTION_SCHEMA_VERSION: Final = "ets.legacy-http.system-tcp.v1"
-LEGACY_HTTP_CORRELATION_SCHEMA_VERSION: Final = "ets.legacy-http.correlation.v1"
 
 _SYSTEM_TCP_RE = re.compile(
     r"(?P<relative_time>\d{2}:\d{2}:\d{2})\s+TCP\s+from\s+"
@@ -47,7 +42,7 @@ class LegacyHttpEndpointKind(StrEnum):
 
 
 class LegacyHttpCaptureV1(StrictLegacyModel):
-    schema_version: Literal["ets.legacy-http.capture.v1"] = LEGACY_HTTP_CAPTURE_SCHEMA_VERSION
+    schema_version: Literal["ets.legacy-http.capture.v1"] = "ets.legacy-http.capture.v1"
     capture_id: str = Field(min_length=1, max_length=256)
     source_label: str = Field(min_length=1, max_length=256)
     source_url: str = Field(min_length=1, max_length=2048)
@@ -97,7 +92,7 @@ class LegacyHttpCaptureV1(StrictLegacyModel):
 
 class OutgoingLogAssertionV1(StrictLegacyModel):
     schema_version: Literal["ets.legacy-http.outgoing-log.v1"] = (
-        LEGACY_HTTP_OUTGOING_ASSERTION_SCHEMA_VERSION
+        "ets.legacy-http.outgoing-log.v1"
     )
     source_lan_ip: str
     destination: str = Field(min_length=1, max_length=1024)
@@ -117,7 +112,7 @@ class OutgoingLogAssertionV1(StrictLegacyModel):
 
 class SystemTcpAssertionV1(StrictLegacyModel):
     schema_version: Literal["ets.legacy-http.system-tcp.v1"] = (
-        LEGACY_HTTP_SYSTEM_TCP_ASSERTION_SCHEMA_VERSION
+        "ets.legacy-http.system-tcp.v1"
     )
     relative_time: str = Field(pattern=r"^\d{2}:\d{2}:\d{2}$")
     source_ip: str
@@ -164,7 +159,7 @@ class IndependentFlowObservationV1(StrictLegacyModel):
 
 class LegacyHttpCorrelationV1(StrictLegacyModel):
     schema_version: Literal["ets.legacy-http.correlation.v1"] = (
-        LEGACY_HTTP_CORRELATION_SCHEMA_VERSION
+        "ets.legacy-http.correlation.v1"
     )
     matched: bool
     matched_fields: tuple[str, ...]
@@ -464,7 +459,11 @@ def main(argv: list[str] | None = None) -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     capture_parser = subparsers.add_parser("capture")
-    capture_parser.add_argument("--input", required=True, help="raw HTTP body file or '-' for stdin")
+    capture_parser.add_argument(
+        "--input",
+        required=True,
+        help="raw HTTP body file or '-' for stdin",
+    )
     capture_parser.add_argument("--output-dir", required=True)
     capture_parser.add_argument("--source-label", required=True)
     capture_parser.add_argument("--source-url", required=True)
