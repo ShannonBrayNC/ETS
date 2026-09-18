@@ -172,8 +172,7 @@ MOUNTPOINT=/var/lib/ets-qualification
   exit 3
 }
 
-echo 'label: gpt' | sudo sfdisk "$TARGET"
-echo ',,L' | sudo sfdisk --append "$TARGET"
+printf 'label: gpt\n, , L\n' | sudo sfdisk "$TARGET"
 sudo udevadm settle
 
 [[ -b "$PART" ]] || {
