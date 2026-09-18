@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for cmd in virsh virt-customize qemu-img awk mktemp uname install; do
+for cmd in virsh virt-customize qemu-img awk mktemp uname install ping ip; do
   command -v "$cmd" >/dev/null 2>&1 || {
     echo "ERROR: required command not found: $cmd" >&2
     if [[ "$cmd" == "virt-customize" ]]; then
