@@ -70,10 +70,22 @@ SSH=(
 REMOTE_STATE="$("${SSH[@]}" "bash -s" <<REMOTE
 set -euo pipefail
 findmnt -n -o SOURCE,FSTYPE,TARGET "$QUAL_MOUNT" || true
+echo "--- filesystems ---"
+df -h / "$QUAL_MOUNT" || true
+echo "--- docker/containerd commands ---"
 command -v docker || true
+command -v containerd || true
 if [[ -f /etc/docker/daemon.json ]]; then
   echo "--- /etc/docker/daemon.json ---"
   sudo cat /etc/docker/daemon.json
+fi
+if [[ -f /etc/containerd/config.toml ]]; then
+  echo "--- containerd root/state ---"
+  sudo grep -E '^(root|state)[[:space:]]*=' /etc/containerd/config.toml || true
+fi
+if [[ -d /var/lib/containerd ]]; then
+  echo "--- legacy containerd root usage ---"
+  sudo du -sh /var/lib/containerd 2>/dev/null || true
 fi
 REMOTE
 )"
@@ -94,11 +106,12 @@ $REMOTE_STATE
 Actions on --apply:
   1. Verify $QUAL_MOUNT is backed by /dev/vdb1 and labeled ETS_QUAL.
   2. Install docker.io and docker-compose-v2 if required.
-  3. Configure Docker data-root under the dedicated qualification volume.
-  4. Transfer an exact git archive of commit $SOURCE_SHA.
-  5. Retain archive/configuration hashes without copying credentials or private keys.
-  6. Build and start the four-service Edge Virtual stack.
-  7. Require /ready and public device identity endpoints to respond.
+  3. Configure Docker data-root and containerd content root under the dedicated qualification volume.
+  4. Remove only stale/incomplete containerd cache from the guest root filesystem after both daemons are stopped.
+  5. Transfer an exact git archive of commit $SOURCE_SHA.
+  6. Retain archive/configuration hashes without copying credentials or private keys.
+  7. Build and start the four-service Edge Virtual stack.
+  8. Require /ready and public device identity endpoints to respond.
 
 Claim boundary: simulated VT0 build/runtime preparation only; not physical EDGE-RT0 qualification.
 EOF
@@ -137,8 +150,19 @@ label="$(sudo blkid -s LABEL -o value "$source_line")"
   exit 3
 }
 
-sudo apt-get update
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io docker-compose-v2 ca-certificates curl jq
+# A failed BuildKit/containerd pull can fill the 64 GiB OS disk even when
+# Docker's data-root is redirected. Re-home containerd separately before retry.
+if ! command -v docker >/dev/null 2>&1 || ! command -v containerd >/dev/null 2>&1; then
+  sudo apt-get update
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    docker.io docker-compose-v2 containerd ca-certificates curl jq
+fi
+
+sudo systemctl stop docker.service docker.socket 2>/dev/null || true
+sudo systemctl stop containerd.service 2>/dev/null || true
+
+sudo install -d -m 0750 -o root -g docker /var/lib/ets-qualification/docker
+sudo install -d -m 0711 -o root -g root /var/lib/ets-qualification/containerd
 
 if [[ -s /etc/docker/daemon.json ]]; then
   current="$(sudo jq -r '."data-root" // empty' /etc/docker/daemon.json 2>/dev/null || true)"
@@ -147,13 +171,66 @@ if [[ -s /etc/docker/daemon.json ]]; then
     exit 3
   fi
 fi
-
-sudo install -d -m 0750 -o root -g docker /var/lib/ets-qualification/docker
 printf '%s
-' '{"data-root":"/var/lib/ets-qualification/docker"}'   | sudo tee /etc/docker/daemon.json >/dev/null
-sudo systemctl enable --now docker
-sudo systemctl restart docker
+' '{"data-root":"/var/lib/ets-qualification/docker"}' \
+  | sudo tee /etc/docker/daemon.json >/dev/null
+
+if [[ -f /etc/containerd/config.toml ]]; then
+  sudo cp -a /etc/containerd/config.toml /etc/containerd/config.toml.pre-ets-vt0
+else
+  sudo containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
+fi
+
+if sudo grep -qE '^root[[:space:]]*=' /etc/containerd/config.toml; then
+  sudo sed -i -E \
+    '0,/^root[[:space:]]*=/{s#^root[[:space:]]*=.*#root = "/var/lib/ets-qualification/containerd"#}' \
+    /etc/containerd/config.toml
+else
+  printf '%s
+' 'root = "/var/lib/ets-qualification/containerd"' \
+    | sudo tee -a /etc/containerd/config.toml >/dev/null
+fi
+
+# The old path contains cache/content only for this isolated qualification VM.
+# Retain a bounded diagnostic inventory, then remove it while both daemons are
+# stopped so a failed build cannot strand the guest root filesystem at 100%.
+if [[ -d /var/lib/containerd && ! -L /var/lib/containerd ]]; then
+  sudo install -d -m 0755 /var/lib/ets-qualification/runtime-recovery
+  {
+    echo "captured_at=$(date -u --iso-8601=seconds)"
+    sudo du -sh /var/lib/containerd 2>/dev/null || true
+    sudo find /var/lib/containerd -maxdepth 2 -mindepth 1 -printf '%p %s\n' 2>/dev/null | head -5000 || true
+  } | sudo tee /var/lib/ets-qualification/runtime-recovery/legacy-containerd-root.txt >/dev/null
+  sudo rm -rf /var/lib/containerd/*
+fi
+
+sudo apt-get clean || true
+sudo systemctl enable --now containerd.service
+sudo systemctl enable --now docker.service
 sudo usermod -aG docker "$USER"
+
+docker_root="$(sudo docker info --format '{{.DockerRootDir}}')"
+containerd_root="$(sudo awk -F'= *' '/^root[[:space:]]*=/{gsub(/"/,"",$2); print $2; exit}' /etc/containerd/config.toml)"
+
+[[ "$docker_root" == "/var/lib/ets-qualification/docker" ]] || {
+  echo "ERROR: Docker root is not on qualification storage: $docker_root" >&2
+  exit 3
+}
+[[ "$containerd_root" == "/var/lib/ets-qualification/containerd" ]] || {
+  echo "ERROR: containerd root is not on qualification storage: $containerd_root" >&2
+  exit 3
+}
+
+avail_bytes="$(df -B1 --output=avail "$QUAL_MOUNT" | tail -1 | tr -d ' ')"
+[[ "$avail_bytes" -ge $((100 * 1024 * 1024 * 1024)) ]] || {
+  echo "ERROR: less than 100 GiB free on qualification storage." >&2
+  exit 3
+}
+
+echo "Runtime storage placement verified:"
+echo "  DockerRootDir=$docker_root"
+echo "  containerd_root=$containerd_root"
+df -h / "$QUAL_MOUNT"
 
 sudo install -d -m 0755 /opt/ets/releases
 REMOTE
@@ -189,6 +266,9 @@ sudo ln -sfn "$RELEASE" /opt/ets/current
   echo "captured_at=$(date -u --iso-8601=seconds)"
   echo "docker=$(docker --version)"
   echo "compose=$(docker compose version)"
+  echo "docker_root=$(sudo docker info --format '{{.DockerRootDir}}')"
+  echo "containerd_root=$(sudo awk -F'= *' '/^root[[:space:]]*=/{gsub(/"/,"",$2); print $2; exit}' /etc/containerd/config.toml)"
+  df -h / "$QUAL_MOUNT"
   sha256sum     "$RELEASE/edge-demo/docker-compose.yml"     "$RELEASE/edge-demo/Dockerfile.api"     "$RELEASE/edge-demo/Dockerfile.webhook"     "$RELEASE/edge-demo/Dockerfile.upstream"     "$RELEASE/edge-demo/Dockerfile.ui"
 } | sudo tee "$EVIDENCE/build-provenance.txt" >/dev/null
 
