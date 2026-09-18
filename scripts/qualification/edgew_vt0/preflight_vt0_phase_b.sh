@@ -140,8 +140,31 @@ trap 'rm -f "$CFG"' EXIT
 printf 'header = "X-ETS-API-Key: %s"\n' "$API_KEY" >"$CFG"
 chmod 600 "$CFG"
 unset API_KEY
-curl -q -K "$CFG" -fsS http://127.0.0.1:8400/edge/v1/sync/status
-echo
+QUEUE_STATUS="$(curl -q -K "$CFG" -fsS http://127.0.0.1:8400/edge/v1/sync/status)"
+[[ -n "$QUEUE_STATUS" ]] || {
+  echo "ERROR: protected sync status returned an empty body" >&2
+  exit 4
+}
+printf '%s\n' "$QUEUE_STATUS"
+python3 - "$QUEUE_STATUS" <<'PY'
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+required = ("queue_depth", "queue_bytes", "max_items", "max_bytes", "upstream_status")
+missing = [name for name in required if name not in payload]
+if missing:
+    raise SystemExit(f"ERROR: protected sync status missing fields: {missing}")
+if not isinstance(payload["queue_depth"], int) or payload["queue_depth"] < 0:
+    raise SystemExit("ERROR: invalid queue_depth")
+if not isinstance(payload["max_items"], int) or payload["max_items"] < 1:
+    raise SystemExit("ERROR: invalid max_items")
+print(
+    "queue_status_gate=PASS "
+    f"depth={payload['queue_depth']} max_items={payload['max_items']} "
+    f"max_bytes={payload['max_bytes']} upstream={payload['upstream_status']}"
+)
+PY
 REMOTE
 
 echo
