@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 from ets.ranger.agent365_r0_bench_hardware import (
