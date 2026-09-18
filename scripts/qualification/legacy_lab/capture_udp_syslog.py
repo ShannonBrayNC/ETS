@@ -76,14 +76,14 @@ def classify(payload: bytes) -> tuple[str, dict[str, Any]]:
                         _bounded_ascii(groups["time"]),
                     )
                 ),
-                "identity_boundary": "legacy_message_fields_are_observations_not_authenticated_identity",
+                "identity_boundary": (\n                    "legacy_message_fields_are_observations_not_authenticated_identity"\n                ),
             },
         )
 
     return (
         "vendor_specific_or_unclassified",
         {
-            "identity_boundary": "transport_and_message_fields_are_observations_not_authenticated_identity"
+            "identity_boundary": (\n                "transport_and_message_fields_are_observations_not_authenticated_identity"\n            )
         },
     )
 
