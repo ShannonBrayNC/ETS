@@ -71,3 +71,8 @@ def test_lab_nic_preparation_is_plan_gated_and_preserves_management_route() -> N
     assert "LAB_NIC_READY=true" in text
     assert "Rollback:" in text
     assert "lab_network_preparation_only_not_hardware_qualification" in text
+
+
+def test_lab_nic_preparation_has_valid_python_syntax() -> None:
+    source = LAB_NIC_PATH.read_text(encoding="utf-8")
+    compile(source, str(LAB_NIC_PATH), "exec")
