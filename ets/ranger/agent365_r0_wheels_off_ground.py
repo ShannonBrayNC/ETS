@@ -15,7 +15,9 @@ from ets.ranger.agent365_r0_bench_hardware import (
     RangeSensorBackend,
 )
 
-HARDWARE_PROFILE = "r0-bench-pi-drv8833-dual-vl53l0x.v1"
+HARDWARE_PROFILE: Literal["r0-bench-pi-drv8833-dual-vl53l0x.v1"] = (
+    "r0-bench-pi-drv8833-dual-vl53l0x.v1"
+)
 
 
 class StrictWheelsOffGroundModel(BaseModel):
