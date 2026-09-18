@@ -9,9 +9,9 @@ plus a normally-closed hardware E-stop input.
 from __future__ import annotations
 
 import math
-from importlib import import_module
 from collections.abc import Protocol
 from datetime import UTC, datetime
+from importlib import import_module
 from time import monotonic_ns, sleep
 from typing import Any, Literal
 
@@ -389,7 +389,7 @@ class GpioZeroDrv8833Backend:
             raise RuntimeError(
                 "gpiozero is required for the Raspberry Pi DRV8833 backend"
             ) from exc
-        pwm_output_device = getattr(gpiozero, "PWMOutputDevice")
+        pwm_output_device = vars(gpiozero)["PWMOutputDevice"]
 
         self._left_in1 = pwm_output_device(left_in1_pin, frequency=frequency_hz)
         self._left_in2 = pwm_output_device(left_in2_pin, frequency=frequency_hz)
@@ -435,7 +435,7 @@ class GpioZeroNormallyClosedEstop:
             gpiozero = import_module("gpiozero")
         except ImportError as exc:
             raise RuntimeError("gpiozero is required for the Raspberry Pi E-stop backend") from exc
-        digital_input_device = getattr(gpiozero, "DigitalInputDevice")
+        digital_input_device = vars(gpiozero)["DigitalInputDevice"]
         self._input = digital_input_device(pin, pull_up=True, bounce_time=bounce_time_s)
 
     def circuit_closed(self) -> bool:
@@ -483,9 +483,9 @@ def create_dual_vl53l0x_backends(
         raise RuntimeError(
             "adafruit-circuitpython-vl53l0x, Adafruit-Blinka, and gpiozero are required"
         ) from exc
-    digital_output_device = getattr(gpiozero, "DigitalOutputDevice")
-    vl53l0x_type = getattr(adafruit_vl53l0x, "VL53L0X")
-    i2c_factory = getattr(board, "I2C")
+    digital_output_device = vars(gpiozero)["DigitalOutputDevice"]
+    vl53l0x_type = vars(adafruit_vl53l0x)["VL53L0X"]
+    i2c_factory = vars(board)["I2C"]
 
     front_gate = digital_output_device(front_xshut_pin, initial_value=False)
     rear_gate = digital_output_device(rear_xshut_pin, initial_value=False)
