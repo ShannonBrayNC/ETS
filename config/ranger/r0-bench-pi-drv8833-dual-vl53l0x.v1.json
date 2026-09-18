@@ -1,0 +1,25 @@
+{
+  "schema_version": "ets.demo.agent365-r0.hardware-config.v1",
+  "profile": "r0-bench-pi-drv8833-dual-vl53l0x.v1",
+  "gpio": {
+    "schema_version": "ets.demo.agent365-r0.gpio-config.v1",
+    "i2c_sda_bcm": 2,
+    "i2c_scl_bcm": 3,
+    "left_in1_bcm": 12,
+    "left_in2_bcm": 16,
+    "right_in1_bcm": 13,
+    "right_in2_bcm": 19,
+    "estop_bcm": 17,
+    "front_xshut_bcm": 22,
+    "rear_xshut_bcm": 27
+  },
+  "calibrated_max_speed_mps": 0.15,
+  "max_duty_cycle": 0.55,
+  "wheels_off_ground_duty_cycle": 0.20,
+  "wheels_off_ground_pulse_seconds": 0.40,
+  "wheels_off_ground_max_rear_translation_m": 0.03,
+  "front_vl53l0x_address": 48,
+  "rear_vl53l0x_address": 49,
+  "estop_wiring": "normally_closed_to_ground_internal_pullup",
+  "power_boundary": "separate_pi_and_motor_supplies_common_ground"
+}
