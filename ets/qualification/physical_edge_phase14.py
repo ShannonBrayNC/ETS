@@ -957,8 +957,8 @@ def evaluate_r0_15(
     for attempt in attempts:
         if attempt.disposition is not SoakDisposition.AUTHORITATIVE_ACCEPTED:
             continue
-        final_record = final_by_id.get(attempt.attempt_id)
-        if final_record is None:
+        proof_record = final_by_id.get(attempt.attempt_id)
+        if proof_record is None:
             independent_verification_complete = False
             continue
         record_receipt = proof_keys.get(
@@ -970,7 +970,7 @@ def evaluate_r0_15(
             )
             independent_verification_complete = False
             continue
-        if record_receipt.proof_artifact_sha256 != final_record.final_proof_sha256:
+        if record_receipt.proof_artifact_sha256 != proof_record.final_proof_sha256:
             issues.append(
                 f"R0.15: accepted-record proof digest mismatch: {attempt.attempt_id}"
             )
