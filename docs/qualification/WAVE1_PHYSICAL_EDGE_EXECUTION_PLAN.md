@@ -187,6 +187,8 @@ Optional but valuable instrumentation includes an independent power meter, USB/s
 
 ### R0.11 Clock displacement
 
+**Implementation tracking:** #895  
+
 **Stimulus:** controlled wall-clock degradation/rollback or isolated time-source failure.  
 **Pass:** clock uncertainty/fault is retained, monotonic evidence ordering is not silently rewritten, and interpretation can distinguish event ordering from wall-clock quality.
 
