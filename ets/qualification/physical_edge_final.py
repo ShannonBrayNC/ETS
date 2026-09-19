@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal, Mapping, Sequence
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -24,7 +25,6 @@ from ets.core.canonical_json import canonical_sha256
 from ets.qualification.hardware import QualificationDisposition
 from ets.qualification.physical_edge import (
     EdgeCompactR0BenchManifest,
-    load_manifest,
     readiness_issues,
 )
 from ets.qualification.profile import FinalQualificationState
