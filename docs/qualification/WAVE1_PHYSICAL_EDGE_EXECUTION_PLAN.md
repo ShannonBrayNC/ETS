@@ -201,6 +201,8 @@ Optional but valuable instrumentation includes an independent power meter, USB/s
 
 ### R0.13 Failed upgrade and rollback
 
+**Implementation tracking:** #899  
+
 **Stimulus:** use an intentionally invalid/incomplete qualification upgrade path designed to fail safely.  
 **Pass:** the system fails boundedly, rollback/recovery is explicit, and committed evidence is not silently lost or rewritten.
 
