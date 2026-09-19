@@ -151,6 +151,8 @@ Optional but valuable instrumentation includes an independent power meter, USB/s
 
 ### R0.6 Capture hard-power interruption
 
+**Implementation tracking:** #884  
+
 **Stimulus:** cut power during controlled active ingestion.  
 **Pass:** acknowledged commits survive; any in-flight/non-authoritative item is explicitly recoverable, rejected, or absent according to documented transaction semantics; no silent acknowledged loss occurs.
 
