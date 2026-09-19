@@ -747,8 +747,8 @@ def evaluate_r0_10(
             independent_verification_complete = False
 
     for record_id in sorted(intended_ids):
-        recovered = recovered_by_id.get(record_id)
-        if recovered is None or recovered.final_upstream_commit_count != 1:
+        final_record = recovered_by_id.get(record_id)
+        if final_record is None or final_record.final_upstream_commit_count != 1:
             independent_verification_complete = False
             continue
         record_receipt = proof_keys.get(
