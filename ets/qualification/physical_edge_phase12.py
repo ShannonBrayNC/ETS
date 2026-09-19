@@ -807,8 +807,8 @@ def evaluate_r0_13(
             independent_verification_complete = False
 
     for record_id in sorted(pending_ids):
-        recovered = recovered_by_id.get(record_id)
-        if recovered is None or recovered.final_upstream_commit_count != 1:
+        final_record = recovered_by_id.get(record_id)
+        if final_record is None or final_record.final_upstream_commit_count != 1:
             independent_verification_complete = False
             continue
         record_receipt = proof_keys.get(
@@ -818,7 +818,7 @@ def evaluate_r0_13(
             issues.append(f"R0.13: missing pending-record proof receipt: {record_id}")
             independent_verification_complete = False
             continue
-        if record_receipt.proof_artifact_sha256 != recovered.final_proof_sha256:
+        if record_receipt.proof_artifact_sha256 != final_record.final_proof_sha256:
             issues.append(f"R0.13: pending-record proof digest mismatch: {record_id}")
             independent_verification_complete = False
         if (
