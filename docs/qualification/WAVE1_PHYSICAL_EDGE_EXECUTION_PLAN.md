@@ -222,10 +222,14 @@ Optional but valuable instrumentation includes an independent power meter, USB/s
 
 ### R0.16 Source-to-proof operator workflow
 
+**Implementation tracking:** #906  
+
 **Stimulus:** operator takes one representative source event from ingress through local evidence, export, and independent verification.  
 **Pass:** an external reviewer can trace source observation → Edge evidence object/proof → resulting retained package without hidden manual reconstruction.
 
 ### R0.17 Independent verification
+
+**Implementation tracking:** #906  
 
 **Stimulus:** move the completed retained HQP package to the independent verifier/controller environment.  
 **Pass:** `python -m ets.hqp_verify` determines the package is structurally complete, digest-consistent, Evidence-Object-bound, test-complete, and eligible for its claimed disposition without trusting producer narrative.
