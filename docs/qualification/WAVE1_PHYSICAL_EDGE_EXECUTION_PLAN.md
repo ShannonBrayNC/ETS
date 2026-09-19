@@ -166,6 +166,8 @@ Optional but valuable instrumentation includes an independent power meter, USB/s
 
 ### R0.8 Disk pressure/exhaustion
 
+**Implementation tracking:** #888
+
 **Stimulus:** drive only the dedicated qualification volume through configured high and critical watermarks.  
 **Pass:** deterministic backpressure/rejection occurs before unsafe acknowledgement; previously committed evidence remains intact; normal operation returns after space restoration without rewriting history.
 
