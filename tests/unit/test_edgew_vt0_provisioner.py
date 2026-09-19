@@ -8,6 +8,9 @@ SCRIPT = ROOT / "scripts" / "qualification" / "edgew_vt0" / "provision_vt0_dut.s
 STORAGE_SCRIPT = (
     ROOT / "scripts" / "qualification" / "edgew_vt0" / "prepare_vt0_storage.sh"
 )
+REPAIR_SCRIPT = (
+    ROOT / "scripts" / "qualification" / "edgew_vt0" / "repair_vt0_guest_network.sh"
+)
 
 
 def _bash_syntax_ok(path: Path) -> subprocess.CompletedProcess[str]:
@@ -54,6 +57,20 @@ def test_provisioner_preserves_vt0_safety_and_topology_contract() -> None:
     assert 'MOUNT_TARGET" == "/"' in text
     assert "refusing overwrite" in text.lower()
     assert "not physical qualification" in text
+    assert "network-config=${NETWORK_CONFIG}" in text
+    assert "cloud-init-user-data.yaml" in text
+    assert "user-data=${USER_DATA}" in text
+    assert "name: etsadmin" in text
+    assert "lock_passwd: true" in text
+    assert "52:54:00:97:be:12" in text
+    assert "52:54:00:43:19:c6" in text
+    assert "52:54:00:92:fa:95" in text
+    assert "52:54:00:75:b7:33" in text
+    assert "192.168.250.10/24" in text
+    assert "via: 192.168.250.1" in text
+    assert "192.168.251.10/24" in text
+    assert "192.168.252.10/24" in text
+    assert "192.168.253.10/24" in text
     assert "--dry-run" in text
     assert "--print-xml" in text
     assert "virt-install-preflight.xml" in text
@@ -80,3 +97,48 @@ def test_storage_preparer_requires_explicit_destructive_apply() -> None:
     assert "PLAN ONLY: no storage changes were made." in text
     assert "mkfs.ext4 -F -L ETS_LAB" in text
     assert "fstab entry (not written automatically)" in text
+
+
+
+def test_guest_network_repair_has_valid_bash_syntax() -> None:
+    result = _bash_syntax_ok(REPAIR_SCRIPT)
+    assert result.returncode == 0, result.stderr
+
+
+def test_guest_network_repair_preserves_safety_and_role_contract() -> None:
+    text = REPAIR_SCRIPT.read_text(encoding="utf-8")
+
+    assert "--apply" in text
+    assert "PLAN ONLY: no guest disk or VM state was changed." in text
+    assert "No force-destroy was attempted." in text
+    assert "SUPERMIN_KERNEL" in text
+    assert "SUPERMIN_MODULES" in text
+    assert "LIBGUESTFS_BACKEND=direct" in text
+    assert "Reusing retained pre-network backup" in text
+    assert "virt-customize-network-repair.log" in text
+    assert "netplan generate" in text
+    assert "--install openssh-server" in text
+    assert '--ssh-inject "$GUEST_USER:file:$SSH_PUB"' in text
+    assert "virt-cat" in text
+    assert "Detected guest SSH account: $GUEST_USER" in text
+    assert "canonical VT0 account will be created" in text
+    assert 'GUEST_USER="etsadmin"' in text
+    assert "useradd -m -s /bin/bash -G sudo" in text
+    assert "NOPASSWD:ALL" in text
+    assert "ssh-keygen -A" in text
+    assert "systemctl enable ssh.socket" in text
+    assert "SSH port reachable: $MGMT_IP:22" in text
+    assert "qemu-img convert" in text
+    assert "virt-customize" in text
+    assert "rm -f /etc/netplan/50-cloud-init.yaml" in text
+    assert "90-ets-vt0.yaml" in text
+    assert "edgew-vt-mgmt" in text
+    assert "Management address reachable: $MGMT_IP" in text
+    assert "print $5; found=1" in text
+    assert "print $5; exit" not in text
+    assert "edgew-vt-source" in text
+    assert "edgew-vt-upstream" in text
+    assert "edgew-vt-fault" in text
+    assert "192.168.251.10/24" in text
+    assert "192.168.252.10/24" in text
+    assert "192.168.253.10/24" in text

@@ -13,6 +13,10 @@ CPUSET="0,2,4,6"
 NUMA_NODE="0"
 OS_SIZE="64G"
 QUAL_SIZE="512G"
+MGMT_MAC="52:54:00:97:be:12"
+SOURCE_MAC="52:54:00:43:19:c6"
+UPSTREAM_MAC="52:54:00:92:fa:95"
+FAULT_MAC="52:54:00:75:b7:33"
 STORAGE_ROOT=""
 BASE_IMAGE=""
 SSH_KEY=""
@@ -179,6 +183,8 @@ EDGEW-RT0-VT0 DUT provisioning plan
   TPM:                 swtpm TPM 2.0 / CRB
   guest:               Ubuntu 24.04 LTS amd64 cloud image
   networks:            mgmt, source, upstream, fault
+  guest network:       static .10 addresses; default route on mgmt only
+  guest operator:      etsadmin (SSH key only; password locked)
   QEMU runtime:        ${QEMU_RUNTIME_USER} (uid ${QEMU_RUNTIME_UID}, gid ${QEMU_RUNTIME_GID}/${QEMU_RUNTIME_GROUP})
   claim state:         simulated VT0 only; not physical qualification
 EOF
@@ -190,6 +196,71 @@ if [[ "$APPLY" -ne 1 ]]; then
 fi
 
 mkdir -p "$VM_DIR" "$CACHE_DIR"
+
+NETWORK_CONFIG="$VM_DIR/cloud-init-network-config.yaml"
+USER_DATA="$VM_DIR/cloud-init-user-data.yaml"
+SSH_PUBLIC_KEY="$(cat "$SSH_KEY.pub")"
+
+cat >"$USER_DATA" <<EOF
+#cloud-config
+users:
+  - name: etsadmin
+    gecos: ETS VT0 Operator
+    groups:
+      - adm
+      - sudo
+    shell: /bin/bash
+    lock_passwd: true
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - $SSH_PUBLIC_KEY
+ssh_pwauth: false
+disable_root: true
+packages:
+  - openssh-server
+runcmd:
+  - [ssh-keygen, -A]
+  - [systemctl, enable, --now, ssh.socket]
+EOF
+
+cat >"$NETWORK_CONFIG" <<EOF
+version: 2
+ethernets:
+  vtmgmt:
+    match:
+      macaddress: "$MGMT_MAC"
+    set-name: vtmgmt
+    addresses:
+      - 192.168.250.10/24
+    routes:
+      - to: default
+        via: 192.168.250.1
+        metric: 100
+    nameservers:
+      addresses:
+        - 192.168.250.1
+  vtsource:
+    match:
+      macaddress: "$SOURCE_MAC"
+    set-name: vtsource
+    addresses:
+      - 192.168.251.10/24
+    optional: true
+  vtupstream:
+    match:
+      macaddress: "$UPSTREAM_MAC"
+    set-name: vtupstream
+    addresses:
+      - 192.168.252.10/24
+    optional: true
+  vtfault:
+    match:
+      macaddress: "$FAULT_MAC"
+    set-name: vtfault
+    addresses:
+      - 192.168.253.10/24
+    optional: true
+EOF
 
 # The system libvirt QEMU process runs as a non-root service account. Grant
 # execute-only traversal on parent directories when needed, then read/write
@@ -385,13 +456,13 @@ virt_args=(
   --tpm backend.type=emulator,backend.version=2.0,model=tpm-crb
   --disk "path=${OS_DISK},format=qcow2,bus=virtio,cache=none,io=native"
   --disk "path=${QUAL_DISK},format=qcow2,bus=virtio,cache=none,io=native"
-  --network network=edgew-vt-mgmt,model=virtio
-  --network network=edgew-vt-source,model=virtio
-  --network network=edgew-vt-upstream,model=virtio
-  --network network=edgew-vt-fault,model=virtio
+  --network "network=edgew-vt-mgmt,model=virtio,mac=$MGMT_MAC"
+  --network "network=edgew-vt-source,model=virtio,mac=$SOURCE_MAC"
+  --network "network=edgew-vt-upstream,model=virtio,mac=$UPSTREAM_MAC"
+  --network "network=edgew-vt-fault,model=virtio,mac=$FAULT_MAC"
   --osinfo detect=on,name=ubuntu24.04
   --import
-  --cloud-init "clouduser-ssh-key=${SSH_KEY},disable=on"
+  --cloud-init "user-data=${USER_DATA},network-config=${NETWORK_CONFIG},disable=on"
   --graphics none
   --console pty,target.type=serial
   --noautoconsole
