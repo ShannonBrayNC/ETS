@@ -606,37 +606,67 @@ def evaluate_r0_9(
     verifier_host = manifest.verifier.verifier_host_id
     preexisting_evidence_preserved = True
     for proof_digest in baseline.representative_proof_sha256:
-        receipt = proof_keys.get((QueueProofSubject.PRE_SATURATION, proof_digest))
-        if receipt is None:
-            issues.append(f"R0.9: missing pre-saturation proof verification: {proof_digest}")
+        pre_receipt = proof_keys.get(
+            (QueueProofSubject.PRE_SATURATION, proof_digest)
+        )
+        if pre_receipt is None:
+            issues.append(
+                f"R0.9: missing pre-saturation proof verification: {proof_digest}"
+            )
             preexisting_evidence_preserved = False
             continue
-        if receipt.proof_artifact_sha256 != proof_digest:
-            issues.append(f"R0.9: pre-saturation proof digest mismatch: {proof_digest}")
+        if pre_receipt.proof_artifact_sha256 != proof_digest:
+            issues.append(
+                f"R0.9: pre-saturation proof digest mismatch: {proof_digest}"
+            )
             preexisting_evidence_preserved = False
-        if not receipt.inclusion_valid or not receipt.independent_execution_context:
-            issues.append(f"R0.9: pre-saturation proof failed verification: {proof_digest}")
+        if (
+            not pre_receipt.inclusion_valid
+            or not pre_receipt.independent_execution_context
+        ):
+            issues.append(
+                f"R0.9: pre-saturation proof failed verification: {proof_digest}"
+            )
             preexisting_evidence_preserved = False
-        if verifier_host is None or receipt.verifier_host_id != verifier_host:
+        if verifier_host is None or pre_receipt.verifier_host_id != verifier_host:
             issues.append(f"R0.9: verifier host mismatch: {proof_digest}")
             preexisting_evidence_preserved = False
 
     for attempt_id, recovered in recovery_by_id.items():
         if recovered.authoritative_commit_count != 1:
             continue
-        receipt = proof_keys.get((QueueProofSubject.SATURATION_ATTEMPT, attempt_id))
-        if receipt is None:
-            issues.append(f"R0.9: recovered accepted record lacks proof: {attempt_id}")
+        accepted_receipt = proof_keys.get(
+            (QueueProofSubject.SATURATION_ATTEMPT, attempt_id)
+        )
+        if accepted_receipt is None:
+            issues.append(
+                f"R0.9: recovered accepted record lacks proof: {attempt_id}"
+            )
             accepted_records_preserved = False
             continue
-        if receipt.proof_artifact_sha256 != recovered.recovered_proof_sha256:
-            issues.append(f"R0.9: accepted-record proof digest mismatch: {attempt_id}")
+        if (
+            accepted_receipt.proof_artifact_sha256
+            != recovered.recovered_proof_sha256
+        ):
+            issues.append(
+                f"R0.9: accepted-record proof digest mismatch: {attempt_id}"
+            )
             accepted_records_preserved = False
-        if not receipt.inclusion_valid or not receipt.independent_execution_context:
-            issues.append(f"R0.9: accepted record failed independent proof: {attempt_id}")
+        if (
+            not accepted_receipt.inclusion_valid
+            or not accepted_receipt.independent_execution_context
+        ):
+            issues.append(
+                f"R0.9: accepted record failed independent proof: {attempt_id}"
+            )
             accepted_records_preserved = False
-        if verifier_host is None or receipt.verifier_host_id != verifier_host:
-            issues.append(f"R0.9: accepted-record verifier host mismatch: {attempt_id}")
+        if (
+            verifier_host is None
+            or accepted_receipt.verifier_host_id != verifier_host
+        ):
+            issues.append(
+                f"R0.9: accepted-record verifier host mismatch: {attempt_id}"
+            )
             accepted_records_preserved = False
 
     canary_valid = True
