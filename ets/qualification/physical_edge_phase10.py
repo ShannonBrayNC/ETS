@@ -594,15 +594,15 @@ def evaluate_r0_11(
             log_checkpoint_order_preserved = False
         previous_checkpoint = event.local_checkpoint_index
 
-        step = steps_by_id.get(event.fault_step_id)
-        if step is None:
+        event_step = steps_by_id.get(event.fault_step_id)
+        if event_step is None:
             issues.append(f"R0.11: event references unknown fault step: {event.event_id}")
             time_quality_preserved = False
             continue
-        if event.sync_state is not step.expected_sync_state:
+        if event.sync_state is not event_step.expected_sync_state:
             issues.append(f"R0.11: event sync-state mismatch: {event.event_id}")
             time_quality_preserved = False
-        if event.time_quality is not step.expected_time_quality:
+        if event.time_quality is not event_step.expected_time_quality:
             issues.append(f"R0.11: event time-quality mismatch: {event.event_id}")
             time_quality_preserved = False
 
