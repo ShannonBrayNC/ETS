@@ -215,6 +215,8 @@ Optional but valuable instrumentation includes an independent power meter, USB/s
 
 ### R0.15 Capacity/endurance soak
 
+**Implementation tracking:** #904  
+
 **Stimulus:** extended repeated capture → offline → reconnect → sync cycles with bounded resource measurements.  
 **Pass:** no unexplained evidence-chain discontinuity, unbounded queue/storage growth, silent loss, or material resource leak appears within the declared run duration and load envelope.
 
