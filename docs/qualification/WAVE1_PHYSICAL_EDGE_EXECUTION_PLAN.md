@@ -194,6 +194,8 @@ Optional but valuable instrumentation includes an independent power meter, USB/s
 
 ### R0.12 Valid upgrade
 
+**Implementation tracking:** #897  
+
 **Stimulus:** apply an approved Edge software upgrade.  
 **Pass:** build transition is explicitly recorded, prior commitments remain verifiable, and post-upgrade capture/proof functions normally.
 
