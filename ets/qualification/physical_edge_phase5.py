@@ -533,11 +533,13 @@ def evaluate_r0_6(
         )
 
     proof_by_attempt: dict[str, EdgeR0RecoveredCommitProofReceipt] = {}
-    for proof in proofs:
-        if proof.attempt_id in proof_by_attempt:
-            issues.append(f"R0.6: duplicate recovered proof for {proof.attempt_id}")
+    for proof_receipt in proofs:
+        if proof_receipt.attempt_id in proof_by_attempt:
+            issues.append(
+                f"R0.6: duplicate recovered proof for {proof_receipt.attempt_id}"
+            )
             continue
-        proof_by_attempt[proof.attempt_id] = proof
+        proof_by_attempt[proof_receipt.attempt_id] = proof_receipt
 
     verifier_host = manifest.verifier.verifier_host_id
     pre_cut_committed = 0
@@ -587,28 +589,28 @@ def evaluate_r0_6(
 
         if disposition.authoritative_commit_count == 1:
             recovered_commit_count += 1
-            proof = proof_by_attempt.get(attempt.attempt_id)
-            if proof is None:
+            recovered_proof = proof_by_attempt.get(attempt.attempt_id)
+            if recovered_proof is None:
                 issues.append(
                     f"R0.6: recovered commit lacks independent proof for {attempt.attempt_id}"
                 )
                 if pre_cut_committed_attempt:
                     acknowledged_commits_preserved = False
                 continue
-            if proof.proof_artifact_sha256 != disposition.recovered_proof_sha256:
+            if recovered_proof.proof_artifact_sha256 != disposition.recovered_proof_sha256:
                 issues.append(f"R0.6: proof receipt digest mismatch for {attempt.attempt_id}")
-            if not proof.inclusion_valid or not proof.independent_execution_context:
+            if not recovered_proof.inclusion_valid or not recovered_proof.independent_execution_context:
                 issues.append(
                     f"R0.6: recovered commit did not verify independently for "
                     f"{attempt.attempt_id}"
                 )
-            if verifier_host is None or proof.verifier_host_id != verifier_host:
+            if verifier_host is None or recovered_proof.verifier_host_id != verifier_host:
                 issues.append(f"R0.6: verifier host mismatch for {attempt.attempt_id}")
             if (
-                proof.proof_artifact_sha256 == disposition.recovered_proof_sha256
-                and proof.inclusion_valid
-                and proof.independent_execution_context
-                and proof.verifier_host_id == verifier_host
+                recovered_proof.proof_artifact_sha256 == disposition.recovered_proof_sha256
+                and recovered_proof.inclusion_valid
+                and recovered_proof.independent_execution_context
+                and recovered_proof.verifier_host_id == verifier_host
             ):
                 independently_verified_commit_count += 1
 
