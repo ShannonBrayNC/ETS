@@ -758,7 +758,7 @@ def evaluate_r0_10(
             issues.append(f"R0.10: missing final proof receipt: {record_id}")
             independent_verification_complete = False
             continue
-        if record_receipt.proof_artifact_sha256 != recovered.final_proof_sha256:
+        if record_receipt.proof_artifact_sha256 != final_record.final_proof_sha256:
             issues.append(f"R0.10: final proof digest mismatch: {record_id}")
             independent_verification_complete = False
         if (
