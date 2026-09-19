@@ -686,26 +686,36 @@ def evaluate_r0_7(
     verifier_host = manifest.verifier.verifier_host_id
     independently_verified = 0
     for record_id in sorted(intended_ids):
-        recovered = recovered_by_id.get(record_id)
-        proof_receipt = proofs_by_record.get(record_id)
-        if recovered is None or recovered.final_upstream_commit_count != 1:
+        recovered_record = recovered_by_id.get(record_id)
+        verification_receipt = proofs_by_record.get(record_id)
+        if (
+            recovered_record is None
+            or recovered_record.final_upstream_commit_count != 1
+        ):
             continue
-        if proof_receipt is None:
+        if verification_receipt is None:
             issues.append(f"R0.7: missing independent proof receipt for {record_id}")
             continue
-        if proof_receipt.proof_artifact_sha256 != recovered.final_proof_sha256:
+        if (
+            verification_receipt.proof_artifact_sha256
+            != recovered_record.final_proof_sha256
+        ):
             issues.append(f"R0.7: final proof digest mismatch for {record_id}")
-        if not proof_receipt.inclusion_valid:
+        if not verification_receipt.inclusion_valid:
             issues.append(f"R0.7: proof inclusion verification failed for {record_id}")
-        if not proof_receipt.independent_execution_context:
+        if not verification_receipt.independent_execution_context:
             issues.append(f"R0.7: proof was not independently verified for {record_id}")
-        if verifier_host is None or proof_receipt.verifier_host_id != verifier_host:
+        if (
+            verifier_host is None
+            or verification_receipt.verifier_host_id != verifier_host
+        ):
             issues.append(f"R0.7: verifier host mismatch for {record_id}")
         if (
-            proof_receipt.proof_artifact_sha256 == recovered.final_proof_sha256
-            and proof_receipt.inclusion_valid
-            and proof_receipt.independent_execution_context
-            and proof_receipt.verifier_host_id == verifier_host
+            verification_receipt.proof_artifact_sha256
+            == recovered_record.final_proof_sha256
+            and verification_receipt.inclusion_valid
+            and verification_receipt.independent_execution_context
+            and verification_receipt.verifier_host_id == verifier_host
         ):
             independently_verified += 1
 
