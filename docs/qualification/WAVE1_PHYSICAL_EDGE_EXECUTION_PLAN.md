@@ -2,7 +2,8 @@
 
 **Tracking:** #814  
 **Depends on for final published claim:** #798  
-**Base profile:** `ets.edge.hardware-qualification.v1`
+**Base profile:** `ets.edge.hardware-qualification.v1`  
+**Execution priority lock:** `HARDWARE_QUALIFICATION_EXECUTION_ORDER.md`
 
 ## 1. Objective
 
@@ -157,6 +158,8 @@ Optional but valuable instrumentation includes an independent power meter, USB/s
 **Pass:** acknowledged commits survive; any in-flight/non-authoritative item is explicitly recoverable, rejected, or absent according to documented transaction semantics; no silent acknowledged loss occurs.
 
 ### R0.7 Synchronization hard-power interruption
+
+**Implementation tracking:** #886  
 
 **Stimulus:** cut power during active synchronization after a known local pending set exists.  
 **Pass:** restart/reconnect resumes idempotently, no unintended logical duplicate is created, and local/upstream checkpoints can be reconciled.
