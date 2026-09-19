@@ -180,6 +180,8 @@ Optional but valuable instrumentation includes an independent power meter, USB/s
 
 ### R0.10 Network instability
 
+**Implementation tracking:** #893  
+
 **Stimulus:** repeat disconnect/reconnect and, where supported by the isolated harness, bounded latency/loss.  
 **Pass:** retry state remains explicit, synchronization resumes, and local sequence history does not change merely because transport is unstable.
 
