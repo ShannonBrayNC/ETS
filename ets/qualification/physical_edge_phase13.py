@@ -548,6 +548,12 @@ def evaluate_r0_14(
         phase12.model_dump(mode="json")
     ):
         issues.append("R0.14: R0.13 digest binding mismatch")
+    if baseline.current_build_sha != manifest.build.source_revision:
+        issues.append("R0.14: baseline build does not match W1-1 manifest")
+    if baseline.current_artifact_digest != manifest.build.artifact_digest:
+        issues.append("R0.14: baseline artifact digest does not match W1-1 manifest")
+    if baseline.current_configuration_digest != manifest.build.configuration_digest:
+        issues.append("R0.14: baseline configuration does not match W1-1 manifest")
 
     media_provenance_valid = True
     if media.baseline_id != baseline.baseline_id:
@@ -556,10 +562,6 @@ def evaluate_r0_14(
     if media.target_asset_id != baseline.asset_id:
         issues.append("R0.14: recovery media targets another hardware asset")
         media_provenance_valid = False
-    if media.prepared_at < baseline.captured_at:
-        issues.append("R0.14: recovery media was prepared before retained baseline")
-        media_provenance_valid = False
-
     rebuild_target_valid = True
     if rebuild.baseline_id != baseline.baseline_id:
         issues.append("R0.14: rebuild references another baseline")
