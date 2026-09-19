@@ -173,6 +173,8 @@ Optional but valuable instrumentation includes an independent power meter, USB/s
 
 ### R0.9 Queue saturation/backpressure
 
+**Implementation tracking:** #890  
+
 **Stimulus:** bounded synthetic load exceeds configured queue item/byte policy.  
 **Pass:** explicit backpressure/rejection; no unintended drop of already accepted records; queue returns to supported state.
 
