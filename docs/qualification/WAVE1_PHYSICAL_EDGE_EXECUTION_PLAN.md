@@ -208,6 +208,8 @@ Optional but valuable instrumentation includes an independent power meter, USB/s
 
 ### R0.14 Recovery media
 
+**Implementation tracking:** #901
+
 **Stimulus:** rebuild runtime from known recovery media according to the documented procedure.  
 **Pass:** the package distinguishes restored retained evidence from regenerated runtime state and preserves identity/custody transitions rather than pretending continuity where none exists.
 
