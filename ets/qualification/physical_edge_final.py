@@ -529,7 +529,7 @@ def build_operator_trace(
         "export_bundle_sha256": export_bundle_sha256,
         "independent_verification_sha256": independent_verification_sha256,
         "reviewer_id": reviewer_id,
-        "reviewed_at": reviewed_at.isoformat(),
+        "reviewed_at": _json_datetime(reviewed_at),
         "independently_reviewed": True,
         "hidden_manual_reconstruction_required": False,
     }
@@ -645,7 +645,7 @@ def assemble_wave1_r0_package(
                 }
             )[:24]
         ),
-        "created_at": created_at.isoformat(),
+        "created_at": _json_datetime(created_at),
         "qualification_class": "EDGE_COMPACT_R0",
         "manifest_id": manifest.manifest_id,
         "asset_id": asset_id,
@@ -979,6 +979,11 @@ def _require_phase_disposition(
     if raw != "phase_evidence_only":
         raise ValueError("selected phase must retain disposition=phase_evidence_only")
     return "phase_evidence_only"
+
+
+def _json_datetime(value: datetime) -> str:
+    normalized = _require_timezone(value, "canonical datetime")
+    return normalized.isoformat().replace("+00:00", "Z")
 
 
 def _require_timezone(value: datetime, label: str) -> datetime:
