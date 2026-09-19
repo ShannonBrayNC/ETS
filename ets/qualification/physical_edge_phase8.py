@@ -17,7 +17,11 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ets.core.canonical_json import canonical_sha256
-from ets.qualification.physical_edge import (\n    EdgeCompactR0BenchManifest,\n    load_manifest,\n    readiness_issues,\n)
+from ets.qualification.physical_edge import (
+    EdgeCompactR0BenchManifest,
+    load_manifest,
+    readiness_issues,
+)
 from ets.qualification.physical_edge_phase3 import EdgeSyncStatusEvidence
 from ets.qualification.physical_edge_phase7 import EdgeR0Phase7Evaluation
 
@@ -593,7 +597,8 @@ def evaluate_r0_9(
         key = (receipt.subject_kind, receipt.subject_id)
         if key in proof_keys:
             issues.append(
-                "R0.9: duplicate proof receipt for "\n                f"{receipt.subject_kind.value}:{receipt.subject_id}"
+                "R0.9: duplicate proof receipt for "
+                f"{receipt.subject_kind.value}:{receipt.subject_id}"
             )
             continue
         proof_keys[key] = receipt
