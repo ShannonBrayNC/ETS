@@ -533,8 +533,11 @@ def build_operator_trace(
         "independently_reviewed": True,
         "hidden_manual_reconstruction_required": False,
     }
-    payload["trace_commitment_sha256"] = canonical_sha256(payload)
-    return R0OperatorSourceToProofTrace.model_validate(payload)
+    digest = canonical_sha256(payload)
+    validation_payload = dict(payload)
+    validation_payload["reviewed_at"] = reviewed_at
+    validation_payload["trace_commitment_sha256"] = digest
+    return R0OperatorSourceToProofTrace.model_validate(validation_payload)
 
 
 def build_phase_selection_from_json(
@@ -665,8 +668,16 @@ def assemble_wave1_r0_package(
         "limitations": list(_R0_LIMITATIONS),
         "claim_boundary": _R0_FINAL_CLAIM_BOUNDARY,
     }
-    payload["package_root_sha256"] = canonical_sha256(payload)
-    return Wave1R0PackageManifest.model_validate(payload)
+    root_digest = canonical_sha256(payload)
+    validation_payload = dict(payload)
+    validation_payload["created_at"] = created_at
+    validation_payload["phases"] = phases
+    validation_payload["operator_trace"] = operator_trace
+    validation_payload["historical_runs"] = historical_runs
+    validation_payload["hqp"] = hqp
+    validation_payload["limitations"] = _R0_LIMITATIONS
+    validation_payload["package_root_sha256"] = root_digest
+    return Wave1R0PackageManifest.model_validate(validation_payload)
 
 
 def build_qualification_index_claim(
