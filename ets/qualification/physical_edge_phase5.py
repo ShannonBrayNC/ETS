@@ -599,7 +599,10 @@ def evaluate_r0_6(
                 continue
             if recovered_proof.proof_artifact_sha256 != disposition.recovered_proof_sha256:
                 issues.append(f"R0.6: proof receipt digest mismatch for {attempt.attempt_id}")
-            if not recovered_proof.inclusion_valid or not recovered_proof.independent_execution_context:
+            if (
+                not recovered_proof.inclusion_valid
+                or not recovered_proof.independent_execution_context
+            ):
                 issues.append(
                     f"R0.6: recovered commit did not verify independently for "
                     f"{attempt.attempt_id}"
