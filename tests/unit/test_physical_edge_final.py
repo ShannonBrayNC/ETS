@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -246,7 +247,7 @@ def _verification(hqp: R0HqpPackageBinding) -> HardwareQualificationVerification
         ),
     }
     payload["verification_digest_sha256"] = canonical_sha256(payload)
-    return HardwareQualificationVerification.model_validate(payload)
+    return HardwareQualificationVerification.model_validate_json(json.dumps(payload))
 
 
 def _package():
