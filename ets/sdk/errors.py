@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal, TypeAlias
+from typing import Literal
 
-SDKErrorCode: TypeAlias = Literal[
+type SDKErrorCode = Literal[
     "transport_error",
     "authentication_failed",
     "authorization_failed",
