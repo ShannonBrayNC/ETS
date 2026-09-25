@@ -39,6 +39,12 @@ dependencies = [
 [project.scripts]
 ets-verify = "ets.verifier.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/ShannonBrayNC/ETS"
+Repository = "https://github.com/ShannonBrayNC/ETS"
+Issues = "https://github.com/ShannonBrayNC/ETS/issues"
+Documentation = "https://github.com/ShannonBrayNC/ETS/tree/main/docs/sdk"
+
 [project.optional-dependencies]
 dev = [
     "azure-identity>=1.17,<2",
