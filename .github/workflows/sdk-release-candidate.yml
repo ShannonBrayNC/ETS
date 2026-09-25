@@ -75,7 +75,7 @@ jobs:
           dotnet restore sdk/dotnet/Ets.Application.Tests/Ets.Application.Tests.csproj
           dotnet test sdk/dotnet/Ets.Application.Tests/Ets.Application.Tests.csproj --configuration Release
           mkdir -p artifacts/dotnet
-          (cd sdk/dotnet/Ets.Application && dotnet pack --configuration Release --output ../../../artifacts/dotnet)
+          dotnet msbuild sdk/dotnet/Ets.Application/Ets.Application.csproj -restore -t:Pack -p:Configuration=Release -p:PackageOutputPath="$GITHUB_WORKSPACE/artifacts/dotnet"
 
       - name: Build and test TypeScript package
         working-directory: sdk/typescript
