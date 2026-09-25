@@ -1,0 +1,17 @@
+{
+  "name": "@lanternprotocol/ets-sdk",
+  "version": "0.1.0-alpha",
+  "private": true,
+  "description": "ETS Application SDK v1 TypeScript client",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/test/*.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
