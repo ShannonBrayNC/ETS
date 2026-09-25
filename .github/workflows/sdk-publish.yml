@@ -54,7 +54,8 @@ jobs:
         run: |
           dotnet restore sdk/dotnet/Ets.Application.Tests/Ets.Application.Tests.csproj
           dotnet test sdk/dotnet/Ets.Application.Tests/Ets.Application.Tests.csproj --configuration Release
-          dotnet pack sdk/dotnet/Ets.Application/Ets.Application.csproj --configuration Release --output artifacts/dotnet
+          mkdir -p artifacts/dotnet
+          (cd sdk/dotnet/Ets.Application && dotnet pack --configuration Release --output ../../../artifacts/dotnet)
 
       - name: Build and test TypeScript package
         working-directory: sdk/typescript
