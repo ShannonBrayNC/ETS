@@ -74,8 +74,8 @@ def main() -> None:
     ]
     checksum_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    print(f"wrote {output_path.relative_to(ROOT)}")
-    print(f"wrote {checksum_path.relative_to(ROOT)}")
+    print(f"wrote {output_path}")
+    print(f"wrote {checksum_path}")
 
 
 if __name__ == "__main__":
