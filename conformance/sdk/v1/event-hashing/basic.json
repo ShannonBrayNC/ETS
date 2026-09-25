@@ -1,0 +1,29 @@
+{
+  "vector_id": "ets-sdk-event-hash-0001",
+  "contract": "ets.event.v1",
+  "hashable_payload": {
+    "event_id": "evt_sdk_vector_001",
+    "tenant_id": "tenant_demo",
+    "workspace_id": "workspace_demo",
+    "evidence_id": "evidence_sdk_vector_001",
+    "event_type": "sdk.conformance",
+    "subject_ref": "subject-1",
+    "content_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "content_hash_alg": "sha256",
+    "metadata": {
+      "count": 2,
+      "labels": ["alpha", "β"]
+    },
+    "created_at_utc": "2026-09-25T12:00:00Z",
+    "schema_version": "ets.event.v1",
+    "source_system": "sdk-conformance",
+    "actor_id": null,
+    "correlation_id": "corr-001",
+    "external_refs": {
+      "case": "vector-1"
+    },
+    "redaction_profile": null
+  },
+  "canonical_utf8": "{\"actor_id\":null,\"content_hash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"content_hash_alg\":\"sha256\",\"correlation_id\":\"corr-001\",\"created_at_utc\":\"2026-09-25T12:00:00Z\",\"event_id\":\"evt_sdk_vector_001\",\"event_type\":\"sdk.conformance\",\"evidence_id\":\"evidence_sdk_vector_001\",\"external_refs\":{\"case\":\"vector-1\"},\"metadata\":{\"count\":2,\"labels\":[\"alpha\",\"β\"]},\"redaction_profile\":null,\"schema_version\":\"ets.event.v1\",\"source_system\":\"sdk-conformance\",\"subject_ref\":\"subject-1\",\"tenant_id\":\"tenant_demo\",\"workspace_id\":\"workspace_demo\"}",
+  "sha256": "1c5f1a95e7c889d714803d9b5fc507302313f03f30e447b72abbfb14efd85e0f"
+}

@@ -1,0 +1,15 @@
+{
+  "vector_id": "ets-sdk-canonical-0001",
+  "contract": "ets.application.sdk.v1",
+  "input": {
+    "z": 1,
+    "a": "é",
+    "nested": {
+      "b": true,
+      "a": null
+    },
+    "items": [3, 2, 1]
+  },
+  "canonical_utf8": "{\"a\":\"é\",\"items\":[3,2,1],\"nested\":{\"a\":null,\"b\":true},\"z\":1}",
+  "sha256": "70850a1e719f256ae76bf122d78f5a0eb2c98a85ec63ef125c7156e7710beba3"
+}
