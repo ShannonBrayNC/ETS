@@ -7,6 +7,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_sdk_release_identity_is_alpha_1() -> None:
+    matrix = json.loads((ROOT / "docs/sdk/RELEASE_MATRIX.json").read_text(encoding="utf-8"))
+    assert matrix["release_tag"] == "v0.1.0-alpha.1"
+    assert matrix["packages"]["python"]["version"] == "0.1.0a1"
+    assert matrix["packages"]["dotnet"]["version"] == "0.1.0-alpha.1"
+    assert matrix["packages"]["typescript"]["version"] == "0.1.0-alpha.1"
+
+
 def test_sdk_release_matrix_matches_package_metadata() -> None:
     subprocess.run(
         [sys.executable, "scripts/verify_sdk_release_matrix.py"],
