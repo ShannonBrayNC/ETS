@@ -17,10 +17,16 @@ def test_release_gate_docs_exist() -> None:
         "docs/research/README.md",
         "docs/research/non-claims.md",
         "docs/research/claim-traceability-manifest.json",
+        "docs/sdk/RELEASE.md",
+        "docs/sdk/RELEASE_MATRIX.json",
         "scripts/verify-branch-protection-runbook.py",
         "scripts/verify-ets-release-readiness.ps1",
         "scripts/verify-ets-certificate-claim-safety.ps1",
         "scripts/verify-ets-formal-traceability.ps1",
+        "scripts/verify_sdk_release_matrix.py",
+        "scripts/build_sdk_release_manifest.py",
+        ".github/workflows/sdk-release-candidate.yml",
+        ".github/workflows/sdk-publish.yml",
     ]
     for path in required:
         assert (ROOT / path).exists(), path
@@ -107,6 +113,21 @@ def test_release_readiness_script_is_cross_platform_and_self_guarding() -> None:
         "verify-ets-certificate-claim-safety.ps1",
         "verify-ets-formal-traceability.ps1",
         'Arguments @("-m", "ets.verifier.cli", "--version")',
+    ]
+    for term in required_terms:
+        assert term in text
+
+
+def test_sdk_release_docs_preserve_trust_and_registry_boundaries() -> None:
+    text = read("docs/sdk/RELEASE.md")
+    required_terms = [
+        "lanternprotocol-ets",
+        "LanternProtocol.ETS.Application",
+        "@lanternprotocol/ets-sdk",
+        "sdk-public-release",
+        "OIDC trusted publishing",
+        "committed_local",
+        "real-world truth",
     ]
     for term in required_terms:
         assert term in text
