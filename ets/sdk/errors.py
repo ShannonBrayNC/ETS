@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 type SDKErrorCode = Literal[
     "transport_error",
@@ -29,15 +29,20 @@ class ETSApplicationError(Exception):
         *,
         status_code: int | None = None,
         correlation_id: str | None = None,
+        api_code: str | None = None,
+        details: Any | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.status_code = status_code
         self.correlation_id = correlation_id
+        self.api_code = api_code
+        self.details = details
 
 
 _API_CODE_MAP: dict[str, SDKErrorCode] = {
     "ETS_AUTH_REQUIRED": "authentication_failed",
+    "ETS_AUTH_FORBIDDEN": "authorization_failed",
     "ETS_EVENT_NOT_FOUND": "not_found",
     "ETS_EVENT_DUPLICATE": "conflict",
     "ETS_VALIDATION_ERROR": "validation_failed",
