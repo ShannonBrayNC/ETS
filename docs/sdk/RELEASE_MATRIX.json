@@ -1,0 +1,37 @@
+{
+  "schema_version": "ets.sdk.release_matrix.v1",
+  "release_tag": "v0.1.0-alpha",
+  "sdk_contract": "ets.application.sdk.v1",
+  "api_versions": [
+    "v1"
+  ],
+  "packages": {
+    "python": {
+      "registry": "PyPI",
+      "distribution": "lanternprotocol-ets",
+      "import_namespace": "ets",
+      "version": "0.1.0a1",
+      "python": ">=3.12"
+    },
+    "dotnet": {
+      "registry": "NuGet",
+      "package_id": "LanternProtocol.ETS.Application",
+      "namespace": "Ets.Application",
+      "version": "0.1.0-alpha",
+      "target_framework": "net8.0"
+    },
+    "typescript": {
+      "registry": "npm",
+      "package_name": "@lanternprotocol/ets-sdk",
+      "version": "0.1.0-alpha",
+      "node": ">=22.14.0"
+    }
+  },
+  "protocol": {
+    "evidence_event": "ets.event.v1",
+    "capture": "ets.capture.v1",
+    "proof_bundle": "ets.proof_bundle.v1",
+    "verifier": "ets.verifier.v1",
+    "connector_sdk": "ets.connector.sdk.v1"
+  }
+}
