@@ -1,6 +1,6 @@
 {
   "name": "@lanternprotocol/ets-sdk",
-  "version": "0.1.0-alpha",
+  "version": "0.1.0-alpha.1",
   "private": false,
   "description": "ETS Application SDK v1 TypeScript client",
   "type": "module",

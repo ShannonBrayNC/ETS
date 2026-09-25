@@ -2,24 +2,35 @@
 
 Status: SDK-4 public-release preparation
 
-Release tag: `v0.1.0-alpha`
+Release tag: `v0.1.0-alpha.1`
 
 Application contract: `ets.application.sdk.v1`
+
+## Tag lineage
+
+The repository already contains a historical `v0.1.0-alpha` tag from July 21,
+2026. It is preserved and must not be moved. The SDK public package release uses
+`v0.1.0-alpha.1`.
+
+The publish workflow derives the expected tag from
+`docs/sdk/RELEASE_MATRIX.json` and fails unless the release tag resolves to
+exactly the current `main` release commit.
+
 
 ## Public package identities
 
 | Ecosystem | Public package | Version | Runtime/import |
 |---|---|---:|---|
 | PyPI | `lanternprotocol-ets` | `0.1.0a1` | `import ets` / Python 3.12+ |
-| NuGet | `LanternProtocol.ETS.Application` | `0.1.0-alpha` | `Ets.Application` / .NET 8 |
-| npm | `@lanternprotocol/ets-sdk` | `0.1.0-alpha` | Node 22.14+ |
+| NuGet | `LanternProtocol.ETS.Application` | `0.1.0-alpha.1` | `Ets.Application` / .NET 8 |
+| npm | `@lanternprotocol/ets-sdk` | `0.1.0-alpha.1` | Node 22.14+ |
 
 The Python distribution is deliberately **not** named `ets`. That name is
 already used by an unrelated PyPI distribution. The source/import namespace
 remains `ets`.
 
-The version spelling differs because Python uses PEP 440 while npm and NuGet
-use SemVer-style prerelease syntax. `docs/sdk/RELEASE_MATRIX.json` is the
+The public release is `v0.1.0-alpha.1`. Python spells the same prerelease line as
+PEP 440 `0.1.0a1`; npm and NuGet use SemVer-style `0.1.0-alpha.1`. `docs/sdk/RELEASE_MATRIX.json` is the
 machine-readable authority for this mapping.
 
 ## Release gates

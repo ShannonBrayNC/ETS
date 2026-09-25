@@ -3,7 +3,7 @@
 All notable ETS changes are tracked here. ETS follows Semantic Versioning. Releases in
 the `0.x` series are unstable and may include breaking changes.
 
-## [v0.1.0-alpha] - Unreleased
+## [v0.1.0-alpha.1] - Unreleased
 
 ### Release status
 
@@ -75,7 +75,7 @@ The release candidate must also pass the GitHub Actions CI workflow on:
 - the pull request targeting `main`;
 - the resulting merge commit on `main`;
 - the `rc/v0.1.0-alpha.1` tag;
-- the final `v0.1.0-alpha` tag.
+- the final `v0.1.0-alpha.1` tag.
 
 ### Supported evaluation environment
 

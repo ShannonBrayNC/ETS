@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <PackageId>LanternProtocol.ETS.Application</PackageId>
-    <Version>0.1.0-alpha</Version>
+    <Version>0.1.0-alpha.1</Version>
     <Authors>ETS Contributors</Authors>
     <Company>Lantern Protocol</Company>
     <Product>Evidence Transparency System Application SDK</Product>

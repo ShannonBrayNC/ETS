@@ -1,6 +1,6 @@
 {
   "schema_version": "ets.sdk.release_matrix.v1",
-  "release_tag": "v0.1.0-alpha",
+  "release_tag": "v0.1.0-alpha.1",
   "sdk_contract": "ets.application.sdk.v1",
   "api_versions": [
     "v1"
@@ -17,13 +17,13 @@
       "registry": "NuGet",
       "package_id": "LanternProtocol.ETS.Application",
       "namespace": "Ets.Application",
-      "version": "0.1.0-alpha",
+      "version": "0.1.0-alpha.1",
       "target_framework": "net8.0"
     },
     "typescript": {
       "registry": "npm",
       "package_name": "@lanternprotocol/ets-sdk",
-      "version": "0.1.0-alpha",
+      "version": "0.1.0-alpha.1",
       "node": ">=22.14.0"
     }
   },

@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TAG = "v0.1.0-alpha"
+TAG = "v0.1.0-alpha.1"
 
 
 def _read(relative: str) -> str:

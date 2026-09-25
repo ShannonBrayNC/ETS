@@ -63,7 +63,7 @@ The alpha release must not claim:
 Recommended tag format:
 
 ```text
-v0.1.0-alpha
+v0.1.0-alpha.1
 ```
 
 Recommended sprint gate tag:

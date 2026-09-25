@@ -21,14 +21,20 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name }}
 
-      - name: Require SDK alpha release tag
-        run: |
-          test "$GITHUB_REF_NAME" = "v0.1.0-alpha"
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Require release tag from SDK release matrix
+        run: |
+          EXPECTED_TAG="$(python -c 'import json; print(json.load(open("docs/sdk/RELEASE_MATRIX.json", encoding="utf-8"))["release_tag"])')"
+          test "$GITHUB_REF_NAME" = "$EXPECTED_TAG"
+
+      - name: Require release tag to equal current main
+        run: |
+          git fetch origin main --depth=1
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4

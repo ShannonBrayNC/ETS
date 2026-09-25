@@ -4,7 +4,7 @@ ETS is the **Evidence Transparency System**. This checklist blocks public releas
 
 ## Release Classification
 
-- Release type: `v0.1.0-alpha`
+- Release type: `v0.1.0-alpha.1`
 - Public name: **Evidence Transparency System**
 - Public acronym: **ETS**
 - Release posture: research/alpha, not production trust service
@@ -69,4 +69,5 @@ A public alpha tag may be created only after:
 - all local validation commands pass;
 - IP review gate is acknowledged;
 - release notes repeat the research/alpha and non-claim boundaries;
-- demo artifacts are confirmed fictional and non-PII;\n- SDK package metadata and `docs/sdk/RELEASE_MATRIX.json` agree;\n- the `sdk-public-release` environment and registry trusted publishers are configured before publishing registry packages.
+- demo artifacts are confirmed fictional and non-PII;\n- SDK package metadata and `docs/sdk/RELEASE_MATRIX.json` agree;\n- the `sdk-public-release` environment and registry trusted publishers are configured before publishing registry packages;
+- the public release tag is new and points exactly at the current `main` release commit; existing historical tags are never moved or overwritten.
