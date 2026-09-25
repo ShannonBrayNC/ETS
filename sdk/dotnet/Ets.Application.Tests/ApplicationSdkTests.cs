@@ -2,7 +2,6 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Ets.Application;
-using Ets.Evidence.Canonicalization;
 using Xunit;
 
 namespace Ets.Application.Tests;
@@ -74,8 +73,8 @@ public sealed class ApplicationSdkTests
             ?? throw new InvalidDataException("sha256 is required");
 
         string inputJson = input.GetRawText();
-        Assert.Equal(expectedCanonical, Encoding.UTF8.GetString(EvidenceCanonicalizer.Canonicalize(inputJson)));
-        Assert.Equal(expectedHash, EvidenceCanonicalizer.Sha256(inputJson));
+        Assert.Equal(expectedCanonical, Encoding.UTF8.GetString(ApplicationCanonicalizer.Canonicalize(inputJson)));
+        Assert.Equal(expectedHash, ApplicationCanonicalizer.Sha256(inputJson));
     }
 
     private static string FindRepositoryRoot()
