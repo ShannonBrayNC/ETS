@@ -3,13 +3,29 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ets"
-version = "0.1.0"
-description = "Evidence Transparency System reference transparency log"
+name = "lanternprotocol-ets"
+version = "0.1.0a1"
+description = "Evidence Transparency System reference implementation and Python Application SDK"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "ETS Contributors" }]
+keywords = ["evidence", "transparency-log", "provenance", "merkle", "verification", "sdk"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Software Development :: Libraries",
+]
+
+[project.urls]
+Homepage = "https://github.com/ShannonBrayNC/ETS"
+Repository = "https://github.com/ShannonBrayNC/ETS"
+Issues = "https://github.com/ShannonBrayNC/ETS/issues"
+Documentation = "https://github.com/ShannonBrayNC/ETS/tree/main/docs/sdk"
 dependencies = [
     "cryptography>=50.0.0,<51",
     "fastapi>=0.136,<0.137",
