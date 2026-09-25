@@ -320,7 +320,7 @@ class ETSClient:
         *,
         correlation_id: str | None = None,
         json: object | None = None,
-        params: Mapping[str, object] | None = None,
+        params: Mapping[str, str | int | float | bool | None] | None = None,
     ) -> httpx.Response:
         try:
             response = self._client.request(
@@ -521,7 +521,7 @@ class AsyncETSClient:
         *,
         correlation_id: str | None = None,
         json: object | None = None,
-        params: Mapping[str, object] | None = None,
+        params: Mapping[str, str | int | float | bool | None] | None = None,
     ) -> httpx.Response:
         try:
             response = await self._client.request(
