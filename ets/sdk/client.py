@@ -11,7 +11,13 @@ from urllib.parse import quote, urlsplit
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from ets.core import ConsistencyProof, EvidenceEvent, EvidenceProofBundle, InclusionProof, SignedTreeHead
+from ets.core import (
+    ConsistencyProof,
+    EvidenceEvent,
+    EvidenceProofBundle,
+    InclusionProof,
+    SignedTreeHead,
+)
 from ets.sdk.errors import ETSApplicationError, classify_api_error
 from ets.sdk.local import create_evidence
 from ets.sdk.models import (
