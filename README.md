@@ -90,6 +90,28 @@ Run the Sprint 6 external-anchor demo:
 npm run demo:anchor
 ```
 
+## Application SDK quickstart
+
+SDK-2 provides synchronous and asynchronous Python clients over the stable
+`ets.application.sdk.v1` contract.
+
+Start the loopback-only durable development profile:
+
+```powershell
+docker compose -f compose.sdk-dev.yml up --build
+```
+
+Then run the SDK walkthrough:
+
+```powershell
+python .\examples\sdk\python\quickstart.py
+```
+
+See [docs/sdk/PYTHON_CLIENT.md](docs/sdk/PYTHON_CLIENT.md) and
+[docs/sdk/DEV_ENVIRONMENT.md](docs/sdk/DEV_ENVIRONMENT.md). The development
+profile uses unsigned tree heads and development authorization and must not be
+represented as a production trust service.
+
 ## Run the Local API
 
 The local FastAPI service uses an in-memory append-only log. It stores only event
