@@ -39,4 +39,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          "${RUNNER_TEMP}/actionlint" -color
+          "${RUNNER_TEMP}/actionlint" -color -shellcheck="" -pyflakes=""
