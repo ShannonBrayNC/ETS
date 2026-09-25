@@ -1,0 +1,48 @@
+name: SDK Cross-Language Compatibility
+
+on:
+  pull_request:
+    paths:
+      - "sdk/dotnet/Ets.Application/**"
+      - "sdk/dotnet/Ets.Application.Tests/**"
+      - "sdk/typescript/**"
+      - "conformance/sdk/**"
+      - ".github/workflows/sdk-cross-language.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "sdk/dotnet/Ets.Application/**"
+      - "sdk/dotnet/Ets.Application.Tests/**"
+      - "sdk/typescript/**"
+      - "conformance/sdk/**"
+      - ".github/workflows/sdk-cross-language.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  dotnet:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet restore sdk/dotnet/Ets.Application.Tests/Ets.Application.Tests.csproj
+      - run: dotnet build sdk/dotnet/Ets.Application.Tests/Ets.Application.Tests.csproj --configuration Release --no-restore
+      - run: dotnet test sdk/dotnet/Ets.Application.Tests/Ets.Application.Tests.csproj --configuration Release --no-build
+
+  typescript:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: sdk/typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --package-lock-only
+      - run: npm ci
+      - run: npm test
