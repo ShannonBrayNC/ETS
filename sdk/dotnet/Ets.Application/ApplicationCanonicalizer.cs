@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 
@@ -7,69 +8,79 @@ namespace Ets.Application;
 /// <summary>Canonical JSON helper for the frozen ETS Application SDK v1 conformance corpus.</summary>
 public static class ApplicationCanonicalizer
 {
+    private static readonly JsonSerializerOptions StringOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
     public static byte[] Canonicalize(string json)
     {
         using JsonDocument document = JsonDocument.Parse(json);
-        using var stream = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(
-            stream,
-            new JsonWriterOptions
-            {
-                Indented = false,
-                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            }))
-        {
-            WriteCanonical(writer, document.RootElement);
-        }
-
-        return stream.ToArray();
+        var builder = new StringBuilder();
+        WriteCanonical(builder, document.RootElement);
+        return Encoding.UTF8.GetBytes(builder.ToString());
     }
 
     public static string Sha256(string json) =>
         Convert.ToHexString(SHA256.HashData(Canonicalize(json))).ToLowerInvariant();
 
-    private static void WriteCanonical(Utf8JsonWriter writer, JsonElement element)
+    private static void WriteCanonical(StringBuilder builder, JsonElement element)
     {
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-                writer.WriteStartObject();
+                builder.Append('{');
+                bool firstProperty = true;
                 foreach (JsonProperty property in
                     element.EnumerateObject().OrderBy(item => item.Name, StringComparer.Ordinal))
                 {
-                    writer.WritePropertyName(property.Name);
-                    WriteCanonical(writer, property.Value);
+                    if (!firstProperty)
+                    {
+                        builder.Append(',');
+                    }
+
+                    builder.Append(JsonSerializer.Serialize(property.Name, StringOptions));
+                    builder.Append(':');
+                    WriteCanonical(builder, property.Value);
+                    firstProperty = false;
                 }
-                writer.WriteEndObject();
+                builder.Append('}');
                 break;
 
             case JsonValueKind.Array:
-                writer.WriteStartArray();
+                builder.Append('[');
+                bool firstItem = true;
                 foreach (JsonElement item in element.EnumerateArray())
                 {
-                    WriteCanonical(writer, item);
+                    if (!firstItem)
+                    {
+                        builder.Append(',');
+                    }
+
+                    WriteCanonical(builder, item);
+                    firstItem = false;
                 }
-                writer.WriteEndArray();
+                builder.Append(']');
                 break;
 
             case JsonValueKind.String:
-                writer.WriteStringValue(element.GetString());
+                builder.Append(JsonSerializer.Serialize(element.GetString(), StringOptions));
                 break;
 
             case JsonValueKind.Number:
-                writer.WriteRawValue(element.GetRawText(), skipInputValidation: false);
+                builder.Append(element.GetRawText());
                 break;
 
             case JsonValueKind.True:
-                writer.WriteBooleanValue(true);
+                builder.Append("true");
                 break;
 
             case JsonValueKind.False:
-                writer.WriteBooleanValue(false);
+                builder.Append("false");
                 break;
 
             case JsonValueKind.Null:
-                writer.WriteNullValue();
+                builder.Append("null");
                 break;
 
             default:
