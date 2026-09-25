@@ -6,6 +6,17 @@ Release tag: `v0.1.0-alpha.1`
 
 Application contract: `ets.application.sdk.v1`
 
+## Tag lineage
+
+The repository already contains a historical `v0.1.0-alpha` tag from July 21,
+2026. It is preserved and must not be moved. The SDK public package release uses
+`v0.1.0-alpha.1`.
+
+The publish workflow derives the expected tag from
+`docs/sdk/RELEASE_MATRIX.json` and fails unless the release tag resolves to
+exactly the current `main` release commit.
+
+
 ## Public package identities
 
 | Ecosystem | Public package | Version | Runtime/import |
