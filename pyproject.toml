@@ -20,12 +20,6 @@ classifiers = [
     "Topic :: Security :: Cryptography",
     "Topic :: Software Development :: Libraries",
 ]
-
-[project.urls]
-Homepage = "https://github.com/ShannonBrayNC/ETS"
-Repository = "https://github.com/ShannonBrayNC/ETS"
-Issues = "https://github.com/ShannonBrayNC/ETS/issues"
-Documentation = "https://github.com/ShannonBrayNC/ETS/tree/main/docs/sdk"
 dependencies = [
     "cryptography>=50.0.0,<51",
     "fastapi>=0.136,<0.137",
