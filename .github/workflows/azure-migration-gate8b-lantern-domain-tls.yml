@@ -43,15 +43,20 @@ jobs:
       GATE8A_RUN_ID: ${{ inputs.gate8a_run_id }}
       STAGING_RUN_ID: ${{ inputs.lantern_staging_run_id }}
       AUTHORIZATION: ${{ inputs.authorization }}
-      GATE8A_DIR: ${{ runner.temp }}/gate8a
-      STAGING_DIR: ${{ runner.temp }}/lantern-staging
-      GATE8A_REPORT: ${{ runner.temp }}/gate8a/ets-gate8-cutover-preflight.json
-      STAGING_REPORT: ${{ runner.temp }}/lantern-staging/lantern-destination-staging.json
-      OUTPUT_REPORT: ${{ runner.temp }}/ets-gate8b-lantern-domain-tls.json
       RESOURCE_GROUP: rg-ets-prod-eastus
       SITE_ROOT: ops/lantern-site-backup/site
 
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "GATE8A_DIR=$RUNNER_TEMP/gate8a" >> "$GITHUB_ENV"
+          echo "STAGING_DIR=$RUNNER_TEMP/lantern-staging" >> "$GITHUB_ENV"
+          echo "GATE8A_REPORT=$RUNNER_TEMP/gate8a/ets-gate8-cutover-preflight.json" >> "$GITHUB_ENV"
+          echo "STAGING_REPORT=$RUNNER_TEMP/lantern-staging/lantern-destination-staging.json" >> "$GITHUB_ENV"
+          echo "OUTPUT_REPORT=$RUNNER_TEMP/ets-gate8b-lantern-domain-tls.json" >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed source
         uses: actions/checkout@v4
         with:

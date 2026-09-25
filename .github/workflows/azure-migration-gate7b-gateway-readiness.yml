@@ -43,15 +43,20 @@ jobs:
       GATE7A_RUN_ID: ${{ inputs.gate7a_run_id }}
       EXPECTED_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
       AUTHORIZATION: ${{ inputs.authorization }}
-      GATE7A_DIR: ${{ runner.temp }}/gate7a
-      GATE7A_REPORT: ${{ runner.temp }}/gate7a/ets-gate7-core-activation.json
-      BEFORE_REPORT: ${{ runner.temp }}/ets-gate7b-before.json
-      AFTER_REPORT: ${{ runner.temp }}/ets-gate7b-after.json
-      M365_MARKER: ${{ runner.temp }}/ets-gate7b-m365-marker.json
-      FINAL_REPORT: ${{ runner.temp }}/ets-gate7b-gateway-readiness.json
       MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
 
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "GATE7A_DIR=$RUNNER_TEMP/gate7a" >> "$GITHUB_ENV"
+          echo "GATE7A_REPORT=$RUNNER_TEMP/gate7a/ets-gate7-core-activation.json" >> "$GITHUB_ENV"
+          echo "BEFORE_REPORT=$RUNNER_TEMP/ets-gate7b-before.json" >> "$GITHUB_ENV"
+          echo "AFTER_REPORT=$RUNNER_TEMP/ets-gate7b-after.json" >> "$GITHUB_ENV"
+          echo "M365_MARKER=$RUNNER_TEMP/ets-gate7b-m365-marker.json" >> "$GITHUB_ENV"
+          echo "FINAL_REPORT=$RUNNER_TEMP/ets-gate7b-gateway-readiness.json" >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed migration source
         uses: actions/checkout@v4
         with:

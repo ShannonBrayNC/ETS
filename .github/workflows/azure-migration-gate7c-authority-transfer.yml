@@ -55,19 +55,24 @@ jobs:
       AUTHORIZATION: ${{ inputs.authorization }}
       RESOURCE_GROUP: rg-ets-prod-eastus
       GATEWAY_APP: ets-oif5r5ydprrou-gw
-      GATE7A_DIR: ${{ runner.temp }}/gate7a
-      GATE7B_DIR: ${{ runner.temp }}/gate7b
-      GATE7A_REPORT: ${{ runner.temp }}/gate7a/ets-gate7-core-activation.json
-      GATE7B_REPORT: ${{ runner.temp }}/gate7b/ets-gate7b-gateway-readiness.json
-      HISTORICAL_MARKER: ${{ runner.temp }}/ets-gate7c-historical-marker.json
-      PRE_REPORT: ${{ runner.temp }}/ets-gate7c-pre.json
-      ACTIVATION_REPORT: ${{ runner.temp }}/ets-gate7c-activation.json
-      M365_MARKER: ${{ runner.temp }}/ets-gate7c-m365-marker.json
-      ACTIVE_PROBE_REPORT: ${{ runner.temp }}/ets-gate7c-active-probe.json
-      FINAL_REPORT: ${{ runner.temp }}/ets-gate7-authority-transfer.json
       MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
 
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "GATE7A_DIR=$RUNNER_TEMP/gate7a" >> "$GITHUB_ENV"
+          echo "GATE7B_DIR=$RUNNER_TEMP/gate7b" >> "$GITHUB_ENV"
+          echo "GATE7A_REPORT=$RUNNER_TEMP/gate7a/ets-gate7-core-activation.json" >> "$GITHUB_ENV"
+          echo "GATE7B_REPORT=$RUNNER_TEMP/gate7b/ets-gate7b-gateway-readiness.json" >> "$GITHUB_ENV"
+          echo "HISTORICAL_MARKER=$RUNNER_TEMP/ets-gate7c-historical-marker.json" >> "$GITHUB_ENV"
+          echo "PRE_REPORT=$RUNNER_TEMP/ets-gate7c-pre.json" >> "$GITHUB_ENV"
+          echo "ACTIVATION_REPORT=$RUNNER_TEMP/ets-gate7c-activation.json" >> "$GITHUB_ENV"
+          echo "M365_MARKER=$RUNNER_TEMP/ets-gate7c-m365-marker.json" >> "$GITHUB_ENV"
+          echo "ACTIVE_PROBE_REPORT=$RUNNER_TEMP/ets-gate7c-active-probe.json" >> "$GITHUB_ENV"
+          echo "FINAL_REPORT=$RUNNER_TEMP/ets-gate7-authority-transfer.json" >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed migration source
         uses: actions/checkout@v4
         with:

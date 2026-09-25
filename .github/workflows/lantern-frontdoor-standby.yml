@@ -29,8 +29,6 @@ jobs:
       ORIGIN_GROUP_NAME: lantern-static-site
       ORIGIN_NAME: lantern-storage-origin
       ROUTE_NAME: lantern-site-route
-      EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -53,6 +51,9 @@ jobs:
       - name: Validate EchoMedia boundary and resolve continuity origin
         id: boundary
         shell: bash
+        env:
+          EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
           set -euo pipefail
           active_subscription="$(az account show --query id -o tsv)"
@@ -152,26 +153,29 @@ jobs:
           afd_host = os.environ.get('AFD_HOST', '').strip()
           ready = os.environ.get('DEFAULT_ENDPOINT_OUTCOME') == 'success' and bool(afd_host)
           status = 'READY_FOR_DNS' if ready else 'FAILED'
-          body = f'''# Lantern Protocol Azure Front Door standby
-
-**Status:** {status}
-
-- Requested hostname: `azure.lanternprotocol.net`
-- DNS record type: `CNAME`
-- DNS host/name: `azure`
-- DNS target/value: `{afd_host or '(not available)'}`
-- Recommended TTL during verification: `300` seconds
-- Front Door profile: `{os.environ['PROFILE_NAME']}`
-- Resource group: `{os.environ['RESOURCE_GROUP']}`
-- Storage origin: `{os.environ.get('STORAGE_ACCOUNT') or '(not available)'}`
-- Front Door convergence: `{os.environ.get('CONVERGE_OUTCOME', 'unknown')}`
-- Default Front Door endpoint verification: `{os.environ.get('DEFAULT_ENDPOINT_OUTCOME', 'unknown')}`
-- Custom domain/certificate activation: `not started until DNS CNAME is present`
-- Source commit: `{os.environ['GITHUB_SHA']}`
-- Recorded: `{datetime.now(timezone.utc).isoformat()}`
-
-`READY_FOR_DNS` means the Azure Front Door default endpoint is serving the verified Lantern continuity site. The next gate is to add the `azure` CNAME, then run the separate custom-domain activation workflow. The production apex `lanternprotocol.net` remains unchanged.
-'''
+          body = "\n".join(
+              (
+                  "# Lantern Protocol Azure Front Door standby",
+                  "",
+                  f"**Status:** {status}",
+                  "",
+                  "- Requested hostname: `azure.lanternprotocol.net`",
+                  "- DNS record type: `CNAME`",
+                  "- DNS host/name: `azure`",
+                  f"- DNS target/value: `{afd_host or '(not available)'}`",
+                  "- Recommended TTL during verification: `300` seconds",
+                  f"- Front Door profile: `{os.environ['PROFILE_NAME']}`",
+                  f"- Resource group: `{os.environ['RESOURCE_GROUP']}`",
+                  f"- Storage origin: `{os.environ.get('STORAGE_ACCOUNT') or '(not available)'}`",
+                  f"- Front Door convergence: `{os.environ.get('CONVERGE_OUTCOME', 'unknown')}`",
+                  f"- Default Front Door endpoint verification: `{os.environ.get('DEFAULT_ENDPOINT_OUTCOME', 'unknown')}`",
+                  "- Custom domain/certificate activation: `not started until DNS CNAME is present`",
+                  f"- Source commit: `{os.environ['GITHUB_SHA']}`",
+                  f"- Recorded: `{datetime.now(timezone.utc).isoformat()}`",
+                  "",
+                  "`READY_FOR_DNS` means the Azure Front Door default endpoint is serving the verified Lantern continuity site. The next gate is to add the `azure` CNAME, then run the separate custom-domain activation workflow. The production apex `lanternprotocol.net` remains unchanged.",
+              )
+          )
           headers = {
               'Authorization': f'Bearer {token}',
               'Accept': 'application/vnd.github+json',
