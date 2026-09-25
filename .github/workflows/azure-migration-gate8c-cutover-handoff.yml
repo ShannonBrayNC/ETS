@@ -48,17 +48,22 @@ jobs:
       GATE8B_RUN_ID: ${{ inputs.gate8b_run_id }}
       STAGING_RUN_ID: ${{ inputs.lantern_staging_run_id }}
       AUTHORIZATION: ${{ inputs.authorization }}
-      GATE8A_DIR: ${{ runner.temp }}/gate8a
-      GATE8B_DIR: ${{ runner.temp }}/gate8b
-      STAGING_DIR: ${{ runner.temp }}/lantern-staging
-      PRODUCTION_ROOT: ${{ runner.temp }}/lantern-production-site
-      GATE8A_REPORT: ${{ runner.temp }}/gate8a/ets-gate8-cutover-preflight.json
-      GATE8B_REPORT: ${{ runner.temp }}/gate8b/ets-gate8b-lantern-domain-tls.json
-      STAGING_REPORT: ${{ runner.temp }}/lantern-staging/lantern-destination-staging.json
-      OUTPUT_REPORT: ${{ runner.temp }}/ets-gate8c-cutover-handoff.json
       SITE_ROOT: ops/lantern-site-backup/site
 
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "GATE8A_DIR=$RUNNER_TEMP/gate8a" >> "$GITHUB_ENV"
+          echo "GATE8B_DIR=$RUNNER_TEMP/gate8b" >> "$GITHUB_ENV"
+          echo "STAGING_DIR=$RUNNER_TEMP/lantern-staging" >> "$GITHUB_ENV"
+          echo "PRODUCTION_ROOT=$RUNNER_TEMP/lantern-production-site" >> "$GITHUB_ENV"
+          echo "GATE8A_REPORT=$RUNNER_TEMP/gate8a/ets-gate8-cutover-preflight.json" >> "$GITHUB_ENV"
+          echo "GATE8B_REPORT=$RUNNER_TEMP/gate8b/ets-gate8b-lantern-domain-tls.json" >> "$GITHUB_ENV"
+          echo "STAGING_REPORT=$RUNNER_TEMP/lantern-staging/lantern-destination-staging.json" >> "$GITHUB_ENV"
+          echo "OUTPUT_REPORT=$RUNNER_TEMP/ets-gate8c-cutover-handoff.json" >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed source
         uses: actions/checkout@v4
         with:
