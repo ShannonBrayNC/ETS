@@ -44,9 +44,14 @@ jobs:
       SOURCE_PEM_REL: ${{ inputs.source_public_key_pem_relative_path }}
       ALT_PEM_REL: ${{ inputs.alternate_public_key_pem_relative_path }}
       EXPECTED_SOURCE_KEY_ID: ${{ inputs.expected_source_key_id }}
-      REPORT_PATH: ${{ runner.temp }}/historical-key-offline-verification.json
 
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "REPORT_PATH=$RUNNER_TEMP/historical-key-offline-verification.json" >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed source
         uses: actions/checkout@v4
         with:
