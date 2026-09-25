@@ -21,9 +21,14 @@ jobs:
       AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
       DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      REPORT_PATH: ${{ runner.temp }}/ets-gate7-activation-preflight.json
 
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "REPORT_PATH=$RUNNER_TEMP/ets-gate7-activation-preflight.json" >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed source
         uses: actions/checkout@v4
         with:
