@@ -2,10 +2,11 @@ name: Provision Lantern Azure Front Door Standby
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/lantern-frontdoor-standby.yml'
+    inputs:
+      authorization:
+        description: Exact standby provisioning authorization phrase
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -34,6 +35,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Require explicit standby provisioning authorization
+        shell: bash
+        env:
+          AUTHORIZATION: ${{ inputs.authorization }}
+        run: |
+          set -euo pipefail
+          test "$AUTHORIZATION" = "LANTERN_FRONTDOOR_STANDBY_AUTHORIZED"
 
       - name: Azure login with ETS workload identity
         uses: azure/login@v2
