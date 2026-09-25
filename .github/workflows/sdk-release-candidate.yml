@@ -1,0 +1,109 @@
+name: SDK Release Candidate
+
+on:
+  pull_request:
+    paths:
+      - "ets/sdk/**"
+      - "sdk/dotnet/Ets.Application/**"
+      - "sdk/dotnet/Ets.Application.Tests/**"
+      - "sdk/typescript/**"
+      - "conformance/sdk/**"
+      - "docs/sdk/**"
+      - "scripts/*sdk_release*"
+      - "pyproject.toml"
+      - ".github/workflows/sdk-release-candidate.yml"
+      - ".github/workflows/sdk-publish.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "ets/sdk/**"
+      - "sdk/dotnet/Ets.Application/**"
+      - "sdk/dotnet/Ets.Application.Tests/**"
+      - "sdk/typescript/**"
+      - "conformance/sdk/**"
+      - "docs/sdk/**"
+      - "scripts/*sdk_release*"
+      - "pyproject.toml"
+      - ".github/workflows/sdk-release-candidate.yml"
+      - ".github/workflows/sdk-publish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Verify release matrix
+        run: |
+          python -m pip install -e .
+          python scripts/verify_sdk_release_matrix.py
+
+      - name: Build Python distribution
+        run: |
+          python -m pip install --upgrade build
+          python -m build --outdir artifacts/python
+          python -m pip install --force-reinstall artifacts/python/*.whl
+          python -c "from ets.version import __version__; assert __version__ == '0.1.0a1'"
+
+      - name: Build and test .NET package
+        run: |
+          dotnet restore sdk/dotnet/Ets.Application.Tests/Ets.Application.Tests.csproj
+          dotnet test sdk/dotnet/Ets.Application.Tests/Ets.Application.Tests.csproj --configuration Release
+          dotnet pack sdk/dotnet/Ets.Application/Ets.Application.csproj --configuration Release --output artifacts/dotnet
+
+      - name: Build and test TypeScript package
+        working-directory: sdk/typescript
+        run: |
+          npm install --package-lock-only
+          npm ci
+          npm test
+          mkdir -p ../../artifacts/typescript
+          npm pack --pack-destination ../../artifacts/typescript
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0.16.0
+        with:
+          path: artifacts
+          format: spdx-json
+          output-file: artifacts/sdk-release.spdx.json
+
+      - name: Generate release manifest
+        run: python scripts/build_sdk_release_manifest.py --commit-sha "$GITHUB_SHA"
+
+      - name: Attest release bundle
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@v4
+        with:
+          subject-path: artifacts/**/*
+
+      - name: Upload SDK release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-release-candidate
+          path: artifacts
+          if-no-files-found: error
