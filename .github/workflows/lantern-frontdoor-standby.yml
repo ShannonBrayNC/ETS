@@ -29,8 +29,6 @@ jobs:
       ORIGIN_GROUP_NAME: lantern-static-site
       ORIGIN_NAME: lantern-storage-origin
       ROUTE_NAME: lantern-site-route
-      EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -53,6 +51,9 @@ jobs:
       - name: Validate EchoMedia boundary and resolve continuity origin
         id: boundary
         shell: bash
+        env:
+          EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
           set -euo pipefail
           active_subscription="$(az account show --query id -o tsv)"
