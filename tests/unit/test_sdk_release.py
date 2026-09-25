@@ -61,5 +61,6 @@ def test_public_publish_is_release_only_and_environment_protected() -> None:
     assert "pypa/gh-action-pypi-publish@release/v1" in text
     assert "NuGet/login@v1" in text
     assert "npm publish" in text
-    assert 'test "$GITHUB_REF_NAME" = "v0.1.0-alpha.1"' in text
+    assert '"docs/sdk/RELEASE_MATRIX.json"' in text
+    assert '"release_tag"' in text
     assert 'git rev-parse origin/main' in text
