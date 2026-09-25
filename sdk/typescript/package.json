@@ -1,17 +1,39 @@
 {
   "name": "@lanternprotocol/ets-sdk",
   "version": "0.1.0-alpha",
-  "private": true,
+  "private": false,
   "description": "ETS Application SDK v1 TypeScript client",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test dist/test/*.test.js"
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ShannonBrayNC/ETS.git"
+  },
+  "homepage": "https://github.com/ShannonBrayNC/ETS/tree/main/docs/sdk",
+  "bugs": {
+    "url": "https://github.com/ShannonBrayNC/ETS/issues"
+  },
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }
