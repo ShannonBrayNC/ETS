@@ -24,7 +24,7 @@ ETS is the **Evidence Transparency System**. This checklist blocks public releas
 | Election demo boundary present | Election RC docs state ETS is not voting software, tabulation software, voter registration software, ballot software, election correctness, or vote of record. | Required |
 | Verifier CLI works | `ets-verify --version` imports cleanly. | Required |
 | Local checks documented | Ruff, mypy, pytest, verifier, and release readiness checks are documented. | Required |
-| No production overclaim | Release notes do not state production trust, real-world truth, legal sufficiency, official election correctness, or completeness without external policy. | Required |
+| No production overclaim | Release notes do not state production trust, real-world truth, legal sufficiency, official election correctness, or completeness without external policy. | Required |\n| SDK public-release gate | Python, .NET, and TypeScript package identities match `docs/sdk/RELEASE_MATRIX.json`; cross-language tests and package builds pass. | Required |\n| SDK supply-chain gate | Release artifacts include SHA-256 manifest, SPDX SBOM, build provenance, and protected OIDC trusted-publisher workflows. | Required |
 
 ## Mandatory Local Validation
 
@@ -69,4 +69,4 @@ A public alpha tag may be created only after:
 - all local validation commands pass;
 - IP review gate is acknowledged;
 - release notes repeat the research/alpha and non-claim boundaries;
-- demo artifacts are confirmed fictional and non-PII.
+- demo artifacts are confirmed fictional and non-PII;\n- SDK package metadata and `docs/sdk/RELEASE_MATRIX.json` agree;\n- the `sdk-public-release` environment and registry trusted publishers are configured before publishing registry packages.
