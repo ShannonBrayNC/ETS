@@ -23,7 +23,12 @@ jobs:
 
       - name: Require SDK alpha release tag
         run: |
-          test "$GITHUB_REF_NAME" = "v0.1.0-alpha"
+          test "$GITHUB_REF_NAME" = "v0.1.0-alpha.1"
+
+      - name: Require release tag to equal current main
+        run: |
+          git fetch origin main --depth=1
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
 
       - name: Set up Python
         uses: actions/setup-python@v5
