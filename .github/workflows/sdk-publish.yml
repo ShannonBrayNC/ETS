@@ -101,7 +101,7 @@ jobs:
           path: artifacts
 
       - name: Attach SDK artifacts to GitHub release
-        run: gh release upload "$GITHUB_REF_NAME" artifacts/**/* --clobber
+        run: gh release upload "$GITHUB_REF_NAME" artifacts/* artifacts/*/* --clobber
         env:
           GH_TOKEN: ${{ github.token }}
 
