@@ -21,7 +21,7 @@ The alpha release is blocked unless every required gate below passes.
 | `docs/reports/CERTIFICATE_CLAIM_SAFETY.md` | Yes |
 | `docs/demo/election-rc-walkthrough.md` | Yes |
 | `docs/ip` | Yes |
-| `scripts/verify-ets-release-readiness.ps1` | Yes |
+| `scripts/verify-ets-release-readiness.ps1` | Yes |\n| `docs/sdk/RELEASE.md` | Yes |\n| `docs/sdk/RELEASE_MATRIX.json` | Yes |\n| `.github/workflows/sdk-release-candidate.yml` | Yes |\n| `.github/workflows/sdk-publish.yml` | Yes |
 
 ## Required Validation Commands
 
@@ -30,7 +30,7 @@ The alpha release is blocked unless every required gate below passes.
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m mypy
 .\.venv\Scripts\python.exe -m pytest
-.\.venv\Scripts\ets-verify.exe --version
+.\.venv\Scripts\ets-verify.exe --version\npython scripts/verify_sdk_release_matrix.py
 ```
 
 ## Alpha Boundary
