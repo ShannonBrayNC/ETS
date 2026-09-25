@@ -28,8 +28,6 @@ jobs:
       PROFILE_NAME: lantern-continuity-fd
       ROUTE_NAME: lantern-site-route
       CUSTOM_DOMAIN_NAME: azure-lanternprotocol-net
-      EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -52,6 +50,9 @@ jobs:
       - name: Resolve existing Front Door endpoint and validate DNS CNAME
         id: dns
         shell: bash
+        env:
+          EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
           set -euo pipefail
           active_subscription="$(az account show --query id -o tsv)"
