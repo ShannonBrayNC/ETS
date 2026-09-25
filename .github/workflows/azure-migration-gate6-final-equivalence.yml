@@ -40,15 +40,20 @@ jobs:
       EXPECTED_COMMIT: ${{ inputs.expected_commit }}
       SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
       EXPECTED_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
-      TABLE_MANIFEST: ${{ runner.temp }}/ets-gate6-final-table.json
-      GATEWAY_MANIFEST: ${{ runner.temp }}/ets-gate6-final-gateway.json
-      SOURCE_PROOF: ${{ runner.temp }}/ets-gate6-final-source-proof.json
-      GATE5_MARKER: ${{ runner.temp }}/ets-gate6-gate5-pass.json
-      FINALITY_REPORT: ${{ runner.temp }}/ets-gate6-finality.json
       MIGRATION_EVIDENCE_TABLE: ETSEvents
       MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
 
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "TABLE_MANIFEST=$RUNNER_TEMP/ets-gate6-final-table.json" >> "$GITHUB_ENV"
+          echo "GATEWAY_MANIFEST=$RUNNER_TEMP/ets-gate6-final-gateway.json" >> "$GITHUB_ENV"
+          echo "SOURCE_PROOF=$RUNNER_TEMP/ets-gate6-final-source-proof.json" >> "$GITHUB_ENV"
+          echo "GATE5_MARKER=$RUNNER_TEMP/ets-gate6-gate5-pass.json" >> "$GITHUB_ENV"
+          echo "FINALITY_REPORT=$RUNNER_TEMP/ets-gate6-finality.json" >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed migration source
         uses: actions/checkout@v4
         with:
