@@ -1,0 +1,185 @@
+name: SDK Public Publish
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Require SDK alpha release tag
+        run: |
+          test "$GITHUB_REF_NAME" = "v0.1.0-alpha"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Verify release matrix
+        run: |
+          python -m pip install -e .
+          python scripts/verify_sdk_release_matrix.py
+
+      - name: Build Python distribution
+        run: |
+          python -m pip install --upgrade build
+          python -m build --outdir artifacts/python
+
+      - name: Build and test .NET package
+        run: |
+          dotnet restore sdk/dotnet/Ets.Application.Tests/Ets.Application.Tests.csproj
+          dotnet test sdk/dotnet/Ets.Application.Tests/Ets.Application.Tests.csproj --configuration Release
+          dotnet pack sdk/dotnet/Ets.Application/Ets.Application.csproj --configuration Release --output artifacts/dotnet
+
+      - name: Build and test TypeScript package
+        working-directory: sdk/typescript
+        run: |
+          npm install --package-lock-only
+          npm ci
+          npm test
+          mkdir -p ../../artifacts/typescript
+          npm pack --pack-destination ../../artifacts/typescript
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0.16.0
+        with:
+          path: artifacts
+          format: spdx-json
+          output-file: artifacts/sdk-release.spdx.json
+
+      - name: Generate release manifest
+        run: python scripts/build_sdk_release_manifest.py --commit-sha "$GITHUB_SHA"
+
+      - name: Attest release artifacts
+        uses: actions/attest@v4
+        with:
+          subject-path: artifacts/**/*
+
+      - name: Upload release bundle for publish jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-public-release
+          path: artifacts
+          if-no-files-found: error
+
+  github-release-assets:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: sdk-public-release
+          path: artifacts
+
+      - name: Attach SDK artifacts to GitHub release
+        run: gh release upload "$GITHUB_REF_NAME" artifacts/**/* --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: sdk-public-release
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: sdk-public-release
+          path: artifacts
+
+      - name: Publish Python distribution with PyPI Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: artifacts/python/
+
+  npm:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: sdk-public-release
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: sdk-public-release
+          path: artifacts
+
+      - name: Set up Node for npm Trusted Publishing
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Require npm Trusted Publishing capable CLI
+        run: npm install --global npm@^11.15.0
+
+      - name: Publish npm package
+        run: npm publish artifacts/typescript/*.tgz --access public
+
+  nuget:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: sdk-public-release
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: sdk-public-release
+          path: artifacts
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Exchange GitHub OIDC token for NuGet temporary API key
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Publish NuGet package
+        run: >
+          dotnet nuget push artifacts/dotnet/*.nupkg
+          --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
