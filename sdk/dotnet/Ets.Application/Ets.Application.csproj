@@ -4,8 +4,22 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <PackageId>Ets.Application</PackageId>
+    <PackageId>LanternProtocol.ETS.Application</PackageId>
     <Version>0.1.0-alpha</Version>
+    <Authors>ETS Contributors</Authors>
+    <Company>Lantern Protocol</Company>
+    <Product>Evidence Transparency System Application SDK</Product>
     <Description>ETS Application SDK v1 client for .NET.</Description>
+    <PackageTags>evidence;transparency;provenance;merkle;verification;sdk</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ShannonBrayNC/ETS</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ShannonBrayNC/ETS.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 </Project>

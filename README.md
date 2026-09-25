@@ -22,7 +22,7 @@ and raw evidence bytes are outside the ETS storage boundary.
   and proofs
 - `ets/api` - ingestion and verification API
 - `ets/verifier` - CLI and SDK verification tools
-- `ets/sdk` - local SDK facade for core verification and append flows
+- `ets/sdk` - Python Application SDK with local and remote sync/async flows
 - `ets/reports` - JSON, Markdown, and HTML verification certificates
 - `ets/explorer` - future UI for browsing and verification
 - `ets/spec` - protocol docs and whitepaper
@@ -111,6 +111,27 @@ See [docs/sdk/PYTHON_CLIENT.md](docs/sdk/PYTHON_CLIENT.md) and
 [docs/sdk/DEV_ENVIRONMENT.md](docs/sdk/DEV_ENVIRONMENT.md). The development
 profile uses unsigned tree heads and development authorization and must not be
 represented as a production trust service.
+
+## Cross-language Application SDK
+
+ETS now carries the frozen `ets.application.sdk.v1` contract across Python,
+.NET, and TypeScript. The public-alpha package identities are:
+
+- Python distribution `lanternprotocol-ets` (imports remain `ets`)
+- NuGet package `LanternProtocol.ETS.Application`
+- npm package `@lanternprotocol/ets-sdk`
+
+The release matrix and protected trusted-publishing process are documented in
+[docs/sdk/RELEASE.md](docs/sdk/RELEASE.md). The package release remains an alpha
+developer surface and does not make the local ETS Dev profile a production trust
+service.
+
+The canonical end-to-end SDK walkthrough uses Chess telemetry:
+
+```powershell
+docker compose -f compose.sdk-dev.yml up --build
+python examples/sdk/chess/chess_evidence_walkthrough.py
+```
 
 ## Run the Local API
 

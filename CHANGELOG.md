@@ -25,6 +25,12 @@ testing, protocol review, and non-production experimentation.
 - Scoped artifact read, proof, and verification enforcement.
 - Cross-platform release-readiness validation.
 - CI validation for pull requests, pushes to `main`, release-candidate tags, and release tags.
+- Frozen `ets.application.sdk.v1` compatibility contract and shared conformance vectors.
+- Python synchronous/asynchronous remote Application SDK and local ETS Dev profile.
+- .NET `LanternProtocol.ETS.Application` and npm `@lanternprotocol/ets-sdk` clients.
+- Cross-language Python/.NET/TypeScript canonicalization and transport compatibility gates.
+- Public SDK package build, SPDX SBOM, SHA-256 manifest, provenance attestation, and OIDC trusted-publishing workflows.
+- Chess telemetry capture/bundle/tamper walkthrough as the canonical SDK end-to-end sample.
 
 ### Changed
 

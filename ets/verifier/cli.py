@@ -17,9 +17,9 @@ except ImportError:  # pragma: no cover - defensive console-script fallback
     from importlib.metadata import PackageNotFoundError, version
 
     try:
-        __version__ = version("ets")
+        __version__ = version("lanternprotocol-ets")
     except PackageNotFoundError:
-        __version__ = "0.1.0"
+        __version__ = "0.1.0a1"
 
 from ets.core import EvidenceProofBundle
 from ets.election import ElectionInclusionProofBundle, verify_election_inclusion_bundle
