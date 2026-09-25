@@ -4,7 +4,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageId>Ets.Application</PackageId>
     <Version>0.1.0-alpha</Version>
     <Description>ETS Application SDK v1 client for .NET.</Description>
