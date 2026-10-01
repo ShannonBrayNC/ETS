@@ -1,0 +1,162 @@
+name: Azure Migration Gate 9B Source Retirement Inventory
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: Exact reviewed main commit authorized for Gate 9B inventory
+        required: true
+        type: string
+      gate9_readiness_run_id:
+        description: Successful Gate 9 readiness workflow run ID
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-migration-gate9b-source-retirement-inventory
+  cancel-in-progress: false
+
+jobs:
+  inventory:
+    name: Capture exact source retirement inventory without mutation
+    runs-on: ubuntu-latest
+    environment: ets-azure-migration-destination-restore
+    timeout-minutes: 25
+    env:
+      AZURE_CORE_ONLY_SHOW_ERRORS: 'true'
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      GATE9_RUN_ID: ${{ inputs.gate9_readiness_run_id }}
+      SOURCE_TENANT_ID: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+      SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+      GATE9_DIR: ${{ runner.temp }}/gate9-readiness
+      GATE9_REPORT: ${{ runner.temp }}/gate9-readiness/ets-gate9-decommission-readiness.json
+      INVENTORY_REPORT: ${{ runner.temp }}/ets-gate9b-source-retirement-inventory.json
+
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject stale head or missing source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          [[ "$GATE9_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ -n '${{ vars.SOURCE_AZURE_CLIENT_ID }}' ]]
+          [[ -n "$SOURCE_TENANT_ID" ]]
+          [[ -n "$SOURCE_SUBSCRIPTION_ID" ]]
+
+      - name: Validate Gate 9 readiness workflow identity
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from urllib.request import Request, urlopen
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          run_id = os.environ["GATE9_RUN_ID"]
+          token = os.environ["GITHUB_TOKEN"]
+          request = Request(
+              f"https://api.github.com/repos/{repo}/actions/runs/{run_id}",
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          with urlopen(request, timeout=20) as response:
+              run = json.load(response)
+          required = {
+              "name": "Azure Migration Gate 9 Observation and Decommission Readiness",
+              "path": ".github/workflows/azure-migration-gate9-observation.yml",
+              "status": "completed",
+              "conclusion": "success",
+              "event": "workflow_dispatch",
+              "head_branch": "main",
+          }
+          for key, expected in required.items():
+              if run.get(key) != expected:
+                  raise SystemExit(f"Gate 9B readiness run failed {key} validation")
+          PY
+
+      - name: Download exact Gate 9 readiness evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-migration-gate9-decommission-readiness
+          path: ${{ runner.temp }}/gate9-readiness
+          run-id: ${{ inputs.gate9_readiness_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Require exact Gate 9 readiness artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -f "$GATE9_REPORT" ]]
+
+      - name: Azure login with dedicated source transfer identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.SOURCE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.SOURCE_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture exact source retirement inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.azure_migration_gate9b_retirement inventory \
+            --readiness "$GATE9_REPORT" \
+            --resource-group rg-ets-live-eastus \
+            --expected-tenant "$SOURCE_TENANT_ID" \
+            --expected-subscription "$SOURCE_SUBSCRIPTION_ID" \
+            --output "$INVENTORY_REPORT"
+
+      - name: Retain reviewed source retirement inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-migration-gate9b-source-retirement-inventory
+          path: ${{ runner.temp }}/ets-gate9b-source-retirement-inventory.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove runner-local evidence
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$GATE9_DIR"
+          rm -f "$INVENTORY_REPORT"
+
+      - name: Clear source Azure session
+        if: always()
+        shell: bash
+        run: az account clear || true
+
+      - name: Reassert read-only inventory boundary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ## Gate 9B inventory boundary
+
+          - source inventory: `captured`
+          - source Azure mutation: `not performed`
+          - source writer activation: `not performed`
+          - source resource deletion: `not performed`
+          - source subscription cancellation: `not performed`
+
+          The inventory must be classified completely in a protected retirement plan before
+          any Gate 9B destructive execution can be authorized.
+          EOF
