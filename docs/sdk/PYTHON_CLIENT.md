@@ -58,3 +58,8 @@ authorization standing, synchronization, or external anchoring.
 `AsyncETSClient` exposes the same remote operations. Online verification reuses
 the hardened synchronous verifier in a worker thread so the event loop is not
 blocked while preserving one verifier implementation and one trust model.
+
+
+## Server authorization
+
+Bearer identity and scope do not grant every operation. The issuer must assign a signed ETS role: `evidence_producer` permits capture/reconciliation, `viewer` permits reads, and `auditor` permits verification/export without creation. Missing roles or insufficient authority return HTTP 403 / `ETS_AUTH_FORBIDDEN`, mapped by the SDK to `authorization_failed`. Arbitrary client capability claims do not grant permissions. See the [core route matrix](../security/CORE_API_AUTHORIZATION.md) for aliases and migration from previously accepted roleless tokens.

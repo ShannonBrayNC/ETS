@@ -313,3 +313,6 @@ review materials for counsel, not legal advice and not filed claims:
 
 Do not tag a public release until the public release checklist and IP review
 gate are complete.
+
+
+Core API roles are enforced before protected operations. Production publisher tokens need a signed `evidence_producer` role; missing roles grant no protected operation. See the [core route authorization matrix and migration guidance](docs/security/CORE_API_AUTHORIZATION.md).
