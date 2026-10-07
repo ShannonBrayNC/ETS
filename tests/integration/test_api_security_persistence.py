@@ -117,6 +117,7 @@ def test_production_jwt_auth_requires_bearer_token_and_enforces_claim_scope() ->
     token = make_hs256_token(
         {
             "sub": "alice",
+            "roles": ["evidence_producer"],
             "tenant_id": "tenant_a",
             "workspace_id": "workspace_a",
             "exp": 4_102_444_800,
@@ -156,6 +157,7 @@ def test_production_jwks_auth_verifies_rs256_token_and_enforces_audience() -> No
     token = make_rs256_token(
         {
             "sub": "alice",
+            "roles": ["evidence_producer"],
             "tenant_id": "tenant_a",
             "workspace_id": "workspace_a",
             "iss": "https://issuer.example",
@@ -168,6 +170,7 @@ def test_production_jwks_auth_verifies_rs256_token_and_enforces_audience() -> No
     wrong_audience = make_rs256_token(
         {
             "sub": "alice",
+            "roles": ["evidence_producer"],
             "iss": "https://issuer.example",
             "aud": "other-api",
             "exp": 4_102_444_800,
@@ -200,6 +203,7 @@ def test_create_app_from_env_supports_static_jwks_json(monkeypatch) -> None:
     token = make_rs256_token(
         {
             "sub": "alice",
+            "roles": ["evidence_producer"],
             "tenant_id": "tenant_a",
             "workspace_id": "workspace_a",
             "iss": "https://issuer.example",
@@ -388,6 +392,7 @@ def test_production_jwks_auth_rejects_edge_case_tokens_fail_closed() -> None:
     )
     base_claims: dict[str, object] = {
         "sub": "alice",
+            "roles": ["evidence_producer"],
         "iss": "https://issuer.example",
         "aud": "ets-api",
         "exp": 4_102_444_800,
@@ -436,6 +441,7 @@ def test_production_jwks_auth_rejects_unsupported_jwk_use_fail_closed() -> None:
     token = make_rs256_token(
         {
             "sub": "alice",
+            "roles": ["evidence_producer"],
             "iss": "https://issuer.example",
             "aud": "ets-api",
             "exp": 4_102_444_800,
@@ -472,6 +478,7 @@ def test_production_jwks_auth_refreshes_cached_keys_for_rotation() -> None:
     token = make_rs256_token(
         {
             "sub": "alice",
+            "roles": ["evidence_producer"],
             "tenant_id": "tenant_a",
             "workspace_id": "workspace_a",
             "iss": "https://issuer.example",
@@ -505,6 +512,7 @@ def test_production_jwks_auth_fails_closed_when_refresh_fails_for_unknown_key() 
     token = make_rs256_token(
         {
             "sub": "alice",
+            "roles": ["evidence_producer"],
             "iss": "https://issuer.example",
             "aud": "ets-api",
             "exp": 4_102_444_800,
@@ -517,3 +525,4 @@ def test_production_jwks_auth_fails_closed_when_refresh_fails_for_unknown_key() 
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "ETS_AUTH_REQUIRED"
+
