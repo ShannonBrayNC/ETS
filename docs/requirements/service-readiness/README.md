@@ -17,4 +17,4 @@ This collection translates the portfolio coverage review into product-specific a
 | ETS Evidence Exchange | [Read requirements](ETS_EVIDENCE_EXCHANGE.md) | SR-EXCHANGE-01 through SR-EXCHANGE-06 |
 | Ranger | [Read requirements](RANGER.md) | SR-RANGER-01 through SR-RANGER-06 |
 
-Read the [shared contracts](https://github.com/Lantern-Protocol/SignalForge/blob/docs/service-readiness-requirements-2026-10-11/docs/requirements/service-readiness/SHARED_CONTRACTS.md) for action, execution, evidence, release, outcome, operating-quality and commercial acceptance obligations. Each product document links the exact reviewed baseline and identifies dependencies, a first qualification slice and open decisions.
+Read the [shared contracts](https://github.com/Lantern-Protocol/SignalForge/blob/9b915ea0d2e36842140f77eebee028b57d44eb0c/docs/requirements/service-readiness/SHARED_CONTRACTS.md) for action, execution, evidence, release, outcome, operating-quality and commercial acceptance obligations. Each product document links the exact reviewed baseline and identifies dependencies, a first qualification slice and open decisions.
