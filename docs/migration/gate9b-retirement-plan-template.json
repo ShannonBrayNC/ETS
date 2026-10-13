@@ -1,0 +1,17 @@
+{
+  "schema_version": "ets.azure-migration.gate9b-source-retirement-plan.v1",
+  "claim": "explicit_source_retirement_plan",
+  "source_resource_group": "rg-ets-live-eastus",
+  "source_subscription_id": "REPLACE_FROM_PROTECTED_SOURCE_CONTEXT",
+  "source_manifest_sha256": "REPLACE_FROM_GATE9_READINESS",
+  "subscription_cancellation_requested": false,
+  "resources": [
+    {
+      "id": "REPLACE_WITH_EXACT_RESOURCE_ID",
+      "name": "REPLACE_WITH_EXACT_RESOURCE_NAME",
+      "type": "REPLACE_WITH_EXACT_RESOURCE_TYPE",
+      "action": "retain",
+      "reason": "Classify every resource from the reviewed Gate 9B inventory. Use delete only after independent review."
+    }
+  ]
+}
