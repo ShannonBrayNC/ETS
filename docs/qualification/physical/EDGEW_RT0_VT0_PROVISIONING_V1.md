@@ -153,3 +153,77 @@ bash scripts/qualification/edgew_vt0/provision_vt0_dut.sh \
 System libvirt runs QEMU as a non-root runtime identity. The provisioner resolves the local QEMU service account (normally `libvirt-qemu` on Ubuntu), grants a narrow POSIX ACL for traversal of the ETS storage root and read/write access to the VM directory/disks, and verifies access as that runtime account before calling `virt-install`.
 
 Do not solve datastore access failures by making the ETS datastore world-writable. If the ACL preflight succeeds but VM start is still denied, inspect the retained `virt-install.log` and Ubuntu AppArmor audit messages separately; DAC and AppArmor are distinct enforcement layers.
+
+
+## Deterministic guest networking
+
+VT0 uses four distinct guest NIC roles. The provisioner must provide an explicit cloud-init `network-config`; multi-NIC fallback selection is not an acceptable qualification baseline.
+
+Canonical mapping:
+
+| Role | Libvirt network | Guest behavior |
+|---|---|---|
+| management | `edgew-vt-mgmt` | static `192.168.250.10/24`; default route via `192.168.250.1` |
+| source | `edgew-vt-source` | static `192.168.251.10/24`; no default route |
+| upstream | `edgew-vt-upstream` | static `192.168.252.10/24`; no default route |
+| fault | `edgew-vt-fault` | static `192.168.253.10/24`; no default route |
+
+The provisioner binds each role by a deterministic libvirt MAC address and passes the matching network configuration into the first-boot NoCloud ISO. The management address is deliberately outside the libvirt DHCP pool (`.100-.199`) so the baseline does not depend on DHCP timing or lease retention.
+
+### Existing VM recovery
+
+A VT0 VM created before explicit network configuration may boot successfully but have no DHCP/ARP observations on any of the four networks. Do not set a console password merely to repair networking.
+
+Install the offline guest-disk tooling on the host:
+
+```bash
+sudo apt-get install -y libguestfs-tools
+```
+
+Plan the repair:
+
+```bash
+bash scripts/qualification/edgew_vt0/repair_vt0_guest_network.sh
+```
+
+After verifying the discovered libvirt MAC-to-role mapping:
+
+```bash
+bash scripts/qualification/edgew_vt0/repair_vt0_guest_network.sh --apply
+```
+
+The repair:
+
+1. requests a graceful shutdown and refuses to force-destroy the VM;
+2. creates a stopped-guest qcow2 backup of the OS disk;
+3. writes MAC-bound Netplan configuration offline with `virt-customize`;
+4. disables cloud-init network rewriting;
+5. restarts the guest and waits for the management DHCP lease.
+
+`virt-customize` must never be run against a live guest disk.
+
+
+### Ubuntu supermin/libguestfs kernel readability
+
+On Ubuntu hosts, `virt-customize` may fail while building its supermin helper appliance if the operator cannot read the selected host kernel under `/boot`. The repair script does not relax `/boot` permissions globally. It copies the currently running kernel to controlled ETS storage with mode `0644`, points `SUPERMIN_KERNEL` at that copy, points `SUPERMIN_MODULES` at the matching `/lib/modules/<running-kernel>` tree, and uses the direct libguestfs backend.
+
+If a previous repair attempt already created a `.pre-network-<timestamp>.qcow2` backup, the script reuses the newest retained backup instead of producing another full copy.
+
+If libguestfs still fails, the script retains `virt-customize-network-repair.log` beside the VT0 disks and prints the environment required for a verbose diagnostic rerun.
+
+
+## Canonical VT0 operator account
+
+The VT0 guest must expose one deterministic management account: `etsadmin`.
+
+Security posture:
+
+- password is locked;
+- SSH public-key authentication uses the dedicated host key `~/.ssh/edgew_vt0.pub`;
+- direct root SSH is disabled;
+- `etsadmin` is a member of `sudo`;
+- passwordless sudo is permitted only for this isolated qualification VM so automated HQP cases can perform bounded privileged operations without storing a password.
+
+New VT0 guests receive `etsadmin` through cloud-init user-data. For an already-created guest with no normal interactive account, the offline repair creates `etsadmin` before SSH key injection.
+
+The account is a lab-management identity only; it is not the Edge device cryptographic identity and must not be represented as evidence of device identity, key custody, or production access control.
