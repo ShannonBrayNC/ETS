@@ -96,3 +96,20 @@ def test_oversized_source_and_invalid_expectation_are_rejected():
         observe_synthetic_maintenance_item(b" " * 16385, expected=expectation())
     with pytest.raises(ValueError):
         MaintenanceExpectation(item_id="", case_id="x", ticket_id="x", draft_sha256="0" * 64)
+
+
+def test_source_commitment_is_byte_exact_while_metadata_commitment_is_minimized():
+    value = fixture()
+    compact = json.dumps(value, separators=(",", ":")).encode()
+    spaced = json.dumps(value, indent=2).encode()
+    first = observe_synthetic_maintenance_item(compact, expected=expectation())
+    second = observe_synthetic_maintenance_item(spaced, expected=expectation())
+    assert first.source_sha256 != second.source_sha256
+    assert first.metadata_sha256 == second.metadata_sha256
+    assert first.expectation_sha256 == second.expectation_sha256
+
+
+def test_item_identity_is_separate_from_matching_ticket_fields():
+    target = fixture()
+    target["id"] = "900002"
+    assert observe(target).outcome == "contradictory"
