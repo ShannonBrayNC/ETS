@@ -1,0 +1,61 @@
+{
+  "schema_version": "ets.hardware-qualification-index.v1",
+  "index_id": "ets.hardware-qualification-index.wave0.v1",
+  "status_date": "2026-09-13",
+  "public_index": true,
+  "published_claims": [],
+  "pending_targets": [
+    {
+      "target_id": "ets-edge-edge-rt0",
+      "product": "ETS Edge",
+      "target_class_id": "EDGE-RT0",
+      "profile_id": "ets.edge.hardware-qualification.v1",
+      "profile_version": "1.0.0",
+      "profile_path": "docs/qualification/profiles/ets-edge-hardware-qualification-v1.json",
+      "qualification_state": "qualification_in_progress",
+      "physical_exit_gate": "Execute the complete HQP-3 corpus on one exact named physical Edge DUT/revision/build/environment, retain the HQP-1 package, and obtain a valid independent HQP-2 result before publishing a qualified claim.",
+      "tracking_issue": "ShannonBrayNC/ETS#796",
+      "roadmap_status": "Development + Qualification",
+      "non_claims": [
+        "EDGE-RT0 is a target class, not a qualified hardware model.",
+        "Repository CI and lab-test tooling are not physical qualification evidence.",
+        "No current public qualified Edge hardware claim is published in this index."
+      ]
+    },
+    {
+      "target_id": "ets-mobile-android-phase1a-rt0",
+      "product": "Provenance / ETS Mobile Android Phase 1A",
+      "target_class_id": "ANDROID-PHASE1A-RT0",
+      "profile_id": "ets.provenance.android-phase1a.hardware-qualification.v1",
+      "profile_version": "1.0.0",
+      "profile_path": "docs/qualification/profiles/ets-provenance-android-phase1a-hardware-qualification-v1.json",
+      "qualification_state": "qualification_in_progress",
+      "physical_exit_gate": "Run the existing ETS-Mobile Phase 1A device procedure on one exact named physical Android device, bind its retained report into HQP-1, and obtain a valid independent HQP-2 result.",
+      "tracking_issue": "ShannonBrayNC/ETS#797",
+      "roadmap_status": "Development + Qualification — private implementation",
+      "non_claims": [
+        "ANDROID-PHASE1A-RT0 is a target class, not a qualified Android device.",
+        "Android emulator, CI, or source-product unit tests are not physical qualification evidence.",
+        "No current public qualified Android hardware claim is published in this index."
+      ]
+    },
+    {
+      "target_id": "ets-legacy-network-syslog-rt0",
+      "product": "Legacy hardware lab / RFC 5424 UDP network source",
+      "target_class_id": "LEGACY-NET-SYSLOG-RT0",
+      "profile_id": "ets.legacy-network-syslog.hardware-qualification.v1",
+      "profile_version": "1.0.0",
+      "profile_path": "docs/qualification/profiles/ets-legacy-network-syslog-hardware-qualification-v1.json",
+      "qualification_state": "not_tested",
+      "physical_exit_gate": "Execute the legacy syslog HQP profile against one exact named physical network device, retain transport and resulting-state evidence without treating UDP/message identity as authenticated identity, and obtain a valid independent HQP-2 result.",
+      "tracking_issue": "ShannonBrayNC/ETS#797",
+      "roadmap_status": "Hardware qualification target",
+      "non_claims": [
+        "LEGACY-NET-SYSLOG-RT0 is a target class, not a qualified legacy device.",
+        "Observed source IP, port, hostname, app-name, procid, or msgid do not establish authenticated device identity.",
+        "No current public qualified legacy hardware claim is published in this index."
+      ]
+    }
+  ],
+  "claim_boundary": "bounded_qualification_publication_not_truth_completeness_compliance_safety_or_ga_proof"
+}

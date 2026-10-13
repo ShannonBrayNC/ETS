@@ -27,7 +27,7 @@ device-under-test
 → Evidence Object(s)
 → independent verifier result
 → qualification report
-→ qualification index entry
+→ qualification index entry and publication state
 ```
 
 ## Wave 0 — Hardware Qualification Baseline
@@ -92,6 +92,7 @@ Repository CI proves the profile/corpus/tooling is internally executable. CI can
 ### HQP-4 — Provenance Android and legacy hardware reuse — repository implementation complete; physical claims pending
 
 Tracking issue: #797 (closed after repository implementation).
+Repository portability layer merged by PR #806.
 
 - [`ETS_HQP_CROSS_PRODUCT_REUSE_V1.md`](ETS_HQP_CROSS_PRODUCT_REUSE_V1.md)
 - Android profile: `docs/qualification/profiles/ets-provenance-android-phase1a-hardware-qualification-v1.json`
@@ -110,14 +111,18 @@ Closing #797 records completion of the shared repository contract. It does **not
 
 ### HQP-5 — qualification index and roadmap governance — complete
 
-Tracking issue: #798.  
+Tracking issue: #798.
 Merged by PR #815.
 
-- [`QUALIFICATION_INDEX_V1.md`](QUALIFICATION_INDEX_V1.md)
-- registry: `docs/qualification/qualification-index-v1.json`
-- schema: `schemas/qualification/v1/qualification-index.schema.json`
+- [`ETS_HARDWARE_QUALIFICATION_INDEX_V1.md`](ETS_HARDWARE_QUALIFICATION_INDEX_V1.md)
+- public index: `docs/qualification/qualification-index.json`
+- index schema: `schemas/qualification/v1/hardware-qualification-index.schema.json`
+- runtime/cross-checker: `ets/qualification/index.py`
+- CLI: `python -m ets.hqp_index`
 
-HQP-5 publishes bounded claims tied to exact profile, DUT revision, immutable build, retained evidence, verifier result, limitations, validity, expiry, and supersession state. The registry starts empty by design: repository implementation, green CI, or a simulated/lab-only run cannot manufacture a physical qualification claim.
+HQP-5 is the publication firewall. A published physical qualification result must identify the exact profile/version/digest, DUT/revision, immutable build/configuration, retained HQP-1 package, HQP-2 result, limitations, validity window, requalification triggers, and supersession state.
+
+The initial public index intentionally contains **zero published physical qualified claims**. Edge, Android Phase 1A, and the first legacy target appear as pending physical gates. Existence of a target profile, simulator, virtual appliance, CI result, or laboratory tooling cannot create a qualified public claim.
 
 ## Wave 1 — Physical Edge
 
@@ -146,21 +151,22 @@ qualification_class=EDGE_COMPACT_R0
 The W1-1 bootstrap only identifies a named DUT, immutable build/configuration, external observer/verifier, and the five physical control boundaries required before the HQP-3 fault corpus may begin. Its CLI is read-only inventory/validation tooling; it cannot inject a power, network, storage, clock, firmware, or recovery fault.
 
 The purpose of the physical corpus is to prove that ETS Edge evidence semantics survive physical provisioning, capture, offline operation, reboot, abrupt power loss, disk/queue pressure, clock faults, interrupted synchronization, upgrade failure, recovery, and endurance testing while remaining independently verifiable away from the DUT.
-
 After R0 is clean, **Edge Enterprise R1** moves the root of identity/custody into TPM 2.0, Secure Boot, hardware-backed signing, and protected/encrypted storage. **Edge Compact ARM** remains a constrained/development profile until endurance, performance, thermal behavior, and key custody are independently demonstrated.
 
 ## Initial product traceability
 
 | Product / program | Qualification role | Current relationship |
 |---|---|---|
-| ETS Edge | First HQP specialization and Wave 1 physical target | #140 is the Edge qualification/pilot-readiness parent. #145 plus #141-#144 are requirements provenance for HQP-3. #814 executes Edge Compact R0 physically. |
-| Provenance / ETS Mobile | Parallel physical target | HQP-4 binds the existing Android Phase 1A device report into the common HQP run/report/verifier contract. Physical device execution remains required before a published claim. |
-| Legacy hardware lab | Parallel physical target | HQP-4 defines `LEGACY-NET-SYSLOG-RT0` for a named physical RFC 5424 UDP source using the same HQP evidence/verifier chain. |
+| ETS Edge | First HQP specialization and Wave 1 physical target | #140 is the Edge qualification/pilot-readiness parent. #145 plus #141-#144 are requirements provenance for HQP-3. HQP-5 lists `EDGE-RT0` as pending physical qualification; #814 executes Edge Compact R0 physically. |
+| Provenance / ETS Mobile | Parallel physical target | HQP-4 binds the existing Android Phase 1A device report into the common HQP run/report/verifier contract. HQP-5 lists `ANDROID-PHASE1A-RT0` as pending physical qualification. |
+| Legacy hardware lab | Parallel physical target | HQP-4 defines `LEGACY-NET-SYSLOG-RT0` for a named physical RFC 5424 UDP source using the same HQP evidence/verifier chain. HQP-5 lists it as not yet physically tested. |
 | Ranger / VRX | Cyber-physical research consumer | Physical experiments inherit HQP while adding motion, actuator, measurement, uncertainty, safety, and consequence-custody requirements. |
 | AI Witness / Black Box / Fleet | Later appliance consumers | Product-specific profiles may add stricter controls but may not silently weaken common HQP evidence requirements. |
 
 ## Governance and claim boundary
 
 No later wave may treat successful software CI alone as physical qualification evidence. No hardware qualification may silently inherit across a hardware revision, software build, profile version, firmware/security-element change, or claim-critical environment change.
+
+A roadmap or publication may call a named physical target **qualified** only when an active HQP-5 index record points to the exact retained HQP-1/HQP-2 evidence supporting that bounded statement.
 
 HQP packages reuse ETS Evidence Object semantics rather than create a second provenance model. Qualification evidence may support a bounded claim about what was tested and observed; it does not by itself prove complete observation, semantic truth, legal admissibility, regulatory compliance, safety certification, general availability, or production readiness.

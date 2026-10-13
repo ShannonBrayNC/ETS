@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lanternprotocol.net/schemas/qualification/v1/hardware-qualification-index.schema.json",
+  "title": "ETS Hardware Qualification Index v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "index_id",
+    "status_date",
+    "public_index",
+    "published_claims",
+    "pending_targets",
+    "claim_boundary"
+  ],
+  "properties": {
+    "schema_version": {"const": "ets.hardware-qualification-index.v1"},
+    "index_id": {"type": "string", "minLength": 3, "maxLength": 256},
+    "status_date": {"type": "string", "format": "date"},
+    "public_index": {"const": true},
+    "published_claims": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/qualificationClaim"}
+    },
+    "pending_targets": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/pendingTarget"}
+    },
+    "claim_boundary": {
+      "const": "bounded_qualification_publication_not_truth_completeness_compliance_safety_or_ga_proof"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40,64}$"
+    },
+    "nonEmptyStrings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "profileReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_id",
+        "profile_version",
+        "profile_digest_sha256",
+        "profile_path"
+      ],
+      "properties": {
+        "profile_id": {"type": "string", "minLength": 3},
+        "profile_version": {"type": "string", "minLength": 1},
+        "profile_digest_sha256": {"$ref": "#/$defs/sha256"},
+        "profile_path": {"type": "string", "minLength": 1}
+      }
+    },
+    "deviceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "device_id",
+        "manufacturer",
+        "model",
+        "hardware_revision",
+        "identity_digest_sha256"
+      ],
+      "properties": {
+        "device_id": {"type": "string", "minLength": 1},
+        "manufacturer": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1},
+        "hardware_revision": {"type": "string", "minLength": 1},
+        "serial_or_asset_id": {"type": ["string", "null"]},
+        "identity_digest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "buildIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "commit_sha",
+        "artifact_digest_sha256",
+        "configuration_digest_sha256"
+      ],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "commit_sha": {"$ref": "#/$defs/commit"},
+        "artifact_digest_sha256": {"$ref": "#/$defs/sha256"},
+        "configuration_digest_sha256": {"$ref": "#/$defs/sha256"},
+        "sbom_artifact_id": {"type": ["string", "null"]}
+      }
+    },
+    "packageReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "run_digest_sha256",
+        "report_id",
+        "report_digest_sha256",
+        "package_digest_sha256",
+        "retention_locator",
+        "evidence_object_ids",
+        "artifact_ids",
+        "deviation_ids"
+      ],
+      "properties": {
+        "run_id": {"type": "string", "minLength": 1},
+        "run_digest_sha256": {"$ref": "#/$defs/sha256"},
+        "report_id": {"type": "string", "minLength": 1},
+        "report_digest_sha256": {"$ref": "#/$defs/sha256"},
+        "package_digest_sha256": {"$ref": "#/$defs/sha256"},
+        "retention_locator": {"type": "string", "minLength": 1},
+        "evidence_object_ids": {"$ref": "#/$defs/nonEmptyStrings"},
+        "artifact_ids": {"$ref": "#/$defs/nonEmptyStrings"},
+        "deviation_ids": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      }
+    },
+    "verificationReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verification_id",
+        "verification_digest_sha256",
+        "verifier_id",
+        "verifier_build_digest_sha256",
+        "outcome",
+        "eligible_for_claimed_disposition",
+        "independent_execution_context"
+      ],
+      "properties": {
+        "verification_id": {"type": "string", "minLength": 1},
+        "verification_digest_sha256": {"$ref": "#/$defs/sha256"},
+        "verifier_id": {"type": "string", "minLength": 1},
+        "verifier_build_digest_sha256": {"$ref": "#/$defs/sha256"},
+        "outcome": {"enum": ["valid", "invalid", "indeterminate"]},
+        "eligible_for_claimed_disposition": {"type": "boolean"},
+        "independent_execution_context": {"const": true}
+      }
+    },
+    "validityWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valid_from", "valid_until", "requalification_triggers"],
+      "properties": {
+        "valid_from": {"type": "string", "format": "date-time"},
+        "valid_until": {"type": ["string", "null"], "format": "date-time"},
+        "requalification_triggers": {"$ref": "#/$defs/nonEmptyStrings"}
+      }
+    },
+    "supersessionReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["superseded_by_claim_id", "effective_at", "reason"],
+      "properties": {
+        "superseded_by_claim_id": {"type": "string", "minLength": 1},
+        "effective_at": {"type": "string", "format": "date-time"},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "roadmapBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "roadmap_path",
+        "product",
+        "capability_maturity",
+        "qualification_language",
+        "capability_maturity_is_independent"
+      ],
+      "properties": {
+        "roadmap_path": {"type": "string", "minLength": 1},
+        "product": {"type": "string", "minLength": 1},
+        "capability_maturity": {"type": "string", "minLength": 1},
+        "qualification_language": {"type": "string", "minLength": 1},
+        "capability_maturity_is_independent": {"const": true}
+      }
+    },
+    "qualificationClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_id",
+        "publication_state",
+        "disposition",
+        "claim_text",
+        "profile",
+        "device",
+        "build",
+        "package",
+        "verification",
+        "limitations",
+        "validity",
+        "supersession",
+        "roadmap",
+        "source_issue_refs"
+      ],
+      "properties": {
+        "claim_id": {"type": "string", "minLength": 3},
+        "publication_state": {"enum": ["active", "historical", "withdrawn"]},
+        "disposition": {
+          "enum": [
+            "qualified",
+            "qualified_with_deviation",
+            "failed",
+            "expired",
+            "superseded"
+          ]
+        },
+        "claim_text": {"type": "string", "minLength": 1},
+        "profile": {"$ref": "#/$defs/profileReference"},
+        "device": {"$ref": "#/$defs/deviceIdentity"},
+        "build": {"$ref": "#/$defs/buildIdentity"},
+        "package": {"$ref": "#/$defs/packageReference"},
+        "verification": {"$ref": "#/$defs/verificationReference"},
+        "limitations": {"$ref": "#/$defs/nonEmptyStrings"},
+        "validity": {"$ref": "#/$defs/validityWindow"},
+        "supersession": {
+          "oneOf": [
+            {"$ref": "#/$defs/supersessionReference"},
+            {"type": "null"}
+          ]
+        },
+        "roadmap": {"$ref": "#/$defs/roadmapBinding"},
+        "source_issue_refs": {"$ref": "#/$defs/nonEmptyStrings"}
+      }
+    },
+    "pendingTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_id",
+        "product",
+        "target_class_id",
+        "profile_id",
+        "profile_version",
+        "profile_path",
+        "qualification_state",
+        "physical_exit_gate",
+        "tracking_issue",
+        "roadmap_status",
+        "non_claims"
+      ],
+      "properties": {
+        "target_id": {"type": "string", "minLength": 3},
+        "product": {"type": "string", "minLength": 1},
+        "target_class_id": {"type": "string", "minLength": 1},
+        "profile_id": {"type": "string", "minLength": 3},
+        "profile_version": {"type": "string", "minLength": 1},
+        "profile_path": {"type": "string", "minLength": 1},
+        "qualification_state": {
+          "enum": ["not_tested", "qualification_in_progress", "lab_tested"]
+        },
+        "physical_exit_gate": {"type": "string", "minLength": 1},
+        "tracking_issue": {"type": "string", "minLength": 1},
+        "roadmap_status": {"type": "string", "minLength": 1},
+        "non_claims": {"$ref": "#/$defs/nonEmptyStrings"}
+      }
+    }
+  }
+}
