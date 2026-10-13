@@ -3,7 +3,6 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = ROOT / "scripts" / "qualification" / "edgew_vt0" / "deploy_vt0_edge_runtime.sh"
 PHASE_A = ROOT / "scripts" / "qualification" / "edgew_vt0" / "capture_vt0_phase_a.sh"
@@ -85,3 +84,4 @@ def test_phase_a_maps_to_canonical_hqp_cases_without_overclaiming() -> None:
     assert "tpmrm0" in text
     assert "all_phase_a_cases_pass" in text
     assert "not_physical_hardware_qualification" in text
+

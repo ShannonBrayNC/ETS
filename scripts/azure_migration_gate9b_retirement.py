@@ -215,7 +215,10 @@ def _validate_plan(
         raise MigrationControlError("Gate 9B retirement plan resource group differs")
     if str(plan.get("source_subscription_id", "")).casefold() != expected_subscription.casefold():
         raise MigrationControlError("Gate 9B retirement plan subscription differs")
-    if _digest(plan.get("source_manifest_sha256"), "plan source manifest") != readiness_manifest_sha:
+    plan_manifest_sha = _digest(
+        plan.get("source_manifest_sha256"), "plan source manifest"
+    )
+    if plan_manifest_sha != readiness_manifest_sha:
         raise MigrationControlError("Gate 9B retirement plan source manifest differs")
     if plan.get("subscription_cancellation_requested") is not False:
         raise MigrationControlError("Gate 9B does not authorize subscription cancellation")
@@ -264,7 +267,9 @@ def _validate_plan(
         planned[key] = entry
 
     if set(planned) != set(inventory_map):
-        raise MigrationControlError("Gate 9B retirement plan does not classify every source resource")
+        raise MigrationControlError(
+            "Gate 9B retirement plan does not classify every source resource"
+        )
     deletes = sorted(
         (entry for entry in planned.values() if entry["action"] == "delete"),
         key=lambda entry: int(entry["order"]),
@@ -339,9 +344,15 @@ def execute(
     readiness = _read_json(readiness_path, "Gate 9 readiness evidence")
     readiness_manifest = _validate_readiness(readiness)
     inventory = _read_json(inventory_path, "Gate 9B source inventory")
-    if _digest(inventory.get("source_manifest_sha256"), "inventory source manifest") != readiness_manifest:
+    inventory_manifest_sha = _digest(
+        inventory.get("source_manifest_sha256"), "inventory source manifest"
+    )
+    if inventory_manifest_sha != readiness_manifest:
         raise MigrationControlError("Gate 9B inventory source manifest differs")
-    if str(inventory.get("source_subscription_id", "")).casefold() != expected_subscription.casefold():
+    inventory_subscription = str(
+        inventory.get("source_subscription_id", "")
+    ).casefold()
+    if inventory_subscription != expected_subscription.casefold():
         raise MigrationControlError("Gate 9B inventory subscription differs")
     if inventory.get("source_resource_group") != resource_group:
         raise MigrationControlError("Gate 9B inventory resource group differs")
@@ -463,3 +474,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
