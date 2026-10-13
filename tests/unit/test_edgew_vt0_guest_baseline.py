@@ -3,7 +3,6 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 CAPTURE = ROOT / "scripts" / "qualification" / "edgew_vt0" / "capture_vt0_guest_baseline.sh"
 INIT = ROOT / "scripts" / "qualification" / "edgew_vt0" / "initialize_vt0_qualification_disk.sh"
@@ -49,3 +48,4 @@ def test_qualification_disk_initializer_is_guarded() -> None:
     assert "fstab.pre-ets-qual" in text
     assert "all_initialization_checks_pass" in text
     assert "not_physical_endurance" in text
+
