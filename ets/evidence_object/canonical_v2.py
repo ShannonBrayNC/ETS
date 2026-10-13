@@ -25,10 +25,19 @@ def identity_payload(evidence: EvidenceObjectV2) -> dict[str, Any]:
     Proof material is intentionally excluded. Verifiers must bind identity to
     verification semantics through a committed ``verification`` binding when
     those semantics are identity-relevant.
+
+    Optional fields whose value is ``None`` are omitted by the canonical JSON
+    profile, so identity serialization must retain only fields present in the
+    ``exclude_none`` model dump rather than assuming every identity field has a
+    serialized key.
     """
 
     payload = evidence.model_dump(mode="json", exclude_none=True)
-    return {field: payload[field] for field in EVIDENCE_OBJECT_V2_IDENTITY_FIELDS}
+    return {
+        field: payload[field]
+        for field in EVIDENCE_OBJECT_V2_IDENTITY_FIELDS
+        if field in payload
+    }
 
 
 def canonical_identity_bytes(evidence: EvidenceObjectV2) -> bytes:

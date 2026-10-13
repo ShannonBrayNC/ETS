@@ -48,12 +48,17 @@ jobs:
       SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
       EXPECTED_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
       ROLLBACK_TAG: ${{ inputs.rollback_tag }}
-      REPORT_PATH: ${{ runner.temp }}/ets-gate6-final-reconciliation.json
       MIGRATION_RESOURCE_GROUP: rg-ets-prod-eastus
       MIGRATION_EVIDENCE_TABLE: ETSEvents
       MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
 
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "REPORT_PATH=$RUNNER_TEMP/ets-gate6-final-reconciliation.json" >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed migration source
         uses: actions/checkout@v4
         with:

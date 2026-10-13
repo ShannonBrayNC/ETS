@@ -1,0 +1,19 @@
+{
+  "schema_version": "ets.demo.agent365-r0.mission-event.v1",
+  "mission_id": "4db39caa-3794-47f7-9bf0-bf5cf79fb912",
+  "scenario_id": "agent365-r0-forward-stop-v1",
+  "event_id": "gateway:command-accepted:0001",
+  "parent_event_id": "m365:authorization:0001",
+  "event_type": "gateway.command.accepted",
+  "source_domain": "ets.gateway",
+  "observed_at": "2026-09-17T06:15:00Z",
+  "source_time": "2026-09-17T06:14:59Z",
+  "source_event_id": "gateway-request-0001",
+  "payload_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "payload_ref": "ets://gateway/commands/gateway-request-0001",
+  "authorization_artifact_ref": "m365://sharepoint/ets-r0-missions/4db39caa-3794-47f7-9bf0-bf5cf79fb912",
+  "collector_identity": "ets-gateway-r0",
+  "collector_version": "p0",
+  "correlation_basis": "authorization_artifact",
+  "previous_event_digest": null
+}

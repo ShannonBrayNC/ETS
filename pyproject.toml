@@ -3,16 +3,27 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ets"
-version = "0.1.0"
-description = "Evidence Transparency System reference transparency log"
+name = "lanternprotocol-ets"
+version = "0.1.0a1"
+description = "Evidence Transparency System reference implementation and Python Application SDK"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "ETS Contributors" }]
+keywords = ["evidence", "transparency-log", "provenance", "merkle", "verification", "sdk"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Software Development :: Libraries",
+]
 dependencies = [
     "cryptography>=50.0.0,<51",
     "fastapi>=0.136,<0.137",
+    "httpx>=0.28,<1",
     "idna>=3.15,<4",
     "jinja2>=3.1,<4",
     "pydantic>=2.8,<3",
@@ -22,12 +33,17 @@ dependencies = [
 [project.scripts]
 ets-verify = "ets.verifier.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/ShannonBrayNC/ETS"
+Repository = "https://github.com/ShannonBrayNC/ETS"
+Issues = "https://github.com/ShannonBrayNC/ETS/issues"
+Documentation = "https://github.com/ShannonBrayNC/ETS/tree/main/docs/sdk"
+
 [project.optional-dependencies]
 dev = [
     "azure-identity>=1.17,<2",
     "click>=8.3.3,<9",
     "grpcio>=1.82.1,<2",
-    "httpx>=0.28,<1",
     "msgpack>=1.2.1,<2",
     "opentelemetry-proto>=1.44,<2",
     "pip-audit>=2.10,<3",
@@ -38,6 +54,11 @@ dev = [
     "types-grpcio>=1.83.0.20260730,<2",
     "types-protobuf>=7.34.1.20260518,<8",
     "uvicorn>=0.47,<1",
+]
+r0 = [
+    "gpiozero>=2,<3",
+    "adafruit-blinka>=8,<9",
+    "adafruit-circuitpython-vl53l0x>=1,<2",
 ]
 edge = [
     "httpx>=0.28,<1",

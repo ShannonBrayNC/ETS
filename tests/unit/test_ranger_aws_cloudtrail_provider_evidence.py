@@ -28,8 +28,15 @@ from ets.ranger.aws_cloudtrail_provider_evidence import (
 from ets.ranger.aws_qualification_evidence_manifest import (
     RangerAwsQualificationArtifactKind,
     RangerAwsQualificationEvidenceManifest,
+    RangerAwsQualificationEvidenceManifestVerification,
     build_aws_qualification_evidence_manifest,
     verify_aws_qualification_evidence_manifest,
+)
+from ets.ranger.aws_qualification_manifest_custody import (
+    RangerAwsQualificationManifestCustodyError,
+    RangerAwsQualificationManifestCustodyPolicy,
+    build_aws_qualification_manifest_custody_receipt,
+    verify_aws_qualification_manifest_custody_receipt,
 )
 from ets.ranger.aws_qualification_orchestrator import (
     RangerAwsCloudTrailReadScope,
@@ -60,6 +67,7 @@ PRINCIPAL = "arn:aws:iam::123456789012:role/ranger-delete-probe"
 AUTH_PRIVATE_HEX = "31" * 32
 RECORDER_PRIVATE_HEX = "41" * 32
 READ_SCOPE_PRIVATE_HEX = "51" * 32
+CUSTODIAN_PRIVATE_HEX = "61" * 32
 AUTH_PUBLIC_HEX = (
     ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex(AUTH_PRIVATE_HEX))
     .public_key()
@@ -74,6 +82,12 @@ RECORDER_PUBLIC_HEX = (
 )
 READ_SCOPE_PUBLIC_HEX = (
     ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex(READ_SCOPE_PRIVATE_HEX))
+    .public_key()
+    .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    .hex()
+)
+CUSTODIAN_PUBLIC_HEX = (
+    ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex(CUSTODIAN_PRIVATE_HEX))
     .public_key()
     .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
     .hex()
@@ -1325,3 +1339,159 @@ def test_qualification_evidence_manifest_rejects_missing_roles() -> None:
         assert "each artifact kind once" in str(exc)
     else:
         raise AssertionError("incomplete artifact inventory was accepted")
+
+
+def _manifest_custody_policy() -> RangerAwsQualificationManifestCustodyPolicy:
+    return RangerAwsQualificationManifestCustodyPolicy(
+        expected_receipt_id="manifest-custody-receipt-1",
+        expected_custodian_id="custodian-1",
+        expected_custodian_signing_key_id="custodian-key-1",
+        custodian_public_key_hex=CUSTODIAN_PUBLIC_HEX,
+        expected_custody_target_id="archive/ranger/aws/qualification-package-1",
+        acceptance_window_start_utc=NOW + timedelta(minutes=9),
+        acceptance_window_end_utc=NOW + timedelta(minutes=11),
+        minimum_retention_until_utc=NOW + timedelta(days=30),
+    )
+
+
+def _manifest_and_verification() -> tuple[
+    RangerAwsQualificationEvidenceManifest,
+    RangerAwsQualificationEvidenceManifestVerification,
+]:
+    run, authorization, plan, receipt_policy, cloudtrail_plan, scope = (
+        _qualification_run_bundle()
+    )
+    manifest, run_verification = build_aws_qualification_evidence_manifest(
+        "aws-qualification-package-1",
+        run,
+        authorization,
+        plan,
+        receipt_policy=receipt_policy,
+        cloudtrail_plan=cloudtrail_plan,
+        read_authorization=scope.authorization,
+        read_authorization_policy=scope.policy,
+    )
+    manifest_verification = verify_aws_qualification_evidence_manifest(
+        manifest,
+        run_verification,
+        run,
+        authorization,
+        plan,
+        receipt_policy=receipt_policy,
+        cloudtrail_plan=cloudtrail_plan,
+        read_authorization=scope.authorization,
+        read_authorization_policy=scope.policy,
+    )
+    return manifest, manifest_verification
+
+
+def test_manifest_custody_receipt_binds_configured_acceptance_without_custody_overclaim() -> None:
+    manifest, manifest_verification = _manifest_and_verification()
+    receipt = build_aws_qualification_manifest_custody_receipt(
+        manifest,
+        manifest_verification,
+        receipt_id="manifest-custody-receipt-1",
+        custody_target_id="archive/ranger/aws/qualification-package-1",
+        retention_requested_until_utc=NOW + timedelta(days=31),
+        accepted_at_utc=NOW + timedelta(minutes=10),
+        custodian_id="custodian-1",
+        custodian_signing_key_id="custodian-key-1",
+        custodian_private_key_hex=CUSTODIAN_PRIVATE_HEX,
+    )
+
+    result = verify_aws_qualification_manifest_custody_receipt(
+        receipt,
+        manifest,
+        manifest_verification,
+        policy=_manifest_custody_policy(),
+    )
+
+    assert result.valid
+    assert result.exact_manifest_and_finding_bound
+    assert result.configured_custodian_signature_proven
+    assert result.configured_target_and_retention_accepted
+    assert not result.storage_write_proven
+    assert not result.continued_retention_proven
+    assert not result.custodian_independence_proven
+    assert not result.custodian_clock_trusted
+    assert not result.physical_worm_proven
+
+
+def test_manifest_custody_receipt_rejects_cross_package_manifest_substitution() -> None:
+    manifest, manifest_verification = _manifest_and_verification()
+    receipt = build_aws_qualification_manifest_custody_receipt(
+        manifest,
+        manifest_verification,
+        receipt_id="manifest-custody-receipt-1",
+        custody_target_id="archive/ranger/aws/qualification-package-1",
+        retention_requested_until_utc=NOW + timedelta(days=31),
+        accepted_at_utc=NOW + timedelta(minutes=10),
+        custodian_id="custodian-1",
+        custodian_signing_key_id="custodian-key-1",
+        custodian_private_key_hex=CUSTODIAN_PRIVATE_HEX,
+    )
+    substituted = manifest.model_copy(update={"package_id": "qualification-package-2"})
+
+    result = verify_aws_qualification_manifest_custody_receipt(
+        receipt,
+        substituted,
+        manifest_verification,
+        policy=_manifest_custody_policy(),
+    )
+
+    assert not result.valid
+    assert "inputs are invalid" in result.reason
+    assert not result.configured_custodian_signature_proven
+
+
+def test_manifest_custody_receipt_rejects_wrong_target_policy() -> None:
+    manifest, manifest_verification = _manifest_and_verification()
+    receipt = build_aws_qualification_manifest_custody_receipt(
+        manifest,
+        manifest_verification,
+        receipt_id="manifest-custody-receipt-1",
+        custody_target_id="archive/ranger/aws/qualification-package-1",
+        retention_requested_until_utc=NOW + timedelta(days=31),
+        accepted_at_utc=NOW + timedelta(minutes=10),
+        custodian_id="custodian-1",
+        custodian_signing_key_id="custodian-key-1",
+        custodian_private_key_hex=CUSTODIAN_PRIVATE_HEX,
+    )
+    policy = _manifest_custody_policy().model_copy(
+        update={"expected_custody_target_id": "archive/foreign/package"}
+    )
+
+    result = verify_aws_qualification_manifest_custody_receipt(
+        receipt,
+        manifest,
+        manifest_verification,
+        policy=policy,
+    )
+
+    assert not result.valid
+    assert "target mismatch" in result.reason
+    assert not result.configured_custodian_signature_proven
+
+
+def test_manifest_custody_receipt_requires_complete_successful_manifest_finding() -> None:
+    manifest, manifest_verification = _manifest_and_verification()
+    failed = manifest_verification.model_copy(
+        update={"valid": False, "exact_artifact_digests_verified": False}
+    )
+
+    try:
+        build_aws_qualification_manifest_custody_receipt(
+            manifest,
+            failed,
+            receipt_id="manifest-custody-receipt-1",
+            custody_target_id="archive/ranger/aws/qualification-package-1",
+            retention_requested_until_utc=NOW + timedelta(days=31),
+            accepted_at_utc=NOW + timedelta(minutes=10),
+            custodian_id="custodian-1",
+            custodian_signing_key_id="custodian-key-1",
+            custodian_private_key_hex=CUSTODIAN_PRIVATE_HEX,
+        )
+    except RangerAwsQualificationManifestCustodyError as exc:
+        assert "successful complete manifest verification" in str(exc)
+    else:
+        raise AssertionError("failed manifest verification was accepted for custody")

@@ -51,16 +51,21 @@ jobs:
       STAGING_RUN_ID: ${{ inputs.lantern_staging_run_id }}
       DISCOVERY_RUN_ID: ${{ inputs.lantern_discovery_run_id }}
       PRODUCTION_ROBOTS_POLICY: ${{ inputs.production_robots_policy }}
-      GATE7C_DIR: ${{ runner.temp }}/gate7c
-      STAGING_DIR: ${{ runner.temp }}/lantern-staging
-      DISCOVERY_DIR: ${{ runner.temp }}/lantern-discovery
-      GATE7C_REPORT: ${{ runner.temp }}/gate7c/ets-gate7-authority-transfer.json
-      STAGING_REPORT: ${{ runner.temp }}/lantern-staging/lantern-destination-staging.json
-      DISCOVERY_REPORT: ${{ runner.temp }}/lantern-discovery/lantern-tenant-exit-report.json
-      FINAL_REPORT: ${{ runner.temp }}/ets-gate8-cutover-preflight.json
       RESOURCE_GROUP: rg-ets-prod-eastus
 
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "GATE7C_DIR=$RUNNER_TEMP/gate7c" >> "$GITHUB_ENV"
+          echo "STAGING_DIR=$RUNNER_TEMP/lantern-staging" >> "$GITHUB_ENV"
+          echo "DISCOVERY_DIR=$RUNNER_TEMP/lantern-discovery" >> "$GITHUB_ENV"
+          echo "GATE7C_REPORT=$RUNNER_TEMP/gate7c/ets-gate7-authority-transfer.json" >> "$GITHUB_ENV"
+          echo "STAGING_REPORT=$RUNNER_TEMP/lantern-staging/lantern-destination-staging.json" >> "$GITHUB_ENV"
+          echo "DISCOVERY_REPORT=$RUNNER_TEMP/lantern-discovery/lantern-tenant-exit-report.json" >> "$GITHUB_ENV"
+          echo "FINAL_REPORT=$RUNNER_TEMP/ets-gate8-cutover-preflight.json" >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed source
         uses: actions/checkout@v4
         with:

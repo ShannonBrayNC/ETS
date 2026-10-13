@@ -1,0 +1,102 @@
+{
+  "schema_version": "ets.edge-compact-r0-bench-manifest.v1",
+  "manifest_id": "edge-r0-DUT-ID",
+  "qualification_class": "EDGE_COMPACT_R0",
+  "manifest_state": "draft",
+  "collected_at": "2026-09-15T00:00:00Z",
+  "dut": {
+    "manufacturer": null,
+    "model": null,
+    "hardware_revision": null,
+    "asset_id": null,
+    "cpu_architecture": "x86_64",
+    "cpu_model": null,
+    "memory_bytes": null,
+    "storage": [],
+    "network": [],
+    "firmware": {},
+    "claim_critical_fields_confirmed_by_operator": false
+  },
+  "runtime": {
+    "os_id": null,
+    "os_version_id": null,
+    "os_pretty_name": null,
+    "kernel_release": "unknown",
+    "python_version": "unknown",
+    "hostname": "unknown"
+  },
+  "build": {
+    "source_revision": null,
+    "artifact_digest": null,
+    "configuration_digest": null
+  },
+  "trust": {
+    "identity_profile": "software_volume",
+    "hardware_attested": false,
+    "secure_boot_verified": false,
+    "hardware_key_protection": false
+  },
+  "observer": {
+    "observer_id": null,
+    "observer_host_id": null,
+    "observation_method": null,
+    "independent_from_dut": false
+  },
+  "verifier": {
+    "verifier_host_id": null,
+    "verifier_identity": null,
+    "command": "python -m ets.hqp_verify",
+    "independent_from_dut": false
+  },
+  "controls": [
+    {
+      "kind": "power",
+      "control_id": "r0-power-control",
+      "method": null,
+      "independent_observation_method": null,
+      "destructive_or_disruptive": true,
+      "operator_approval_required": true,
+      "bootstrap_cli_executes_action": false
+    },
+    {
+      "kind": "network",
+      "control_id": "r0-network-control",
+      "method": null,
+      "independent_observation_method": null,
+      "destructive_or_disruptive": true,
+      "operator_approval_required": true,
+      "bootstrap_cli_executes_action": false
+    },
+    {
+      "kind": "storage",
+      "control_id": "r0-storage-control",
+      "method": null,
+      "independent_observation_method": null,
+      "destructive_or_disruptive": true,
+      "operator_approval_required": true,
+      "bootstrap_cli_executes_action": false
+    },
+    {
+      "kind": "clock",
+      "control_id": "r0-clock-control",
+      "method": null,
+      "independent_observation_method": null,
+      "destructive_or_disruptive": true,
+      "operator_approval_required": true,
+      "bootstrap_cli_executes_action": false
+    },
+    {
+      "kind": "recovery",
+      "control_id": "r0-recovery-control",
+      "method": null,
+      "independent_observation_method": null,
+      "destructive_or_disruptive": true,
+      "operator_approval_required": true,
+      "bootstrap_cli_executes_action": false
+    }
+  ],
+  "notes": [
+    "Complete and operator-confirm all claim-critical fields before beginning physical qualification.",
+    "This manifest establishes bench readiness only; it is not a qualification result."
+  ]
+}

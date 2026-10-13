@@ -28,8 +28,6 @@ jobs:
       PROFILE_NAME: lantern-continuity-fd
       ROUTE_NAME: lantern-site-route
       CUSTOM_DOMAIN_NAME: azure-lanternprotocol-net
-      EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -52,6 +50,9 @@ jobs:
       - name: Resolve existing Front Door endpoint and validate DNS CNAME
         id: dns
         shell: bash
+        env:
+          EXPECTED_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          EXPECTED_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
           set -euo pipefail
           active_subscription="$(az account show --query id -o tsv)"
@@ -151,24 +152,27 @@ jobs:
           dns_ok = os.environ.get('DNS_OUTCOME') == 'success'
           status = 'VERIFIED_CUSTOM_HOST' if verified else ('TLS_PENDING_OR_FAILED' if dns_ok else 'DNS_NOT_READY')
           afd_host = os.environ.get('AFD_HOST', '').strip()
-          body = f'''# Lantern Protocol Azure Front Door standby
-
-**Status:** {status}
-
-- Requested hostname: `azure.lanternprotocol.net`
-- DNS CNAME target: `{afd_host or '(not resolved from Azure)'}`
-- DNS validation gate: `{os.environ.get('DNS_OUTCOME', 'unknown')}`
-- Front Door custom-domain activation: `{os.environ.get('ACTIVATE_OUTCOME', 'unknown')}`
-- Domain validation state: `{os.environ.get('VALIDATION_STATE') or 'unknown'}`
-- Front Door deployment status: `{os.environ.get('DEPLOYMENT_STATUS') or 'unknown'}`
-- HTTPS content verification: `{'success' if verified else 'not yet verified'}`
-- Resource group: `{os.environ['RESOURCE_GROUP']}`
-- Front Door profile: `{os.environ['PROFILE_NAME']}`
-- Source commit: `{os.environ['GITHUB_SHA']}`
-- Recorded: `{datetime.now(timezone.utc).isoformat()}`
-
-`VERIFIED_CUSTOM_HOST` means `https://azure.lanternprotocol.net/` returned the Lantern continuity hero and ETS Technical Briefing through Azure Front Door with the custom-domain HTTPS path active. The production apex remains a separate failover gate.
-'''
+          body = "\n".join(
+              (
+                  "# Lantern Protocol Azure Front Door standby",
+                  "",
+                  f"**Status:** {status}",
+                  "",
+                  "- Requested hostname: `azure.lanternprotocol.net`",
+                  f"- DNS CNAME target: `{afd_host or '(not resolved from Azure)'}`",
+                  f"- DNS validation gate: `{os.environ.get('DNS_OUTCOME', 'unknown')}`",
+                  f"- Front Door custom-domain activation: `{os.environ.get('ACTIVATE_OUTCOME', 'unknown')}`",
+                  f"- Domain validation state: `{os.environ.get('VALIDATION_STATE') or 'unknown'}`",
+                  f"- Front Door deployment status: `{os.environ.get('DEPLOYMENT_STATUS') or 'unknown'}`",
+                  f"- HTTPS content verification: `{'success' if verified else 'not yet verified'}`",
+                  f"- Resource group: `{os.environ['RESOURCE_GROUP']}`",
+                  f"- Front Door profile: `{os.environ['PROFILE_NAME']}`",
+                  f"- Source commit: `{os.environ['GITHUB_SHA']}`",
+                  f"- Recorded: `{datetime.now(timezone.utc).isoformat()}`",
+                  "",
+                  "`VERIFIED_CUSTOM_HOST` means `https://azure.lanternprotocol.net/` returned the Lantern continuity hero and ETS Technical Briefing through Azure Front Door with the custom-domain HTTPS path active. The production apex remains a separate failover gate.",
+              )
+          )
           headers = {
               'Authorization': f'Bearer {token}',
               'Accept': 'application/vnd.github+json',

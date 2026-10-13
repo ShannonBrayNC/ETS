@@ -3,7 +3,7 @@
 All notable ETS changes are tracked here. ETS follows Semantic Versioning. Releases in
 the `0.x` series are unstable and may include breaking changes.
 
-## [v0.1.0-alpha] - Unreleased
+## [v0.1.0-alpha.1] - Unreleased
 
 ### Release status
 
@@ -25,6 +25,12 @@ testing, protocol review, and non-production experimentation.
 - Scoped artifact read, proof, and verification enforcement.
 - Cross-platform release-readiness validation.
 - CI validation for pull requests, pushes to `main`, release-candidate tags, and release tags.
+- Frozen `ets.application.sdk.v1` compatibility contract and shared conformance vectors.
+- Python synchronous/asynchronous remote Application SDK and local ETS Dev profile.
+- .NET `LanternProtocol.ETS.Application` and npm `@lanternprotocol/ets-sdk` clients.
+- Cross-language Python/.NET/TypeScript canonicalization and transport compatibility gates.
+- Public SDK package build, SPDX SBOM, SHA-256 manifest, provenance attestation, and OIDC trusted-publishing workflows.
+- Chess telemetry capture/bundle/tamper walkthrough as the canonical SDK end-to-end sample.
 
 ### Changed
 
@@ -69,7 +75,7 @@ The release candidate must also pass the GitHub Actions CI workflow on:
 - the pull request targeting `main`;
 - the resulting merge commit on `main`;
 - the `rc/v0.1.0-alpha.1` tag;
-- the final `v0.1.0-alpha` tag.
+- the final `v0.1.0-alpha.1` tag.
 
 ### Supported evaluation environment
 

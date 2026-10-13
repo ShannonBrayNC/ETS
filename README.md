@@ -22,7 +22,7 @@ and raw evidence bytes are outside the ETS storage boundary.
   and proofs
 - `ets/api` - ingestion and verification API
 - `ets/verifier` - CLI and SDK verification tools
-- `ets/sdk` - local SDK facade for core verification and append flows
+- `ets/sdk` - Python Application SDK with local and remote sync/async flows
 - `ets/reports` - JSON, Markdown, and HTML verification certificates
 - `ets/explorer` - future UI for browsing and verification
 - `ets/spec` - protocol docs and whitepaper
@@ -88,6 +88,49 @@ Run the Sprint 6 external-anchor demo:
 
 ```powershell
 npm run demo:anchor
+```
+
+## Application SDK quickstart
+
+SDK-2 provides synchronous and asynchronous Python clients over the stable
+`ets.application.sdk.v1` contract.
+
+Start the loopback-only durable development profile:
+
+```powershell
+docker compose -f compose.sdk-dev.yml up --build
+```
+
+Then run the SDK walkthrough:
+
+```powershell
+python .\examples\sdk\python\quickstart.py
+```
+
+See [docs/sdk/PYTHON_CLIENT.md](docs/sdk/PYTHON_CLIENT.md) and
+[docs/sdk/DEV_ENVIRONMENT.md](docs/sdk/DEV_ENVIRONMENT.md). The development
+profile uses unsigned tree heads and development authorization and must not be
+represented as a production trust service.
+
+## Cross-language Application SDK
+
+ETS now carries the frozen `ets.application.sdk.v1` contract across Python,
+.NET, and TypeScript. The public-alpha package identities are:
+
+- Python distribution `lanternprotocol-ets` (imports remain `ets`)
+- NuGet package `LanternProtocol.ETS.Application`
+- npm package `@lanternprotocol/ets-sdk`
+
+The release matrix and protected trusted-publishing process are documented in
+[docs/sdk/RELEASE.md](docs/sdk/RELEASE.md). The package release remains an alpha
+developer surface and does not make the local ETS Dev profile a production trust
+service.
+
+The canonical end-to-end SDK walkthrough uses Chess telemetry:
+
+```powershell
+docker compose -f compose.sdk-dev.yml up --build
+python examples/sdk/chess/chess_evidence_walkthrough.py
 ```
 
 ## Run the Local API
@@ -270,3 +313,10 @@ review materials for counsel, not legal advice and not filed claims:
 
 Do not tag a public release until the public release checklist and IP review
 gate are complete.
+
+
+Core API roles are enforced before protected operations. Production publisher tokens need a signed `evidence_producer` role; missing roles grant no protected operation. See the [core route authorization matrix and migration guidance](docs/security/CORE_API_AUTHORIZATION.md).
+
+## Service readiness requirements
+
+[Product requirements and acceptance criteria](docs/requirements/service-readiness/README.md) map the 2026-10-11 coverage review to existing product baselines. They add priorities, verification evidence, dependencies and service acceptance criteria; they do not change implementation or release qualification status.
