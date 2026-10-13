@@ -22,12 +22,19 @@ $requiredFiles = @(
     "docs/research/REPRODUCIBILITY_APPENDIX.md",
     "docs/reports/CERTIFICATE_CLAIM_SAFETY.md",
     "docs/demo/election-rc-walkthrough.md",
+    "docs/sdk/RELEASE.md",
+    "docs/sdk/RELEASE_MATRIX.json",
     "docs/ip",
     "scripts/verify-branch-protection-runbook.py",
     "scripts/verify-ets-release-readiness.ps1",
     "scripts/verify-ets-certificate-claim-safety.ps1",
     "scripts/verify-ets-formal-traceability.ps1",
-    "tests/unit/test_release_readiness_docs.py"
+    "scripts/verify_sdk_release_matrix.py",
+    "scripts/build_sdk_release_manifest.py",
+    ".github/workflows/sdk-release-candidate.yml",
+    ".github/workflows/sdk-publish.yml",
+    "tests/unit/test_release_readiness_docs.py",
+    "tests/unit/test_sdk_release.py"
 )
 
 $failures = New-Object System.Collections.Generic.List[string]
@@ -123,6 +130,15 @@ Assert-Contains -Path "docs/release/ALPHA_RELEASE_NOTES_TEMPLATE.md" -Terms @(
     "Production trust-service readiness"
 )
 
+Assert-Contains -Path "docs/sdk/RELEASE.md" -Terms @(
+    "lanternprotocol-ets",
+    "LanternProtocol.ETS.Application",
+    "@lanternprotocol/ets-sdk",
+    "sdk-public-release",
+    "OIDC trusted publishing",
+    "committed_local"
+)
+
 if (Test-Path "README.md") {
     $readme = Get-Content -Raw -Path "README.md"
     if ($readme -notmatch "Evidence Transparency System") {
@@ -153,6 +169,11 @@ Invoke-CheckedCommand `
     -Executable $python `
     -Arguments @("scripts/verify-branch-protection-runbook.py") `
     -Description "Branch protection runbook verification"
+
+Invoke-CheckedCommand `
+    -Executable $python `
+    -Arguments @("scripts/verify_sdk_release_matrix.py") `
+    -Description "ETS SDK release matrix verification"
 
 Invoke-CheckedCommand `
     -Executable $python `

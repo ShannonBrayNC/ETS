@@ -141,6 +141,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   swtpm \
   swtpm-tools \
   cpu-checker \
+  acl \
   bridge-utils \
   jq \
   git \

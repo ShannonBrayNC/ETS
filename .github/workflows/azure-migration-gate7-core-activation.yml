@@ -43,12 +43,17 @@ jobs:
       GATE6_RUN_ID: ${{ inputs.gate6_run_id }}
       EXPECTED_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
       AUTHORIZATION: ${{ inputs.authorization }}
-      FINALITY_DIR: ${{ runner.temp }}/gate6-finality
-      FINALITY_REPORT: ${{ runner.temp }}/gate6-finality/ets-gate6-finality.json
-      CORE_REPORT: ${{ runner.temp }}/ets-gate7-core-activation.json
       MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
 
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "FINALITY_DIR=$RUNNER_TEMP/gate6-finality" >> "$GITHUB_ENV"
+          echo "FINALITY_REPORT=$RUNNER_TEMP/gate6-finality/ets-gate6-finality.json" >> "$GITHUB_ENV"
+          echo "CORE_REPORT=$RUNNER_TEMP/ets-gate7-core-activation.json" >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed migration source
         uses: actions/checkout@v4
         with:

@@ -2,7 +2,8 @@
 
 **Tracking:** #814  
 **Depends on for final published claim:** #798  
-**Base profile:** `ets.edge.hardware-qualification.v1`
+**Base profile:** `ets.edge.hardware-qualification.v1`  
+**Execution priority lock:** `HARDWARE_QUALIFICATION_EXECUTION_ORDER.md`
 
 ## 1. Objective
 
@@ -151,60 +152,84 @@ Optional but valuable instrumentation includes an independent power meter, USB/s
 
 ### R0.6 Capture hard-power interruption
 
+**Implementation tracking:** #884  
+
 **Stimulus:** cut power during controlled active ingestion.  
 **Pass:** acknowledged commits survive; any in-flight/non-authoritative item is explicitly recoverable, rejected, or absent according to documented transaction semantics; no silent acknowledged loss occurs.
 
 ### R0.7 Synchronization hard-power interruption
+
+**Implementation tracking:** #886  
 
 **Stimulus:** cut power during active synchronization after a known local pending set exists.  
 **Pass:** restart/reconnect resumes idempotently, no unintended logical duplicate is created, and local/upstream checkpoints can be reconciled.
 
 ### R0.8 Disk pressure/exhaustion
 
+**Implementation tracking:** #888
+
 **Stimulus:** drive only the dedicated qualification volume through configured high and critical watermarks.  
 **Pass:** deterministic backpressure/rejection occurs before unsafe acknowledgement; previously committed evidence remains intact; normal operation returns after space restoration without rewriting history.
 
 ### R0.9 Queue saturation/backpressure
+
+**Implementation tracking:** #890  
 
 **Stimulus:** bounded synthetic load exceeds configured queue item/byte policy.  
 **Pass:** explicit backpressure/rejection; no unintended drop of already accepted records; queue returns to supported state.
 
 ### R0.10 Network instability
 
+**Implementation tracking:** #893  
+
 **Stimulus:** repeat disconnect/reconnect and, where supported by the isolated harness, bounded latency/loss.  
 **Pass:** retry state remains explicit, synchronization resumes, and local sequence history does not change merely because transport is unstable.
 
 ### R0.11 Clock displacement
+
+**Implementation tracking:** #895  
 
 **Stimulus:** controlled wall-clock degradation/rollback or isolated time-source failure.  
 **Pass:** clock uncertainty/fault is retained, monotonic evidence ordering is not silently rewritten, and interpretation can distinguish event ordering from wall-clock quality.
 
 ### R0.12 Valid upgrade
 
+**Implementation tracking:** #897  
+
 **Stimulus:** apply an approved Edge software upgrade.  
 **Pass:** build transition is explicitly recorded, prior commitments remain verifiable, and post-upgrade capture/proof functions normally.
 
 ### R0.13 Failed upgrade and rollback
+
+**Implementation tracking:** #899  
 
 **Stimulus:** use an intentionally invalid/incomplete qualification upgrade path designed to fail safely.  
 **Pass:** the system fails boundedly, rollback/recovery is explicit, and committed evidence is not silently lost or rewritten.
 
 ### R0.14 Recovery media
 
+**Implementation tracking:** #901  
+
 **Stimulus:** rebuild runtime from known recovery media according to the documented procedure.  
 **Pass:** the package distinguishes restored retained evidence from regenerated runtime state and preserves identity/custody transitions rather than pretending continuity where none exists.
 
 ### R0.15 Capacity/endurance soak
+
+**Implementation tracking:** #904  
 
 **Stimulus:** extended repeated capture → offline → reconnect → sync cycles with bounded resource measurements.  
 **Pass:** no unexplained evidence-chain discontinuity, unbounded queue/storage growth, silent loss, or material resource leak appears within the declared run duration and load envelope.
 
 ### R0.16 Source-to-proof operator workflow
 
+**Implementation tracking:** #906  
+
 **Stimulus:** operator takes one representative source event from ingress through local evidence, export, and independent verification.  
 **Pass:** an external reviewer can trace source observation → Edge evidence object/proof → resulting retained package without hidden manual reconstruction.
 
 ### R0.17 Independent verification
+
+**Implementation tracking:** #906  
 
 **Stimulus:** move the completed retained HQP package to the independent verifier/controller environment.  
 **Pass:** `python -m ets.hqp_verify` determines the package is structurally complete, digest-consistent, Evidence-Object-bound, test-complete, and eligible for its claimed disposition without trusting producer narrative.

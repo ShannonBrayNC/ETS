@@ -1,0 +1,31 @@
+services:
+  ets-sdk-dev:
+    build:
+      context: .
+    environment:
+      ETS_STORAGE_PROVIDER: sqlite
+      ETS_SQLITE_PATH: /data/ets-sdk-dev.db
+      ETS_AUTH_MODE: local_header
+      ETS_SIGNING_MODE: local_unsigned
+      ETS_ALLOW_INSECURE_LOCAL: "1"
+      ETS_LOG_ID: ets-sdk-dev
+      ETS_REDACTION_PROFILE: none
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ets-sdk-dev-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+volumes:
+  ets-sdk-dev-data:

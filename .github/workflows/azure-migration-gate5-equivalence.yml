@@ -23,12 +23,17 @@ jobs:
       SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
       DEST_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      TABLE_MANIFEST: ${{ runner.temp }}/ets-gate5-table.json
-      GATEWAY_MANIFEST: ${{ runner.temp }}/ets-gate5-gateway.json
       MIGRATION_EVIDENCE_TABLE: ETSEvents
       MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
 
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "TABLE_MANIFEST=$RUNNER_TEMP/ets-gate5-table.json" >> "$GITHUB_ENV"
+          echo "GATEWAY_MANIFEST=$RUNNER_TEMP/ets-gate5-gateway.json" >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed source
         uses: actions/checkout@v4
         with:

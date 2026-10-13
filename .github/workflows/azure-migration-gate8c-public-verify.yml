@@ -65,21 +65,26 @@ jobs:
       GATEWAY_APP: ets-oif5r5ydprrou-gw
       MIGRATION_EVIDENCE_TABLE: ETSEvents
       MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
-      HANDOFF_DIR: ${{ runner.temp }}/gate8c-handoff
-      GATE7C_DIR: ${{ runner.temp }}/gate7c
-      FINALITY_DIR: ${{ runner.temp }}/gate6-finality
-      HANDOFF_REPORT: ${{ runner.temp }}/gate8c-handoff/ets-gate8c-cutover-handoff.json
-      GATE7C_REPORT: ${{ runner.temp }}/gate7c/ets-gate7-authority-transfer.json
-      FINALITY_REPORT: ${{ runner.temp }}/gate6-finality/ets-gate6-finality.json
-      SOURCE_REPORT: ${{ runner.temp }}/ets-gate8-source-verify.json
-      PUBLIC_REPORT: ${{ runner.temp }}/ets-gate8-public-verify.json
-      M365_MARKER: ${{ runner.temp }}/ets-gate8-m365-marker.json
-      ACTIVE_PROBE_REPORT: ${{ runner.temp }}/ets-gate8-active-probe.json
-      FINAL_REPORT: ${{ runner.temp }}/ets-gate8-public-cutover-verification.json
       SITE_ROOT: ops/lantern-site-backup/site
-      PRODUCTION_ROOT: ${{ runner.temp }}/lantern-production-verify
 
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "HANDOFF_DIR=$RUNNER_TEMP/gate8c-handoff" >> "$GITHUB_ENV"
+          echo "GATE7C_DIR=$RUNNER_TEMP/gate7c" >> "$GITHUB_ENV"
+          echo "FINALITY_DIR=$RUNNER_TEMP/gate6-finality" >> "$GITHUB_ENV"
+          echo "HANDOFF_REPORT=$RUNNER_TEMP/gate8c-handoff/ets-gate8c-cutover-handoff.json" >> "$GITHUB_ENV"
+          echo "GATE7C_REPORT=$RUNNER_TEMP/gate7c/ets-gate7-authority-transfer.json" >> "$GITHUB_ENV"
+          echo "FINALITY_REPORT=$RUNNER_TEMP/gate6-finality/ets-gate6-finality.json" >> "$GITHUB_ENV"
+          echo "SOURCE_REPORT=$RUNNER_TEMP/ets-gate8-source-verify.json" >> "$GITHUB_ENV"
+          echo "PUBLIC_REPORT=$RUNNER_TEMP/ets-gate8-public-verify.json" >> "$GITHUB_ENV"
+          echo "M365_MARKER=$RUNNER_TEMP/ets-gate8-m365-marker.json" >> "$GITHUB_ENV"
+          echo "ACTIVE_PROBE_REPORT=$RUNNER_TEMP/ets-gate8-active-probe.json" >> "$GITHUB_ENV"
+          echo "FINAL_REPORT=$RUNNER_TEMP/ets-gate8-public-cutover-verification.json" >> "$GITHUB_ENV"
+          echo "PRODUCTION_ROOT=$RUNNER_TEMP/lantern-production-verify" >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed source
         uses: actions/checkout@v4
         with:

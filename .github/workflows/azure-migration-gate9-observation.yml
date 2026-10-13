@@ -59,15 +59,20 @@ jobs:
       OPS_READINESS_SHA256: ${{ inputs.ops_readiness_sha256 }}
       AUTHORIZATION: ${{ inputs.authorization }}
       DEST_RESOURCE_GROUP: rg-ets-prod-eastus
-      BASELINE_DIR: ${{ runner.temp }}/gate9-baseline
-      OBSERVATION_DIR: ${{ runner.temp }}/gate9-observation
-      BASELINE_REPORT: ${{ runner.temp }}/gate9-baseline/ets-gate8-public-cutover-verification.json
-      OBSERVATION_REPORT: ${{ runner.temp }}/gate9-observation/ets-gate8-public-cutover-verification.json
-      RUNTIME_REPORT: ${{ runner.temp }}/ets-gate9-runtime-audit.json
-      HISTORICAL_MARKER: ${{ runner.temp }}/ets-gate9-historical-key-marker.json
-      FINAL_REPORT: ${{ runner.temp }}/ets-gate9-decommission-readiness.json
 
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "BASELINE_DIR=$RUNNER_TEMP/gate9-baseline" >> "$GITHUB_ENV"
+          echo "OBSERVATION_DIR=$RUNNER_TEMP/gate9-observation" >> "$GITHUB_ENV"
+          echo "BASELINE_REPORT=$RUNNER_TEMP/gate9-baseline/ets-gate8-public-cutover-verification.json" >> "$GITHUB_ENV"
+          echo "OBSERVATION_REPORT=$RUNNER_TEMP/gate9-observation/ets-gate8-public-cutover-verification.json" >> "$GITHUB_ENV"
+          echo "RUNTIME_REPORT=$RUNNER_TEMP/ets-gate9-runtime-audit.json" >> "$GITHUB_ENV"
+          echo "HISTORICAL_MARKER=$RUNNER_TEMP/ets-gate9-historical-key-marker.json" >> "$GITHUB_ENV"
+          echo "FINAL_REPORT=$RUNNER_TEMP/ets-gate9-decommission-readiness.json" >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed source
         uses: actions/checkout@v4
         with:

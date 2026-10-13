@@ -23,6 +23,7 @@ from ets.api.auth import (
     ProductionJWKSAuthPolicy,
     ProductionJWTAuthPolicy,
 )
+from ets.api.authorization import AuthCapability
 from ets.api.profile_guard import validate_environment
 from ets.api.telemetry import emit_security_event
 from ets.core import (
@@ -224,6 +225,10 @@ class AuthResponse(BaseModel):
     workspace_id: str | None
 
 
+class CapabilityError(PermissionError):
+    """Authenticated principal lacks a server-derived route capability."""
+
+
 class TenantScopeError(PermissionError):
     """Raised when tenant/workspace headers do not match an event."""
 
@@ -369,6 +374,23 @@ def create_app(
             request,
         )
 
+    @app.exception_handler(CapabilityError)
+    async def capability_error_handler(request: Request, exc: CapabilityError) -> JSONResponse:
+        audit_event("capability_rejected", "denied", correlation_id=_correlation_id(request))
+        emit_security_event(
+            "ets.authorization.rejected",
+            severity="Warning",
+            correlation_id=_correlation_id(request),
+            dimensions={"auth_mode": auth_mode},
+        )
+        _increment_metric(request, "error_count")
+        return _error_response(
+            status.HTTP_403_FORBIDDEN,
+            "ETS_AUTH_FORBIDDEN",
+            "required capability is not granted",
+            request,
+        )
+
     @app.exception_handler(AuthError)
     async def auth_error_handler(request: Request, exc: AuthError) -> JSONResponse:
         correlation_id = _correlation_id(request)
@@ -412,7 +434,7 @@ def create_app(
 
     @app.get("/api/v1/metrics", response_model=MetricsResponse, tags=["admin"])
     def metrics(request: Request) -> MetricsResponse:
-        _authenticate(request, request_auth_policy)
+        _authorize(request, request_auth_policy, "admin.read")
         return MetricsResponse.model_validate(app.state.metrics)
 
     @app.get("/api/v1/auth/context", response_model=AuthResponse, tags=["admin"])
@@ -427,7 +449,7 @@ def create_app(
 
     @app.get("/api/v1/log/head", response_model=SignedTreeHead, tags=["proofs"])
     def get_log_head(request: Request) -> SignedTreeHead:
-        _authenticate(request, request_auth_policy)
+        _authorize(request, request_auth_policy, "evidence.read")
         return _tree_head(event_log, log_id, tree_head_signer)
 
     @app.get("/tree-head/latest", response_model=SignedTreeHead, tags=["proofs"])
@@ -447,7 +469,7 @@ def create_app(
 
     @app.get("/log/size", tags=["proofs"])
     def get_lab_log_size(request: Request) -> dict[str, int]:
-        _authenticate(request, request_auth_policy)
+        _authorize(request, request_auth_policy, "evidence.read")
         return {"tree_size": len(event_log.list_entries())}
 
     @app.get("/anchors/latest", response_model=AnchorExport, tags=["anchors"])
@@ -455,7 +477,7 @@ def create_app(
         request: Request,
         target: Annotated[AnchorTarget, Query()] = "local_file",
     ) -> AnchorExport:
-        _authenticate(request, request_auth_policy)
+        _authorize(request, request_auth_policy, "evidence.export")
         tree_head = _tree_head(event_log, log_id, tree_head_signer)
         anchor = build_anchor_export(
             target=target,
@@ -475,12 +497,12 @@ def create_app(
 
     @app.get("/anchors/history", response_model=list[AnchorExport], tags=["anchors"])
     def get_anchor_history(request: Request) -> list[AnchorExport]:
-        _authenticate(request, request_auth_policy)
+        _authorize(request, request_auth_policy, "evidence.export")
         return list(app.state.anchor_history)
 
     @app.post("/verify/anchor", response_model=AnchorVerificationResult, tags=["verifier"])
     async def verify_anchor(request: Request) -> AnchorVerificationResult:
-        _authenticate(request, request_auth_policy)
+        _authorize(request, request_auth_policy, "evidence.verify")
         payload = _validate_json_body(AnchorExport, await request.body())
         result = verify_anchor_export(payload)
         audit_event(
@@ -504,7 +526,7 @@ def create_app(
         tenant_id: str | None = Query(default=None),
         workspace_id: str | None = Query(default=None),
     ) -> EventListResponse:
-        context = _authenticate(request, request_auth_policy)
+        context = _authorize(request, request_auth_policy, "evidence.read")
         scope = _scope_from_request(request, context)
         scope = _scope_with_filters(scope, tenant_id, workspace_id)
         entries = [
@@ -536,7 +558,7 @@ def create_app(
         },
     )
     async def append_event(request: Request) -> EventAppendResponse:
-        context = _authenticate(request, request_auth_policy)
+        context = _authorize(request, request_auth_policy, "evidence.create")
         scope = _scope_from_request(request, context)
         body = await request.body()
         if len(body) > MAX_EVENT_BODY_BYTES:
@@ -575,7 +597,7 @@ def create_app(
         tags=["artifacts"],
     )
     async def register_artifact(request: Request) -> ArtifactReceiptResponse:
-        context = _authenticate(request, request_auth_policy)
+        context = _authorize(request, request_auth_policy, "evidence.create")
         scope = _scope_from_request(request, context)
         payload = _validate_json_body(ArtifactRegistrationRequest, await request.body())
         if payload.artifact_id in app.state.artifact_records:
@@ -649,7 +671,7 @@ def create_app(
         artifact_id: str,
         request: Request,
     ) -> EvidenceProofBundle:
-        context = _authenticate(request, request_auth_policy)
+        context = _authorize(request, request_auth_policy, "evidence.export")
         scope = _scope_from_request(request, context)
         record = _get_scoped_artifact_record(request, artifact_id, scope)
 
@@ -658,7 +680,7 @@ def create_app(
 
     @app.post("/evidence/verify", tags=["artifacts"])
     async def verify_artifact(request: Request) -> dict[str, object]:
-        context = _authenticate(request, request_auth_policy)
+        context = _authorize(request, request_auth_policy, "evidence.verify")
         scope = _scope_from_request(request, context)
 
         payload = _validate_json_body(
@@ -692,7 +714,7 @@ def create_app(
 
     @app.get("/api/v1/events/{event_id}", response_model=EventReadResponse, tags=["events"])
     def get_event(event_id: str, request: Request) -> EventReadResponse:
-        context = _authenticate(request, request_auth_policy)
+        context = _authorize(request, request_auth_policy, "evidence.read")
         scope = _scope_from_request(request, context)
         entry = event_log.get_by_event_id(event_id)
         _ensure_entry_matches_scope(entry, scope)
@@ -717,7 +739,7 @@ def create_app(
         )
 
         if event_id in artifact_records:
-            context = _authenticate(request, request_auth_policy)
+            context = _authorize(request, request_auth_policy, "evidence.read")
             scope = _scope_from_request(request, context)
             record = _get_scoped_artifact_record(
                 request,
@@ -731,7 +753,7 @@ def create_app(
 
     @app.get("/api/v1/events/by-index/{index}", response_model=EventReadResponse, tags=["events"])
     def get_event_by_index(index: int, request: Request) -> EventReadResponse:
-        context = _authenticate(request, request_auth_policy)
+        context = _authorize(request, request_auth_policy, "evidence.read")
         scope = _scope_from_request(request, context)
         entry = event_log.get_by_index(index)
         _ensure_entry_matches_scope(entry, scope)
@@ -751,7 +773,7 @@ def create_app(
 
     @app.get("/api/v1/proofs/inclusion/{event_id}", response_model=InclusionProof, tags=["proofs"])
     def get_inclusion_proof(event_id: str, request: Request) -> InclusionProof:
-        context = _authenticate(request, request_auth_policy)
+        context = _authorize(request, request_auth_policy, "evidence.read")
         scope = _scope_from_request(request, context)
         entry = event_log.get_by_event_id(event_id)
         _ensure_entry_matches_scope(entry, scope)
@@ -780,7 +802,7 @@ def create_app(
         tags=["proofs"],
     )
     def get_proof_bundle(event_id: str, request: Request) -> EvidenceProofBundle:
-        context = _authenticate(request, request_auth_policy)
+        context = _authorize(request, request_auth_policy, "evidence.export")
         scope = _scope_from_request(request, context)
         entry = event_log.get_by_event_id(event_id)
         _ensure_entry_matches_scope(entry, scope)
@@ -812,7 +834,7 @@ def create_app(
         from_size: int | None = Query(default=None, ge=0),
         to_size: int | None = Query(default=None, ge=0),
     ) -> ConsistencyProof:
-        _authenticate(request, request_auth_policy)
+        _authorize(request, request_auth_policy, "evidence.read")
         effective_from_size = previous_tree_size if previous_tree_size is not None else from_size
         if effective_from_size is None:
             raise ValueError("previous_tree_size or from_size is required")
@@ -841,7 +863,7 @@ def create_app(
         },
     )
     async def verify_inclusion(request: Request) -> dict[str, object]:
-        _authenticate(request, request_auth_policy)
+        _authorize(request, request_auth_policy, "evidence.verify")
         payload = _validate_json_body(InclusionProof, await request.body())
         result = verify_inclusion_proof(payload)
         audit_event(
@@ -870,7 +892,7 @@ def create_app(
 
     @app.post("/verify/signature", tags=["verifier"])
     async def verify_signature(request: Request) -> dict[str, object]:
-        _authenticate(request, request_auth_policy)
+        _authorize(request, request_auth_policy, "evidence.verify")
         payload = _validate_json_body(
             TreeHeadSignatureVerificationRequest,
             await request.body(),
@@ -893,7 +915,7 @@ def create_app(
 
     @app.post("/verify/evidence")
     async def verify_lab_evidence(request: Request) -> dict[str, object]:
-        _authenticate(request, request_auth_policy)
+        _authorize(request, request_auth_policy, "evidence.verify")
         payload = _validate_json_body(EvidenceVerificationRequest, await request.body())
         event = apply_redaction_profile(payload.event, redaction_profile)
         event_hash = canonical_sha256(event.hashable_payload())
@@ -922,7 +944,7 @@ def create_app(
         },
     )
     async def verify_consistency(request: Request) -> dict[str, object]:
-        _authenticate(request, request_auth_policy)
+        _authorize(request, request_auth_policy, "evidence.verify")
         payload = _validate_json_body(ConsistencyProof, await request.body())
         result = verify_consistency_proof(payload)
         audit_event(
@@ -943,7 +965,7 @@ def create_app(
         tags=["federation"],
     )
     async def assess_federation_route(request: Request) -> FederationAssessment:
-        _authenticate(request, request_auth_policy)
+        _authorize(request, request_auth_policy, "evidence.verify")
         payload = _validate_json_body(FederationAssessmentRequest, await request.body())
         assessment = assess_federation(payload.observations, payload.threshold)
         audit_event(
@@ -960,7 +982,7 @@ def create_app(
         tags=["reports"],
     )
     async def generate_certificate_report(request: Request) -> CertificateResponse:
-        _authenticate(request, request_auth_policy)
+        _authorize(request, request_auth_policy, "evidence.export")
         payload = _validate_json_body(CertificateRequest, await request.body())
         content = create_certificate(payload.bundle, payload.format)
         audit_event(
@@ -1231,6 +1253,15 @@ def _validate_json_body[ModelT: BaseModel](model_type: type[ModelT], body: bytes
 
 def _authenticate(request: Request, auth_policy: AuthPolicy) -> AuthContext:
     return auth_policy.authenticate(request)
+
+
+def _authorize(
+    request: Request, auth_policy: AuthPolicy, capability: AuthCapability,
+) -> AuthContext:
+    context = _authenticate(request, auth_policy)
+    if not context.has_capability(capability):
+        raise CapabilityError("required capability is not granted")
+    return context
 
 
 def _scope_from_request(request: Request, auth_context: AuthContext) -> TenantScope:

@@ -34,10 +34,15 @@ jobs:
       AUTHORIZATION: ${{ inputs.authorization }}
       RESOURCE_GROUP: rg-ets-prod-eastus
       SITE_SOURCE: ops/lantern-site-backup/site
-      SWEEP_REPORT: ${{ runner.temp }}/lantern-destination-source-sweep.json
-      QUALIFICATION_REPORT: ${{ runner.temp }}/lantern-destination-staging.json
 
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "SWEEP_REPORT=$RUNNER_TEMP/lantern-destination-source-sweep.json" >> "$GITHUB_ENV"
+          echo "QUALIFICATION_REPORT=$RUNNER_TEMP/lantern-destination-staging.json" >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed source
         uses: actions/checkout@v4
         with:

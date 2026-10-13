@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$')]
-    [string]$Tag = "v0.1.0-alpha"
+    [string]$Tag = "v0.1.0-alpha.1"
 )
 
 Set-StrictMode -Version Latest

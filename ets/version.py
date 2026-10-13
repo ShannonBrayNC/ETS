@@ -9,9 +9,9 @@ def get_version() -> str:
     """Return the installed ETS package version with a source-tree fallback."""
 
     try:
-        return version("ets")
+        return version("lanternprotocol-ets")
     except PackageNotFoundError:  # pragma: no cover - source tree before install
-        return "0.1.0"
+        return "0.1.0a1"
 
 
 __version__ = get_version()

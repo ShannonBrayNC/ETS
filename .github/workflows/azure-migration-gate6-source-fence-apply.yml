@@ -32,12 +32,17 @@ jobs:
       SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
       GATE6_AUTHORIZATION: ${{ inputs.authorization }}
       EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-      REPORT_PATH: ${{ runner.temp }}/ets-gate6-source-writer-fence.json
       MIGRATION_RESOURCE_GROUP: rg-ets-live-eastus
       MIGRATION_EVIDENCE_TABLE: ETSEvents
       MIGRATION_GATEWAY_SHARE: ets-gateway-state-q1-v2
 
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "REPORT_PATH=$RUNNER_TEMP/ets-gate6-source-writer-fence.json" >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed migration source
         uses: actions/checkout@v4
         with:
