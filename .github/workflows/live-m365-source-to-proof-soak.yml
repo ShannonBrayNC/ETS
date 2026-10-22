@@ -178,20 +178,33 @@ jobs:
               )
 
           def latest_state():
-              comments = api_json(
-                  "GET",
-                  f"{api_base}/issues/{issue_number}/comments?per_page=100",
-              )
-              if not isinstance(comments, list):
-                  raise RuntimeError("soak issue comments did not return an array")
               found = None
-              for comment in comments:
-                  body = comment.get("body")
-                  if isinstance(body, str):
-                      parsed = decode_state(body)
-                      if parsed is not None:
-                          found = parsed
-              return found
+              page = 1
+              while True:
+                  comments = api_json(
+                      "GET",
+                      f"{api_base}/issues/{issue_number}/comments?per_page=100&page={page}",
+                  )
+                  if not isinstance(comments, list):
+                      raise RuntimeError("soak issue comments did not return an array")
+                  for comment in comments:
+                      body = comment.get("body")
+                      if isinstance(body, str):
+                          parsed = decode_state(body)
+                          if parsed is not None:
+                              found = parsed
+                  if len(comments) < 100:
+                      return found
+                  page += 1
+
+          def enforce_completion_gap(prior: dict | None, completed_at: datetime) -> None:
+              if prior is None:
+                  return
+              gap_minutes = (
+                  completed_at - parse_time(str(prior["last_success_at"]))
+              ).total_seconds() / 60.0
+              if gap_minutes > max_gap_minutes:
+                  raise RuntimeError("governed soak monitoring gap was exceeded at completion")
 
           def prior_failed_coordinator_run(started_at: str):
               query = urlencode({"branch": "main", "per_page": "100"})
@@ -532,6 +545,14 @@ jobs:
                   json.dumps(skipped, indent=2, sort_keys=True) + "\n",
                   encoding="utf-8",
               )
+              summary = os.environ.get("GITHUB_STEP_SUMMARY")
+              if summary:
+                  with Path(summary).open("a", encoding="utf-8") as handle:
+                      handle.write(
+                          "## No active Microsoft P0 soak attempt\n\n"
+                          "Scheduled observation skipped. No live canaries ran; this green "
+                          "workflow is not soak qualification or progress.\n"
+                      )
               print("No active Microsoft P0 soak attempt; scheduled observation skipped.")
               raise SystemExit(0)
 
@@ -702,6 +723,7 @@ jobs:
               validate_state(state_payload)
 
               completed_at = utc_now()
+              enforce_completion_gap(prior, completed_at)
               success_count = 1 if prior is None else int(prior["success_count"]) + 1
               elapsed_hours = (completed_at - attempt_started_at).total_seconds() / 3600.0
               passed = elapsed_hours >= min_hours and success_count >= min_observations
