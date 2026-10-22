@@ -82,6 +82,24 @@ def test_wrong_types_and_deleted_target_fail_closed():
     assert observe(target).outcome == "contradictory"
 
 
+@pytest.mark.parametrize("number", ["1e999", "-1e999", "NaN", "Infinity", "-Infinity"])
+def test_non_finite_unknown_source_number_is_unresolved_and_recovers(number):
+    payload = json.dumps(fixture())[:-1] + ', "unknown": ' + number + '}'
+    result = observe_synthetic_maintenance_item(
+        payload.encode(), expected=expectation(), producer_reported_success=True,
+    )
+    assert result.outcome == "unresolved"
+    assert result.metadata_sha256 is None
+    assert ("source_shape", False) in result.assertions
+    assert observe(fixture()).outcome == "observed"
+
+
+def test_finite_unknown_source_number_preserves_observed_result():
+    target = fixture()
+    target["unknown"] = 1.5
+    assert observe(target).outcome == "observed"
+
+
 def test_unknown_sensitive_fields_do_not_enter_minimized_result():
     target = fixture()
     target["fields"]["SecretNotes"] = "must never be retained"

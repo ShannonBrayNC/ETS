@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass
 from typing import Literal
@@ -64,6 +65,13 @@ def _constant(value: str) -> object:
     raise ValueError("non-finite source number")
 
 
+def _finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("non-finite source number")
+    return parsed
+
+
 def observe_synthetic_maintenance_item(
     payload: bytes,
     *,
@@ -99,7 +107,7 @@ def observe_synthetic_maintenance_item(
     metadata_hash = None
     try:
         decoded = json.loads(payload.decode("utf-8"), object_pairs_hook=_object,
-                             parse_constant=_constant)
+                             parse_constant=_constant, parse_float=_finite_float)
         if not isinstance(decoded, dict) or not isinstance(decoded.get("fields"), dict):
             raise ValueError("source item or fields missing")
         fields = decoded["fields"]
