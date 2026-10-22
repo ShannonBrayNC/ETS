@@ -53,13 +53,20 @@ jobs:
       AUTHORIZATION: ${{ inputs.authorization }}
       SOURCE_TENANT_ID: ${{ vars.SOURCE_AZURE_TENANT_ID }}
       SOURCE_SUBSCRIPTION_ID: ${{ vars.SOURCE_AZURE_SUBSCRIPTION_ID }}
-      GATE9_DIR: ${{ runner.temp }}/gate9-readiness
-      INVENTORY_DIR: ${{ runner.temp }}/gate9b-inventory
-      GATE9_REPORT: ${{ runner.temp }}/gate9-readiness/ets-gate9-decommission-readiness.json
-      INVENTORY_REPORT: ${{ runner.temp }}/gate9b-inventory/ets-gate9b-source-retirement-inventory.json
-      RETIREMENT_RESULT: ${{ runner.temp }}/ets-gate9b-source-retirement-execution.json
 
     steps:
+      - name: Initialize runner-local report paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            printf '%s\n' "GATE9_DIR=$RUNNER_TEMP/gate9-readiness"
+            printf '%s\n' "INVENTORY_DIR=$RUNNER_TEMP/gate9b-inventory"
+            printf '%s\n' "GATE9_REPORT=$RUNNER_TEMP/gate9-readiness/ets-gate9-decommission-readiness.json"
+            printf '%s\n' "INVENTORY_REPORT=$RUNNER_TEMP/gate9b-inventory/ets-gate9b-source-retirement-inventory.json"
+            printf '%s\n' "RETIREMENT_RESULT=$RUNNER_TEMP/ets-gate9b-source-retirement-execution.json"
+          } >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed source
         uses: actions/checkout@v4
         with:
@@ -221,14 +228,21 @@ jobs:
       DEST_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       DEST_RESOURCE_GROUP: rg-ets-prod-eastus
       GATEWAY_APP: ets-oif5r5ydprrou-gw
-      RETIREMENT_DIR: ${{ runner.temp }}/gate9b-retirement
-      RETIREMENT_REPORT: ${{ runner.temp }}/gate9b-retirement/ets-gate9b-source-retirement-execution.json
-      ACTIVE_PROBE_REPORT: ${{ runner.temp }}/ets-gate9b-active-gateway-probe.json
-      M365_MARKER: ${{ runner.temp }}/ets-gate9b-m365-marker.json
-      PUBLIC_MARKER: ${{ runner.temp }}/ets-gate9b-public-marker.json
-      FINAL_REPORT: ${{ runner.temp }}/ets-gate9b-source-retirement-final.json
 
     steps:
+      - name: Initialize runner-local report paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            printf '%s\n' "RETIREMENT_DIR=$RUNNER_TEMP/gate9b-retirement"
+            printf '%s\n' "RETIREMENT_REPORT=$RUNNER_TEMP/gate9b-retirement/ets-gate9b-source-retirement-execution.json"
+            printf '%s\n' "ACTIVE_PROBE_REPORT=$RUNNER_TEMP/ets-gate9b-active-gateway-probe.json"
+            printf '%s\n' "M365_MARKER=$RUNNER_TEMP/ets-gate9b-m365-marker.json"
+            printf '%s\n' "PUBLIC_MARKER=$RUNNER_TEMP/ets-gate9b-public-marker.json"
+            printf '%s\n' "FINAL_REPORT=$RUNNER_TEMP/ets-gate9b-source-retirement-final.json"
+          } >> "$GITHUB_ENV"
+
       - name: Check out exact reviewed source
         uses: actions/checkout@v4
         with:
