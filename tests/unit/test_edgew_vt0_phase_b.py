@@ -3,7 +3,6 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 PREFLIGHT = (
     ROOT
@@ -62,3 +61,4 @@ def test_phase_b_preflight_requires_external_host_verifier() -> None:
     assert "import ets.verifier.cli" in text
     assert "host ETS verifier runtime is unavailable" in text
     assert "do not execute OPS-001 yet" in text
+
