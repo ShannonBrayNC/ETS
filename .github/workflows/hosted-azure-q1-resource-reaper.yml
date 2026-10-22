@@ -41,6 +41,22 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Verify protected resource groups before cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          for group in rg-ets-q1-eastus rg-ets-live-eastus2; do
+            echo "Checking protected resource group before cleanup: $group"
+            if ! exists="$(az group exists --name "$group" -o tsv)"; then
+              echo "Cannot verify protected resource group; cleanup blocked: $group" >&2
+              exit 1
+            fi
+            if [ "$exists" != "true" ]; then
+              echo "Protected resource group not confirmed present; cleanup blocked: $group" >&2
+              exit 1
+            fi
+          done
+
       - name: Identify and remove stale synthetic Q1 groups
         shell: bash
         env:
@@ -143,6 +159,7 @@ jobs:
         run: |
           set -euo pipefail
           for group in rg-ets-q1-eastus rg-ets-live-eastus2; do
+            echo "Checking protected resource group after cleanup: $group"
             exists="$(az group exists --name "$group" -o tsv)"
             if [ "$exists" != "true" ]; then
               echo "Protected group missing after reaper execution: $group" >&2
