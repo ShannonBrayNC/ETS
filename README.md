@@ -320,3 +320,11 @@ Core API roles are enforced before protected operations. Production publisher to
 ## Service readiness requirements
 
 [Product requirements and acceptance criteria](docs/requirements/service-readiness/README.md) map the 2026-10-11 coverage review to existing product baselines. They add priorities, verification evidence, dependencies and service acceptance criteria; they do not change implementation or release qualification status.
+
+## Proposed cross-game rewards
+
+The [Aetheris Guild Exchange proposal](docs/integrations/AETHERIS_GUILD_EXCHANGE.md)
+separates gameplay evidence from reward authority, with offline-first RPG
+boundaries and a proposed one-game/one-achievement/one-cosmetic pilot. The linked
+[Aetheris Crucible draft](docs/security/AETHERIS_CRUCIBLE_DRAFT.md) defines isolated
+test requirements only: it is not live testing authorization or a bounty offer.
