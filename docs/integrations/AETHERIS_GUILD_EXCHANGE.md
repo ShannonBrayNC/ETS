@@ -239,3 +239,12 @@ or a ledger. Protocol and deployment approval remain separate work.
 This proposal preserves the PC Watchtower Mystery's Publish or Seal decision
 and does not convert Aetheris into a governance dashboard. Cross-game extras
 support adventuring; they do not replace the campaign.
+
+### Companion proposals (immutable review snapshots)
+
+- [Full PC narrative design bible](https://github.com/ShannonBrayNC/EchoMedia-ContentEngine/blob/f89b1053251d2a3aaad08f99b172471066d594df/projects/aetheris/design/NARRATIVE-DESIGN-BIBLE.md).
+- [EchoMedia Academy-to-PC integration contract](https://github.com/ShannonBrayNC/EchoMedia-ContentEngine/blob/f89b1053251d2a3aaad08f99b172471066d594df/projects/aetheris/design/ACADEMY-GUILD-EXCHANGE-CONTRACT.md).
+- [Living Covenant narrative alignment](https://github.com/Lantern-Protocol/aetheris/blob/d9a11036894f66d32cdaaf52df8138b87190a320/docs/NARRATIVE_ALIGNMENT.md).
+- [Living Covenant Guild Exchange design](https://github.com/Lantern-Protocol/aetheris/blob/d9a11036894f66d32cdaaf52df8138b87190a320/docs/GUILD_EXCHANGE.md).
+
+These snapshots record coordinated proposals, not merged or released features.
