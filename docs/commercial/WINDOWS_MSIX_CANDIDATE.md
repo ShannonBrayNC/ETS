@@ -67,3 +67,32 @@ on MakeAppx success.
 
 References: [Microsoft package components](https://learn.microsoft.com/en-us/windows/msix/desktop/desktop-to-uwp-manual-conversion)
 and [MakeAppx](https://learn.microsoft.com/en-us/windows/uwp/packaging/create-app-package-with-makeappx-tool).
+
+## Self-contained reviewer handoff
+
+CI also publishes `ets-verifier-review-<source SHA>`. It contains the unsigned
+MSIX, packaging metadata, this Windows job's test results, and `candidate.json`.
+The record identifies the exact checked-out Git commit (a synthetic merge commit
+for PR runs), workflow URL, relative filenames, sizes and SHA-256 hashes. It omits
+MakeAppx working trees. Archive this artifact before CI retention expires.
+
+After downloading and extracting to a fresh directory, check it with Python 3.12
+and the script from the reviewed repository commit:
+
+```powershell
+python packaging/windows/candidate_record.py verify ./extracted-review
+```
+
+Verification rejects changed/missing/extra files, unsafe paths, symlinks and
+Windows reparse points (including junctions) before traversing their contents.
+It also rejects duplicate JSON fields, invalid metadata/file records and approval
+flags inconsistent with an unsigned engineering record.
+Assembly refuses existing output and verifies the package against its qualification
+hash. A failed assembly directory must not be used as a qualified handoff.
+
+This record is unsigned. Hash verification detects changes relative to the record;
+it cannot authenticate the record, its claimed source, or the build origin. Obtain
+it from the expected repository/run and independently review that source. It is not
+an attestation, reproducible-build proof, complete CI summary or release approval.
+Browser/other-job results and signed Windows 11 client evidence must be retained
+separately. Use the release qualification record to track those remaining gates.
