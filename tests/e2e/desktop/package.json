@@ -1,0 +1,6 @@
+{
+  "name": "ets-desktop-ui-tests",
+  "private": true,
+  "scripts": {"test": "node desktop.cjs"},
+  "devDependencies": {"playwright": "1.62.1"}
+}

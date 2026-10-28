@@ -1,0 +1,111 @@
+name: Windows verifier candidate
+
+on:
+  pull_request:
+    paths:
+      - 'packaging/windows/**'
+      - 'ets/core/**'
+      - 'ets/verifier/**'
+      - 'ets/desktop/**'
+      - 'ets/reports/**'
+      - 'ets/election/**'
+      - 'ets/version.py'
+      - 'tests/unit/test_verifier_standalone.py'
+      - 'tests/unit/test_verifier_input.py'
+      - 'tests/unit/test_verifier_strict_reports.py'
+      - 'tests/unit/test_desktop_controller.py'
+      - 'tests/e2e/desktop/**'
+      - 'tests/fixtures/verifier/**'
+      - 'pyproject.toml'
+      - '.github/workflows/windows-verifier-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Install runtime and build dependencies
+        run: python -m pip install . -r packaging/windows/requirements-build.txt "pytest>=9.0.3,<10"
+      - name: Test source verifier
+        run: python -m pytest tests/unit/test_verifier_service.py tests/unit/test_verifier_cli_golden_paths.py tests/unit/test_verifier_standalone.py tests/unit/test_verifier_input.py tests/unit/test_verifier_strict_reports.py
+      - name: Freeze standalone runtime
+        run: python -m PyInstaller --clean --noconfirm packaging/windows/verifier.spec
+      - name: Exercise relocated frozen executable
+        shell: pwsh
+        run: |
+          $env:ETS_VERIFY_EXECUTABLE = (Resolve-Path dist/ets-verify/ets-verify.exe).Path
+          python -m pytest tests/unit/test_verifier_standalone.py --junitxml=test-results/windows-verifier.xml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Record dependency inventory and file hashes
+        shell: pwsh
+        run: |
+          python -m pip freeze | Out-File test-results/build-environment.txt -Encoding utf8
+          $root = (Resolve-Path dist/ets-verify).Path
+          Get-ChildItem $root -File -Recurse | ForEach-Object {
+            [PSCustomObject]@{
+              path = [IO.Path]::GetRelativePath($root, $_.FullName)
+              sha256 = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+          } | ConvertTo-Json | Out-File test-results/runtime-sha256.json -Encoding utf8
+          "source_sha=${{ github.sha }}" | Out-File test-results/source.txt -Encoding utf8
+      - name: Test desktop controller
+        run: python -m pytest tests/unit/test_desktop_controller.py --junitxml=test-results/desktop-controller.xml
+      - name: Build desktop host
+        shell: pwsh
+        run: |
+          python -m pip install -r packaging/windows/requirements-desktop.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m PyInstaller --clean --noconfirm packaging/windows/desktop.spec
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item dist/ets-verify dist/ets-desktop/verifier -Recurse
+      - name: Launch native WebView2 smoke test
+        shell: pwsh
+        run: |
+          $result = Join-Path $PWD 'test-results/desktop-smoke.json'
+          $process = Start-Process dist/ets-desktop/ets-desktop.exe -ArgumentList '--smoke-test', '--smoke-result', $result -PassThru
+          if (-not $process.WaitForExit(90000)) { $process.Kill(); Get-Content $result -ErrorAction SilentlyContinue; throw 'Desktop smoke test timed out' }
+          if ($process.ExitCode -ne 0) { Get-Content $result -ErrorAction SilentlyContinue; throw 'Desktop smoke test failed' }
+          Get-Content $result
+      - name: Upload unsigned desktop candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: ets-desktop-windows-x64-unsigned-${{ github.sha }}
+          path: dist/ets-desktop/
+          if-no-files-found: error
+      - name: Upload unsigned engineering candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: ets-verifier-windows-x64-unsigned-${{ github.sha }}
+          path: dist/ets-verify/
+          if-no-files-found: error
+      - name: Upload qualification results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ets-verifier-windows-results-${{ github.sha }}
+          path: test-results/
+          if-no-files-found: warn
+
+  desktop-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+        working-directory: tests/e2e/desktop
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests/e2e/desktop
+      - run: npm test
+        working-directory: tests/e2e/desktop

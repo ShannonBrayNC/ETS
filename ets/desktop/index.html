@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>ETS Verifier</title>
+<style>
+:root {font-family:Segoe UI,Arial,sans-serif;color:#172b39;background:#f3f5f4;font-size:17px;color-scheme:light}
+*{box-sizing:border-box}body{margin:0}header{background:#142d3c;color:#fff;padding:26px 36px}header p{color:#c8dadf;margin:8px 0 0}.brand{font-weight:700;letter-spacing:.12em;font-size:13px}h1{font-size:29px;margin:12px 0 0}main{max-width:1100px;margin:auto;padding:28px 36px}h2{font-size:22px;margin:0 0 16px}p{line-height:1.55}.layout{display:grid;grid-template-columns:minmax(250px,1fr) minmax(300px,1.3fr);gap:24px}.panel{background:white;border:1px solid #cbd6d9;border-radius:12px;padding:24px}.step{font-size:12px;font-weight:700;color:#446272;letter-spacing:.1em;margin:0 0 12px}label{display:block;font-weight:600;margin:20px 0 8px}button,input{font:inherit}button{min-height:48px;border:1px solid #9aafb8;background:#fff;color:#142d3c;border-radius:6px;padding:10px 16px;cursor:pointer;font-weight:600}button:hover:not(:disabled){background:#edf3f4}button:disabled{opacity:.55;cursor:default}button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #197aa3;outline-offset:3px}.primary{background:#086a62;color:#fff;border-color:#086a62;width:100%;margin-top:24px}.primary:hover:not(:disabled){background:#07544f}input{width:100%;min-height:46px;border:1px solid #9aafb8;border-radius:6px;padding:10px}.filename{display:block;margin:8px 0 16px;overflow-wrap:anywhere;color:#486270;font-size:14px}.hint{font-size:14px;color:#486270}.status{padding:12px;border-radius:6px;font-weight:700;background:#edf3f4}.status[data-state=valid]{background:#e0f2e9;color:#125539}.status[data-state=invalid],.status[data-state=error]{background:#fce6e3;color:#8b2720}.status[data-state=indeterminate],.status[data-state=unsupported]{background:#fff0cf;color:#6b4b00}#reason{overflow-wrap:anywhere}ul{padding-left:22px}li{line-height:1.5;margin-bottom:10px;overflow-wrap:anywhere}.exports{display:flex;flex-wrap:wrap;gap:8px}details{margin-top:20px}summary{cursor:pointer;min-height:36px;font-weight:600}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;background:#f3f5f4;padding:14px;border-radius:6px;max-height:320px;overflow:auto}.limits{margin-top:24px;border-left:4px solid #879da6;padding:0 18px;color:#395461;font-size:14px}#message{min-height:28px;overflow-wrap:anywhere}#result-heading:focus{outline:3px solid #197aa3;outline-offset:3px}@media(max-width:800px){.layout{grid-template-columns:1fr}main{padding:20px}header{padding:22px}.panel{padding:20px}}
+</style>
+</head>
+<body>
+<header><div class="brand">EVIDENCE TRANSPARENCY SYSTEM</div><h1>ETS Verifier</h1><p>Inspect evidence. Understand trust. Keep verification local.</p></header>
+<main>
+<div class="layout">
+<section class="panel" aria-labelledby="inputs-heading">
+<p class="step">01 / SELECT &amp; VERIFY</p><h2 id="inputs-heading">Your evidence</h2>
+<button id="bundle" type="button" disabled>Choose evidence bundle…</button><span id="bundle-name" class="filename">No bundle selected</span>
+<button id="trust" type="button" disabled>Choose trusted keys…</button><span id="trust-name" class="filename">No trust store selected</span>
+<p class="hint">Use trusted keys obtained independently of the evidence bundle. Missing trust is reported as indeterminate.</p>
+<label for="log-id">Expected log ID <span class="hint">(optional)</span></label><input id="log-id" maxlength="512" autocomplete="off" spellcheck="false" placeholder="Require a particular log identity">
+<button id="verify" class="primary" type="button" disabled>Verify offline</button>
+<p class="hint">No account, collector, or cloud connection required. Unsigned development acceptance is disabled.</p>
+</section>
+<section class="panel" aria-labelledby="result-heading">
+<p class="step">02 / INSPECT &amp; EXPORT</p><h2 id="result-heading" tabindex="-1">Verification result</h2>
+<div id="status" class="status" role="status" aria-live="polite">Ready when you are</div>
+<p id="reason">Choose a bundle to inspect its integrity and checkpoint signature.</p>
+<ul id="checks" aria-label="Verification checks"></ul>
+<p id="standing" class="hint"></p>
+<div class="exports" aria-label="Export the displayed result"><button data-format="json" disabled>Export JSON</button><button data-format="markdown" disabled>Export Markdown</button><button data-format="html" disabled>Export HTML</button></div>
+<p id="message" role="status" aria-live="polite"></p>
+<details><summary>Full verification outcome</summary><pre id="raw">No result yet.</pre></details>
+</section>
+</div>
+<aside class="limits"><strong>What a result means</strong><p>Offline verification checks supplied material at a checkpoint. It cannot establish the current log state or current revocation information, real-world truth, completeness, or legal sufficiency. Exports are unsigned observations of the displayed result and its trust policy.</p></aside>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+let connected=false, selected=false, busy=false, hasResult=false;
+const labels={valid:'Verified at checkpoint',invalid:'Verification failed',indeterminate:'Indeterminate — trust material missing',unsupported:'Unsupported format',malformed:'Malformed input',resource_limit:'Input limit exceeded',error:'Verification unavailable'};
+function controls(){
+  $('bundle').disabled=$('trust').disabled=!connected||busy;
+  $('verify').disabled=!connected||busy||!selected;
+  $('log-id').disabled=busy;
+  document.querySelectorAll('[data-format]').forEach(b=>b.disabled=busy||!hasResult);
+}
+function clearResult(){
+  hasResult=false; $('checks').replaceChildren(); $('raw').textContent='No result yet.';
+  $('status').textContent='Ready to verify'; $('status').dataset.state='';
+  $('reason').textContent='Run verification to inspect the selected material.';
+  $('standing').textContent=''; $('message').textContent=''; controls();
+}
+async function action(fn){
+  if(busy)return; busy=true; controls(); $('message').textContent='';
+  try{await fn();}catch(e){$('message').textContent='The desktop connection failed. Retry or restart the application.';}
+  finally{busy=false;controls();}
+}
+for(const kind of ['bundle','trust'])$(kind).addEventListener('click',()=>action(async()=>{
+  const result=await window.pywebview.api[kind==='bundle'?'select_bundle':'select_trust']();
+  if(result.cancelled)return;
+  if(result.error){$('message').textContent=result.error;return;}
+  if(kind==='bundle')selected=true;
+  $(kind+'-name').textContent=result.name; clearResult();
+}));
+$('log-id').addEventListener('input',clearResult);
+$('verify').addEventListener('click',()=>action(async()=>{
+  clearResult(); $('status').textContent='Verifying…';
+  const result=await window.pywebview.api.verify($('log-id').value);
+  if(result.error){$('status').textContent=labels.error;$('status').dataset.state='error';$('reason').textContent=result.error;return;}
+  const outcome=result.outcome; hasResult=true;
+  $('status').textContent=labels[outcome.status]||'Unknown result'; $('status').dataset.state=outcome.status;
+  $('reason').textContent=outcome.reason||'';
+  for(const check of outcome.checks||[]){const item=document.createElement('li');item.textContent=(check.passed?'PASS: ':'FAIL: ')+check.reason;$('checks').appendChild(item);}
+  $('standing').textContent=outcome.standing_status==='checkpoint_only'?'Checkpoint only • current log continuity was not verified.':'';
+  $('raw').textContent=JSON.stringify(outcome,null,2); $('result-heading').focus();
+}));
+document.querySelectorAll('[data-format]').forEach(button=>button.addEventListener('click',()=>action(async()=>{
+  const result=await window.pywebview.api.export_report(button.dataset.format);
+  $('message').textContent=result.cancelled?'Export cancelled.':result.error||('Saved '+result.saved);
+})));
+window.addEventListener('pywebviewready',()=>{connected=true;controls();});
+</script>
+</body>
+</html>

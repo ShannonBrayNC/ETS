@@ -31,6 +31,8 @@ tools/workspace/
 .mypy_cache/
 .ruff_cache/
 dist/
+/build/
+/test-results/
 **/dist/
 node_modules/
 **/node_modules/

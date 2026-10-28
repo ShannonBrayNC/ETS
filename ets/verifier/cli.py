@@ -24,6 +24,7 @@ except ImportError:  # pragma: no cover - defensive console-script fallback
 from ets.core import EvidenceProofBundle
 from ets.election import ElectionInclusionProofBundle, verify_election_inclusion_bundle
 from ets.reports import CertificateFormat, create_certificate
+from ets.reports.strict import render_offline_report, write_new_report
 from ets.verifier import (
     compare_tree_heads,
     compute_event_hash,
@@ -32,6 +33,7 @@ from ets.verifier import (
     verify_event_hash,
     verify_inclusion,
 )
+from ets.verifier.input import InputLimitError, read_json
 from ets.verifier.service import (
     TreeHeadTrustStore,
     VerificationTransportError,
@@ -60,12 +62,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "bundle":
             return _bundle(args.path)
         if args.command == "offline":
-            return _offline(
+            outcome, code = _offline(
                 args.path,
                 args.trust_store,
                 args.expected_log_id,
                 args.allow_unsigned,
             )
+            return _finish(args, outcome, code)
         if args.command == "online":
             return _online(
                 args.base_url,
@@ -86,6 +89,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _tree_head(args.previous, args.latest)
         if args.command == "election-proof":
             return _election_proof(args.path)
+    except InputLimitError:
+        return _finish(
+            args,
+            {
+                "valid": False,
+                "status": "resource_limit",
+                "reason_code": "input_limit",
+                "reason": "input exceeds verifier limits",
+            },
+            2,
+        )
     except (
         OSError,
         json.JSONDecodeError,
@@ -93,11 +107,48 @@ def main(argv: Sequence[str] | None = None) -> int:
         ValueError,
         VerificationTransportError,
     ) as exc:
-        print(json.dumps({"valid": False, "reason": str(exc)}, sort_keys=True))
-        return 2
+        reason = "invalid artifact schema" if isinstance(exc, ValidationError) else str(exc)
+        return _finish(
+            args,
+            {
+                "valid": False,
+                "status": "malformed",
+                "reason_code": "input_or_configuration_error",
+                "reason": reason,
+            },
+            2,
+        )
 
     parser.error("unknown command")
     return 2
+
+
+def _finish(args: argparse.Namespace, outcome: dict[str, Any], code: int) -> int:
+    if args.command == "offline" and args.report is not None:
+        content = render_offline_report(
+            outcome,
+            require_signature=not args.allow_unsigned,
+            expected_log_id=args.expected_log_id,
+            output_format=args.report_format,
+        )
+        try:
+            write_new_report(args.report, content)
+        except OSError:
+            print(
+                json.dumps(
+                    {
+                        "valid": False,
+                        "status": "error",
+                        "reason_code": "report_write_failed",
+                        "reason": "report could not be created; choose a new writable output path",
+                        "verification_outcome": outcome,
+                    },
+                    sort_keys=True,
+                )
+            )
+            return 2
+    print(json.dumps(outcome, sort_keys=True))
+    return code
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -130,6 +181,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     offline.add_argument("path", type=Path, help="path to an EvidenceProofBundle JSON file")
     _add_runtime_policy_arguments(offline)
+    offline.add_argument("--report", type=Path, help="create a new strict offline report file")
+    offline.add_argument("--report-format", choices=["json", "markdown", "html"], default="json")
 
     online = subparsers.add_parser(
         "online",
@@ -236,19 +289,56 @@ def _offline(
     trust_store_path: Path | None,
     expected_log_id: str | None,
     allow_unsigned: bool,
-) -> int:
+) -> tuple[dict[str, Any], int]:
     payload = _read_json_limited(path, MAX_OFFLINE_BUNDLE_BYTES)
-    trust_store = _load_trust_store(trust_store_path, allow_unsigned)
+    bundle = EvidenceProofBundle.model_validate_json(json.dumps(payload))
+    unsupported = (
+        bundle.schema_version != "ets.proof_bundle.v1"
+        or bundle.event.schema_version != "ets.event.v1"
+        or bundle.inclusion_proof.schema_version != "ets.inclusion_proof.v1"
+        or bundle.tree_head.signature_alg not in {None, "ed25519", "ps256"}
+    )
+    if unsupported:
+        return {
+            "valid": False,
+            "status": "unsupported",
+            "reason_code": "unsupported_format_or_algorithm",
+            "reason": "unsupported schema version or signature algorithm",
+        }, 2
+    trust_store = (
+        _load_trust_store(trust_store_path, allow_unsigned)
+        if trust_store_path is not None
+        else TreeHeadTrustStore()
+    )
     result = verify_offline_bundle(
-        payload,
+        bundle,
         trust_store=trust_store,
         policy=VerifierPolicy(
             require_tree_head_signature=not allow_unsigned,
             expected_log_id=expected_log_id,
         ),
     )
-    print(json.dumps(result.model_dump(mode="json"), sort_keys=True))
-    return 0 if result.valid else 1
+    output = result.model_dump(mode="json")
+    non_signature_failure = any(
+        not check.passed and check.code != "tree_head_signature" for check in result.checks
+    )
+    missing_material = (
+        bundle.tree_head.signature is None
+        or bundle.tree_head.signature_alg is None
+        or bundle.tree_head.public_key_id is None
+        or trust_store.get(bundle.tree_head.public_key_id) is None
+    )
+    if result.valid:
+        status, reason_code = "valid", "verification_passed"
+    elif not non_signature_failure and missing_material:
+        status, reason_code = "indeterminate", "missing_trust_material"
+    else:
+        status, reason_code = "invalid", "verification_failed"
+    output.update(status=status, reason_code=reason_code)
+    # Preserve 0/1/2 automation semantics. JSON status distinguishes the failure classes.
+    if status == "indeterminate" and trust_store_path is None:
+        return output, 2
+    return output, 0 if result.valid else 1
 
 
 def _online(
@@ -288,9 +378,9 @@ def _load_trust_store(path: Path | None, allow_unsigned: bool) -> TreeHeadTrustS
         if allow_unsigned:
             return TreeHeadTrustStore()
         raise ValueError("--trust-store is required unless --allow-unsigned is explicitly set")
-    if path.stat().st_size > MAX_TRUST_STORE_BYTES:
-        raise ValueError("trust store exceeds 1 MiB")
-    return TreeHeadTrustStore.model_validate_json(path.read_text(encoding="utf-8"))
+    return TreeHeadTrustStore.model_validate_json(
+        json.dumps(read_json(path, MAX_TRUST_STORE_BYTES))
+    )
 
 
 def _verification_headers(*, tenant: str | None, workspace: str | None) -> dict[str, str]:
@@ -339,13 +429,11 @@ def _election_proof(path: Path) -> int:
 
 
 def _read_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
+    return read_json(path)
 
 
 def _read_json_limited(path: Path, max_bytes: int) -> Any:
-    if path.stat().st_size > max_bytes:
-        raise ValueError(f"JSON input exceeds {max_bytes} bytes")
-    return _read_json(path)
+    return read_json(path, max_bytes)
 
 
 if __name__ == "__main__":  # pragma: no cover
