@@ -9,6 +9,10 @@ on:
       - "sdk/typescript/**"
       - "conformance/sdk/**"
       - "docs/sdk/**"
+      - "examples/sdk/**"
+      - "tests/unit/test_sdk_offline_example.py"
+      - "tests/unit/test_sdk_test_kit.py"
+      - "scripts/build_sdk_test_kit.py"
       - "scripts/*sdk_release*"
       - "pyproject.toml"
       - ".github/workflows/sdk-release-candidate.yml"
@@ -23,6 +27,10 @@ on:
       - "sdk/typescript/**"
       - "conformance/sdk/**"
       - "docs/sdk/**"
+      - "examples/sdk/**"
+      - "tests/unit/test_sdk_offline_example.py"
+      - "tests/unit/test_sdk_test_kit.py"
+      - "scripts/build_sdk_test_kit.py"
       - "scripts/*sdk_release*"
       - "pyproject.toml"
       - ".github/workflows/sdk-release-candidate.yml"
@@ -86,6 +94,37 @@ jobs:
           mkdir -p ../../artifacts/typescript
           npm pack --pack-destination ../../artifacts/typescript
 
+      - name: Exercise installed SDK packages outside the checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          consumer="$RUNNER_TEMP/ets-sdk-consumers"
+          mkdir "$consumer"
+          python -m venv "$consumer/python-env"
+          "$consumer/python-env/bin/python" -m pip install "$GITHUB_WORKSPACE"/artifacts/python/*.whl
+          cp -R examples/sdk/python "$consumer/python-example"
+          cp -R examples/sdk/dotnet "$consumer/dotnet-example"
+          cp -R examples/sdk/typescript "$consumer/typescript-example"
+          cd "$consumer"
+          "$consumer/python-env/bin/python" -I -c 'from ets.sdk import ETSClient; from ets.version import __version__; print(__version__)'
+          "$consumer/python-env/bin/python" -I "$consumer/python-example/offline_roundtrip.py" --deterministic-smoke --output "$consumer/python-result"
+          dotnet restore "$consumer/dotnet-example/Quickstart.csproj" --source "$GITHUB_WORKSPACE/artifacts/dotnet" --packages "$consumer/nuget-cache"
+          dotnet run --no-restore --project "$consumer/dotnet-example/Quickstart.csproj" -- --smoke "$GITHUB_WORKSPACE/tests/fixtures/verifier/native-signed.json" "$consumer/dotnet-bundle.json"
+          cd "$consumer/typescript-example"
+          npm install --ignore-scripts --no-save --package-lock=false "$GITHUB_WORKSPACE"/artifacts/typescript/*.tgz
+          node --input-type=module -e 'import { EtsClient } from "@lanternprotocol/ets-sdk"; if (typeof EtsClient !== "function") process.exit(1)'
+          "$GITHUB_WORKSPACE/sdk/typescript/node_modules/.bin/tsc" --noEmit --strict --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022,DOM typecheck.mts
+          node quickstart.mjs --smoke "$GITHUB_WORKSPACE/tests/fixtures/verifier/native-signed.json" "$consumer/typescript-bundle.json"
+          cd "$consumer"
+          for language in dotnet typescript; do
+            "$consumer/python-env/bin/python" -I -m ets.verifier.cli offline "$consumer/$language-bundle.json" --trust-store "$GITHUB_WORKSPACE/tests/fixtures/verifier/native-trust.json" --expected-log-id ets-cli-golden-fixture --report "$consumer/$language-report.json"
+          done
+
+      - name: Exercise PowerShell REST and strict CLI integration
+        shell: pwsh
+        run: |
+          ./examples/sdk/powershell/test-quickstart.ps1 -Fixture tests/fixtures/verifier/native-signed.json -TrustStore tests/fixtures/verifier/native-trust.json -OutputDirectory "$env:RUNNER_TEMP/ets-powershell-smoke" -PythonExecutable "$env:RUNNER_TEMP/ets-sdk-consumers/python-env/bin/python"
+
       - name: Generate SPDX SBOM
         uses: anchore/sbom-action@v0.16.0
         with:
@@ -101,6 +140,18 @@ jobs:
         uses: actions/attest@v4
         with:
           subject-path: artifacts/**/*
+
+      - name: Assemble and verify documented SDK test kit
+        run: |
+          python scripts/build_sdk_test_kit.py --artifacts artifacts --output sdk-test-kit --commit-sha "$GITHUB_SHA"
+          python scripts/build_sdk_test_kit.py --verify sdk-test-kit --commit-sha "$GITHUB_SHA"
+
+      - name: Upload SDK test kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-test-kit
+          path: sdk-test-kit
+          if-no-files-found: error
 
       - name: Upload SDK release candidate
         uses: actions/upload-artifact@v4

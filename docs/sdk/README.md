@@ -1,6 +1,7 @@
 # ETS Developer SDKs
 
-Status: SDK-1 contract freeze  
+Status: SDK-1 contract frozen; SDK-2/SDK-3 clients implemented; SDK-4 release preparation
+
 Roadmap: #274
 
 ETS exposes three deliberately separate developer surfaces.
@@ -15,16 +16,32 @@ These surfaces must not be collapsed into one ambiguous "SDK." A connector is an
 observer adapter, an application client is a protocol consumer, and the verifier
 owns independent validation semantics.
 
+## Practical developer guides and test kit
+
+- [Task-oriented API and integration reference](TASK_GUIDE.md)
+- [Python local/sync/async guide](PYTHON_CLIENT.md)
+- [.NET guide and installed-package quickstart](DOTNET_CLIENT.md)
+- [TypeScript guide and installed-package quickstart](TYPESCRIPT_CLIENT.md)
+- [PowerShell 7 REST/CLI integration examples](POWERSHELL_INTEGRATION.md)
+- [Ten runnable synthetic industry recipes](INDUSTRY_COOKBOOK.md)
+- [Downloadable test-kit procedure and acceptance checklist](TEST_KIT.md)
+
+The test kit is for SDK and existing Desktop Verifier testing. It is not a
+production deployment or implementation of the proposed Developer authoring UI.
+
 ## SDK-1 deliverables
 
 SDK-1 freezes the first machine-readable Application SDK compatibility contract,
 the local event-commit receipt, the transport-neutral error taxonomy, and the
 first cross-language conformance vectors.
 
-The existing `ets.sdk.local` facade remains supported. Remote HTTP clients,
-async clients, OpenTelemetry helpers, and generated .NET/TypeScript transports
-belong to SDK-2/SDK-3 and must consume these frozen contracts rather than fork
-them.
+The existing `ets.sdk.local` facade remains supported. Python synchronous and
+asynchronous remote clients and .NET/TypeScript Application clients are now
+implemented against these contracts; see [Python](PYTHON_CLIENT.md) and
+[cross-language scope](CROSS_LANGUAGE.md). This does not claim a strict offline
+verifier implementation in each language, arbitrary-payload hashing equivalence,
+or completed public registry publication. The [release process](RELEASE.md)
+remains a separate gate. OpenTelemetry helpers are not established by this status.
 
 ## Nonclaims
 
