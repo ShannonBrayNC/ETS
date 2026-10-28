@@ -15,6 +15,7 @@ on:
       - 'tests/unit/test_verifier_strict_reports.py'
       - 'tests/unit/test_desktop_controller.py'
       - 'tests/unit/test_msix_layout.py'
+      - 'tests/unit/test_dependency_evidence.py'
       - 'tests/e2e/desktop/**'
       - 'tests/fixtures/verifier/**'
       - 'pyproject.toml'
@@ -76,6 +77,13 @@ jobs:
           if (-not $process.WaitForExit(90000)) { $process.Kill(); Get-Content $result -ErrorAction SilentlyContinue; throw 'Desktop smoke test timed out' }
           if ($process.ExitCode -ne 0) { Get-Content $result -ErrorAction SilentlyContinue; throw 'Desktop smoke test failed' }
           Get-Content $result
+      - name: Collect dependency license evidence
+        shell: pwsh
+        run: |
+          python -m pytest tests/unit/test_dependency_evidence.py --junitxml=test-results/dependency-evidence.xml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python packaging/windows/collect_dependency_evidence.py --output dist/ets-desktop/THIRD_PARTY_EVIDENCE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload unsigned desktop candidate
         uses: actions/upload-artifact@v4
         with:
