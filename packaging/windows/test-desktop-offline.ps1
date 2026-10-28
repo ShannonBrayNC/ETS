@@ -82,7 +82,12 @@ try {
     if ($smoke.status -ne 0) { throw 'Smoke result did not report success.' }
     $passed = $true
 } finally {
-    if ($process -and -not $process.HasExited) { $process.Kill($true); $process.WaitForExit() }
+    try {
+        if ($process -and -not $process.HasExited) { $process.Kill($true); $process.WaitForExit() }
+    } catch {
+        $passed = $false
+        Write-Warning "Process cleanup failed: $_"
+    }
     foreach ($name in $rules) { Remove-NetFirewallRule -Name $name -ErrorAction SilentlyContinue }
     $remaining = @(Get-NetFirewallRule -Group $group -ErrorAction SilentlyContinue)
     [ordered]@{
