@@ -16,6 +16,13 @@ exploration. It is not a production trust service yet: storage is in-memory by
 default, local tree heads are unsigned, authentication is header-scoped only,
 and raw evidence bytes are outside the ETS storage boundary.
 
+## Go-to-market plan
+
+The [ETS go-to-market plan](docs/commercial/GO_TO_MARKET_PLAN.md) records the
+agreed distribution strategy: a free Microsoft Store verifier, paid hosted
+services, and separately deployed enterprise Edge/fleet offerings. It defines
+rollout and acceptance gates without changing current release readiness.
+
 ## Components
 
 - `ets/core` - canonical hashing, event contracts, append-only log, Merkle tree,
