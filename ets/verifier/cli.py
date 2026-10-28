@@ -24,6 +24,7 @@ except ImportError:  # pragma: no cover - defensive console-script fallback
 from ets.core import EvidenceProofBundle
 from ets.election import ElectionInclusionProofBundle, verify_election_inclusion_bundle
 from ets.reports import CertificateFormat, create_certificate
+from ets.reports.strict import render_offline_report, write_new_report
 from ets.verifier import (
     compare_tree_heads,
     compute_event_hash,
@@ -61,12 +62,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "bundle":
             return _bundle(args.path)
         if args.command == "offline":
-            return _offline(
+            outcome, code = _offline(
                 args.path,
                 args.trust_store,
                 args.expected_log_id,
                 args.allow_unsigned,
             )
+            return _finish(args, outcome, code)
         if args.command == "online":
             return _online(
                 args.base_url,
@@ -88,17 +90,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "election-proof":
             return _election_proof(args.path)
     except InputLimitError:
-        print(
-            json.dumps(
-                {
-                    "valid": False,
-                    "status": "resource_limit",
-                    "reason_code": "input_limit",
-                    "reason": "input exceeds verifier limits",
-                }
-            )
+        return _finish(
+            args,
+            {
+                "valid": False,
+                "status": "resource_limit",
+                "reason_code": "input_limit",
+                "reason": "input exceeds verifier limits",
+            },
+            2,
         )
-        return 2
     except (
         OSError,
         json.JSONDecodeError,
@@ -107,21 +108,47 @@ def main(argv: Sequence[str] | None = None) -> int:
         VerificationTransportError,
     ) as exc:
         reason = "invalid artifact schema" if isinstance(exc, ValidationError) else str(exc)
-        print(
-            json.dumps(
-                {
-                    "valid": False,
-                    "status": "malformed",
-                    "reason_code": "input_or_configuration_error",
-                    "reason": reason,
-                },
-                sort_keys=True,
-            )
+        return _finish(
+            args,
+            {
+                "valid": False,
+                "status": "malformed",
+                "reason_code": "input_or_configuration_error",
+                "reason": reason,
+            },
+            2,
         )
-        return 2
 
     parser.error("unknown command")
     return 2
+
+
+def _finish(args: argparse.Namespace, outcome: dict[str, Any], code: int) -> int:
+    if args.command == "offline" and args.report is not None:
+        content = render_offline_report(
+            outcome,
+            require_signature=not args.allow_unsigned,
+            expected_log_id=args.expected_log_id,
+            output_format=args.report_format,
+        )
+        try:
+            write_new_report(args.report, content)
+        except OSError:
+            print(
+                json.dumps(
+                    {
+                        "valid": False,
+                        "status": "error",
+                        "reason_code": "report_write_failed",
+                        "reason": "report could not be created; choose a new writable output path",
+                        "verification_outcome": outcome,
+                    },
+                    sort_keys=True,
+                )
+            )
+            return 2
+    print(json.dumps(outcome, sort_keys=True))
+    return code
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -154,6 +181,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     offline.add_argument("path", type=Path, help="path to an EvidenceProofBundle JSON file")
     _add_runtime_policy_arguments(offline)
+    offline.add_argument("--report", type=Path, help="create a new strict offline report file")
+    offline.add_argument("--report-format", choices=["json", "markdown", "html"], default="json")
 
     online = subparsers.add_parser(
         "online",
@@ -260,7 +289,7 @@ def _offline(
     trust_store_path: Path | None,
     expected_log_id: str | None,
     allow_unsigned: bool,
-) -> int:
+) -> tuple[dict[str, Any], int]:
     payload = _read_json_limited(path, MAX_OFFLINE_BUNDLE_BYTES)
     bundle = EvidenceProofBundle.model_validate_json(json.dumps(payload))
     unsupported = (
@@ -270,17 +299,12 @@ def _offline(
         or bundle.tree_head.signature_alg not in {None, "ed25519", "ps256"}
     )
     if unsupported:
-        print(
-            json.dumps(
-                {
-                    "valid": False,
-                    "status": "unsupported",
-                    "reason_code": "unsupported_format_or_algorithm",
-                    "reason": "unsupported schema version or signature algorithm",
-                }
-            )
-        )
-        return 2
+        return {
+            "valid": False,
+            "status": "unsupported",
+            "reason_code": "unsupported_format_or_algorithm",
+            "reason": "unsupported schema version or signature algorithm",
+        }, 2
     trust_store = (
         _load_trust_store(trust_store_path, allow_unsigned)
         if trust_store_path is not None
@@ -311,11 +335,10 @@ def _offline(
     else:
         status, reason_code = "invalid", "verification_failed"
     output.update(status=status, reason_code=reason_code)
-    print(json.dumps(output, sort_keys=True))
     # Preserve 0/1/2 automation semantics. JSON status distinguishes the failure classes.
     if status == "indeterminate" and trust_store_path is None:
-        return 2
-    return 0 if result.valid else 1
+        return output, 2
+    return output, 0 if result.valid else 1
 
 
 def _online(

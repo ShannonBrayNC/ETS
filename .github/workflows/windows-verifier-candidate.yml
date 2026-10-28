@@ -11,6 +11,7 @@ on:
       - 'ets/version.py'
       - 'tests/unit/test_verifier_standalone.py'
       - 'tests/unit/test_verifier_input.py'
+      - 'tests/unit/test_verifier_strict_reports.py'
       - 'tests/fixtures/verifier/**'
       - 'pyproject.toml'
       - '.github/workflows/windows-verifier-candidate.yml'
@@ -32,7 +33,7 @@ jobs:
       - name: Install runtime and build dependencies
         run: python -m pip install . -r packaging/windows/requirements-build.txt "pytest>=9.0.3,<10"
       - name: Test source verifier
-        run: python -m pytest tests/unit/test_verifier_service.py tests/unit/test_verifier_cli_golden_paths.py tests/unit/test_verifier_standalone.py tests/unit/test_verifier_input.py
+        run: python -m pytest tests/unit/test_verifier_service.py tests/unit/test_verifier_cli_golden_paths.py tests/unit/test_verifier_standalone.py tests/unit/test_verifier_input.py tests/unit/test_verifier_strict_reports.py
       - name: Freeze standalone runtime
         run: python -m PyInstaller --clean --noconfirm packaging/windows/verifier.spec
       - name: Exercise relocated frozen executable

@@ -118,6 +118,42 @@ transport failure.
 
 ## Local input limits and offline outcomes
 
+### Strict offline report export
+
+```powershell
+ets-verify offline .\bundle.json --trust-store .\ets-trust.json `
+  --expected-log-id ets-production --report .\verification.json
+ets-verify offline .\bundle.json --trust-store .\ets-trust.json `
+  --report .\verification.html --report-format html
+```
+
+`--report-format` accepts `json` (default), `markdown`, or `html`; it applies when
+`--report` is supplied. The `ets.offline_report.v1` envelope records the verifier
+version, signature/log policy, development unsigned-policy flag, and limitations.
+Its `outcome` exactly matches the freshly computed JSON printed to stdout, including
+checks, signature status, verification time, and checkpoint-only standing when
+available. The bundle's embedded `verification_result` is never used as the report's
+conclusion. Unsupported, malformed, resource-limited, invalid, and indeterminate
+results can also be exported; missing checks are not presented as passes.
+
+Report generation does not turn a failed verification into a successful exit.
+Reports are unsigned observations relative to supplied trust and policy, not
+portable signed proofs, evidence bundles, or assertions of current trust.
+HTML escapes all dynamic content and blocks external resources; Markdown includes
+the complete report in a fence that artifact strings cannot close.
+
+Choose a new output filename in an existing writable directory. Publication uses
+a temporary file and a same-directory hard link, refusing existing paths and
+cleaning the temporary file on failure. Filesystems without hard-link support
+fail closed. A write failure returns exit 2 with `status=error`,
+`reason_code=report_write_failed`, and the original result in `verification_outcome`.
+It does not overwrite evidence, trust inputs, or earlier reports.
+
+The legacy `certificate` command remains unchanged for compatibility; use the
+strict `offline --report` path for trust-bearing outcomes.
+
+### Input limits and result status
+
 Local JSON files are read in UTF-8 with a bounded read (limit plus one byte),
 not an unbounded read following a size check. Limits are 4 MiB per artifact,
 1 MiB per trust store, 64 nested containers, and 100,000 parsed nodes (including
