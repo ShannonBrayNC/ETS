@@ -45,7 +45,7 @@ def main() -> int:
 
             ctypes.windll.user32.MessageBoxW(
                 0,
-                "ETS could not start. Check that Microsoft Edge WebView2 Runtime is installed.",
+                _startup_error_message(exc),
                 "ETS Verifier",
                 0x10,
             )
@@ -55,6 +55,17 @@ def main() -> int:
         )
     return status
 
+
+
+def _startup_error_message(exc: Exception) -> str:
+    detail = f"{type(exc).__name__}: {exc}"
+    guidance = (
+        "Startup can fail because of missing runtime components or blocked downloaded files. "
+        "Confirm the complete application archive was extracted and that Microsoft Edge "
+        "WebView2 Runtime is installed. If Windows blocked files, review the trusted "
+        "download's Properties before unblocking it."
+    )
+    return f"ETS could not start.\n\n{detail[:4000]}\n\n{guidance}"
 
 def _launch(smoke_test: bool, scenario: NativeSmoke | None = None) -> int:
     if sys.platform != "win32":
