@@ -40,8 +40,14 @@ def run(command, tmp_path, *args):
     else:
         env["PYTHONPATH"] = str(ROOT)
     result = subprocess.run(
-        [*command, *args], cwd=tmp_path, env=env, capture_output=True,
-        text=True, encoding="utf-8", timeout=30, check=False,
+        [*command, *args],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+        check=False,
     )
     assert not result.stderr, result.stderr
     return result
@@ -56,12 +62,19 @@ def artifacts(tmp_path):
     )
     bundle = bundle.model_copy(update={"tree_head": signer.sign(bundle.tree_head)})
     payload = bundle.model_dump(mode="json")
-    trust = {"schema_version": "ets.verifier_trust.v1", "keys": [{
-        "key_id": "standalone-test-key", "signature_alg": "ed25519",
-        "public_key_hex": Ed25519PrivateKey.from_private_bytes(
-            bytes.fromhex("11" * 32)
-        ).public_key().public_bytes_raw().hex(),
-    }]}
+    trust = {
+        "schema_version": "ets.verifier_trust.v1",
+        "keys": [
+            {
+                "key_id": "standalone-test-key",
+                "signature_alg": "ed25519",
+                "public_key_hex": Ed25519PrivateKey.from_private_bytes(bytes.fromhex("11" * 32))
+                .public_key()
+                .public_bytes_raw()
+                .hex(),
+            }
+        ],
+    }
     bundle_path = tmp_path / "signed bundle.json"
     trust_path = tmp_path / "trusted keys.json"
     bundle_path.write_text(json.dumps(payload), encoding="utf-8")
@@ -81,6 +94,7 @@ def test_standalone_signed_offline_bundle(command, tmp_path, artifacts):
     assert result.returncode == 0, result.stdout
     payload = json.loads(result.stdout)
     assert payload["valid"] is True
+    assert payload["status"] == "valid"
     assert payload["signature_verified"] is True
     assert payload["standing_status"] == "checkpoint_only"
     assert payload["continuity_verified"] is False
@@ -93,6 +107,7 @@ def test_standalone_tampered_bundle(command, tmp_path, artifacts):
     result = run(command, tmp_path, "offline", str(bundle), "--trust-store", str(trust))
     assert result.returncode == 1
     assert json.loads(result.stdout)["valid"] is False
+    assert json.loads(result.stdout)["status"] == "invalid"
 
 
 def test_standalone_missing_trust_fails_closed(command, tmp_path, artifacts):
@@ -100,6 +115,7 @@ def test_standalone_missing_trust_fails_closed(command, tmp_path, artifacts):
     result = run(command, tmp_path, "offline", str(bundle))
     assert result.returncode == 2
     assert json.loads(result.stdout)["valid"] is False
+    assert json.loads(result.stdout)["status"] == "indeterminate"
 
 
 def test_standalone_untrusted_key_fails_closed(command, tmp_path, artifacts):
@@ -108,6 +124,7 @@ def test_standalone_untrusted_key_fails_closed(command, tmp_path, artifacts):
     result = run(command, tmp_path, "offline", str(bundle), "--trust-store", str(trust))
     assert result.returncode == 1
     assert json.loads(result.stdout)["signature_verified"] is False
+    assert json.loads(result.stdout)["status"] == "indeterminate"
 
 
 def test_standalone_malformed_input(command, tmp_path):
@@ -116,6 +133,61 @@ def test_standalone_malformed_input(command, tmp_path):
     result = run(command, tmp_path, "offline", str(path))
     assert result.returncode == 2
     assert json.loads(result.stdout)["valid"] is False
+    assert json.loads(result.stdout)["status"] == "malformed"
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("schema_version", "ets.proof_bundle.v999"),
+        ("signature_alg", "future-signature"),
+    ],
+)
+def test_standalone_unsupported_format(command, tmp_path, artifacts, field, value):
+    bundle, trust, payload = artifacts
+    target = payload["tree_head"] if field == "signature_alg" else payload
+    target[field] = value
+    bundle.write_text(json.dumps(payload), encoding="utf-8")
+    result = run(command, tmp_path, "offline", str(bundle), "--trust-store", str(trust))
+    assert result.returncode == 2
+    assert json.loads(result.stdout)["status"] == "unsupported"
+    assert json.loads(result.stdout)["valid"] is False
+
+
+def test_standalone_tampering_takes_precedence_over_missing_trust(command, tmp_path, artifacts):
+    bundle, _, payload = artifacts
+    payload["event"]["metadata"]["tampered"] = True
+    bundle.write_text(json.dumps(payload), encoding="utf-8")
+    result = run(command, tmp_path, "offline", str(bundle))
+    assert result.returncode != 0
+    assert json.loads(result.stdout)["status"] == "invalid"
+
+
+def test_standalone_duplicate_trust_key_is_malformed(command, tmp_path, artifacts):
+    bundle, trust, _ = artifacts
+    trust.write_text('{"keys":[],"keys":[]}', encoding="utf-8")
+    result = run(command, tmp_path, "offline", str(bundle), "--trust-store", str(trust))
+    assert result.returncode == 2
+    assert json.loads(result.stdout)["status"] == "malformed"
+
+
+def test_standalone_bad_signature_with_known_key_is_invalid(command, tmp_path, artifacts):
+    bundle, trust, payload = artifacts
+    payload["tree_head"]["signature"] = "00" * 64
+    bundle.write_text(json.dumps(payload), encoding="utf-8")
+    result = run(command, tmp_path, "offline", str(bundle), "--trust-store", str(trust))
+    assert result.returncode == 1
+    assert json.loads(result.stdout)["status"] == "invalid"
+
+
+@pytest.mark.parametrize("part", ["event", "inclusion_proof"])
+def test_standalone_unsupported_nested_schema(command, tmp_path, artifacts, part):
+    bundle, trust, payload = artifacts
+    payload[part]["schema_version"] = "future.v99"
+    bundle.write_text(json.dumps(payload), encoding="utf-8")
+    result = run(command, tmp_path, "offline", str(bundle), "--trust-store", str(trust))
+    assert result.returncode == 2
+    assert json.loads(result.stdout)["status"] == "unsupported"
 
 
 def test_standalone_report_export(command, tmp_path, artifacts):
