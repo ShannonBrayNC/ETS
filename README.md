@@ -18,6 +18,10 @@ and raw evidence bytes are outside the ETS storage boundary.
 
 ## Go-to-market plan
 
+[Desktop Developer Edition readiness and SDK plan](docs/commercial/DESKTOP_DEVELOPER_EDITION_READINESS.md)
+extends the verifier strategy with a proposed offline developer workbench, bundled
+verifier and exportable SDK kit; it is not a Store-qualified release.
+
 The [ETS go-to-market plan](docs/commercial/GO_TO_MARKET_PLAN.md) records the
 agreed distribution strategy: a free Microsoft Store verifier, paid hosted
 services, and separately deployed enterprise Edge/fleet offerings. It defines

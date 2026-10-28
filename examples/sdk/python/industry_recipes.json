@@ -1,0 +1,103 @@
+{
+  "finance": {
+    "event_type": "finance.reconciliation.completed",
+    "subject_ref": "recon-demo-01",
+    "metadata": {
+      "statement_ref": "stmt-demo-01",
+      "period": "2026-10",
+      "currency": "USD",
+      "amount_minor": 12500
+    },
+    "limit": "Not settlement or account correctness"
+  },
+  "healthcare": {
+    "event_type": "healthcare.document.revision",
+    "subject_ref": "patient-demo-opaque",
+    "metadata": {
+      "document_kind": "consent",
+      "revision": 2,
+      "workflow_ref": "wf-demo"
+    },
+    "limit": "Not clinical truth, consent authority or regulatory compliance"
+  },
+  "supplychain": {
+    "event_type": "supplychain.custody.observed",
+    "subject_ref": "shipment-demo",
+    "metadata": {
+      "lot_ref": "lot-demo",
+      "checkpoint_ref": "dock-demo",
+      "sequence": 3
+    },
+    "limit": "Not proof of physical possession or complete custody"
+  },
+  "manufacturing": {
+    "event_type": "manufacturing.inspection.recorded",
+    "subject_ref": "batch-demo",
+    "metadata": {
+      "device_ref": "gauge-demo",
+      "calibration_ref": "calibration-demo",
+      "inspection_ref": "qa-demo"
+    },
+    "limit": "Not a calibrated measurement or physical-quality claim"
+  },
+  "insurance": {
+    "event_type": "insurance.claim.attachment",
+    "subject_ref": "claim-demo",
+    "metadata": {
+      "attachment_ref": "att-demo",
+      "revision": 1,
+      "media_type": "application/pdf"
+    },
+    "limit": "Not coverage, eligibility or claim truth"
+  },
+  "government": {
+    "event_type": "government.record.revision",
+    "subject_ref": "record-demo",
+    "metadata": {
+      "department_ref": "dept-demo",
+      "revision": 2,
+      "retention_class": "demo"
+    },
+    "limit": "Not official disposition, legal admissibility or retention enforcement"
+  },
+  "energy": {
+    "event_type": "energy.maintenance.recorded",
+    "subject_ref": "asset-demo",
+    "metadata": {
+      "work_order_ref": "wo-demo",
+      "meter_ref": "meter-demo",
+      "sequence": 7
+    },
+    "limit": "Not physical safety or sensor measurement truth"
+  },
+  "ai": {
+    "event_type": "ai.release.evaluation",
+    "subject_ref": "model-demo",
+    "metadata": {
+      "release_ref": "release-demo",
+      "dataset_ref": "dataset-demo",
+      "evaluation_ref": "eval-demo",
+      "build_ref": "ci-demo"
+    },
+    "limit": "Not model safety, complete provenance or independent evaluation"
+  },
+  "media": {
+    "event_type": "media.asset.version",
+    "subject_ref": "asset-demo",
+    "metadata": {
+      "revision": 3,
+      "license_record_ref": "license-demo"
+    },
+    "limit": "Not copyright, ownership, authorship or licensing authority"
+  },
+  "education": {
+    "event_type": "education.credential.revision",
+    "subject_ref": "learner-demo-opaque",
+    "metadata": {
+      "credential_ref": "cred-demo",
+      "issuer_ref": "issuer-demo",
+      "revision": 1
+    },
+    "limit": "Not accreditation, identity, learning attainment or current credential standing"
+  }
+}
