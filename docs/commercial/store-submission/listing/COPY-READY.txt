@@ -1,0 +1,45 @@
+DRAFT TEXT ONLY — OWNER APPROVAL AND FINAL PACKAGE RECHECK REQUIRED
+Proposed product name (must first be reserved):
+ETS Desktop Developer (Preview)
+
+SHORT DESCRIPTION
+Explore an ETS synthetic evidence workflow, verify bundles with explicit trust, and export reports plus an alpha SDK test kit. A local developer preview, not a production signing service.
+
+DESCRIPTION
+ETS Desktop Developer is a local Windows preview for developers exploring Evidence Transparency System bundles and integrations.
+
+Start with a guided synthetic manufacturing example. The app creates a fresh folder containing demonstration evidence, a signed checkpoint bundle, separate public sample trust, and a tampered example. The temporary sample signing key is not saved. This preview authors one fixed example; it is not a general project editor or a production issuer.
+
+Use the included strict verifier to inspect an ETS bundle. Missing trust remains indeterminate. Select the synthetic sample's trust explicitly to see checkpoint signature verification, then try the tampered bundle to see an invalid result. For real evidence, obtain trusted keys independently of the bundle. Export the displayed result as JSON, Markdown, or HTML to a new file.
+
+Export the bundled alpha SDK test kit to a location you choose. It contains Python, C#/.NET, and TypeScript packages and source examples, plus PowerShell 7 REST/CLI examples. The app checks the SDK archive's hash before exporting it. It does not install toolchains or run exported projects. The C# and TypeScript clients do not provide a separate strict offline verifier; use the included verifier for exported bundles.
+
+The built-in sample, offline verification, report export, and SDK archive export do not require an account, a server, or user-installed Python, Node, .NET SDK, Git, or Docker. The graphical app requires Microsoft Edge WebView2 Runtime. Running exported source projects is separate and requires the documented language tools; dependency restore may require internet access.
+
+Verification evaluates bundle integrity and supplied checkpoint signatures under the selected trust policy. It does not verify the separate artifact's bytes, physical facts, completeness, current log standing, or legal or regulatory sufficiency. Exported reports are unsigned observations, not signed proofs.
+
+This partial alpha preview does not include a project manager, arbitrary evidence authoring, private-key custody, remote service connection, or a live collector. Your exported files remain in your chosen folders and are not automatically removed when you uninstall the app.
+
+FEATURES (one entry per line; do not paste bullets)
+Create a fixed synthetic example with separate public sample trust and a tampered test bundle.
+Verify ETS bundles through the shared strict verifier; missing trust is not accepted as verified.
+Inspect checkpoint-only results and export JSON, Markdown, or HTML reports.
+Export a hash-checked alpha SDK kit with Python, C#/.NET, TypeScript, and PowerShell REST/CLI examples.
+Use the built-in local workflow without an account or user-installed language toolchain.
+
+KEYWORDS (one entry per field)
+evidence verification
+developer SDK
+offline verifier
+checkpoint signature
+integrity checks
+synthetic data
+audit reports
+
+WHAT IS NEW
+Leave blank for first submission.
+
+ADDITIONAL REQUIREMENTS (draft; confirm final supported OS floor)
+Windows 11 x64.
+Microsoft Edge WebView2 Runtime is required for the graphical app.
+Exported source examples require their documented language toolchains and may need network restore.

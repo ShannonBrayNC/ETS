@@ -1,0 +1,18 @@
+{
+  "schema": "ets.store_prep_provenance.v1",
+  "prepared_date": "2026-10-28",
+  "source_head": "d3b4b7ceab63a1d251b92a2cda4fdbe753cb6d3f",
+  "packaged_source": "2606424f61a8791bb1afc8169629f8390e849def",
+  "fixture_sandbox_git_blob": "3ef2e5b3fbed573a3818ee6ccb44085dec87489e",
+  "fixture_generated_locally": true,
+  "fixture_private_key_saved": false,
+  "fixture_cases": [
+    "missing-trust",
+    "selected-trust",
+    "wrong-log",
+    "tampered"
+  ],
+  "installed_client_test_performed_by_this_preparation": false,
+  "store_submission_performed": false,
+  "release_approved": false
+}

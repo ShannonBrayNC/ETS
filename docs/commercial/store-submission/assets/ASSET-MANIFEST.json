@@ -1,0 +1,76 @@
+{
+  "schema": "ets.store_assets_draft.v1",
+  "status": "blocked_no_approved_upload_assets",
+  "approved_upload_files": [],
+  "desktop_screenshot_constraints": {
+    "format": "PNG",
+    "minimum_width": 1366,
+    "minimum_height": 768,
+    "maximum_bytes": 50000000,
+    "maximum_count": 10,
+    "caption_max_characters": 200
+  },
+  "shot_list": [
+    {
+      "order": 1,
+      "proposed_filename": "01-create-synthetic-sample.png",
+      "caption": "Create a synthetic sample in a new folder without an account or language toolchain.",
+      "capture_state": "Installed final candidate; sample panel before or after actual successful creation."
+    },
+    {
+      "order": 2,
+      "proposed_filename": "02-missing-trust.png",
+      "caption": "Missing trust remains indeterminate. Sample trust is selected explicitly.",
+      "capture_state": "Actual bundle selected, no trust selected, real strict verifier outcome."
+    },
+    {
+      "order": 3,
+      "proposed_filename": "03-verified-checkpoint.png",
+      "caption": "Inspect checkpoint-only verification and export JSON, Markdown or HTML reports.",
+      "capture_state": "Actual synthetic bundle and selected sample trust; true computed result, no mocked bridge."
+    },
+    {
+      "order": 4,
+      "proposed_filename": "04-sdk-export.png",
+      "caption": "Export the hash-checked alpha SDK test kit; running its examples is a separate developer action.",
+      "capture_state": "Actual successful SDK export and visible version/prerequisite information."
+    }
+  ],
+  "required_provenance": [
+    "final package identity/version/SHA-256",
+    "source commit",
+    "Windows build and WebView2 version",
+    "capture date and native application/window",
+    "image width/height/bytes/SHA-256",
+    "synthetic-only data and no personal account/file paths",
+    "owner approval"
+  ],
+  "capture_rules": [
+    "Capture installed native Windows candidate, not a browser bridge mock or a future feature mockup.",
+    "Use a large enough display/window to obtain genuine >=1366x768 captures; do not upscale the default 1080x820 window to simulate detail.",
+    "No added marketing overlays or logos; keep important controls/results in upper two-thirds when possible.",
+    "Capture separate views by scrolling the actual app; do not fabricate composite output."
+  ],
+  "logo": {
+    "proposed_filename": "store-app-tile-300.png",
+    "width": 300,
+    "height": 300,
+    "status": "owner_branding_approval_required",
+    "current_package_icons": "50x50, 44x44, 150x150 deterministic engineering E tiles, not approved final Store artwork"
+  },
+  "excluded_reference_images": [
+    {
+      "filename": "developer-wide.png",
+      "width": 1100,
+      "height": 2079,
+      "reason": "Browser regression capture with mocked bridge; narrower than desktop screenshot minimum."
+    },
+    {
+      "filename": "developer-narrow.png",
+      "width": 640,
+      "height": 2868,
+      "reason": "Browser regression capture with mocked bridge; narrower than desktop screenshot minimum."
+    }
+  ],
+  "note": "No screenshot/icon binaries are included. This manifest is a capture plan, not asset approval."
+}

@@ -1,0 +1,22 @@
+{
+  "event_id": "evt_desktop_synthetic_01",
+  "tenant_id": "synthetic-tenant",
+  "workspace_id": "desktop-sandbox",
+  "evidence_id": "evidence_desktop_synthetic_01",
+  "event_type": "synthetic.inspection",
+  "subject_ref": "synthetic:part-001",
+  "content_hash": "b07e6e5a91f731adaec79dd08d7932dcca5ea08107ca5a1c6f341c628eabae62",
+  "content_hash_alg": "sha256",
+  "metadata": {
+    "synthetic": true,
+    "result": "pass",
+    "claim_limit": "Demonstration only; not physical truth or regulatory compliance"
+  },
+  "created_at_utc": "2026-10-28T22:28:06.661526Z",
+  "schema_version": "ets.event.v1",
+  "source_system": "desktop-synthetic-sandbox",
+  "actor_id": null,
+  "correlation_id": "synthetic-workflow-01",
+  "external_refs": null,
+  "redaction_profile": null
+}

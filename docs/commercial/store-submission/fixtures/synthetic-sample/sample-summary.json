@@ -1,0 +1,15 @@
+{
+  "schema": "ets.desktop_synthetic_sample.v1",
+  "synthetic_only": true,
+  "creation_complete": true,
+  "private_key_saved": false,
+  "expected_log_id": "ets-desktop-synthetic",
+  "sha256": {
+    "README.txt": "cfb5d69f45694a3d071183fbd44b88a09c2f1606740ae81f2b6857c38462acce",
+    "bundle.json": "2978575f57918d2f3dd24bec8a75bca52fad1e717f8ae90d9d102cb141929aa4",
+    "event.json": "c680a49e746622843690121e246e394fef52b3407b6907367c586baccede9b48",
+    "sample-trust.json": "1887a78c02fcc87fd243139dab74739ceef51ae9303cbf4d63f82cf5f3abb149",
+    "synthetic-artifact.txt": "b07e6e5a91f731adaec79dd08d7932dcca5ea08107ca5a1c6f341c628eabae62",
+    "tampered-bundle.json": "9b4f7c35c7916002f23ca2dff3fef394af56c75ae2235352be8e23ca4d1b0a4b"
+  }
+}

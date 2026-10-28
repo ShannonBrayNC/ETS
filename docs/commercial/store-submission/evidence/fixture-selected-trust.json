@@ -1,0 +1,70 @@
+{
+  "case": "selected-trust",
+  "exit_code": 0,
+  "outcome": {
+    "checkpoint_root_hash": "4823ed6845abcfb46dce108fa01334a264887e6627531f2eadc0ef2d589cdb98",
+    "checkpoint_tree_size": 1,
+    "checks": [
+      {
+        "code": "event_hash",
+        "passed": true,
+        "reason": "event hash matches canonical event"
+      },
+      {
+        "code": "leaf_binding",
+        "passed": true,
+        "reason": "leaf hash is bound to event hash"
+      },
+      {
+        "code": "proof_leaf_binding",
+        "passed": true,
+        "reason": "proof leaf matches bundle leaf"
+      },
+      {
+        "code": "inclusion_proof",
+        "passed": true,
+        "reason": "ok"
+      },
+      {
+        "code": "checkpoint_root_binding",
+        "passed": true,
+        "reason": "tree head root matches inclusion proof"
+      },
+      {
+        "code": "checkpoint_size_binding",
+        "passed": true,
+        "reason": "tree head size matches inclusion proof"
+      },
+      {
+        "code": "log_identity",
+        "passed": true,
+        "reason": "log identity accepted"
+      },
+      {
+        "code": "checkpoint_time",
+        "passed": true,
+        "reason": "checkpoint time is plausible"
+      },
+      {
+        "code": "tree_head_signature",
+        "passed": true,
+        "reason": "tree head signature is trusted"
+      }
+    ],
+    "continuity_verified": false,
+    "event_hash": "613cf7cf8b74d9c3b26503e429d0f554389232c5ed74e547aeed84d5583ee8fa",
+    "event_id": "evt_desktop_synthetic_01",
+    "latest_root_hash": null,
+    "latest_tree_size": null,
+    "leaf_hash": "4823ed6845abcfb46dce108fa01334a264887e6627531f2eadc0ef2d589cdb98",
+    "log_id": "ets-desktop-synthetic",
+    "mode": "offline",
+    "reason": "ok",
+    "reason_code": "verification_passed",
+    "signature_verified": true,
+    "standing_status": "checkpoint_only",
+    "status": "valid",
+    "valid": true,
+    "verified_at_utc": "2026-10-28T22:28:07.133064Z"
+  }
+}

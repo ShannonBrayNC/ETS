@@ -1,0 +1,9 @@
+{
+  "keys": [
+    {
+      "key_id": "ephemeral-sample-key-not-production",
+      "signature_alg": "ed25519",
+      "public_key_hex": "be5d8bf8229caa2b99aad983778ae07ab0ccc8c8ced1eb71291904df8f330520"
+    }
+  ]
+}

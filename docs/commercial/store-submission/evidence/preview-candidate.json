@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "sourceSha": "2606424f61a8791bb1afc8169629f8390e849def",
+  "workflowRun": "https://github.com/ShannonBrayNC/ETS/actions/runs/40777778220",
+  "recordSigned": false,
+  "releaseApproved": false,
+  "scope": "Engineering candidate and this Windows job evidence only",
+  "limitations": [
+    "Unsigned hashes do not authenticate origin.",
+    "Other CI jobs and client/Store approvals need separate evidence."
+  ],
+  "files": {
+    "package/ETSDeveloper.Development_0.1.0.0_x64_unsigned.msix": {
+      "sha256": "c98817347e37864a062ada4bb223ca99348e020401b0afdc5b5cc3ca7e52b376",
+      "bytes": 47617168
+    },
+    "package/layout-sha256.json": {
+      "sha256": "d7af154908d31e78e54b14deb4bd4eba7609459f60268a2a32758b1ab8b8acaa",
+      "bytes": 42804
+    },
+    "package/qualification.json": {
+      "sha256": "852bdcc7b4305ecc1b6a5d9d4a97680f25f53d5277f632913f9e17cca3ea3167",
+      "bytes": 706
+    },
+    "results/build-environment.txt": {
+      "sha256": "294a55517dcbc543db6fc23c1ac0d21b26c410f3d1ee4e44edfb1c13faacddf7",
+      "bytes": 831
+    },
+    "results/developer-frozen-verifier.xml": {
+      "sha256": "045b68bb2e5d646827e776c295d38157972d85e08332832e498b8345e504ff75",
+      "bytes": 3237
+    },
+    "results/developer-smoke.json": {
+      "sha256": "c635d77dbb0fedce718c8d5fa55881f9efa022537c522525814739df92959b71",
+      "bytes": 40
+    },
+    "results/developer-source.xml": {
+      "sha256": "0980e1fd52357d4930d70adf586b7633a893e303a8e4397b34169a889737a182",
+      "bytes": 13796
+    },
+    "results/offline-developer/network-qualification.json": {
+      "sha256": "e92a57fa6531ec57281ee66c0ce580dfbf5ec0fdfcb593732011b3a7a0875d3e",
+      "bytes": 1819
+    },
+    "results/offline-developer/smoke.json": {
+      "sha256": "c635d77dbb0fedce718c8d5fa55881f9efa022537c522525814739df92959b71",
+      "bytes": 40
+    },
+    "results/sdk-kit-pin.json": {
+      "sha256": "7198d23f70b92d1572fd4e212faacae98f1bb61873496d46f884cda52d14b378",
+      "bytes": 560
+    },
+    "results/sdk-kit-verification.json": {
+      "sha256": "6af714d9f776f8148ce06f5d6aa82b33c8a395d63cbcc4da89e058dcab98c424",
+      "bytes": 283
+    },
+    "results/source-commit.txt": {
+      "sha256": "027195aec7ad2211bbdd13f09132a641cf0e479e97eae09ad04008c2ffdbd1af",
+      "bytes": 360
+    }
+  }
+}

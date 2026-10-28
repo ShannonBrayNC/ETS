@@ -1,0 +1,19 @@
+{
+  "package": "ETSDeveloper.Development_0.1.0.0_x64_unsigned.msix",
+  "sha256": "c98817347e37864a062ada4bb223ca99348e020401b0afdc5b5cc3ca7e52b376",
+  "identity": "ETSDeveloper.Development",
+  "publisher": "CN=ETSDeveloper.Development",
+  "edition": "developer",
+  "version": "0.1.0.0",
+  "signed": false,
+  "installationTested": false,
+  "cleanWindows11Qualified": false,
+  "wackPassed": false,
+  "licensesApproved": false,
+  "releaseApproved": false,
+  "manifestValidated": true,
+  "payloadHashesVerified": true,
+  "filesVerified": 357,
+  "makeAppx": "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64\\MakeAppx.exe",
+  "createdAtUtc": "2026-10-28T22:12:57.6331722Z"
+}
