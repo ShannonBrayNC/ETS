@@ -24,15 +24,18 @@ def validate_archive(data: bytes, pin: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("SDK archive bytes do not match the reviewed immutable pin")
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         members = archive.infolist()
-        names = [entry.filename for entry in members]
+        names = [entry.orig_filename for entry in members]
         if len(members) != pin["manifest_files"] + 1 or len(set(names)) != len(names):
             raise ValueError("SDK archive contains unexpected or duplicate entries")
         if sum(entry.file_size for entry in members) > 32 * 1024 * 1024:
             raise ValueError("SDK archive exceeds the uncompressed byte limit")
         for entry in members:
-            name = entry.filename
+            # ZipInfo normalizes backslashes on Windows. Check original archive
+            # bytes, not a platform-normalized spelling of an unsafe member.
+            name = entry.orig_filename
             path = PurePosixPath(name)
-            if (path.is_absolute() or ".." in path.parts or "\\" in name or ":" in name
+            if (name != entry.filename
+                    or path.is_absolute() or ".." in path.parts or "\\" in name or ":" in name
                     or str(path) != name or entry.is_dir()
                     or stat.S_ISLNK(entry.external_attr >> 16)
                     or entry.file_size > 16 * 1024 * 1024):

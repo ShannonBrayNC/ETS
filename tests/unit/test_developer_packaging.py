@@ -28,7 +28,11 @@ def archive_with(files=None, *, source="a" * 40, manifest_changes=None):
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w") as archive:
         for name, data in files.items():
-            archive.writestr(name, data)
+            member = zipfile.ZipInfo()
+            # Do not let Windows normalize the adversarial test name on write.
+            member.filename = name
+            member.orig_filename = name
+            archive.writestr(member, data)
         archive.writestr("test-kit-manifest.json", json.dumps(manifest))
     data = stream.getvalue()
     pin = {"archive_bytes": len(data), "archive_sha256": hashlib.sha256(data).hexdigest(),
@@ -78,6 +82,8 @@ def test_kit_rejects_mismatch(change):
 @pytest.mark.parametrize("name", ["../escape", "/absolute", "C:/windows", "back\\slash"])
 def test_kit_rejects_unsafe_members_even_under_updated_pin(name):
     data, pin = archive_with({name: b"unsafe"})
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        assert archive.infolist()[0].orig_filename == name
     with pytest.raises(ValueError, match="unsafe"):
         STAGING["validate_archive"](data, pin)
 
