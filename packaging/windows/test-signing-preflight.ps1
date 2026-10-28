@@ -12,6 +12,7 @@ try {
     $fakeTool = Join-Path $root 'must-not-run.ps1'
     Set-Content $fakeTool "throw 'Signing tool unexpectedly invoked'"
     $cases = @(
+        @{ name = 'wrong-reviewed-hash'; identity = 'ETSVerifier.Development'; version = '0.1.0.0'; error = 'does not match the reviewed candidate'; wrongHash = $true },
         @{ name = 'wrong-identity'; identity = 'Wrong'; version = '0.1.0.0'; error = 'Only the x64' },
         @{ name = 'unsafe-version'; identity = 'ETSVerifier.Development'; version = '../outside'; error = 'Invalid development package version' },
         @{ name = 'overflow-version'; identity = 'ETSVerifier.Development'; version = '65536.1.0.0'; error = 'Invalid development package version' },
@@ -31,9 +32,10 @@ try {
             if ($case.ContainsKey('signed')) { [void]$zip.CreateEntry('AppxSignature.p7x') }
         } finally { $zip.Dispose() }
         $before = (Get-FileHash $package).Hash
+        $expectedHash = if ($case.ContainsKey('wrongHash')) { '0' * 64 } else { $before }
         $output = Join-Path $root ($case.name + '-output')
         $failed = $false
-        try { & $script -Package $package -CertificateThumbprint ('0' * 40) -OutputDirectory $output -SignToolPath $fakeTool }
+        try { & $script -Package $package -ExpectedSha256 $expectedHash -CertificateThumbprint ('0' * 40) -OutputDirectory $output -SignToolPath $fakeTool }
         catch {
             if ($_.Exception.Message -notlike ('*' + $case.error + '*')) { throw }
             $failed = $true

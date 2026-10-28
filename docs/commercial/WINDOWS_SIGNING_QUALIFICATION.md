@@ -20,10 +20,23 @@ JSON and source SHA, then run PowerShell 7 with the Windows SDK:
 ```powershell
 ./packaging/windows/sign-development-msix.ps1 `
   -Package ./dist/msix/ETSVerifier.Development_0.1.0.0_x64_unsigned.msix `
+  -ExpectedSha256 '<reviewed unsigned package SHA-256>' `
   -CertificateThumbprint '<approved certificate thumbprint>' `
   -OutputDirectory ./dist/signed-development `
   -SignToolPath '<Windows SDK x64 directory>/signtool.exe'
 ```
+
+Obtain `-ExpectedSha256` from the retained review candidate's package entry or its
+packaging qualification record after reviewing the expected repository/run and
+source. Do not compute the expected value from an unreviewed replacement package
+at signing time: that would defeat the handoff check. The unsigned review record
+itself does not authenticate build origin; its provenance must be reviewed separately.
+
+The helper compares the input digest before inspecting the package or accessing the
+certificate store, then checks the copied package again before invoking SignTool.
+A mismatch leaves no successful signing record. `signing.json` records both the
+reviewed unsigned digest and final signed digest. This digest binding is not a
+substitute for certificate authorization, source review or client qualification.
 
 The helper rejects other identities, architectures, existing signatures, invalid
 versions and existing output directories. It signs a copy with SHA-256, verifies
