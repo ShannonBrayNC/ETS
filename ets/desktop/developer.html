@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>ETS Desktop Developer</title>
+<style>
+:root{font-family:Segoe UI,Arial,sans-serif;color:#172b39;background:#f3f5f4;font-size:17px;color-scheme:light}
+*{box-sizing:border-box}body{margin:0}header{background:#142d3c;color:#fff;padding:26px 36px}header p{color:#c8dadf;margin:8px 0 0}.brand{font-weight:700;letter-spacing:.12em;font-size:12px}.badge{display:inline-block;background:#365365;border:1px solid #66808d;border-radius:4px;padding:4px 8px;margin-left:8px;font-size:11px;letter-spacing:.06em}h1{font-size:29px;margin:12px 0 0}main{max-width:1100px;margin:auto;padding:28px 36px}h2{font-size:22px;margin:0 0 14px}p{line-height:1.55}.layout{display:grid;grid-template-columns:minmax(250px,1fr) minmax(300px,1.3fr);gap:24px}.panel{background:#fff;border:1px solid #cbd6d9;border-radius:12px;padding:24px;min-width:0}.sample{margin-bottom:24px;border-top:4px solid #086a62}.step{font-size:12px;font-weight:700;color:#446272;letter-spacing:.1em;margin:0 0 12px}.sample-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:26px}.sample p:first-child{margin-top:0}.sample ol{margin:0;padding-left:24px}.sample li{margin-bottom:8px}.sample-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}label{display:block;font-weight:600;margin:20px 0 8px}button,input{font:inherit}button{min-height:48px;border:1px solid #9aafb8;background:#fff;color:#142d3c;border-radius:6px;padding:10px 16px;cursor:pointer;font-weight:600}button:hover:not(:disabled){background:#edf3f4}button:disabled{opacity:.55;cursor:default}button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #197aa3;outline-offset:3px}.primary{background:#086a62;color:#fff;border-color:#086a62}.primary:hover:not(:disabled){background:#07544f}#verify{width:100%;margin-top:24px}input{width:100%;min-height:46px;border:1px solid #9aafb8;border-radius:6px;padding:10px}.filename{display:block;margin:8px 0 16px;overflow-wrap:anywhere;color:#486270;font-size:14px}.hint{font-size:14px;color:#486270}.warning{background:#fff3d9;border-left:3px solid #a87722;padding:12px;color:#67470c;font-size:14px}.status{padding:12px;border-radius:6px;font-weight:700;background:#edf3f4}.status[data-state=valid]{background:#e0f2e9;color:#125539}.status[data-state=invalid],.status[data-state=error]{background:#fce6e3;color:#8b2720}.status[data-state=indeterminate],.status[data-state=unsupported]{background:#fff0cf;color:#6b4b00}#reason{overflow-wrap:anywhere}ul{padding-left:22px}li{line-height:1.5;margin-bottom:10px;overflow-wrap:anywhere}.exports{display:flex;flex-wrap:wrap;gap:8px}details{margin-top:20px}summary{cursor:pointer;min-height:36px;font-weight:600}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;background:#f3f5f4;padding:14px;border-radius:6px;max-height:320px;overflow:auto}.limits{margin-top:24px;border-left:4px solid #879da6;padding:0 18px;color:#395461;font-size:14px}#message,#sample-message,#sdk-message{min-height:24px;overflow-wrap:anywhere}#message{margin-bottom:0}#result-heading:focus{outline:3px solid #197aa3;outline-offset:3px}.sdk{margin-top:24px}.sdk-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.sdk ul{margin-top:0}.sdk code{font-size:12px;overflow-wrap:anywhere}.sdk dl{font-size:14px;margin:0}.sdk dt{font-weight:600;margin-top:12px}.sdk dd{margin:4px 0 0;overflow-wrap:anywhere}.caption{margin-bottom:0}#sample-trust{margin-top:0}#sample-details[hidden]{display:none}@media(max-width:800px){.layout,.sample-grid,.sdk-grid{grid-template-columns:1fr}main{padding:20px}header{padding:22px}.panel{padding:20px}.badge{margin-left:0;margin-top:8px}.sample-grid{gap:14px}}
+</style>
+</head>
+<body>
+<header><div class="brand">EVIDENCE TRANSPARENCY SYSTEM <span class="badge">PARTIAL ALPHA · LOCAL WORKBENCH</span></div><h1>ETS Desktop Developer</h1><p>Create a synthetic example. Verify the exported bytes. Take the SDK with you.</p></header>
+<main>
+<section id="sample-panel" class="panel sample" aria-labelledby="sample-heading" aria-busy="false">
+<p class="step">01 / CREATE A LOCAL SAMPLE</p><h2 id="sample-heading">A safe first round trip</h2>
+<div class="sample-grid"><div><p>Create one synthetic manufacturing record through the local SDK. A new folder holds the artifact, signed bundle, separate sample trust, and tampered example. Existing files are not replaced.</p><p class="hint">No account, server, network, or user-installed language toolchain. The temporary signing key is not saved. This is a guided sample, not a production authoring environment.</p></div><ol class="hint"><li>Choose a parent folder and create a new synthetic sample.</li><li>Verify without trust first: expect <strong>indeterminate</strong>.</li><li>Explicitly select the sample trust, then verify again: expect <strong>verified at checkpoint</strong>.</li><li>Export the displayed result. Try the tampered bundle to see verification fail.</li></ol></div>
+<div class="sample-actions"><button id="create-sample" class="primary" type="button" aria-describedby="sample-help" disabled>Create synthetic sample…</button><span id="sample-help" class="hint">You choose where its new folder is saved.</span></div>
+<p id="sample-message" class="hint" role="status" aria-live="polite">No sample created in this session.</p>
+</section>
+<div class="layout">
+<section class="panel" aria-labelledby="inputs-heading">
+<p class="step">02 / SELECT &amp; VERIFY</p><h2 id="inputs-heading">Your evidence</h2>
+<button id="bundle" aria-describedby="bundle-name" type="button" disabled>Choose evidence bundle…</button><span id="bundle-name" class="filename">No bundle selected</span>
+<button id="trust" aria-describedby="trust-name trust-help" type="button" disabled>Choose trusted keys…</button><span id="trust-name" class="filename">No trust store selected</span>
+<p id="trust-help" class="hint">For real evidence, obtain trusted keys independently of the bundle. Missing trust is indeterminate, not verified.</p>
+<div id="sample-details" hidden><p id="sample-warning" class="warning"><strong>Only for this synthetic sample—not production trust.</strong> The generated public key demonstrates signature verification. It is not an independent production identity and is never installed globally.</p><button id="sample-trust" type="button" aria-describedby="sample-warning" disabled>Use this sample’s trust</button></div>
+<label for="log-id">Expected log ID <span class="hint">(optional)</span></label><input id="log-id" maxlength="512" autocomplete="off" spellcheck="false" placeholder="Require a particular log identity">
+<button id="verify" class="primary" type="button" disabled>Verify offline</button>
+<p class="hint">Uses the included strict verifier. Unsigned development acceptance is disabled.</p>
+</section>
+<section id="result-panel" class="panel" aria-labelledby="result-heading" aria-busy="false">
+<p class="step">03 / INSPECT &amp; EXPORT</p><h2 id="result-heading" tabindex="-1" aria-describedby="status reason">Verification result</h2>
+<div id="status" class="status" role="status" aria-live="polite">Ready when you are</div>
+<p id="reason">Create a sample or choose a bundle to inspect its integrity and checkpoint signature.</p>
+<ul id="checks" aria-label="Verification checks"></ul>
+<p id="standing" class="hint"></p>
+<div class="exports" aria-label="Export the displayed result"><button data-format="json" disabled>Export JSON</button><button data-format="markdown" disabled>Export Markdown</button><button data-format="html" disabled>Export HTML</button></div>
+<p id="message" role="status" aria-live="polite"></p>
+<details><summary>Full verification outcome</summary><pre id="raw">No result yet.</pre></details>
+</section>
+</div>
+<section id="sdk-panel" class="panel sdk" aria-labelledby="sdk-heading" aria-busy="false">
+<p class="step">04 / CONTINUE IN YOUR OWN PROJECT</p><h2 id="sdk-heading">Export the versioned SDK test kit</h2>
+<div class="sdk-grid"><div><p>Copy the bundled, source-pinned alpha ZIP to a new filename. Export does not extract files, run code, install dependencies, or connect to a service.</p><ul class="hint"><li>Python: <strong>lanternprotocol-ets 0.1.0a1</strong></li><li>C#: <strong>LanternProtocol.ETS.Application 0.1.0-alpha.1</strong></li><li>TypeScript: <strong>@lanternprotocol/ets-sdk 0.1.0-alpha.1</strong></li><li>PowerShell 7 REST/CLI examples; not a native SDK module</li></ul></div><div><p class="hint">External source samples need their relevant tools: <strong>Python 3.12+</strong>, <strong>.NET 8 SDK</strong>, <strong>Node.js 22.14+</strong>, or <strong>PowerShell 7</strong>. Read the kit’s README and <code>docs/sdk/TEST_KIT.md</code> first. Dependencies are not all vendored; optional restore may need network access. No global SDK installation is performed.</p><p class="hint">The built-in workflow needs none of those language toolchains. The desktop GUI still requires provisioned Microsoft Edge WebView2 Runtime; the frozen verifier CLI does not.</p></div></div>
+<button id="sdk-export" type="button" disabled>Export SDK test kit…</button><p id="sdk-message" class="hint" role="status" aria-live="polite"></p>
+<details><summary>SDK kit provenance</summary><dl><dt>Packaged source (PR #951 merge snapshot)</dt><dd><code>a6eb2c70b4e84cdae5f6d88e788d2fb1f663fa3e</code></dd><dt>Bundled ZIP SHA-256</dt><dd><code>c12ab50a808b5266593ef731951a875dd5276a89fd7b963c82eabffbc44d03a7</code></dd></dl><p class="hint caption">Engineering test kit, not a signed release attestation or a claim of registry publication. The ZIP’s manifests identify exact package versions and file hashes.</p></details>
+</section>
+<aside class="limits"><strong>What this candidate can—and cannot—establish</strong><p>Offline verification checks supplied material at a checkpoint. It cannot establish current log state or revocation information, real-world truth, completeness, regulatory compliance, or legal sufficiency. Reports are unsigned observations of the displayed result and policy. Production project management, remote integrations, and key custody are not implemented here. This unsigned engineering candidate is not Store-approved; clean-client, runtime, accessibility, licensing, and WACK qualification remain separate release gates.</p></aside>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+let connected=false,selected=false,busy=false,hasResult=false,sampleAvailable=false;
+const labels={valid:'Verified at checkpoint',invalid:'Verification failed',indeterminate:'Indeterminate — trust material missing',unsupported:'Unsupported format',malformed:'Malformed input',resource_limit:'Input limit exceeded',error:'Verification unavailable'};
+function controls(){
+  for(const panel of ['result-panel','sample-panel','sdk-panel'])$(panel).setAttribute('aria-busy',String(busy));
+  for(const id of ['bundle','trust','create-sample','sdk-export'])$(id).disabled=!connected||busy;
+  $('sample-trust').disabled=!connected||busy||!sampleAvailable;
+  $('sample-details').hidden=!sampleAvailable;
+  $('verify').disabled=!connected||busy||!selected;
+  $('log-id').disabled=busy;
+  document.querySelectorAll('[data-format]').forEach(b=>b.disabled=busy||!hasResult);
+}
+function clearResult(){
+  hasResult=false;$('checks').replaceChildren();$('raw').textContent='No result yet.';
+  $('status').textContent='Ready to verify';$('status').dataset.state='';
+  $('reason').textContent='Run verification to inspect the selected material.';
+  $('standing').textContent='';$('message').textContent='';controls();
+}
+async function action(fn,{verification=false,message='message'}={}){
+  if(busy)return;
+  const origin=document.activeElement;busy=true;controls();$(message).textContent='';
+  try{await fn();}catch(e){
+    const explanation='The desktop connection failed. Retry or restart the application.';
+    if(verification){clearResult();$('status').textContent=labels.error;$('status').dataset.state='error';$('reason').textContent=explanation;}
+    else{$(message).textContent=explanation;}
+  }finally{
+    busy=false;controls();
+    if(verification){$('result-heading').focus();}
+    else if(document.activeElement===document.body&&origin&&!origin.disabled){origin.focus();}
+  }
+}
+$('create-sample').addEventListener('click',()=>action(async()=>{
+  const result=await window.pywebview.api.create_sample();
+  if(result.cancelled){$('sample-message').textContent='Sample creation cancelled. Your previous selection is unchanged.';return;}
+  if(result.error){$('sample-message').textContent=result.error;return;}
+  selected=true;sampleAvailable=true;
+  $('bundle-name').textContent=result.bundle;$('trust-name').textContent='No trust store selected';
+  $('log-id').value=result.expected_log_id;clearResult();
+  $('sample-message').textContent='Created '+result.created+'. Bundle selected; no sample trust selected. Verify once before choosing sample trust.';
+},{message:'sample-message'}));
+$('sample-trust').addEventListener('click',()=>action(async()=>{
+  const result=await window.pywebview.api.use_sample_trust();
+  if(result.cancelled)return;
+  if(result.error){$('message').textContent=result.error;return;}
+  $('trust-name').textContent=result.name+' — synthetic sample only';clearResult();
+  $('message').textContent='Sample trust selected explicitly. Verify again; this does not establish production trust.';
+}));
+for(const kind of ['bundle','trust'])$(kind).addEventListener('click',()=>action(async()=>{
+  const result=await window.pywebview.api[kind==='bundle'?'select_bundle':'select_trust']();
+  if(result.cancelled){$('message').textContent='Selection cancelled. Your previous selection is unchanged.';return;}
+  if(result.error){$('message').textContent=result.error;return;}
+  if(kind==='bundle'){
+    selected=true;sampleAvailable=false;
+    if($('log-id').value==='ets-desktop-synthetic')$('log-id').value='';
+    $('sample-message').textContent='An external bundle is selected. Sample trust is no longer available for this selection.';
+    if(result.trust_cleared)$('trust-name').textContent='No trust store selected';
+  }
+  $(kind+'-name').textContent=result.name;clearResult();
+}));
+$('log-id').addEventListener('input',clearResult);
+$('verify').addEventListener('click',()=>action(async()=>{
+  clearResult();$('status').textContent='Verifying…';
+  const result=await window.pywebview.api.verify($('log-id').value);
+  if(result.error){$('status').textContent=labels.error;$('status').dataset.state='error';$('reason').textContent=result.error;return;}
+  const outcome=result.outcome;hasResult=true;
+  $('status').textContent=labels[outcome.status]||'Unknown result';$('status').dataset.state=outcome.status;
+  $('reason').textContent=outcome.reason||'';
+  for(const check of outcome.checks||[]){const item=document.createElement('li');item.textContent=(check.passed?'PASS: ':'FAIL: ')+check.reason;$('checks').appendChild(item);}
+  $('standing').textContent=outcome.standing_status==='checkpoint_only'?'Checkpoint only • current log continuity was not verified.':'';
+  $('raw').textContent=JSON.stringify(outcome,null,2);
+},{verification:true}));
+document.querySelectorAll('[data-format]').forEach(button=>button.addEventListener('click',()=>action(async()=>{
+  const result=await window.pywebview.api.export_report(button.dataset.format);
+  $('message').textContent=result.cancelled?'Export cancelled.':result.error||('Saved '+result.saved);
+})));
+$('sdk-export').addEventListener('click',()=>action(async()=>{
+  const result=await window.pywebview.api.export_sdk();
+  $('sdk-message').textContent=result.cancelled?'SDK export cancelled.':result.error||('Saved '+result.saved+'. SHA-256: '+result.sha256);
+},{message:'sdk-message'}));
+window.addEventListener('pywebviewready',()=>{connected=true;controls();});
+</script>
+</body>
+</html>

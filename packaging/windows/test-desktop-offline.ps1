@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param(
     [string]$DesktopDirectory = 'dist/ets-desktop',
+    [ValidateSet('verifier', 'developer')][string]$Edition = 'verifier',
     [string]$Bundle = 'tests/fixtures/verifier/native-signed.json',
     [string]$Trust = 'tests/fixtures/verifier/native-trust.json',
     [string]$OutputDirectory = 'test-results/offline-desktop'
@@ -19,13 +20,17 @@ if ($profiles.Count -ne 3 -or @($profiles | Where-Object { $_.Enabled -ne 'True'
     throw 'All firewall profiles must be enabled and permit local test rules.'
 }
 $root = (Resolve-Path -LiteralPath $DesktopDirectory).Path
-$desktop = Join-Path $root 'ets-desktop.exe'
+$executable = if ($Edition -eq 'developer') { 'ets-developer.exe' } else { 'ets-desktop.exe' }
+$desktop = Join-Path $root $executable
 $verifier = Join-Path $root 'verifier/ets-verify.exe'
 foreach ($required in @($desktop, $verifier)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Missing executable: $required" }
 }
-$fixture = (Resolve-Path -LiteralPath $Bundle).Path
-$trustedKeys = (Resolve-Path -LiteralPath $Trust).Path
+$smokeArguments = @('--smoke-test', '--smoke-result')
+if ($Edition -eq 'verifier') {
+    $fixture = (Resolve-Path -LiteralPath $Bundle).Path
+    $trustedKeys = (Resolve-Path -LiteralPath $Trust).Path
+}
 $runtimeRoots = @(${env:ProgramFiles(x86)}, $env:ProgramFiles, $env:LOCALAPPDATA) |
     Where-Object { $_ } | ForEach-Object { Join-Path $_ 'Microsoft/EdgeWebView/Application' } |
     Where-Object { Test-Path -LiteralPath $_ }
@@ -60,7 +65,11 @@ try {
     }
     $start = [Diagnostics.ProcessStartInfo]::new($desktop)
     $start.UseShellExecute = $false
-    foreach ($argument in @('--smoke-test', '--smoke-result', $result, '--smoke-bundle', $fixture, '--smoke-trust', $trustedKeys)) {
+    $smokeArguments += $result
+    if ($Edition -eq 'verifier') {
+        $smokeArguments += @('--smoke-bundle', $fixture, '--smoke-trust', $trustedKeys)
+    }
+    foreach ($argument in $smokeArguments) {
         $start.ArgumentList.Add($argument)
     }
     $process = [Diagnostics.Process]::Start($start)
@@ -99,6 +108,7 @@ try {
         observedWebViewExecutables = @($observed)
         rulesRemoved = $remaining.Count -eq 0
         cleanWindows11Qualified = $false
+        edition = $Edition
         createdAtUtc = [DateTime]::UtcNow.ToString('o')
     } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $out 'network-qualification.json') -Encoding utf8
     if ($remaining.Count) { throw "Test firewall rules remain in group $group" }

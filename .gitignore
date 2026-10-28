@@ -40,3 +40,6 @@ artifacts/demo/
 artifacts/benchmarks/
 artifacts/election-rc-demo/
 ets_core.egg-info/
+
+# Pinned SDK archive is staged and verified by the Developer candidate build.
+/ets/desktop/assets/sdk-test-kit.zip

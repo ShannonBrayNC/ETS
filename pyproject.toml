@@ -93,7 +93,7 @@ exclude = ["ets.core.ets_core*"]
 
 [tool.setuptools.package-data]
 ets = ["py.typed"]
-"ets.desktop" = ["index.html"]
+"ets.desktop" = ["index.html", "developer.html"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

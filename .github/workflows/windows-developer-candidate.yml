@@ -1,0 +1,163 @@
+name: Windows Developer candidate
+
+on:
+  pull_request:
+    paths:
+      - 'packaging/windows/**'
+      - 'ets/core/**'
+      - 'ets/sdk/**'
+      - 'ets/verifier/**'
+      - 'ets/desktop/**'
+      - 'ets/reports/**'
+      - 'ets/version.py'
+      - 'tests/unit/test_desktop*'
+      - 'tests/unit/test_msix_layout.py'
+      - 'tests/unit/test_developer_packaging.py'
+      - 'tests/e2e/desktop/**'
+      - 'pyproject.toml'
+      - '.github/workflows/windows-developer-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  developer-candidate:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Install application and build dependencies
+        run: python -m pip install . -r packaging/windows/requirements-build.txt -r packaging/windows/requirements-desktop.txt "pytest>=9.0.3,<10"
+      - name: Test shared verifier, Developer bridge, and packaging boundaries
+        run: python -m pytest tests/unit/test_desktop_controller.py tests/unit/test_desktop_smoke.py tests/unit/test_desktop_developer.py tests/unit/test_desktop_developer_smoke.py tests/unit/test_msix_layout.py tests/unit/test_developer_packaging.py tests/unit/test_candidate_record.py tests/unit/test_verifier_standalone.py --junitxml=test-results/developer-source.xml
+      - name: Fetch only the reviewed immutable SDK test kit
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const pin = JSON.parse(fs.readFileSync('packaging/windows/developer-kit.json', 'utf8'));
+            if (`${context.repo.owner}/${context.repo.repo}` !== pin.repository) {
+              throw new Error('SDK pin repository mismatch');
+            }
+            const {data: artifact} = await github.rest.actions.getArtifact({
+              ...context.repo, artifact_id: pin.artifact_id,
+            });
+            if (artifact.expired || artifact.name !== pin.artifact_name ||
+                artifact.workflow_run?.id !== pin.workflow_run_id ||
+                artifact.size_in_bytes !== pin.archive_bytes) {
+              throw new Error('Pinned SDK artifact is unavailable or metadata changed; do not substitute latest');
+            }
+            const {data} = await github.rest.actions.downloadArtifact({
+              ...context.repo, artifact_id: pin.artifact_id, archive_format: 'zip',
+            });
+            const bytes = Buffer.from(data);
+            const digest = require('crypto').createHash('sha256').update(bytes).digest('hex');
+            if (bytes.length !== pin.archive_bytes || digest !== pin.archive_sha256) {
+              throw new Error('SDK artifact digest mismatch');
+            }
+            fs.mkdirSync('build', {recursive:true});
+            fs.writeFileSync('build/pinned-sdk-test-kit.zip', bytes, {flag:'wx'});
+      - name: Verify every SDK member and stage archive without extraction
+        run: python packaging/windows/stage_developer_kit.py --archive build/pinned-sdk-test-kit.zip --target ets/desktop/assets/sdk-test-kit.zip --result test-results/sdk-kit-verification.json
+      - name: Freeze the shared verifier and separate Developer preview host
+        shell: pwsh
+        run: |
+          python -m PyInstaller --clean --noconfirm packaging/windows/verifier.spec
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m PyInstaller --clean --noconfirm packaging/windows/developer.spec
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item dist/ets-verify dist/ets-developer/verifier -Recurse
+          $env:ETS_VERIFY_EXECUTABLE = (Resolve-Path dist/ets-verify/ets-verify.exe).Path
+          python -m pytest tests/unit/test_verifier_standalone.py --junitxml=test-results/developer-frozen-verifier.xml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise frozen local sandbox and SDK export with no language tools on PATH
+        shell: pwsh
+        run: |
+          $result = Join-Path $PWD 'test-results/developer-smoke.json'
+          $start = [Diagnostics.ProcessStartInfo]::new((Resolve-Path dist/ets-developer/ets-developer.exe).Path)
+          $start.UseShellExecute = $false
+          $start.Environment['PATH'] = "$env:SystemRoot\System32;$env:SystemRoot"
+          $start.Environment.Remove('PYTHONHOME') | Out-Null
+          $start.Environment.Remove('PYTHONPATH') | Out-Null
+          foreach ($argument in @('--smoke-test', '--smoke-result', $result)) { $start.ArgumentList.Add($argument) }
+          $process = [Diagnostics.Process]::Start($start)
+          if (-not $process.WaitForExit(300000)) { $process.Kill($true); Get-Content $result -ErrorAction SilentlyContinue; throw 'Developer smoke timed out' }
+          if ($process.ExitCode -ne 0) { Get-Content $result -ErrorAction SilentlyContinue; throw 'Developer smoke failed' }
+          $smoke = Get-Content $result -Raw | ConvertFrom-Json
+          if ($smoke.status -ne 0) { throw 'Developer smoke did not report success' }
+          Get-Content $result
+      - name: Exercise Developer workflow with program network blocks
+        shell: pwsh
+        run: ./packaging/windows/test-desktop-offline.ps1 -DesktopDirectory dist/ets-developer -Edition developer -OutputDirectory test-results/offline-developer
+      - name: Collect dependency license evidence without claiming legal approval
+        shell: pwsh
+        run: |
+          python packaging/windows/collect_dependency_evidence.py --output dist/ets-developer/THIRD_PARTY_EVIDENCE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip freeze | Out-File test-results/build-environment.txt -Encoding utf8
+          Copy-Item packaging/windows/developer-kit.json test-results/sdk-kit-pin.json
+      - name: Build distinct unsigned Developer development MSIX
+        shell: pwsh
+        run: ./packaging/windows/build-msix.ps1 -Source dist/ets-developer -OutputDirectory dist/developer-msix -PackageVersion '0.1.0.0' -Edition developer
+      - name: Bind package and retained results to exact candidate source
+        shell: pwsh
+        env:
+          CANDIDATE_SOURCE_SHA: ${{ github.sha }}
+          CANDIDATE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          $actual = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:CANDIDATE_SOURCE_SHA) { throw 'Candidate source mismatch' }
+          git show -s --format=fuller HEAD | Out-File test-results/source-commit.txt -Encoding utf8
+          python packaging/windows/candidate_record.py assemble --packages dist/developer-msix --results test-results --output dist/developer-review --source-sha $actual --run-url $env:CANDIDATE_RUN_URL
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python packaging/windows/candidate_record.py verify dist/developer-review
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload unsigned portable Developer preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: ets-developer-windows-x64-unsigned-${{ github.sha }}
+          path: dist/ets-developer/
+          if-no-files-found: error
+      - name: Upload exact-source MSIX and evidence review bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ets-developer-review-${{ github.sha }}
+          path: dist/developer-review/
+          if-no-files-found: error
+      - name: Upload Developer engineering results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ets-developer-windows-results-${{ github.sha }}
+          path: test-results/
+          if-no-files-found: warn
+
+  developer-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+        working-directory: tests/e2e/desktop
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests/e2e/desktop
+      - run: npm test
+        working-directory: tests/e2e/desktop
+        env:
+          ETS_UI_SCREENSHOT_DIR: ${{ github.workspace }}/test-results/developer-ui
+      - name: Upload Developer UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ets-developer-ui-${{ github.sha }}
+          path: test-results/developer-ui/
+          if-no-files-found: warn
