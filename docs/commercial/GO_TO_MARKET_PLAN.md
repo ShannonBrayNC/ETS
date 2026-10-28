@@ -16,7 +16,7 @@ underlying event. A valid proof does not establish real-world truth or completen
 ETS complements existing operational, security, and audit systems.
 
 This plan records the agreed commercial direction. It does not assert that a
-Store package exists, that Microsoft has certified ETS, or that hosted services
+Store-qualified package exists, that Microsoft has certified ETS, or that hosted services
 are production-qualified. Existing protocol, security, release, and IP gates remain
 in effect.
 
@@ -78,10 +78,12 @@ protocol code independent of UI, API, and persistence runtime dependencies.
 Bundle the required runtime so end users do not need Python, Git, pip, or a
 development checkout.
 
-A Windows host using WebView2 and the reusable dashboard/UI is the preferred
-starting point for a packaging investigation, with a bundled local verification
-component and MSIX packaging. The exact host and runtime bundling approach remain
-an engineering decision after a repository and dependency assessment. This plan
+The implemented engineering candidate uses a pywebview/WebView2 Windows host,
+a local desktop UI, a separately bundled PyInstaller verifier, and development MSIX
+packaging. Native verification/export and program-scoped firewall tests pass in
+Windows Server CI. This resolves the initial host experiment; it does not establish
+Windows 11 support, signed installation or Store readiness. See the
+[readiness evidence and release gates](WINDOWS_VERIFIER_READINESS.md). This plan
 does not authorize a protocol rewrite.
 
 ## Deployment and update boundaries
@@ -159,6 +161,11 @@ These phases define an adoption sequence, not a claim that backend engineering
 must wait for the Store launch. Engineering work may proceed concurrently while
 each product retains its own release gates.
 
+Phase 1 engineering artifacts now exist, but its clean standard-user client exit
+criterion is still open. Do not advance to installable beta or Store launch solely
+because CI passes. Complete the [release qualification record](WINDOWS_RELEASE_QUALIFICATION_RECORD.md)
+for the exact candidate before making a release-readiness claim.
+
 ## Success measures and outstanding decisions
 
 Track install-to-first-successful-verification conversion, time to first verified
@@ -170,7 +177,8 @@ verification must not require telemetry or connectivity.
 Before commercial launch, decide:
 
 - Supported Windows versions and processor architectures.
-- Desktop host, runtime/dependency bundling, package identity, and file associations.
+- Production qualification of the implemented desktop host/runtime bundle, WebView2
+  provisioning, Partner Center identity, and file associations.
 - Supported evidence profiles and trust material/freshness behavior.
 - Enterprise installer signing, update rings, compatibility policy, and data retention.
 - Pricing, quotas, service commitments, and named operational owners.
