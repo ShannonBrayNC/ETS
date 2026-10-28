@@ -14,6 +14,7 @@ on:
       - 'tests/unit/test_verifier_input.py'
       - 'tests/unit/test_verifier_strict_reports.py'
       - 'tests/unit/test_desktop_controller.py'
+      - 'tests/unit/test_desktop_smoke.py'
       - 'tests/unit/test_msix_layout.py'
       - 'tests/unit/test_dependency_evidence.py'
       - 'tests/e2e/desktop/**'
@@ -60,7 +61,7 @@ jobs:
           } | ConvertTo-Json | Out-File test-results/runtime-sha256.json -Encoding utf8
           "source_sha=${{ github.sha }}" | Out-File test-results/source.txt -Encoding utf8
       - name: Test desktop controller
-        run: python -m pytest tests/unit/test_desktop_controller.py --junitxml=test-results/desktop-controller.xml
+        run: python -m pytest tests/unit/test_desktop_controller.py tests/unit/test_desktop_smoke.py --junitxml=test-results/desktop-controller.xml
       - name: Build desktop host
         shell: pwsh
         run: |
@@ -73,8 +74,9 @@ jobs:
         shell: pwsh
         run: |
           $result = Join-Path $PWD 'test-results/desktop-smoke.json'
-          $process = Start-Process dist/ets-desktop/ets-desktop.exe -ArgumentList '--smoke-test', '--smoke-result', $result -PassThru
-          if (-not $process.WaitForExit(90000)) { $process.Kill(); Get-Content $result -ErrorAction SilentlyContinue; throw 'Desktop smoke test timed out' }
+          $fixture = (Resolve-Path tests/fixtures/verifier/bundle.json).Path
+          $process = Start-Process dist/ets-desktop/ets-desktop.exe -ArgumentList '--smoke-test', '--smoke-result', $result, '--smoke-bundle', $fixture -PassThru
+          if (-not $process.WaitForExit(240000)) { $process.Kill(); Get-Content $result -ErrorAction SilentlyContinue; throw 'Desktop smoke test timed out' }
           if ($process.ExitCode -ne 0) { Get-Content $result -ErrorAction SilentlyContinue; throw 'Desktop smoke test failed' }
           Get-Content $result
       - name: Collect dependency license evidence

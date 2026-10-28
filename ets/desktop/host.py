@@ -8,22 +8,32 @@ import sys
 import threading
 from importlib import import_module
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from ets.desktop.controller import DesktopAPI
+from ets.desktop.smoke import NativeSmoke
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--smoke-result", type=Path)
+    parser.add_argument("--smoke-bundle", type=Path)
     args = parser.parse_args()
+    if args.smoke_bundle and not args.smoke_test:
+        parser.error("--smoke-bundle requires --smoke-test")
     if args.smoke_result:
         args.smoke_result.write_text(
             json.dumps({"status": "starting", "detail": "initializing WebView2"}), encoding="utf-8"
         )
     try:
-        status = _launch(args.smoke_test)
+        if args.smoke_bundle:
+            with TemporaryDirectory(prefix="ets-native-smoke-") as temporary:
+                scenario = NativeSmoke(args.smoke_bundle, Path(temporary))
+                status = _launch(True, scenario)
+        else:
+            status = _launch(args.smoke_test)
         detail = "window loaded" if status == 0 else "window smoke check failed"
     except Exception as exc:
         status, detail = 1, str(exc)
@@ -43,7 +53,7 @@ def main() -> int:
     return status
 
 
-def _launch(smoke_test: bool) -> int:
+def _launch(smoke_test: bool, scenario: NativeSmoke | None = None) -> int:
     if sys.platform != "win32":
         raise RuntimeError("The desktop candidate currently supports Windows only")
     webview = import_module("webview")  # Optional desktop-only dependency.
@@ -51,6 +61,8 @@ def _launch(smoke_test: bool) -> int:
     window: Any = None
 
     def choose(kind: str) -> str | None:
+        if smoke_test and scenario is not None:
+            return scenario.choose(kind)
         if kind in {"bundle", "trust"}:
             result = window.create_file_dialog(
                 webview.FileDialog.OPEN,
@@ -82,6 +94,7 @@ def _launch(smoke_test: bool) -> int:
     )
     ready = threading.Event()
     passed: list[bool] = []
+    smoke_errors: list[str] = []
 
     def loaded() -> None:
         ready.set()
@@ -89,6 +102,8 @@ def _launch(smoke_test: bool) -> int:
     def smoke() -> None:
         if ready.wait(45):
             try:
+                if scenario is not None:
+                    scenario.run(window)
                 passed.append(
                     window.evaluate_js(
                         "document.title === 'ETS Verifier' && "
@@ -96,6 +111,9 @@ def _launch(smoke_test: bool) -> int:
                     )
                     is True
                 )
+            except Exception as exc:
+                smoke_errors.append(str(exc))
+                passed.append(False)
             finally:
                 window.destroy()
         else:
@@ -109,6 +127,8 @@ def _launch(smoke_test: bool) -> int:
         http_server=False,
         private_mode=True,
     )
+    if smoke_errors:
+        raise RuntimeError(smoke_errors[0])
     return 0 if not smoke_test or passed == [True] else 1
 
 
