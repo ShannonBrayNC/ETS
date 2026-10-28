@@ -119,6 +119,13 @@ async function main() {
   const [mode, first, second, ...extra] = process.argv.slice(2);
   if (extra.length || !["--smoke", "--live"].includes(mode) || !first || (mode === "--smoke" ? !second : second))
     throw new Error("Usage: quickstart.mjs --smoke <signed-fixture.json> <new-output.json> | --live <new-output.json>");
+  // Read the input before reserving an output; input and output may be the same path.
+  let fixture;
+  if (mode === "--smoke") {
+    const bytes = await readFile(first);
+    if (bytes.length > LIMIT) throw new Error("Fixture too large");
+    fixture = JSON.parse(bytes.toString("utf8"));
+  }
   const output = mode === "--smoke" ? second : first;
   // Atomically reserve a new output before any capture; keep the same handle for writing.
   // On failure, retain this incomplete file so an uncertain write is not silently retried.
@@ -129,9 +136,6 @@ async function main() {
   try {
     let client, event, assertCaptured = () => {};
     if (mode === "--smoke") {
-      const bytes = await readFile(first);
-      if (bytes.length > LIMIT) throw new Error("Fixture too large");
-      const fixture = JSON.parse(bytes.toString("utf8"));
       ({ client, assertCaptured } = await smokeClient(fixture));
       event = fixture.event;
     } else {

@@ -58,3 +58,7 @@ foreach ($entry in @(@('valid', 'valid'), @('tampered', 'invalid'), @('missing-t
     } finally { $report.Dispose() }
 }
 Write-Host 'PowerShell smoke passed: capture/read/proof/export, strict valid/invalid/missing-trust, 403/malformed, no-overwrite.'
+
+# Every expected native exit and report assertion passed. Do not leak the last
+# intentionally failing child exit through the GitHub Actions PowerShell wrapper.
+exit 0
