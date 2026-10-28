@@ -17,6 +17,7 @@ on:
       - 'tests/unit/test_desktop_smoke.py'
       - 'tests/unit/test_msix_layout.py'
       - 'tests/unit/test_dependency_evidence.py'
+      - 'tests/unit/test_candidate_record.py'
       - 'tests/e2e/desktop/**'
       - 'tests/fixtures/verifier/**'
       - 'pyproject.toml'
@@ -104,6 +105,26 @@ jobs:
       - name: Build and validate unsigned development MSIX
         shell: pwsh
         run: ./packaging/windows/build-msix.ps1
+      - name: Assemble self-contained review candidate
+        shell: pwsh
+        env:
+          CANDIDATE_SOURCE_SHA: ${{ github.sha }}
+          CANDIDATE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python -m pytest tests/unit/test_candidate_record.py --junitxml=test-results/candidate-record.xml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $actual = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:CANDIDATE_SOURCE_SHA) { throw 'Candidate source mismatch' }
+          python packaging/windows/candidate_record.py assemble --packages dist/msix --results test-results --output dist/candidate-review --source-sha $actual --run-url $env:CANDIDATE_RUN_URL
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python packaging/windows/candidate_record.py verify dist/candidate-review
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload review candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: ets-verifier-review-${{ github.sha }}
+          path: dist/candidate-review/
+          if-no-files-found: error
       - name: Upload unsigned development MSIX
         uses: actions/upload-artifact@v4
         with:
