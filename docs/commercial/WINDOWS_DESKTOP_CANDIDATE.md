@@ -94,3 +94,27 @@ Internal exception text from a rejected bridge call is not displayed.
 
 These use a mocked Python bridge in Chromium. They do not replace native dialog,
 WebView2, Windows Narrator, or 200% scaling qualification on the Windows client.
+
+## Native verification/export smoke test
+
+Windows CI launches the frozen desktop with `--smoke-test --smoke-bundle` pointing
+to the repository's unsigned golden bundle. The host copies it into a temporary
+directory and substitutes deterministic selections for native dialogs. UI button
+clicks run through the real WebView2 JavaScript bridge, desktop controller and
+bundled verifier subprocess. The exercise checks:
+
+- Missing trusted signature material produces an indeterminate result.
+- JSON export exactly matches the displayed outcome and requires signatures.
+- A second export cannot overwrite the existing report.
+- Selecting the now-malformed temporary input clears the prior export and produces
+  a malformed result on verification.
+
+The original fixture is never modified. Temporary inputs/reports are cleaned up on
+normal exit. `--smoke-bundle` is rejected unless `--smoke-test` is also set. This
+engineering path does not change verification policy or expose new bridge methods.
+CI retains the smoke result JSON; failures include the failed condition.
+
+This extends the startup-only smoke check. It still does not establish real-dialog
+behavior, signed valid verification through the native UI, network isolation,
+Windows 11 standard-user support, installation under package identity or Narrator
+accessibility. The standalone verifier tests separately exercise signed fixtures.
