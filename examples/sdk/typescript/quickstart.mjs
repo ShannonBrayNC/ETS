@@ -1,7 +1,7 @@
 /** Synthetic ETS client example. --smoke uses injected responses, never a live service. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { access, readFile, writeFile } from "node:fs/promises";
+import { open, readFile } from "node:fs/promises";
 import { EtsApplicationError, EtsClient } from "@lanternprotocol/ets-sdk";
 
 const LIMIT = 4 * 1024 * 1024;
@@ -120,8 +120,9 @@ async function main() {
   if (extra.length || !["--smoke", "--live"].includes(mode) || !first || (mode === "--smoke" ? !second : second))
     throw new Error("Usage: quickstart.mjs --smoke <signed-fixture.json> <new-output.json> | --live <new-output.json>");
   const output = mode === "--smoke" ? second : first;
-  try { await access(output); throw new Error("Output exists; choose a new path before capture"); }
-  catch (error) { if (error.code !== "ENOENT") throw error; }
+  // Atomically reserve a new output before any capture; keep the same handle for writing.
+  // On failure, retain this incomplete file so an uncertain write is not silently retried.
+  const outputFile = await open(output, "wx", 0o600);
   const controller = new AbortController();
   const onInterrupt = () => controller.abort();
   process.once("SIGINT", onInterrupt);
@@ -144,13 +145,16 @@ async function main() {
     const bundle = await client.getBundle(receipt.event_id);
     const content = JSON.stringify(bundle, null, 2) + "\n";
     if (Buffer.byteLength(content) > LIMIT) throw new Error("Export exceeds sample limit");
-    await writeFile(output, content, { flag: "wx", mode: 0o600 });
+    await outputFile.writeFile(content);
     assertCaptured();
     console.log(`mode=${mode === "--smoke" ? "simulated_transport" : "live_capture"}`);
     console.log("commitment_state=committed_local; independent_verification=not_performed");
     console.log(`bundle_saved=${output}`);
     if (mode === "--smoke") console.log("synthetic_success_and_error_checks=passed");
-  } finally { process.removeListener("SIGINT", onInterrupt); }
+  } finally {
+    process.removeListener("SIGINT", onInterrupt);
+    await outputFile.close();
+  }
 }
 
 main().catch((error) => {

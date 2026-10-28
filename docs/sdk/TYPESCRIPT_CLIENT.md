@@ -71,6 +71,13 @@ Use a new report path. Under the explicit public fixture key, the expected resul
 is `valid=true` and `standing_status=checkpoint_only`, not current trust or physical
 truth. The npm package does not install `ets-verify` or a native offline verifier.
 
+The sample atomically reserves the requested output with exclusive creation before
+capture, then writes through that same open handle. Existing files are never
+replaced. A failure can leave an empty or incomplete reserved output: keep it for
+diagnosis, do not treat it as a valid bundle, and choose a fresh path for a later
+attempt. Reconcile any uncertain append before retrying; the sample deliberately
+does not delete the output or repeat the write automatically.
+
 ## Live synthetic capture (a real write)
 
 Provision an authorized test endpoint/workspace first. Supply `ETS_BASE_URL`

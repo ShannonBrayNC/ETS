@@ -108,7 +108,7 @@ jobs:
           cd "$consumer"
           "$consumer/python-env/bin/python" -I -c 'from ets.sdk import ETSClient; from ets.version import __version__; print(__version__)'
           "$consumer/python-env/bin/python" -I "$consumer/python-example/offline_roundtrip.py" --deterministic-smoke --output "$consumer/python-result"
-          dotnet restore "$consumer/dotnet-example/Quickstart.csproj" --source "$GITHUB_WORKSPACE/artifacts/dotnet" --packages "$consumer/nuget-cache"
+          dotnet msbuild "$consumer/dotnet-example/Quickstart.csproj" -t:Restore "-p:RestoreSources=$GITHUB_WORKSPACE/artifacts/dotnet" "-p:RestorePackagesPath=$consumer/nuget-cache"
           dotnet run --no-restore --project "$consumer/dotnet-example/Quickstart.csproj" -- --smoke "$GITHUB_WORKSPACE/tests/fixtures/verifier/native-signed.json" "$consumer/dotnet-bundle.json"
           cd "$consumer/typescript-example"
           npm install --ignore-scripts --no-save --package-lock=false "$GITHUB_WORKSPACE"/artifacts/typescript/*.tgz

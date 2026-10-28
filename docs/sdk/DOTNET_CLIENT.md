@@ -13,7 +13,8 @@ From the extracted kit root, with .NET 8 SDK already installed, restore the
 reviewed package from the kit into a new isolated cache (no registry publication):
 
 ```powershell
-dotnet restore examples/sdk/dotnet/Quickstart.csproj --source ./packages/dotnet --packages ./.nuget-kit-cache
+dotnet msbuild examples/sdk/dotnet/Quickstart.csproj -t:Restore `
+  "-p:RestoreSources=$PWD/packages/dotnet" "-p:RestorePackagesPath=$PWD/.nuget-kit-cache"
 dotnet run --no-restore --project examples/sdk/dotnet/Quickstart.csproj -- `
   --smoke tests/fixtures/verifier/native-signed.json ./dotnet-bundle.json
 ```
@@ -28,7 +29,8 @@ From a reviewed checkout with the .NET 8 SDK installed:
 
 ```powershell
 dotnet pack sdk/dotnet/Ets.Application/Ets.Application.csproj -c Release -o artifacts/dotnet
-dotnet restore examples/sdk/dotnet/Quickstart.csproj --source ./artifacts/dotnet
+dotnet msbuild examples/sdk/dotnet/Quickstart.csproj -t:Restore `
+  "-p:RestoreSources=$PWD/artifacts/dotnet" "-p:RestorePackagesPath=$PWD/.nuget-kit-cache"
 # Use a NEW output filename. The source project consumes PackageReference, not ProjectReference.
 dotnet run --no-restore --project examples/sdk/dotnet/Quickstart.csproj -- `
   --smoke tests/fixtures/verifier/native-signed.json ./dotnet-bundle.json
