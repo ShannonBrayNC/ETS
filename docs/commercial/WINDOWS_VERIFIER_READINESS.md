@@ -78,7 +78,7 @@ increment does not claim reproducible builds or a complete license/SBOM review.
 | P0 | Result and trust semantics | Strict offline CLI distinguishes invalid, unsupported, and indeterminate states and exports those outcomes with trust policy and offline limitations; desktop presentation remains |
 | P0 | Offline desktop workflow | Candidate implements selection, verification, checks, and snapshot export; native end-to-end dialogs and blocked-network client qualification remain |
 | P0 | Actual client qualification | Windows 11 x64 standard-user clean-machine testing without Python/Git; network disabled; keyboard/Narrator/high-DPI testing |
-| P0 | MSIX identity and lifecycle | Actual Partner Center identity, package manifest/assets, dependency notices, installation/update/uninstall and data-preservation evidence, WACK and Store review |
+| P0 | MSIX identity and lifecycle | [Unsigned development MSIX](WINDOWS_MSIX_CANDIDATE.md) adds manifest/assets and pack/unpack integrity checks; Partner Center identity, signing, dependency notices, installation/update/uninstall, data preservation, WACK and Store review remain |
 | P1 | Dependency supply chain | Reviewed lock strategy, SBOM/license inventory, vulnerability gates, signed distribution and provenance |
 | P1 | Agent/enterprise delivery | Separate signed MSI, service identity and IPC authorization, durable queues, recovery and compatibility policy |
 | P1 | Commercial operations | Approved pricing/quotas, support ownership, pilot criteria and service commitments |

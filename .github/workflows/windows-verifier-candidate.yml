@@ -14,6 +14,7 @@ on:
       - 'tests/unit/test_verifier_input.py'
       - 'tests/unit/test_verifier_strict_reports.py'
       - 'tests/unit/test_desktop_controller.py'
+      - 'tests/unit/test_msix_layout.py'
       - 'tests/e2e/desktop/**'
       - 'tests/fixtures/verifier/**'
       - 'pyproject.toml'
@@ -80,6 +81,19 @@ jobs:
         with:
           name: ets-desktop-windows-x64-unsigned-${{ github.sha }}
           path: dist/ets-desktop/
+          if-no-files-found: error
+      - name: Validate MSIX layout tests
+        run: python -m pytest tests/unit/test_msix_layout.py --junitxml=test-results/msix-layout.xml
+      - name: Build and validate unsigned development MSIX
+        shell: pwsh
+        run: ./packaging/windows/build-msix.ps1
+      - name: Upload unsigned development MSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: ets-verifier-development-msix-${{ github.sha }}
+          path: |
+            dist/msix/*.msix
+            dist/msix/*.json
           if-no-files-found: error
       - name: Upload unsigned engineering candidate
         uses: actions/upload-artifact@v4
