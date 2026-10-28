@@ -86,6 +86,9 @@ and retain artifact hashes and test results before CI artifact retention expires
 | Dependency evidence | [Inventory recipe](WINDOWS_DEPENDENCY_EVIDENCE.md) | Metadata and available license files included and hashed in desktop/MSIX; unreviewed build-environment inventory, not runtime SBOM |
 | Signing helper | [Signing procedure](WINDOWS_SIGNING_QUALIFICATION.md) | Existing-certificate helper and negative-path tests; successful signing and certificate-provider access have not been qualified |
 
+The [Store release gap checklist](MICROSOFT_STORE_RELEASE_GAPS.md) provides the
+prioritized completion list and read-only Windows client preflight command.
+
 ## Remaining gates, in priority order
 
 | Priority | Gate | Next action and exit evidence |

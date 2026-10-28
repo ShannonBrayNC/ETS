@@ -105,6 +105,21 @@ jobs:
       - name: Build and validate unsigned development MSIX
         shell: pwsh
         run: ./packaging/windows/build-msix.ps1
+      - name: Verify client preflight rejects unsigned Server candidate
+        shell: pwsh
+        run: |
+          $package = (Get-ChildItem dist/msix/*.msix | Select-Object -First 1).FullName
+          $hash = (Get-FileHash $package -Algorithm SHA256).Hash
+          & ./packaging/windows/client-preflight.ps1 -Package $package -ExpectedSha256 $hash -OutputFile test-results/client-preflight.json
+          if ($LASTEXITCODE -ne 2) { throw 'Expected client preflight rejection on engineering runner' }
+          $report = Get-Content test-results/client-preflight.json -Raw | ConvertFrom-Json
+          if ($report.clientQualified -or $report.releaseApproved -or $report.automaticPrerequisitesPassed) { throw 'False client qualification' }
+          if (-not $report.checks.reviewedHashMatches -or $report.checks.signatureTrustedOnThisMachine -or $report.checks.windows11Client) { throw 'Incorrect preflight observations' }
+          & ./packaging/windows/client-preflight.ps1 -Package $package -ExpectedSha256 ('0' * 64) -OutputFile test-results/client-preflight-wrong-hash.json
+          if ($LASTEXITCODE -ne 2) { throw 'Expected mismatched hash rejection' }
+          $mismatch = Get-Content test-results/client-preflight-wrong-hash.json -Raw | ConvertFrom-Json
+          if ($mismatch.checks.reviewedHashMatches) { throw 'Mismatched hash was accepted' }
+          exit 0
       - name: Assemble self-contained review candidate
         shell: pwsh
         env:
