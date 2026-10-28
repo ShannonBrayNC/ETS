@@ -377,3 +377,32 @@ transports, hosted OIDC/JWKS profile integration, protected-at-rest secret
 storage, automated policy-governed synchronization, update/recovery mechanics,
 fleet enrollment/operations, lifecycle compaction, capacity qualification, and
 formal production security gates.
+
+## Dark Pro local browser validation
+
+The current `edge` UI profile uses the server-side local-management BFF. It has
+no browser API-key field. In the UI, use **Capture synthetic event**, then the
+**Selected evidence** card below the event table: **Get proof**, **Verify**, and
+**Export bundle**. The API-key commands above remain applicable to direct API
+clients. Use **Synchronization → Run safe sync** for explicit queue processing.
+
+The local nginx BFF route preserves the incoming Host header, including the
+published port. This allows the browser Origin `http://localhost:8400` to match
+without weakening the origin check. Rebuild the UI after updating this config:
+
+```powershell
+docker compose -f edge-demo/docker-compose.yml up --build -d edge-ui
+```
+
+If you previously created `compose.local-origin.yml` as a workaround, validate
+without that override by recreating the webhook service from the base profile:
+
+```powershell
+docker compose -f edge-demo/docker-compose.yml up -d --force-recreate edge-webhook
+```
+
+These commands preserve volumes. Confirm capture works at `http://localhost:8400`
+without `ETS_EDGE_UI_ALLOWED_ORIGIN` before closing the proxy regression.
+
+See [the October 28 operator validation record](../docs/commercial/WINDOWS_EDGE_OPERATOR_VALIDATION_2026-10-28.md)
+for observed results and remaining qualification work.
