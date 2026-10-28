@@ -186,6 +186,8 @@ Before commercial launch, decide:
 
 ## Related repository contracts
 
+- [Desktop Developer Edition readiness and SDK plan](DESKTOP_DEVELOPER_EDITION_READINESS.md) — proposed extension; does not replace the free standalone verifier or enterprise deployment boundaries
+
 - [Windows verifier phase 1 readiness and packaging experiment](WINDOWS_VERIFIER_READINESS.md)
 - [Deployment model](../architecture/DEPLOYMENT_MODEL.md)
 - [Hosted platform requirements](HOSTED_PLATFORM_REQUIREMENTS.md)
