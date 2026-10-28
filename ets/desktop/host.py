@@ -18,6 +18,10 @@ def main() -> int:
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--smoke-result", type=Path)
     args = parser.parse_args()
+    if args.smoke_result:
+        args.smoke_result.write_text(
+            json.dumps({"status": "starting", "detail": "initializing WebView2"}), encoding="utf-8"
+        )
     try:
         status = _launch(args.smoke_test)
         detail = "window loaded" if status == 0 else "window smoke check failed"

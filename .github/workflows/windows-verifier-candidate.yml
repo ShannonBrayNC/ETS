@@ -72,7 +72,7 @@ jobs:
         run: |
           $result = Join-Path $PWD 'test-results/desktop-smoke.json'
           $process = Start-Process dist/ets-desktop/ets-desktop.exe -ArgumentList '--smoke-test', '--smoke-result', $result -PassThru
-          if (-not $process.WaitForExit(90000)) { $process.Kill(); throw 'Desktop smoke test timed out' }
+          if (-not $process.WaitForExit(90000)) { $process.Kill(); Get-Content $result -ErrorAction SilentlyContinue; throw 'Desktop smoke test timed out' }
           if ($process.ExitCode -ne 0) { Get-Content $result -ErrorAction SilentlyContinue; throw 'Desktop smoke test failed' }
           Get-Content $result
       - name: Upload unsigned desktop candidate
