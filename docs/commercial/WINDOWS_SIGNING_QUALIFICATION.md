@@ -3,14 +3,28 @@
 This procedure advances the development MSIX toward client qualification. It does
 not approve production distribution or establish Store readiness. Store submission
 uses the verified Partner Center identity and Store signing; the engineering
-identity below must not be submitted as the production identity.
+identities below must not be submitted as production identities.
 
 ## Sign a development candidate
+
+`-Edition verifier` is the backward-compatible default. Developer must be selected
+explicitly with `-Edition developer`; the helper never guesses from the package.
+
+| Edition | Only accepted x64 package identity | Exact certificate subject / publisher |
+| --- | --- | --- |
+| `verifier` (default) | `ETSVerifier.Development` | `CN=ETSVerifier.Development` |
+| `developer` (explicit) | `ETSDeveloper.Development` | `CN=ETSDeveloper.Development` |
+
+These are a fixed engineering allowlist, not parameters for arbitrary publishers
+or production signing. A Verifier certificate cannot sign the Developer candidate.
+For Developer, use the separate [exact-candidate client and WACK handoff](WINDOWS_DEVELOPER_QUALIFICATION.md).
+The Verifier commands and lifecycle version examples below remain Verifier-only.
 
 A signing owner must supply an already-approved certificate in `CurrentUser/My`
 on the Windows signing workstation. It must have an accessible private key,
 explicit code-signing EKU, current validity, and exact subject
-`CN=ETSVerifier.Development`. The certificate chain must already be trusted there.
+`CN=ETSVerifier.Development` for Verifier or `CN=ETSDeveloper.Development` for
+Developer. The certificate chain must already be trusted there.
 The helper does not create/export keys, import certificates, modify trust, accept
 PFX passwords, or install packages. Do not upload private keys as CI artifacts.
 
@@ -41,16 +55,21 @@ substitute for certificate authorization, source review or client qualification.
 The helper rejects other identities, architectures, existing signatures, invalid
 versions and existing output directories. It signs a copy with SHA-256, verifies
 with SignTool's Authenticode policy, checks the source remained unchanged, and
-writes `signing.json` only after success. Failed output directories are diagnostic
+writes `signing.json` only after success, including the selected edition, identity,
+architecture and manifest version. Failed output directories are diagnostic
 artifacts, not qualified candidates; retry into a new directory. Signature trust
 on this machine does not prove trust on a client. These short-lived development
 signatures have **no timestamp**; qualification must occur before expiry. Production
 signing and timestamp policy require a separate reviewed release process.
 
-CI runs syntax and negative-path tests with synthetic packages and no credentials.
-It does not test successful signing, chain trust, or certificate-provider access.
+Both Windows candidate workflows run syntax and negative-path tests with synthetic
+packages and mocked certificate objects. They cover cross-edition identity/publisher
+and certificate rejection, reviewed digest mismatch, unknown edition, key/validity/EKU
+checks, unchanged input, no preflight output, and no success record on tool failure.
+No actual signing or certificate-store access occurs in these tests. They do not
+test successful signing, chain trust, or certificate-provider access.
 
-## Clean client qualification
+## Clean Verifier client qualification
 
 Use a disposable Windows 11 x64 VM with a standard-user account, no Python/Git/SDK,
 and an OS snapshot. Retain the exact OS build, WebView2 version, package/source

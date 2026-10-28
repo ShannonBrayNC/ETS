@@ -4,7 +4,12 @@ Status: NOT RUN. A successful WACK run is required evidence, not Store approval.
 The Lenovo manual test results are recorded in
 [Lenovo qualification](LENOVO_WINDOWS_QUALIFICATION.md).
 
-## Run on the Lenovo
+This page's Lenovo commands target **Verifier only**. Do not change only the display
+name or reuse its results for Developer. Developer has a distinct identity and a
+separate [exact signed-package installation and WACK handoff](WINDOWS_DEVELOPER_QUALIFICATION.md).
+Each edition needs its own package digest, installed-package identity and reports.
+
+## Run Verifier on the Lenovo
 
 Use the current Windows SDK's App Certification Kit. If it is absent, install the
 App Certification Kit component through the Windows SDK installer. Record this
@@ -56,7 +61,7 @@ fixes against the exact new package and retain both results.
 This candidate still uses the engineering publisher and software test certificate.
 After Partner Center provides the exact production package identity, rebuild and
 repeat applicable packaging/client/certification checks. Do not submit the
-ETSVerifier.Development identity as the production product.
+ETSVerifier.Development or ETSDeveloper.Development identity as a production product.
 
 Required external inputs: verified publisher/account owner, reserved product
 identity, final branding/screenshots, privacy and support URLs, age ratings and

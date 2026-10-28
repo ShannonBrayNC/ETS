@@ -4,10 +4,18 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$ExpectedSha256,
     [Parameter(Mandatory)][ValidatePattern('^[0-9A-Fa-f]{40}$')][string]$CertificateThumbprint,
     [Parameter(Mandatory)][string]$OutputDirectory,
-    [Parameter(Mandatory)][string]$SignToolPath
+    [Parameter(Mandatory)][string]$SignToolPath,
+    [ValidateSet('verifier', 'developer')][string]$Edition = 'verifier'
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+# Explicit engineering-only allowlist. Never infer an edition from an untrusted package.
+$Edition = $Edition.ToLowerInvariant()
+$identities = @{
+    verifier = @{ Name = 'ETSVerifier.Development'; Publisher = 'CN=ETSVerifier.Development' }
+    developer = @{ Name = 'ETSDeveloper.Development'; Publisher = 'CN=ETSDeveloper.Development' }
+}
+$selectedIdentity = $identities[$Edition]
 if (-not $IsWindows) { throw 'Signing requires Windows and the Windows SDK.' }
 if (Test-Path -LiteralPath $OutputDirectory) { throw 'Choose a new output directory; existing output is protected.' }
 $source = (Resolve-Path -LiteralPath $Package).Path
@@ -19,7 +27,7 @@ if ($sourceHash -cne $ExpectedSha256.ToLowerInvariant()) {
 $tool = (Resolve-Path -LiteralPath $SignToolPath).Path
 if ([IO.Path]::GetExtension($source) -ne '.msix') { throw 'Expected an MSIX package.' }
 
-# Inspect without extraction or modifying the source. Only the development identity is allowed.
+# Inspect without extraction or modifying the source. Only the selected development identity is allowed.
 $archive = [IO.Compression.ZipFile]::OpenRead($source)
 try {
     $entries = @($archive.Entries | Where-Object { $_.FullName -eq 'AppxManifest.xml' })
@@ -39,10 +47,10 @@ try {
     $ns = [Xml.XmlNamespaceManager]::new($manifest.NameTable)
     $ns.AddNamespace('p', 'http://schemas.microsoft.com/appx/manifest/foundation/windows10')
     $identity = $manifest.SelectSingleNode('/p:Package/p:Identity', $ns)
-    if (-not $identity -or $identity.GetAttribute('Name') -cne 'ETSVerifier.Development' -or
-        $identity.GetAttribute('Publisher') -cne 'CN=ETSVerifier.Development' -or
+    if (-not $identity -or $identity.GetAttribute('Name') -cne $selectedIdentity.Name -or
+        $identity.GetAttribute('Publisher') -cne $selectedIdentity.Publisher -or
         $identity.GetAttribute('ProcessorArchitecture') -cne 'x64') {
-        throw 'Only the x64 ETSVerifier.Development identity may be signed by this helper.'
+        throw "Only the x64 $($selectedIdentity.Name) identity and exact development publisher may be signed for edition $Edition."
     }
     $version = $identity.GetAttribute('Version')
     if ($version -notmatch '^(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.0$' -or
@@ -52,7 +60,7 @@ try {
 } finally { $archive.Dispose() }
 
 $cert = Get-Item -LiteralPath "Cert:\CurrentUser\My\$CertificateThumbprint"
-if ($cert.Subject -cne 'CN=ETSVerifier.Development') { throw 'Certificate subject must exactly match the development publisher.' }
+if ($cert.Subject -cne $selectedIdentity.Publisher) { throw 'Certificate subject must exactly match the development publisher.' }
 if (-not $cert.HasPrivateKey) { throw 'Certificate has no accessible private key.' }
 $now = Get-Date
 if ($cert.NotBefore -gt $now -or $cert.NotAfter -le $now) { throw 'Certificate is outside its validity period.' }
@@ -61,7 +69,7 @@ if ('1.3.6.1.5.5.7.3.3' -notin $eku) { throw 'Certificate must explicitly permit
 
 New-Item -Path $OutputDirectory -ItemType Directory | Out-Null
 $out = (Resolve-Path -LiteralPath $OutputDirectory).Path
-$destination = Join-Path $out "ETSVerifier.Development_${version}_x64_signed.msix"
+$destination = Join-Path $out "$($selectedIdentity.Name)_${version}_x64_signed.msix"
 Copy-Item -LiteralPath $source -Destination $destination
 if ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sourceHash) {
     throw 'Copied package does not match the reviewed candidate; signing was not attempted.'
@@ -82,7 +90,9 @@ if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant(
     certificateThumbprint = $cert.Thumbprint
     certificateExpiresAtUtc = $cert.NotAfter.ToUniversalTime().ToString('o')
     publisher = $cert.Subject
-    identity = 'ETSVerifier.Development'
+    identity = $selectedIdentity.Name
+    edition = $Edition
+    architecture = 'x64'
     version = $version
     signed = $true
     signatureVerifiedOnSigningMachine = $true
