@@ -56,7 +56,7 @@ if ($cert.Subject -cne 'CN=ETSVerifier.Development') { throw 'Certificate subjec
 if (-not $cert.HasPrivateKey) { throw 'Certificate has no accessible private key.' }
 $now = Get-Date
 if ($cert.NotBefore -gt $now -or $cert.NotAfter -le $now) { throw 'Certificate is outside its validity period.' }
-$eku = @($cert.EnhancedKeyUsageList | ForEach-Object { $_.ObjectId.Value })
+$eku = @($cert.EnhancedKeyUsageList | ForEach-Object { [string]$_.ObjectId })
 if ('1.3.6.1.5.5.7.3.3' -notin $eku) { throw 'Certificate must explicitly permit code signing.' }
 
 New-Item -Path $OutputDirectory -ItemType Directory | Out-Null

@@ -85,3 +85,11 @@ WebView2 provisioning and Store review remain separate release gates.
 - [Microsoft MSIX signing guide](https://learn.microsoft.com/en-us/windows/msix/package/sign-msix-package-guide)
 - [SignTool package signing](https://learn.microsoft.com/en-us/windows/msix/package/sign-app-package-using-signtool)
 - [Certificate publisher matching](https://learn.microsoft.com/en-us/windows/msix/package/create-certificate-package-signing)
+
+### PowerShell EKU representation
+
+`EnhancedKeyUsageList` exposes `ObjectId` as an OID string in PowerShell's
+certificate provider. The signing helper compares that string directly with the
+code-signing OID. Accessing `ObjectId.Value` fails under strict mode before the
+package is copied or signed. This was observed during operator qualification;
+a corrected Windows signing run is still required to establish successful signing.
