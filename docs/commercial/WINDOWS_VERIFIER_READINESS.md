@@ -29,7 +29,7 @@ contracts so packaging failures can be isolated from new UI behavior.
 | Runtime dependencies | `pyproject.toml` includes cryptography, Pydantic, Jinja2, FastAPI, HTTPX, idna, and Starlette | Install existing constraints; assess a smaller distribution later rather than changing the SDK dependency contract here |
 | Dynamic imports | `ets/core/__init__.py` lazily resolves compatibility exports | Include core submodules in the PyInstaller analysis and test the frozen executable |
 | Existing UI | `ets/explorer-ui` and `apps/console/web` | Reuse requires an offline and accessibility assessment; neither is automatically a qualified desktop shell |
-| Certificates | Existing CLI certificate export has its own proof-oriented semantics | Do not present a legacy certificate as a strict trust-verification result; desktop export must preserve the strict outcome |
+| Reports | `offline --report` exports freshly computed outcomes in JSON/Markdown/HTML; legacy `certificate` remains separate | Desktop should use strict report semantics and preserve policy/limitations |
 | Proposed C3 contract | `docs/core/ETS_CORE_C3_OFFLINE_VERIFIER_CONTRACT.md` is marked proposed | CLI retains 0/1/2; strict offline adds explicit status classes and bounded JSON input, but does not implement the full proposed profile/exit-code contract |
 
 ## Implemented packaging experiment
@@ -74,7 +74,7 @@ increment does not claim reproducible builds or a complete license/SBOM review.
 | --- | --- | --- |
 | P0 | Windows candidate execution | Green Windows source/frozen tests and retained artifact hashes for the exact commit |
 | P0 | Untrusted input boundary | CLI bounded reads, nesting/item limits, duplicate/non-finite/Unicode rejection now covered by regression tests; desktop integration and full profile/resource-policy qualification remain |
-| P0 | Result and trust semantics | Strict offline CLI now distinguishes invalid, unsupported, and indeterminate states; desktop presentation, offline freshness limits, and strict report exports remain |
+| P0 | Result and trust semantics | Strict offline CLI distinguishes invalid, unsupported, and indeterminate states and exports those outcomes with trust policy and offline limitations; desktop presentation remains |
 | P0 | Offline desktop workflow | Choose/open bundle and trust inputs, verify, inspect results, export; no account or collector needed; no remote content execution |
 | P0 | Actual client qualification | Windows 11 x64 standard-user clean-machine testing without Python/Git; network disabled; keyboard/Narrator/high-DPI testing |
 | P0 | MSIX identity and lifecycle | Actual Partner Center identity, package manifest/assets, dependency notices, installation/update/uninstall and data-preservation evidence, WACK and Store review |
@@ -82,8 +82,8 @@ increment does not claim reproducible builds or a complete license/SBOM review.
 | P1 | Agent/enterprise delivery | Separate signed MSI, service identity and IPC authorization, durable queues, recovery and compatibility policy |
 | P1 | Commercial operations | Approved pricing/quotas, support ownership, pilot criteria and service commitments |
 
-The next implementation should connect these input/result boundaries to a strict
-report export before exposing downloaded bundles through the desktop shell. Do not infer a supported
+The next implementation should connect the tested strict input/result/report
+workflow to the desktop shell. Do not infer a supported
 profile, accept bundle-provided trust anchors automatically, or add an unsigned
 success mode to the consumer UI.
 

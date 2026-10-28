@@ -198,3 +198,91 @@ def test_standalone_report_export(command, tmp_path, artifacts):
     report = json.loads(output.read_text(encoding="utf-8"))
     assert report["proof_valid"] is True
     assert report["what_this_does_not_verify"]
+
+
+@pytest.mark.parametrize(
+    "case,expected,code",
+    [
+        ("valid", "valid", 0),
+        ("tampered", "invalid", 1),
+        ("missing", "indeterminate", 1),
+        ("unsupported", "unsupported", 2),
+        ("malformed", "malformed", 2),
+        ("oversized", "resource_limit", 2),
+    ],
+)
+def test_strict_report_matches_cli_outcome(command, tmp_path, artifacts, case, expected, code):
+    bundle, trust, payload = artifacts
+    if case == "tampered":
+        payload["event"]["metadata"]["tampered"] = True
+    elif case == "unsupported":
+        payload["schema_version"] = "future.v99"
+    elif case == "missing":
+        trust.write_text('{"keys":[]}', encoding="utf-8")
+    bundle.write_text(json.dumps(payload), encoding="utf-8")
+    if case == "malformed":
+        bundle.write_text("{", encoding="utf-8")
+    elif case == "oversized":
+        bundle.write_bytes(b" " * (4 * 1024 * 1024 + 1))
+    output = tmp_path / "strict report.json"
+    result = run(
+        command,
+        tmp_path,
+        "offline",
+        str(bundle),
+        "--trust-store",
+        str(trust),
+        "--report",
+        str(output),
+    )
+    assert result.returncode == code
+    outcome = json.loads(result.stdout)
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert outcome["status"] == expected
+    assert report["outcome"] == outcome
+    assert report["outcome"]["valid"] is (expected == "valid")
+    assert report["policy"]["require_tree_head_signature"] is True
+
+
+@pytest.mark.parametrize("output_format", ["markdown", "html"])
+def test_strict_readable_report(command, tmp_path, artifacts, output_format):
+    bundle, trust, _ = artifacts
+    output = tmp_path / "report.txt"
+    result = run(
+        command,
+        tmp_path,
+        "offline",
+        str(bundle),
+        "--trust-store",
+        str(trust),
+        "--report",
+        str(output),
+        "--report-format",
+        output_format,
+    )
+    assert result.returncode == 0
+    report = output.read_text(encoding="utf-8")
+    assert "checkpoint_only" in report
+    assert "signature_verified" in report
+    assert "real-world truth" in report
+
+
+def test_strict_export_never_overwrites_evidence(command, tmp_path, artifacts):
+    bundle, trust, _ = artifacts
+    original = bundle.read_bytes()
+    result = run(
+        command,
+        tmp_path,
+        "offline",
+        str(bundle),
+        "--trust-store",
+        str(trust),
+        "--report",
+        str(bundle),
+    )
+    assert result.returncode == 2
+    assert bundle.read_bytes() == original
+    error = json.loads(result.stdout)
+    assert error["valid"] is False
+    assert error["reason_code"] == "report_write_failed"
+    assert error["verification_outcome"]["status"] == "valid"
