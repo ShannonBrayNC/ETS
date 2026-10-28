@@ -43,6 +43,10 @@ verifier implementation in each language, arbitrary-payload hashing equivalence,
 or completed public registry publication. The [release process](RELEASE.md)
 remains a separate gate. OpenTelemetry helpers are not established by this status.
 
+The proposed [Desktop Developer Edition](../commercial/DESKTOP_DEVELOPER_EDITION_READINESS.md)
+adds a bundled verifier, offline SDK assets and reproducible samples without
+changing these contracts. Its workbench and SDK-kit export are not implemented.
+
 ## Nonclaims
 
 An SDK receipt is not automatically proof of source truth, completeness,
