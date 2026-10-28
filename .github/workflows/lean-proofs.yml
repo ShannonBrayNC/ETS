@@ -14,16 +14,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate setup retry behavior
+        run: python3 -m unittest discover -s tests/ci -p test_ci_retry.py
+
       - name: Install elan
         run: |
-          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o elan-init.sh
-          sh elan-init.sh -y
+          curl -fsSL --retry 3 --retry-all-errors --retry-max-time 120 --connect-timeout 10 --max-time 60 https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o elan-init.sh
+          bash scripts/ci-retry.sh 3 180 5 sh elan-init.sh -y --default-toolchain none --no-modify-path
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
 
       - name: Install Lean toolchain
         run: |
-          elan default leanprover/lean4:stable
-          lean --version
+          toolchain=$(cat formal/lean/lean-toolchain)
+          bash scripts/ci-retry.sh 3 180 5 elan toolchain install "$toolchain"
+          mkdir -p artifacts/lean-proofs
+          (cd formal/lean && timeout --kill-after=10s 30s lean --version) | tee artifacts/lean-proofs/toolchain.txt
 
       - name: Validate mechanized proof files
         run: |
