@@ -47,6 +47,9 @@ See [development signing and client qualification](WINDOWS_SIGNING_QUALIFICATION
 for the existing-certificate helper and the install/update/removal evidence matrix.
 Successful signing and client lifecycle tests remain unexecuted release gates.
 
+The CI desktop and MSIX also contain [dependency license evidence](WINDOWS_DEPENDENCY_EVIDENCE.md).
+This is an unreviewed build-environment inventory, not a complete runtime SBOM.
+
 ## Remaining release gates
 
 1. Obtain exact Partner Center package/publisher identity and approved branding.
