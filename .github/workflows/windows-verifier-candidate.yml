@@ -104,7 +104,7 @@ jobs:
         run: ./packaging/windows/test-signing-preflight.ps1
       - name: Build and validate unsigned development MSIX
         shell: pwsh
-        run: ./packaging/windows/build-msix.ps1
+        run: ./packaging/windows/build-msix.ps1 -PackageVersion '0.1.1.0'
       - name: Verify client preflight rejects unsigned Server candidate
         shell: pwsh
         run: |
