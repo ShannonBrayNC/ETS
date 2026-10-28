@@ -32,6 +32,7 @@ from ets.verifier import (
     verify_event_hash,
     verify_inclusion,
 )
+from ets.verifier.input import InputLimitError, read_json
 from ets.verifier.service import (
     TreeHeadTrustStore,
     VerificationTransportError,
@@ -86,6 +87,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _tree_head(args.previous, args.latest)
         if args.command == "election-proof":
             return _election_proof(args.path)
+    except InputLimitError:
+        print(
+            json.dumps(
+                {
+                    "valid": False,
+                    "status": "resource_limit",
+                    "reason_code": "input_limit",
+                    "reason": "input exceeds verifier limits",
+                }
+            )
+        )
+        return 2
     except (
         OSError,
         json.JSONDecodeError,
@@ -93,7 +106,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         ValueError,
         VerificationTransportError,
     ) as exc:
-        print(json.dumps({"valid": False, "reason": str(exc)}, sort_keys=True))
+        reason = "invalid artifact schema" if isinstance(exc, ValidationError) else str(exc)
+        print(
+            json.dumps(
+                {
+                    "valid": False,
+                    "status": "malformed",
+                    "reason_code": "input_or_configuration_error",
+                    "reason": reason,
+                },
+                sort_keys=True,
+            )
+        )
         return 2
 
     parser.error("unknown command")
@@ -238,16 +262,59 @@ def _offline(
     allow_unsigned: bool,
 ) -> int:
     payload = _read_json_limited(path, MAX_OFFLINE_BUNDLE_BYTES)
-    trust_store = _load_trust_store(trust_store_path, allow_unsigned)
+    bundle = EvidenceProofBundle.model_validate_json(json.dumps(payload))
+    unsupported = (
+        bundle.schema_version != "ets.proof_bundle.v1"
+        or bundle.event.schema_version != "ets.event.v1"
+        or bundle.inclusion_proof.schema_version != "ets.inclusion_proof.v1"
+        or bundle.tree_head.signature_alg not in {None, "ed25519", "ps256"}
+    )
+    if unsupported:
+        print(
+            json.dumps(
+                {
+                    "valid": False,
+                    "status": "unsupported",
+                    "reason_code": "unsupported_format_or_algorithm",
+                    "reason": "unsupported schema version or signature algorithm",
+                }
+            )
+        )
+        return 2
+    trust_store = (
+        _load_trust_store(trust_store_path, allow_unsigned)
+        if trust_store_path is not None
+        else TreeHeadTrustStore()
+    )
     result = verify_offline_bundle(
-        payload,
+        bundle,
         trust_store=trust_store,
         policy=VerifierPolicy(
             require_tree_head_signature=not allow_unsigned,
             expected_log_id=expected_log_id,
         ),
     )
-    print(json.dumps(result.model_dump(mode="json"), sort_keys=True))
+    output = result.model_dump(mode="json")
+    non_signature_failure = any(
+        not check.passed and check.code != "tree_head_signature" for check in result.checks
+    )
+    missing_material = (
+        bundle.tree_head.signature is None
+        or bundle.tree_head.signature_alg is None
+        or bundle.tree_head.public_key_id is None
+        or trust_store.get(bundle.tree_head.public_key_id) is None
+    )
+    if result.valid:
+        status, reason_code = "valid", "verification_passed"
+    elif not non_signature_failure and missing_material:
+        status, reason_code = "indeterminate", "missing_trust_material"
+    else:
+        status, reason_code = "invalid", "verification_failed"
+    output.update(status=status, reason_code=reason_code)
+    print(json.dumps(output, sort_keys=True))
+    # Preserve 0/1/2 automation semantics. JSON status distinguishes the failure classes.
+    if status == "indeterminate" and trust_store_path is None:
+        return 2
     return 0 if result.valid else 1
 
 
@@ -288,9 +355,9 @@ def _load_trust_store(path: Path | None, allow_unsigned: bool) -> TreeHeadTrustS
         if allow_unsigned:
             return TreeHeadTrustStore()
         raise ValueError("--trust-store is required unless --allow-unsigned is explicitly set")
-    if path.stat().st_size > MAX_TRUST_STORE_BYTES:
-        raise ValueError("trust store exceeds 1 MiB")
-    return TreeHeadTrustStore.model_validate_json(path.read_text(encoding="utf-8"))
+    return TreeHeadTrustStore.model_validate_json(
+        json.dumps(read_json(path, MAX_TRUST_STORE_BYTES))
+    )
 
 
 def _verification_headers(*, tenant: str | None, workspace: str | None) -> dict[str, str]:
@@ -339,13 +406,11 @@ def _election_proof(path: Path) -> int:
 
 
 def _read_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
+    return read_json(path)
 
 
 def _read_json_limited(path: Path, max_bytes: int) -> Any:
-    if path.stat().st_size > max_bytes:
-        raise ValueError(f"JSON input exceeds {max_bytes} bytes")
-    return _read_json(path)
+    return read_json(path, max_bytes)
 
 
 if __name__ == "__main__":  # pragma: no cover

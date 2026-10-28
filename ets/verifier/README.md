@@ -116,5 +116,45 @@ The CLI prints JSON and exits with `0` for valid artifacts, `1` for invalid
 verification results, and `2` for malformed input, unsafe configuration, or
 transport failure.
 
+## Local input limits and offline outcomes
+
+Local JSON files are read in UTF-8 with a bounded read (limit plus one byte),
+not an unbounded read following a size check. Limits are 4 MiB per artifact,
+1 MiB per trust store, 64 nested containers, and 100,000 parsed nodes (including
+object keys). Duplicate keys, non-finite numbers (including exponent overflow),
+invalid UTF-8, escaped lone surrogates, and BOM-prefixed JSON are rejected.
+These limits apply to CLI file input; they do not change the service/library API.
+
+Strict `offline` output adds `status` and `reason_code`. Existing `valid`, checks,
+and checkpoint-only claims remain available. Consumers must require `valid=true`
+and must not treat a non-success status as evidence of validity.
+
+| Status | Meaning | Exit code |
+| --- | --- | --- |
+| `valid` | All configured checks passed | 0 |
+| `invalid` | A checked property failed, including a signature or trust-policy failure | 1 |
+| `indeterminate` | Signature envelope or out-of-band trusted key is missing, with no other known failure | 2 if no trust-store argument was supplied; otherwise 1 |
+| `unsupported` | Unknown bundle/event/inclusion schema version or checkpoint signature algorithm | 2 |
+| `malformed` | Invalid JSON/schema or input/configuration error | 2 |
+| `resource_limit` | Byte, nesting, or item limit exceeded | 2 |
+
+The exit-code family remains 0/1/2; JSON carries the finer distinction. If
+tampering is detected without a trust-store argument, the result is `invalid`
+(exit 1) rather than stopping at the missing configuration (exit 2). Malformed
+input and unsupported formats stop before verification. For a supported parsed
+bundle, a failed non-signature check takes precedence over missing trust.
+
+Supported strict-offline versions are `ets.proof_bundle.v1`, `ets.event.v1`,
+and `ets.inclusion_proof.v1`; signature algorithms are Ed25519 and PS256.
+Omitted schema fields retain the existing v1 model defaults for compatibility.
+This is not implementation of the entire proposed C3 profile/exit-code contract.
+Unknown content hash algorithms remain model-validation errors. Legacy commands
+and online verification retain their existing verification semantics.
+
+Missing trust never imports a key from the evidence bundle. `--allow-unsigned`
+remains an explicit development-only policy and can still produce `valid` under
+that policy; the consumer desktop UI must not expose it as trusted verification.
+Validation errors omit Pydantic input excerpts to avoid echoing artifact content.
+
 See `docs/spec/ETS_VERIFIER_V1.md` for the verifier contract, security model,
 standards research, and test matrix.
