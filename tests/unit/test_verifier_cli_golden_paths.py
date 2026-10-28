@@ -152,6 +152,8 @@ def test_cli_docs_reference_every_static_fixture() -> None:
         "tree-head-previous.json",
         "tree-head-latest.json",
         "election-proof.json",
+        "native-signed.json",
+        "native-trust.json",
     }
     for name in fixture_names:
         assert f"tests/fixtures/verifier/{name}" in docs

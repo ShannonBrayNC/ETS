@@ -20,9 +20,12 @@ def main() -> int:
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--smoke-result", type=Path)
     parser.add_argument("--smoke-bundle", type=Path)
+    parser.add_argument("--smoke-trust", type=Path)
     args = parser.parse_args()
     if args.smoke_bundle and not args.smoke_test:
         parser.error("--smoke-bundle requires --smoke-test")
+    if args.smoke_trust and not args.smoke_bundle:
+        parser.error("--smoke-trust requires --smoke-bundle and --smoke-test")
     if args.smoke_result:
         args.smoke_result.write_text(
             json.dumps({"status": "starting", "detail": "initializing WebView2"}), encoding="utf-8"
@@ -30,7 +33,7 @@ def main() -> int:
     try:
         if args.smoke_bundle:
             with TemporaryDirectory(prefix="ets-native-smoke-") as temporary:
-                scenario = NativeSmoke(args.smoke_bundle, Path(temporary))
+                scenario = NativeSmoke(args.smoke_bundle, Path(temporary), args.smoke_trust)
                 status = _launch(True, scenario)
         else:
             status = _launch(args.smoke_test)

@@ -97,8 +97,8 @@ WebView2, Windows Narrator, or 200% scaling qualification on the Windows client.
 
 ## Native verification/export smoke test
 
-Windows CI launches the frozen desktop with `--smoke-test --smoke-bundle` pointing
-to the repository's unsigned golden bundle. The host copies it into a temporary
+Windows CI launches the frozen desktop with `--smoke-test --smoke-bundle` and
+`--smoke-trust` pointing to the repository's signed test bundle and public trust store. The host copies it into a temporary
 directory and substitutes deterministic selections for native dialogs. UI button
 clicks run through the real WebView2 JavaScript bridge, desktop controller and
 bundled verifier subprocess. The exercise checks:
@@ -106,15 +106,22 @@ bundled verifier subprocess. The exercise checks:
 - Missing trusted signature material produces an indeterminate result.
 - JSON export exactly matches the displayed outcome and requires signatures.
 - A second export cannot overwrite the existing report.
+- Selecting the independent test trust store changes indeterminate to valid, with
+  a verified signature, checkpoint-only standing and no continuity claim.
+- The signed JSON export exactly matches the displayed strict outcome.
+- Tampering with event metadata changes the result to invalid.
 - Selecting the now-malformed temporary input clears the prior export and produces
   a malformed result on verification.
 
-The original fixture is never modified. Temporary inputs/reports are cleaned up on
+The original bundle and trust fixtures are never modified. Temporary inputs/reports are cleaned up on
 normal exit. `--smoke-bundle` is rejected unless `--smoke-test` is also set. This
 engineering path does not change verification policy or expose new bridge methods.
-CI retains the smoke result JSON; failures include the failed condition.
+The optional `--smoke-trust` requires a smoke bundle; it never changes the normal
+file-dialog path. CI retains the smoke result JSON; failures include the failed condition.
 
 This extends the startup-only smoke check. It still does not establish real-dialog
-behavior, signed valid verification through the native UI, network isolation,
+behavior, network isolation,
 Windows 11 standard-user support, installation under package identity or Narrator
-accessibility. The standalone verifier tests separately exercise signed fixtures.
+accessibility. The signed fixtures use the existing public deterministic standalone test identity
+(`standalone-test-key`), never a deployment credential. They are committed only
+under `tests/fixtures/verifier` and are not bundled in the distributed application.
