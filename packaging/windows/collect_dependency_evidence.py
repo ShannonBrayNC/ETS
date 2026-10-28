@@ -23,7 +23,7 @@ def collect(output: Path, distributions: Iterable[Any] | None = None) -> dict[st
         name = dist.metadata.get('Name', 'unknown')
         slug = re.sub(r'[^A-Za-z0-9_.-]', '_', name)[:100]
         directory = output / f'{index:04d}-{slug}'
-        files = []
+        files: list[dict[str, str]] = []
         for candidate in sorted(dist.files or [], key=str):
             # Metadata records evidence installed by the distribution; never traverse
             # arbitrary metadata paths outside its installation root.
