@@ -80,6 +80,9 @@ jobs:
           if (-not $process.WaitForExit(300000)) { $process.Kill(); Get-Content $result -ErrorAction SilentlyContinue; throw 'Desktop smoke test timed out' }
           if ($process.ExitCode -ne 0) { Get-Content $result -ErrorAction SilentlyContinue; throw 'Desktop smoke test failed' }
           Get-Content $result
+      - name: Exercise desktop with program network blocks
+        shell: pwsh
+        run: ./packaging/windows/test-desktop-offline.ps1
       - name: Collect dependency license evidence
         shell: pwsh
         run: |
