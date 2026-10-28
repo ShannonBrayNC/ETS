@@ -91,3 +91,63 @@ def test_refuses_symlink_evidence(candidate):
     with pytest.raises(ValueError, match='symlinks'):
         build(candidate)
     assert not candidate[2].exists()
+
+
+@pytest.mark.parametrize('field,value', [
+    ('schemaVersion', True), ('sourceSha', 'not-a-commit'),
+    ('workflowRun', 'https://example.com/run'), ('recordSigned', True),
+    ('releaseApproved', True), ('files', []),
+])
+def test_rejects_invalid_record_metadata(candidate, field, value):
+    record = build(candidate)
+    record[field] = value
+    (candidate[2] / 'candidate.json').write_text(json.dumps(record))
+    with pytest.raises(ValueError):
+        module.verify(candidate[2])
+
+
+@pytest.mark.parametrize('entry', [None, [], {'bytes': True, 'sha256': '0' * 64},
+                                    {'bytes': -1, 'sha256': '0' * 64},
+                                    {'bytes': 12, 'sha256': 'bad'}])
+def test_rejects_invalid_file_record(candidate, entry):
+    record = build(candidate)
+    record['files']['results/smoke.json'] = entry
+    (candidate[2] / 'candidate.json').write_text(json.dumps(record))
+    with pytest.raises(ValueError):
+        module.verify(candidate[2])
+
+
+def test_rejects_duplicate_json_fields(candidate):
+    build(candidate)
+    manifest = candidate[2] / 'candidate.json'
+    manifest.write_text(manifest.read_text().replace('"schemaVersion": 1',
+                                                   '"schemaVersion": 2, "schemaVersion": 1'))
+    with pytest.raises(ValueError, match='Duplicate'):
+        module.verify(candidate[2])
+
+
+def test_rejects_non_object_record(candidate):
+    build(candidate)
+    (candidate[2] / 'candidate.json').write_text('[]')
+    with pytest.raises(ValueError):
+        module.verify(candidate[2])
+
+
+def test_rejects_windows_junction(candidate, tmp_path):
+    import subprocess
+    import sys
+
+    if sys.platform != 'win32':
+        pytest.skip('Windows directory junction regression')
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'private.txt').write_text('must not copy')
+    junction = candidate[1] / 'junction'
+    subprocess.run(['cmd', '/c', 'mklink', '/J', str(junction), str(outside)],
+                   check=True, capture_output=True)
+    try:
+        with pytest.raises(ValueError, match='reparse|symlink'):
+            build(candidate)
+        assert not candidate[2].exists()
+    finally:
+        junction.rmdir()

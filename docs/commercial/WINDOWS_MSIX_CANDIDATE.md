@@ -83,7 +83,10 @@ and the script from the reviewed repository commit:
 python packaging/windows/candidate_record.py verify ./extracted-review
 ```
 
-Verification rejects changed/missing/extra files, unsafe paths and symlinks.
+Verification rejects changed/missing/extra files, unsafe paths, symlinks and
+Windows reparse points (including junctions) before traversing their contents.
+It also rejects duplicate JSON fields, invalid metadata/file records and approval
+flags inconsistent with an unsigned engineering record.
 Assembly refuses existing output and verifies the package against its qualification
 hash. A failed assembly directory must not be used as a qualified handoff.
 
