@@ -85,3 +85,17 @@ repository. Results below distinguish observed outcomes from untested gates.
 Automated validation for this change: 33 targeted pytest tests passed covering
 local-origin regression, desktop diagnostics/smoke/controller, BFF hosted-origin
 policy and protected ingress. This does not replace Windows or Docker tests.
+
+## Follow-up: proxy qualification in container CI
+
+The Edge Dark Pro workflow now sends `Origin: http://localhost:8400` and
+`Sec-Fetch-Site: same-origin` on capture and verification POSTs through the real
+nginx container. Previously curl omitted Origin, bypassing the comparison that
+failed in the operator's browser. Wrong-port and wrong-host capture requests
+must return 403 even with the UI marker and same-origin fetch metadata present.
+The job retains the receipt, proof, verification and bundle as CI artifacts.
+
+This is a container HTTP integration test with browser-shaped headers, not a
+real-browser UI automation test. The base Compose profile has no allowed-origin
+override. A green run supplies proxy integration evidence; an operator browser
+retest without the workaround remains the final UI confirmation.

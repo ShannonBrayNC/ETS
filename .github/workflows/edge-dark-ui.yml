@@ -71,6 +71,20 @@ jobs:
             http://localhost:8400/edge/ui/v1/status)"
           test "${CROSS_SITE}" = "403"
 
+      - name: Reject mismatched browser origins through nginx
+        run: |
+          for origin in 'http://localhost:8401' 'http://attacker.example:8400'; do
+            STATUS="$(curl --silent --show-error --output /tmp/ui-wrong-origin.json \
+              --write-out '%{http_code}' \
+              -H 'X-ETS-UI-Request: 1' \
+              -H 'Sec-Fetch-Site: same-origin' \
+              -H "Origin: ${origin}" \
+              -H 'Content-Type: application/json' \
+              --data '{"payload":{"synthetic":true,"scenario":"must-not-capture"}}' \
+              http://localhost:8400/edge/ui/v1/capture)"
+            test "${STATUS}" = "403"
+          done
+
       - name: Prove public status contains no reusable secret
         run: |
           python - <<'PY'
@@ -132,6 +146,8 @@ jobs:
 
           curl --fail --silent --show-error \
             -H 'X-ETS-UI-Request: 1' \
+            -H 'Origin: http://localhost:8400' \
+            -H 'Sec-Fetch-Site: same-origin' \
             -H 'Content-Type: application/json' \
             --data-binary @/tmp/dark-pro-capture.json \
             http://localhost:8400/edge/ui/v1/capture \
@@ -155,6 +171,8 @@ jobs:
 
           curl --fail --silent --show-error \
             -H 'X-ETS-UI-Request: 1' \
+            -H 'Origin: http://localhost:8400' \
+            -H 'Sec-Fetch-Site: same-origin' \
             -H 'Content-Type: application/json' \
             --data-binary @/tmp/dark-pro-proof.json \
             http://localhost:8400/edge/ui/v1/verify/inclusion \
@@ -191,6 +209,20 @@ jobs:
           grep -qi '^X-Frame-Options: DENY' /tmp/edge-ui-headers.txt
           grep -qi '^X-Content-Type-Options: nosniff' /tmp/edge-ui-headers.txt
           grep -qi '^Referrer-Policy: no-referrer' /tmp/edge-ui-headers.txt
+
+      - name: Retain source-to-proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-origin-source-to-proof
+          path: |
+            /tmp/edge-ui-status.json
+            /tmp/ui-wrong-origin.json
+            /tmp/dark-pro-receipt.json
+            /tmp/dark-pro-proof.json
+            /tmp/dark-pro-verification.json
+            /tmp/dark-pro-bundle.json
+          if-no-files-found: warn
 
       - name: Dump logs on failure
         if: failure()
