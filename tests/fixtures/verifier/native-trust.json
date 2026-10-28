@@ -1,0 +1,1 @@
+{"schema_version": "ets.verifier_trust.v1", "keys": [{"key_id": "standalone-test-key", "signature_alg": "ed25519", "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"}]}
