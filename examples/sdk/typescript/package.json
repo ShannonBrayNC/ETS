@@ -1,0 +1,7 @@
+{
+  "name": "ets-typescript-quickstart",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.14.0" },
+  "dependencies": { "@lanternprotocol/ets-sdk": "0.1.0-alpha.1" }
+}
