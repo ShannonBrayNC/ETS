@@ -2,7 +2,17 @@
 
 Updated: 2026-10-28. Status: engineering candidate; **not Store-ready**.
 
-## Highest recommendation: qualify the installed client
+## Highest recommendation: WACK and complete retained client evidence
+
+Lenovo 0.1.1.0 fresh install, disconnected operation, reinstall, upgrade/downgrade,
+keyboard, Narrator and 200% scaling passed by operator confirmation. See the
+[results and evidence limits](LENOVO_WINDOWS_QUALIFICATION.md#operator-results--2026-10-28).
+Run the [WACK handoff](WINDOWS_WACK_HANDOFF.md) next. Retain the exact signed digest,
+OS/build, WebView2 and preflight observations; these have not yet been attached.
+The remaining rows below describe release gates, not a claim that all manual tests
+are still unperformed.
+
+## Clean-client evidence completion
 
 Run the signed development candidate on a disposable Windows 11 x64 VM using a
 non-elevated account. Finish the [qualification record](WINDOWS_RELEASE_QUALIFICATION_RECORD.md)

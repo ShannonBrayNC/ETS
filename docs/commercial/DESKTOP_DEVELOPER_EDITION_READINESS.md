@@ -62,8 +62,8 @@ compatibility/evidence review. An implemented component is not a release gate pa
 
 [PR #948](https://github.com/ShannonBrayNC/ETS/pull/948) added a `0.1.1.0` MSIX
 qualification increment without changing the `0.1.0a1` application version.
-[PR #949](https://github.com/ShannonBrayNC/ETS/pull/949), open/unmerged when this
-review began, records operator-attested Lenovo installation, disconnected
+[PR #949](https://github.com/ShannonBrayNC/ETS/pull/949), merged on 2026-10-28
+after this review began, records operator-attested Lenovo installation, disconnected
 verification/export, reinstall, upgrade/downgrade, keyboard, Narrator and 200%
 scaling results. It also records missing exact OS/WebView2/elevation/signed-digest
 and clean-machine evidence and a WACK handoff. Treat that PR as the source for
