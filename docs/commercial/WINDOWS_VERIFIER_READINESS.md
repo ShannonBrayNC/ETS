@@ -16,9 +16,10 @@ is Windows Server 2022 and does not establish Windows 11 support. ARM64 and olde
 Windows versions remain unqualified. A client OS support commitment requires
 testing on the actual supported Windows versions.
 
-The preferred desktop direction remains WebView2 with bundled local verification.
-The current increment deliberately preserves the existing CLI and protocol
-contracts so packaging failures can be isolated from new UI behavior.
+The [first desktop candidate](WINDOWS_DESKTOP_CANDIDATE.md) implements WebView2
+through pywebview, native file dialogs, the separate bundled CLI, and strict report
+exports. It preserves existing protocol contracts. Windows client and MSIX release
+qualification remain separate from engineering CI.
 
 ## Repository assessment
 
@@ -75,15 +76,15 @@ increment does not claim reproducible builds or a complete license/SBOM review.
 | P0 | Windows candidate execution | Green Windows source/frozen tests and retained artifact hashes for the exact commit |
 | P0 | Untrusted input boundary | CLI bounded reads, nesting/item limits, duplicate/non-finite/Unicode rejection now covered by regression tests; desktop integration and full profile/resource-policy qualification remain |
 | P0 | Result and trust semantics | Strict offline CLI distinguishes invalid, unsupported, and indeterminate states and exports those outcomes with trust policy and offline limitations; desktop presentation remains |
-| P0 | Offline desktop workflow | Choose/open bundle and trust inputs, verify, inspect results, export; no account or collector needed; no remote content execution |
+| P0 | Offline desktop workflow | Candidate implements selection, verification, checks, and snapshot export; native end-to-end dialogs and blocked-network client qualification remain |
 | P0 | Actual client qualification | Windows 11 x64 standard-user clean-machine testing without Python/Git; network disabled; keyboard/Narrator/high-DPI testing |
 | P0 | MSIX identity and lifecycle | Actual Partner Center identity, package manifest/assets, dependency notices, installation/update/uninstall and data-preservation evidence, WACK and Store review |
 | P1 | Dependency supply chain | Reviewed lock strategy, SBOM/license inventory, vulnerability gates, signed distribution and provenance |
 | P1 | Agent/enterprise delivery | Separate signed MSI, service identity and IPC authorization, durable queues, recovery and compatibility policy |
 | P1 | Commercial operations | Approved pricing/quotas, support ownership, pilot criteria and service commitments |
 
-The next implementation should connect the tested strict input/result/report
-workflow to the desktop shell. Do not infer a supported
+The next implementation should qualify the native desktop workflow and MSIX
+installation lifecycle. Do not infer a supported
 profile, accept bundle-provided trust anchors automatically, or add an unsigned
 success mode to the consumer UI.
 

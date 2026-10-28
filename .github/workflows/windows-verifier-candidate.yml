@@ -6,12 +6,15 @@ on:
       - 'packaging/windows/**'
       - 'ets/core/**'
       - 'ets/verifier/**'
+      - 'ets/desktop/**'
       - 'ets/reports/**'
       - 'ets/election/**'
       - 'ets/version.py'
       - 'tests/unit/test_verifier_standalone.py'
       - 'tests/unit/test_verifier_input.py'
       - 'tests/unit/test_verifier_strict_reports.py'
+      - 'tests/unit/test_desktop_controller.py'
+      - 'tests/e2e/desktop/**'
       - 'tests/fixtures/verifier/**'
       - 'pyproject.toml'
       - '.github/workflows/windows-verifier-candidate.yml'
@@ -54,6 +57,30 @@ jobs:
             }
           } | ConvertTo-Json | Out-File test-results/runtime-sha256.json -Encoding utf8
           "source_sha=${{ github.sha }}" | Out-File test-results/source.txt -Encoding utf8
+      - name: Test desktop controller
+        run: python -m pytest tests/unit/test_desktop_controller.py --junitxml=test-results/desktop-controller.xml
+      - name: Build desktop host
+        shell: pwsh
+        run: |
+          python -m pip install -r packaging/windows/requirements-desktop.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m PyInstaller --clean --noconfirm packaging/windows/desktop.spec
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item dist/ets-verify dist/ets-desktop/verifier -Recurse
+      - name: Launch native WebView2 smoke test
+        shell: pwsh
+        run: |
+          $result = Join-Path $PWD 'test-results/desktop-smoke.json'
+          $process = Start-Process dist/ets-desktop/ets-desktop.exe -ArgumentList '--smoke-test', '--smoke-result', $result -PassThru
+          if (-not $process.WaitForExit(90000)) { $process.Kill(); throw 'Desktop smoke test timed out' }
+          if ($process.ExitCode -ne 0) { Get-Content $result -ErrorAction SilentlyContinue; throw 'Desktop smoke test failed' }
+          Get-Content $result
+      - name: Upload unsigned desktop candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: ets-desktop-windows-x64-unsigned-${{ github.sha }}
+          path: dist/ets-desktop/
+          if-no-files-found: error
       - name: Upload unsigned engineering candidate
         uses: actions/upload-artifact@v4
         with:
@@ -67,3 +94,18 @@ jobs:
           name: ets-verifier-windows-results-${{ github.sha }}
           path: test-results/
           if-no-files-found: warn
+
+  desktop-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+        working-directory: tests/e2e/desktop
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests/e2e/desktop
+      - run: npm test
+        working-directory: tests/e2e/desktop
