@@ -16,15 +16,15 @@
 <div class="layout">
 <section class="panel" aria-labelledby="inputs-heading">
 <p class="step">01 / SELECT &amp; VERIFY</p><h2 id="inputs-heading">Your evidence</h2>
-<button id="bundle" type="button" disabled>Choose evidence bundle…</button><span id="bundle-name" class="filename">No bundle selected</span>
-<button id="trust" type="button" disabled>Choose trusted keys…</button><span id="trust-name" class="filename">No trust store selected</span>
-<p class="hint">Use trusted keys obtained independently of the evidence bundle. Missing trust is reported as indeterminate.</p>
+<button id="bundle" aria-describedby="bundle-name" type="button" disabled>Choose evidence bundle…</button><span id="bundle-name" class="filename">No bundle selected</span>
+<button id="trust" aria-describedby="trust-name trust-help" type="button" disabled>Choose trusted keys…</button><span id="trust-name" class="filename">No trust store selected</span>
+<p id="trust-help" class="hint">Use trusted keys obtained independently of the evidence bundle. Missing trust is reported as indeterminate.</p>
 <label for="log-id">Expected log ID <span class="hint">(optional)</span></label><input id="log-id" maxlength="512" autocomplete="off" spellcheck="false" placeholder="Require a particular log identity">
 <button id="verify" class="primary" type="button" disabled>Verify offline</button>
 <p class="hint">No account, collector, or cloud connection required. Unsigned development acceptance is disabled.</p>
 </section>
-<section class="panel" aria-labelledby="result-heading">
-<p class="step">02 / INSPECT &amp; EXPORT</p><h2 id="result-heading" tabindex="-1">Verification result</h2>
+<section id="result-panel" class="panel" aria-labelledby="result-heading" aria-busy="false">
+<p class="step">02 / INSPECT &amp; EXPORT</p><h2 id="result-heading" tabindex="-1" aria-describedby="status reason">Verification result</h2>
 <div id="status" class="status" role="status" aria-live="polite">Ready when you are</div>
 <p id="reason">Choose a bundle to inspect its integrity and checkpoint signature.</p>
 <ul id="checks" aria-label="Verification checks"></ul>
@@ -42,6 +42,7 @@ const $ = id => document.getElementById(id);
 let connected=false, selected=false, busy=false, hasResult=false;
 const labels={valid:'Verified at checkpoint',invalid:'Verification failed',indeterminate:'Indeterminate — trust material missing',unsupported:'Unsupported format',malformed:'Malformed input',resource_limit:'Input limit exceeded',error:'Verification unavailable'};
 function controls(){
+  $('result-panel').setAttribute('aria-busy',String(busy));
   $('bundle').disabled=$('trust').disabled=!connected||busy;
   $('verify').disabled=!connected||busy||!selected;
   $('log-id').disabled=busy;
@@ -53,10 +54,20 @@ function clearResult(){
   $('reason').textContent='Run verification to inspect the selected material.';
   $('standing').textContent=''; $('message').textContent=''; controls();
 }
-async function action(fn){
-  if(busy)return; busy=true; controls(); $('message').textContent='';
-  try{await fn();}catch(e){$('message').textContent='The desktop connection failed. Retry or restart the application.';}
-  finally{busy=false;controls();}
+async function action(fn,verification=false){
+  if(busy)return; const origin=document.activeElement; busy=true; controls(); $('message').textContent='';
+  try{await fn();}catch(e){
+    const explanation='The desktop connection failed. Retry or restart the application.';
+    if(verification){
+      clearResult(); $('status').textContent=labels.error;
+      $('status').dataset.state='error'; $('reason').textContent=explanation;
+    }else{$('message').textContent=explanation;}
+  }
+  finally{
+    busy=false;controls();
+    if(verification){$('result-heading').focus();}
+    else if(document.activeElement===document.body && origin && !origin.disabled){origin.focus();}
+  }
 }
 for(const kind of ['bundle','trust'])$(kind).addEventListener('click',()=>action(async()=>{
   const result=await window.pywebview.api[kind==='bundle'?'select_bundle':'select_trust']();
@@ -75,8 +86,8 @@ $('verify').addEventListener('click',()=>action(async()=>{
   $('reason').textContent=outcome.reason||'';
   for(const check of outcome.checks||[]){const item=document.createElement('li');item.textContent=(check.passed?'PASS: ':'FAIL: ')+check.reason;$('checks').appendChild(item);}
   $('standing').textContent=outcome.standing_status==='checkpoint_only'?'Checkpoint only • current log continuity was not verified.':'';
-  $('raw').textContent=JSON.stringify(outcome,null,2); $('result-heading').focus();
-}));
+  $('raw').textContent=JSON.stringify(outcome,null,2);
+},true));
 document.querySelectorAll('[data-format]').forEach(button=>button.addEventListener('click',()=>action(async()=>{
   const result=await window.pywebview.api.export_report(button.dataset.format);
   $('message').textContent=result.cancelled?'Export cancelled.':result.error||('Saved '+result.saved);

@@ -82,3 +82,15 @@ and Store review. See [the readiness assessment](WINDOWS_VERIFIER_READINESS.md).
 
 References: [pywebview API](https://pywebview.flowrl.com/api/) and
 [freezing guidance](https://pywebview.flowrl.com/guide/freezing).
+
+## Keyboard and failure-state regression coverage
+
+The browser suite checks keyboard selection/verification, focus on the result after
+success or failure, described file selections, busy controls, rejected bridge calls,
+and successful retries. A verification connection failure clears the result and
+exports, presents an unavailable status, and moves focus to the result heading.
+Dialog/export actions restore their invoking control when disabling it lost focus.
+Internal exception text from a rejected bridge call is not displayed.
+
+These use a mocked Python bridge in Chromium. They do not replace native dialog,
+WebView2, Windows Narrator, or 200% scaling qualification on the Windows client.
