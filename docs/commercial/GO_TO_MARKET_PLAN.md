@@ -178,6 +178,7 @@ Before commercial launch, decide:
 
 ## Related repository contracts
 
+- [Windows verifier phase 1 readiness and packaging experiment](WINDOWS_VERIFIER_READINESS.md)
 - [Deployment model](../architecture/DEPLOYMENT_MODEL.md)
 - [Hosted platform requirements](HOSTED_PLATFORM_REQUIREMENTS.md)
 - [Pricing and metering model](PRICING_METERING_MODEL.md)
