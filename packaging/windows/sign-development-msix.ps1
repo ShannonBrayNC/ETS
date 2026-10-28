@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Package,
+    [Parameter(Mandatory)][ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$ExpectedSha256,
     [Parameter(Mandatory)][ValidatePattern('^[0-9A-Fa-f]{40}$')][string]$CertificateThumbprint,
     [Parameter(Mandatory)][string]$OutputDirectory,
     [Parameter(Mandatory)][string]$SignToolPath
@@ -10,6 +11,11 @@ Set-StrictMode -Version Latest
 if (-not $IsWindows) { throw 'Signing requires Windows and the Windows SDK.' }
 if (Test-Path -LiteralPath $OutputDirectory) { throw 'Choose a new output directory; existing output is protected.' }
 $source = (Resolve-Path -LiteralPath $Package).Path
+# The reviewer supplies this digest from retained review evidence, not this input file.
+$sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($sourceHash -cne $ExpectedSha256.ToLowerInvariant()) {
+    throw 'Package SHA-256 does not match the reviewed candidate.'
+}
 $tool = (Resolve-Path -LiteralPath $SignToolPath).Path
 if ([IO.Path]::GetExtension($source) -ne '.msix') { throw 'Expected an MSIX package.' }
 
@@ -56,8 +62,10 @@ if ('1.3.6.1.5.5.7.3.3' -notin $eku) { throw 'Certificate must explicitly permit
 New-Item -Path $OutputDirectory -ItemType Directory | Out-Null
 $out = (Resolve-Path -LiteralPath $OutputDirectory).Path
 $destination = Join-Path $out "ETSVerifier.Development_${version}_x64_signed.msix"
-$sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
 Copy-Item -LiteralPath $source -Destination $destination
+if ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sourceHash) {
+    throw 'Copied package does not match the reviewed candidate; signing was not attempted.'
+}
 # Select only the explicitly supplied CurrentUser/My certificate. No PFX/password arguments.
 & $tool sign /fd SHA256 /s My /sha1 $CertificateThumbprint $destination
 if ($LASTEXITCODE -ne 0) { throw 'SignTool signing failed; output is not qualified.' }
@@ -70,6 +78,7 @@ if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant(
     package = [IO.Path]::GetFileName($destination)
     sha256 = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
     unsignedSha256 = $sourceHash
+    reviewedUnsignedSha256 = $ExpectedSha256.ToLowerInvariant()
     certificateThumbprint = $cert.Thumbprint
     certificateExpiresAtUtc = $cert.NotAfter.ToUniversalTime().ToString('o')
     publisher = $cert.Subject
