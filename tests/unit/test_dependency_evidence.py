@@ -77,3 +77,37 @@ def test_ignores_symlink_outside_installation(tmp_path):
         pytest.skip('symlinks unavailable')
     result = module.collect(tmp_path / 'evidence', [distribution(root, files=['LICENSE'])])
     assert result['distributions'][0]['licenseFiles'] == []
+
+
+def test_skips_license_through_linked_parent_inside_root(tmp_path):
+    root = tmp_path / 'installed'
+    actual = root / 'actual'
+    actual.mkdir(parents=True)
+    (actual / 'LICENSE').write_text('linked license')
+    try:
+        (root / 'alias').symlink_to(actual, target_is_directory=True)
+    except OSError:
+        pytest.skip('symlinks unavailable')
+    result = module.collect(tmp_path / 'evidence', [distribution(root, files=['alias/LICENSE'])])
+    assert result['distributions'][0]['missingLicenseFiles'] is True
+
+
+def test_skips_license_through_windows_junction(tmp_path):
+    import subprocess
+    import sys
+
+    if sys.platform != 'win32':
+        pytest.skip('Windows junction regression')
+    root = tmp_path / 'installed'
+    actual = root / 'actual'
+    actual.mkdir(parents=True)
+    (actual / 'LICENSE').write_text('linked license')
+    junction = root / 'alias'
+    subprocess.run(['cmd', '/c', 'mklink', '/J', str(junction), str(actual)],
+                   check=True, capture_output=True)
+    try:
+        result = module.collect(
+            tmp_path / 'evidence', [distribution(root, files=['alias/LICENSE'])])
+        assert result['distributions'][0]['missingLicenseFiles'] is True
+    finally:
+        junction.rmdir()

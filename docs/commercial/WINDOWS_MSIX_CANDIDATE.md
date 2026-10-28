@@ -24,7 +24,9 @@ overrides; adopting a verified production identity is a separate reviewed change
 ## What is checked
 
 - Both launch executables have x64 PE headers and the bundled HTML exists.
-- The copied payload contains no symlinks and the layout is outside the source.
+- Source roots and directory entries are checked before traversal: symlinks,
+  Windows reparse points (including junctions), and non-regular files are rejected.
+  The layout is outside the source, and existing/dangling linked outputs are protected.
 - The manifest declares a desktop full-trust application, not administrator
   elevation, with only the `runFullTrust` restricted capability.
 - Deterministic engineering PNG tiles satisfy the referenced asset dimensions.

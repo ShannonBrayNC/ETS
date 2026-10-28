@@ -89,3 +89,38 @@ def test_wrong_architecture_is_rejected(source, tmp_path):
     path.write_bytes(path.read_bytes()[:-2] + b"\x4c\x01")
     with pytest.raises(ValueError, match="x64"):
         stage(source, tmp_path / "layout", "0.1.0.0")
+
+
+def test_linked_source_root_is_rejected_before_output(source, tmp_path):
+    linked = tmp_path / 'linked-source'
+    try:
+        linked.symlink_to(source, target_is_directory=True)
+    except OSError:
+        pytest.skip('symlinks unavailable')
+    layout = tmp_path / 'layout'
+    with pytest.raises(ValueError, match='symlink|reparse'):
+        stage(linked, layout, '0.1.0.0')
+    assert not layout.exists()
+
+
+@pytest.mark.parametrize('root_link', [False, True])
+def test_windows_junctions_are_rejected_before_output(source, tmp_path, root_link):
+    import subprocess
+    import sys
+
+    if sys.platform != 'win32':
+        pytest.skip('Windows junction regression')
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'private.txt').write_text('not part of payload')
+    junction = tmp_path / 'linked-source' if root_link else source / 'junction'
+    target = source if root_link else outside
+    subprocess.run(['cmd', '/c', 'mklink', '/J', str(junction), str(target)],
+                   check=True, capture_output=True)
+    layout = tmp_path / 'layout'
+    try:
+        with pytest.raises(ValueError, match='symlink|reparse'):
+            stage(junction if root_link else source, layout, '0.1.0.0')
+        assert not layout.exists()
+    finally:
+        junction.rmdir()
