@@ -7,9 +7,27 @@ import importlib.metadata as metadata
 import json
 import platform
 import re
+import stat
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+
+
+def regular_unlinked_file(path: Path, root: Path) -> bool:
+    """Reject linked components before reading a distribution's license file."""
+    root, path = root.absolute(), path.absolute()
+    try:
+        relative = path.relative_to(root)
+        cursor = root
+        for part in (None, *relative.parts):
+            if part is not None:
+                cursor = cursor / part
+            info = cursor.lstat()
+            if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
+                return False
+        return stat.S_ISREG(path.lstat().st_mode) and path.resolve().is_relative_to(root.resolve())
+    except (OSError, ValueError):
+        return False
 
 
 def collect(output: Path, distributions: Iterable[Any] | None = None) -> dict[str, Any]:
@@ -34,9 +52,8 @@ def collect(output: Path, distributions: Iterable[Any] | None = None) -> dict[st
                        for part in relative.parts):
                 continue
             source = Path(dist.locate_file(candidate))
-            root = Path(dist.locate_file('')).resolve()
-            if (source.is_symlink() or not source.is_file()
-                    or not source.resolve().is_relative_to(root)):
+            root = Path(dist.locate_file(''))
+            if not regular_unlinked_file(source, root):
                 continue
             content = source.read_bytes()
             directory.mkdir(exist_ok=True)

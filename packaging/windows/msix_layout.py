@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
+import stat
 import struct
 import xml.etree.ElementTree as ET
 import zlib
@@ -19,6 +21,26 @@ RESTRICTED = (
 )
 IDENTITY = "ETSVerifier.Development"
 PUBLISHER = "CN=ETSVerifier.Development"
+
+
+def validate_source_tree(root: Path) -> None:
+    def check(path: Path) -> None:
+        info = path.lstat()
+        if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
+            raise ValueError('Package source must not contain symlinks or Windows reparse points')
+        if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+            raise ValueError('Package source must contain only regular files and directories')
+
+    check(root)
+    if not root.is_dir():
+        raise ValueError('Package source must be a directory')
+
+    def fail(error: OSError) -> None:
+        raise error
+
+    for directory, directories, files in os.walk(root, followlinks=False, onerror=fail):
+        for name in directories + files:
+            check(Path(directory) / name)
 
 
 def require_x64(path: Path) -> None:
@@ -62,15 +84,15 @@ def stage(source: Path, layout: Path, version: str) -> dict[str, str]:
         raise ValueError("Use a four-part version with final component 0, for example 0.1.0.0")
     if any(int(part) > 65535 for part in version.split(".")):
         raise ValueError("Version components must be at most 65535")
+    validate_source_tree(source)
+    if os.path.lexists(layout):
+        raise FileExistsError("Use a new layout directory; existing files are protected")
     source = source.resolve(strict=True)
     layout = layout.resolve()
     if layout == source or source in layout.parents:
         raise ValueError("Layout must be outside the source tree")
     if layout.exists():
         raise FileExistsError("Use a new layout directory; existing files are protected")
-    for path in source.rglob("*"):
-        if path.is_symlink():
-            raise ValueError("Development package source must not contain symlinks")
     require_x64(source / "ets-desktop.exe")
     require_x64(source / "verifier/ets-verify.exe")
     if not (source / "_internal/ets/desktop/index.html").is_file():

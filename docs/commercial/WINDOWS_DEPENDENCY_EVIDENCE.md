@@ -34,8 +34,10 @@ Before release, the release owner must:
 4. Review vulnerabilities for the actual shipped components and retain the scan,
    disposition, source SHA, package hash and approval together.
 
-The collector ignores absolute/traversal paths, symlink files, and files resolving
-outside the installation root. It refuses existing output directories. CI tests
+The collector ignores absolute/traversal paths, files reached through symbolic
+links or Windows reparse points (including linked installation roots and directory
+junctions), non-regular files, and files resolving outside the installation root.
+Skipped license files remain missing evidence requiring review. It refuses existing output directories. CI tests
 byte preservation, hashes, missing evidence, path containment and no-overwrite.
 An incomplete collection or legal review remains a release blocker; an inventory
 file alone does not close the dependency supply-chain gate.
