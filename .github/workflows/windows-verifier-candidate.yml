@@ -84,6 +84,9 @@ jobs:
           if-no-files-found: error
       - name: Validate MSIX layout tests
         run: python -m pytest tests/unit/test_msix_layout.py --junitxml=test-results/msix-layout.xml
+      - name: Test signing preflight rejection paths
+        shell: pwsh
+        run: ./packaging/windows/test-signing-preflight.ps1
       - name: Build and validate unsigned development MSIX
         shell: pwsh
         run: ./packaging/windows/build-msix.ps1

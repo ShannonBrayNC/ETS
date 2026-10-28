@@ -43,6 +43,10 @@ fields are configuration values, not evidence of client OS testing. Windows Serv
 CI proves packaging and unpacked host startup only. WebView2 Runtime is still an
 external prerequisite and is not provisioned by this package.
 
+See [development signing and client qualification](WINDOWS_SIGNING_QUALIFICATION.md)
+for the existing-certificate helper and the install/update/removal evidence matrix.
+Successful signing and client lifecycle tests remain unexecuted release gates.
+
 ## Remaining release gates
 
 1. Obtain exact Partner Center package/publisher identity and approved branding.
