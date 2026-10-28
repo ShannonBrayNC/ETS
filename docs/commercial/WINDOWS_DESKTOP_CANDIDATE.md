@@ -125,3 +125,27 @@ Windows 11 standard-user support, installation under package identity or Narrato
 accessibility. The signed fixtures use the existing public deterministic standalone test identity
 (`standalone-test-key`), never a deployment credential. They are committed only
 under `tests/fixtures/verifier` and are not bundled in the distributed application.
+
+## Program-scoped network-block test
+
+`packaging/windows/test-desktop-offline.ps1` repeats the native signed-fixture
+workflow on a disposable elevated Windows runner. It requires enabled firewall
+profiles that permit local rules, discovers all frozen-payload and installed
+WebView2 executables, and applies inbound/outbound block rules to those paths.
+It checks the rules in the active policy store and checks observed WebView2 process
+paths against the blocked list. Unknown runtime paths or missing observations fail
+the test. It removes only its uniquely named rules in `finally` and verifies cleanup.
+
+The test writes `smoke.json` and `network-qualification.json` under a fresh
+`test-results/offline-desktop` directory. Metadata records executable coverage,
+OS version, elevated test context and cleanup result. It never changes global
+firewall profile settings. An interrupted runner must be discarded; normal failure
+runs attempt cleanup. Do not run this test on a shared workstation: installed
+WebView2 binaries may also be used by other applications.
+
+This is program-scoped firewall evidence, not packet capture, physical network
+isolation, or proof covering arbitrary broker services. It does not establish
+standard-user or Windows 11 support. Clean-client testing with the network disabled
+remains a release gate.
+
+Reference: [Microsoft New-NetFirewallRule](https://learn.microsoft.com/powershell/module/netsecurity/new-netfirewallrule).
