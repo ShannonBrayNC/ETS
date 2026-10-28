@@ -15,3 +15,13 @@ This folder contains deterministic, fictional, metadata-only verifier fixtures u
 ## Boundaries
 
 All fixture content is fictional and small. These fixtures do not contain raw evidence bytes, customer data, real voter data, real ballot data, real tabulation data, or official election results. They prove verifier behavior only; they do not prove evidence authenticity, evidence legality, evidence completeness, election correctness, ballot validity, or tabulation accuracy.
+
+Native desktop smoke fixtures:
+
+- `native-signed.json` — golden bundle signed by the public deterministic
+  `standalone-test-key` identity already used in standalone tests.
+- `native-trust.json` — public verification key for that test signature.
+
+These fixtures are not packaged with the application and must never be installed
+as production trust anchors. A valid result establishes the supplied checkpoint
+checks only, not current continuity or real-world truth.

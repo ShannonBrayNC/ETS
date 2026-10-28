@@ -45,3 +45,21 @@ These fixtures do not verify evidence authenticity, evidence legality, evidence 
 ## Tamper regression
 
 `tests/unit/test_verifier_cli_golden_paths.py` creates a temporary tampered copy of `tests/fixtures/verifier/bundle.json` and asserts that `ets-verify bundle` exits non-zero with `valid: false`. Keep tampered artifacts temporary so the checked-in fixture set remains the minimal stable golden path.
+
+## Native desktop signed fixture
+
+`tests/fixtures/verifier/native-signed.json` is the golden bundle signed using the
+existing public deterministic `standalone-test-key` test identity.
+`tests/fixtures/verifier/native-trust.json` contains its public verification key.
+These are fictional engineering fixtures, never production trust anchors. The
+private deterministic seed already used by the standalone tests is public test
+material; no deployment credential is involved.
+
+```bash
+ets-verify offline tests/fixtures/verifier/native-signed.json --trust-store tests/fixtures/verifier/native-trust.json
+```
+
+Expect `valid`, `signature_verified: true`, `standing_status: checkpoint_only` and
+`continuity_verified: false`. Omitting the trust store yields `indeterminate`;
+changing event metadata yields `invalid`. The native desktop smoke test copies
+these files to temporary storage and exercises the same states through WebView2.
