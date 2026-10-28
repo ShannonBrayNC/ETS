@@ -21,6 +21,23 @@ RESTRICTED = (
 )
 IDENTITY = "ETSVerifier.Development"
 PUBLISHER = "CN=ETSVerifier.Development"
+KIT_PIN = Path(__file__).with_name("developer-kit.json")
+
+
+def require_developer_kit(source: Path) -> None:
+    """Require the reviewed immutable SDK kit, not a downloaded replacement."""
+    assets = source / "_internal/ets/desktop/assets"
+    expected = json.loads(KIT_PIN.read_text(encoding="utf-8"))
+    supplied = json.loads((assets / "developer-kit.json").read_text(encoding="utf-8"))
+    kit = assets / "sdk-test-kit.zip"
+    if supplied != expected:
+        raise ValueError("Developer SDK kit metadata does not match the reviewed pin")
+    if kit.stat().st_size != expected["archive_bytes"]:
+        raise ValueError("Developer SDK kit size does not match the reviewed pin")
+    with kit.open("rb") as stream:
+        actual = hashlib.file_digest(stream, "sha256").hexdigest()
+    if actual != expected["archive_sha256"]:
+        raise ValueError("Developer SDK kit hash does not match the reviewed pin")
 
 
 def validate_source_tree(root: Path) -> None:
@@ -79,7 +96,20 @@ def tile_png(size: int) -> bytes:
     )
 
 
-def stage(source: Path, layout: Path, version: str) -> dict[str, str]:
+def stage(
+    source: Path, layout: Path, version: str, *, edition: str = "verifier"
+) -> dict[str, str]:
+    if edition not in {"verifier", "developer"}:
+        raise ValueError("Unsupported engineering edition")
+    developer = edition == "developer"
+    identity = "ETSDeveloper.Development" if developer else IDENTITY
+    publisher = "CN=ETSDeveloper.Development" if developer else PUBLISHER
+    executable = "ets-developer.exe" if developer else "ets-desktop.exe"
+    display_name = "ETS Desktop Developer (Preview)" if developer else "ETS Verifier (Development)"
+    description = (
+        "Synthetic local SDK sandbox and strict verifier engineering candidate"
+        if developer else "Offline evidence verification engineering candidate"
+    )
     if not re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.0", version):
         raise ValueError("Use a four-part version with final component 0, for example 0.1.0.0")
     if any(int(part) > 65535 for part in version.split(".")):
@@ -93,10 +123,14 @@ def stage(source: Path, layout: Path, version: str) -> dict[str, str]:
         raise ValueError("Layout must be outside the source tree")
     if layout.exists():
         raise FileExistsError("Use a new layout directory; existing files are protected")
-    require_x64(source / "ets-desktop.exe")
+    require_x64(source / executable)
     require_x64(source / "verifier/ets-verify.exe")
     if not (source / "_internal/ets/desktop/index.html").is_file():
         raise ValueError("Bundled desktop HTML is missing")
+    if developer:
+        if not (source / "_internal/ets/desktop/developer.html").is_file():
+            raise ValueError("Bundled Developer HTML is missing")
+        require_developer_kit(source)
     shutil.copytree(source, layout)
     assets = layout / "Assets"
     assets.mkdir(exist_ok=True)
@@ -114,16 +148,16 @@ def stage(source: Path, layout: Path, version: str) -> dict[str, str]:
     ET.SubElement(
         root,
         tag("Identity"),
-        Name=IDENTITY,
-        Publisher=PUBLISHER,
+        Name=identity,
+        Publisher=publisher,
         Version=version,
         ProcessorArchitecture="x64",
     )
     properties = ET.SubElement(root, tag("Properties"))
     for name, value in {
-        "DisplayName": "ETS Verifier (Development)",
+        "DisplayName": display_name,
         "PublisherDisplayName": "ETS Development",
-        "Description": "Offline evidence verification engineering candidate",
+        "Description": description,
         "Logo": "Assets\\StoreLogo.png",
     }.items():
         ET.SubElement(properties, tag(name)).text = value
@@ -141,15 +175,15 @@ def stage(source: Path, layout: Path, version: str) -> dict[str, str]:
     app = ET.SubElement(
         applications,
         tag("Application"),
-        Id="ETSVerifier",
-        Executable="ets-desktop.exe",
+        Id="ETSDeveloper" if developer else "ETSVerifier",
+        Executable=executable,
         EntryPoint="Windows.FullTrustApplication",
     )
     ET.SubElement(
         app,
         "{" + UAP + "}VisualElements",
-        DisplayName="ETS Verifier (Development)",
-        Description="Offline evidence verification engineering candidate",
+        DisplayName=display_name,
+        Description=description,
         Square150x150Logo="Assets\\Square150x150Logo.png",
         Square44x44Logo="Assets\\Square44x44Logo.png",
         BackgroundColor="#142D3C",
@@ -171,7 +205,8 @@ if __name__ == "__main__":
     parser.add_argument("--layout", type=Path, required=True)
     parser.add_argument("--inventory", type=Path, required=True)
     parser.add_argument("--version", default="0.1.0.0")
+    parser.add_argument("--edition", choices=("verifier", "developer"), default="verifier")
     args = parser.parse_args()
-    inventory = stage(args.source, args.layout, args.version)
+    inventory = stage(args.source, args.layout, args.version, edition=args.edition)
     with args.inventory.open("x", encoding="utf-8") as output:
         json.dump(inventory, output, indent=2, sort_keys=True)

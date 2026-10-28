@@ -1,0 +1,15 @@
+{
+  "schema_version": "ets.desktop.sdk_kit_pin.v1",
+  "distribution_scope": "alpha-testing-only",
+  "repository": "ShannonBrayNC/ETS",
+  "artifact_id": 12853576745,
+  "artifact_name": "sdk-test-kit",
+  "workflow_run_id": 40772676393,
+  "head_commit": "d8e352923b04dc2d812399f50889ddbf21ce8a0b",
+  "source_commit": "a6eb2c70b4e84cdae5f6d88e788d2fb1f663fa3e",
+  "archive_bytes": 2034146,
+  "archive_sha256": "c12ab50a808b5266593ef731951a875dd5276a89fd7b963c82eabffbc44d03a7",
+  "manifest_files": 74,
+  "release_approved": false,
+  "provenance_attested": false
+}

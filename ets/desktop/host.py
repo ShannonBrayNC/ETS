@@ -12,10 +12,12 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 from ets.desktop.controller import DesktopAPI
+from ets.desktop.developer import DeveloperAPI
+from ets.desktop.developer_smoke import DeveloperSmoke
 from ets.desktop.smoke import NativeSmoke
 
 
-def main() -> int:
+def main(*, developer: bool = False) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--smoke-result", type=Path)
@@ -31,12 +33,19 @@ def main() -> int:
             json.dumps({"status": "starting", "detail": "initializing WebView2"}), encoding="utf-8"
         )
     try:
-        if args.smoke_bundle:
+        if developer and args.smoke_test:
+            if args.smoke_bundle or args.smoke_trust:
+                parser.error("Developer smoke creates its own isolated synthetic sample")
+            with TemporaryDirectory(prefix="ets-developer-smoke-") as temporary:
+                status = _launch(True, DeveloperSmoke(Path(temporary)), developer=True)
+        elif args.smoke_bundle:
             with TemporaryDirectory(prefix="ets-native-smoke-") as temporary:
                 scenario = NativeSmoke(args.smoke_bundle, Path(temporary), args.smoke_trust)
                 status = _launch(True, scenario)
         else:
-            status = _launch(args.smoke_test)
+            status = (
+                _launch(args.smoke_test, developer=True) if developer else _launch(args.smoke_test)
+            )
         detail = "window loaded" if status == 0 else "window smoke check failed"
     except Exception as exc:
         status, detail = 1, str(exc)
@@ -46,7 +55,7 @@ def main() -> int:
             ctypes.windll.user32.MessageBoxW(
                 0,
                 _startup_error_message(exc),
-                "ETS Verifier",
+                "ETS Desktop Developer" if developer else "ETS Verifier",
                 0x10,
             )
     if args.smoke_result:
@@ -67,7 +76,10 @@ def _startup_error_message(exc: Exception) -> str:
     )
     return f"ETS could not start.\n\n{detail[:4000]}\n\n{guidance}"
 
-def _launch(smoke_test: bool, scenario: NativeSmoke | None = None) -> int:
+def _launch(
+    smoke_test: bool, scenario: NativeSmoke | DeveloperSmoke | None = None,
+    *, developer: bool = False,
+) -> int:
     if sys.platform != "win32":
         raise RuntimeError("The desktop candidate currently supports Windows only")
     webview = import_module("webview")  # Optional desktop-only dependency.
@@ -77,7 +89,13 @@ def _launch(smoke_test: bool, scenario: NativeSmoke | None = None) -> int:
     def choose(kind: str) -> str | None:
         if smoke_test and scenario is not None:
             return scenario.choose(kind)
-        if kind in {"bundle", "trust"}:
+        if kind == "sample_parent" and developer:
+            result = window.create_file_dialog(webview.FileDialog.FOLDER)
+        elif kind == "sdk_zip" and developer:
+            result = window.create_file_dialog(
+                webview.FileDialog.SAVE, save_filename="ETS-SDK-Test-Kit-d8e35292.zip"
+            )
+        elif kind in {"bundle", "trust"}:
             result = window.create_file_dialog(
                 webview.FileDialog.OPEN,
                 allow_multiple=False,
@@ -93,12 +111,14 @@ def _launch(smoke_test: bool, scenario: NativeSmoke | None = None) -> int:
             return None
         return str(result[0] if isinstance(result, (tuple, list)) else result)
 
-    api = DesktopAPI(choose)
+    api = DeveloperAPI(choose) if developer else DesktopAPI(choose)
     webview.settings["ALLOW_DOWNLOADS"] = False
     webview.settings["ALLOW_FILE_URLS"] = False
     window = webview.create_window(
-        "ETS Verifier",
-        html=Path(__file__).with_name("index.html").read_text(encoding="utf-8"),
+        "ETS Desktop Developer" if developer else "ETS Verifier",
+        html=Path(__file__).with_name(
+            "developer.html" if developer else "index.html"
+        ).read_text(encoding="utf-8"),
         js_api=api,
         width=1080,
         height=820,
@@ -120,7 +140,9 @@ def _launch(smoke_test: bool, scenario: NativeSmoke | None = None) -> int:
                     scenario.run(window)
                 passed.append(
                     window.evaluate_js(
-                        "document.title === 'ETS Verifier' && "
+                        "document.title === " + json.dumps(
+                            "ETS Desktop Developer" if developer else "ETS Verifier"
+                        ) + " && "
                         "document.getElementById('bundle').disabled === false"
                     )
                     is True

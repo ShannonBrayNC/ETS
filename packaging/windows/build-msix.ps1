@@ -3,6 +3,7 @@ param(
     [string]$Source = 'dist/ets-desktop',
     [string]$OutputDirectory = 'dist/msix',
     [string]$PackageVersion = '0.1.0.0',
+    [ValidateSet('verifier', 'developer')][string]$Edition = 'verifier',
     [string]$MakeAppxPath
 )
 $ErrorActionPreference = 'Stop'
@@ -23,8 +24,9 @@ New-Item $OutputDirectory -ItemType Directory | Out-Null
 $out = (Resolve-Path $OutputDirectory).Path
 $layout = Join-Path $out 'layout'
 $inventory = Join-Path $out 'layout-sha256.json'
-$package = Join-Path $out "ETSVerifier.Development_${PackageVersion}_x64_unsigned.msix"
-python (Join-Path $PSScriptRoot 'msix_layout.py') --source $Source --layout $layout --inventory $inventory --version $PackageVersion
+$identity = if ($Edition -eq 'developer') { 'ETSDeveloper.Development' } else { 'ETSVerifier.Development' }
+$package = Join-Path $out "${identity}_${PackageVersion}_x64_unsigned.msix"
+python (Join-Path $PSScriptRoot 'msix_layout.py') --source $Source --layout $layout --inventory $inventory --version $PackageVersion --edition $Edition
 if ($LASTEXITCODE -ne 0) { throw 'MSIX layout generation failed.' }
 # Do not use /nv: MakeAppx must perform its manifest and package validation.
 & $MakeAppxPath pack /d $layout /p $package /v
@@ -43,11 +45,16 @@ foreach ($relative in $expected.Keys) {
 [ordered]@{
     package = [IO.Path]::GetFileName($package)
     sha256 = (Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant()
-    identity = 'ETSVerifier.Development'
-    publisher = 'CN=ETSVerifier.Development'
+    identity = $identity
+    publisher = "CN=$identity"
+    edition = $Edition
     version = $PackageVersion
     signed = $false
     installationTested = $false
+    cleanWindows11Qualified = $false
+    wackPassed = $false
+    licensesApproved = $false
+    releaseApproved = $false
     manifestValidated = $true
     payloadHashesVerified = $true
     filesVerified = $expected.Count
