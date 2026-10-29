@@ -98,9 +98,15 @@ def package_manifest(tmp_path, edition, version):
     exe = "ets-developer.exe" if edition == "developer" else "ets-desktop.exe"
     ET.SubElement(root, "{" + foundation + "}Identity", Name=identity,
                   Publisher=f"CN={identity}", Version=version, ProcessorArchitecture="x64")
+    properties = ET.SubElement(root, "{" + foundation + "}Properties")
+    display = ("ETS Desktop Developer (Preview)" if edition == "developer"
+               else "ETS Verifier (Development)")
+    ET.SubElement(properties, "{" + foundation + "}DisplayName").text = display
+    ET.SubElement(properties, "{" + foundation + "}PublisherDisplayName").text = "ETS Development"
     apps = ET.SubElement(root, "{" + foundation + "}Applications")
-    ET.SubElement(apps, "{" + foundation + "}Application", Executable=exe,
+    app = ET.SubElement(apps, "{" + foundation + "}Application", Executable=exe,
                   EntryPoint="Windows.FullTrustApplication")
+    ET.SubElement(app, "{" + MODULE["NS"]["uap"] + "}VisualElements", DisplayName=display)
     ET.ElementTree(root).write(tmp_path / "AppxManifest.xml")
     return tmp_path / exe
 

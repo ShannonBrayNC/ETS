@@ -40,7 +40,12 @@ throw 'Synthetic signing tool failure; no signing performed.'
     foreach ($edition in @('verifier', 'developer')) {
         $name = if ($edition -eq 'verifier') { 'ETSVerifier.Development' } else { 'ETSDeveloper.Development' }
         $other = if ($edition -eq 'verifier') { 'ETSDeveloper.Development' } else { 'ETSVerifier.Development' }
+        $storeName = if ($edition -eq 'verifier') { 'EchoMediaAILLC.ETSVerifier' } else { 'EchoMediaAILLC.ETSDesktopDeveloper' }
+        $storePublisher = 'CN=1FB1B754-89E5-418D-A454-50CADF768A9F'
         $variants = @(
+            @{ name = 'actual-store-identity'; identity = $storeName; publisher = $storePublisher; version = '1.0.0.0'; error = 'Only the x64' },
+            @{ name = 'store-name-development-publisher'; identity = $storeName; error = 'Only the x64' },
+            @{ name = 'development-name-store-publisher'; publisher = $storePublisher; error = 'Only the x64' },
             @{ name = 'wrong-reviewed-hash'; error = 'does not match the reviewed candidate'; wrongHash = $true },
             @{ name = 'other-edition-identity'; identity = $other; error = 'Only the x64' },
             @{ name = 'other-edition-publisher'; publisher = "CN=$other"; error = 'Only the x64' },

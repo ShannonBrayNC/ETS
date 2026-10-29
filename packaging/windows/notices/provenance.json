@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "reviewStatus": "unreviewed",
+  "redistributionApproved": false,
+  "metadataConflictResolved": false,
+  "notices": [
+    {
+      "id": "proxy_tools-0.1.0",
+      "file": "proxy_tools-0.1.0-LICENSE.txt",
+      "sha256": "a428fb8a2e762af3eb0a6edbbb88e9b42ccfee80fd9b423958bcacf9b9abbfe4",
+      "source": {
+        "url": "https://raw.githubusercontent.com/jtushman/proxy_tools/70b751ef5e0647d974506fd5871903711b5e1811/LICENSE.txt",
+        "commit": "70b751ef5e0647d974506fd5871903711b5e1811",
+        "distributionUrl": "https://files.pythonhosted.org/packages/f2/cf/77d3e19b7fabd03895caca7857ef51e4c409e0ca6b37ee6e9f7daa50b642/proxy_tools-0.1.0.tar.gz",
+        "distributionSha256": "ccb3751f529c047e2d8a58440d86b205303cf0fe8146f784d1cbcd94f0a28010",
+        "sourceMember": "proxy_tools/__init__.py",
+        "sourceSha256": "d1539d95e1a713c068ca81d42e047b2c76568964cf277596d4e19efb22f476be"
+      },
+      "installedSource": {
+        "distribution": "proxy_tools",
+        "version": "0.1.0",
+        "path": "proxy_tools/__init__.py",
+        "sha256": "d1539d95e1a713c068ca81d42e047b2c76568964cf277596d4e19efb22f476be"
+      },
+      "payload": {},
+      "unresolved": [
+        "PyPI metadata says MIT; source header and upstream notice say BSD.",
+        "Upstream notice retains literal <COPYRIGHT HOLDER> and malformed trailing text unchanged.",
+        "Copyright credits Armin Ronacher 2013 and Jonathan Tushman 2014. Rights review remains required; copying notice does not resolve metadata conflict."
+      ]
+    },
+    {
+      "id": "Microsoft.Web.WebView2-1.0.3856.49",
+      "file": "WebView2-1.0.3856.49-LICENSE.txt",
+      "sha256": "0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55",
+      "source": {
+        "url": "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.3856.49",
+        "archiveSha256": "bc0f76eb911b569838dc4aa8f8d325269b966bedb592863d26211aef3a099f1a",
+        "member": "LICENSE.txt"
+      },
+      "payload": {
+        "_internal/webview/lib/Microsoft.Web.WebView2.Core.dll": "8219a3135436c147f8eb02fb831e99596103eebc18b6d7b794ca93f4c67018a2",
+        "_internal/webview/lib/Microsoft.Web.WebView2.WinForms.dll": "c48f8d729dc531288d2c53a6241effe7922ed1b947850b2442008a945c098c48",
+        "_internal/webview/lib/runtimes/win-x64/native/WebView2Loader.dll": "eb5335edeaa6f2122c044e82aab2351dc8c9b4e0fe5e578c71922fb61be285e7",
+        "_internal/webview/lib/runtimes/win-x86/native/WebView2Loader.dll": "04814b2c59314c6452d61b821a4a3a5c5f8e8577b55b985f6a7a4b59f8907ec5",
+        "_internal/webview/lib/runtimes/win-arm64/native/WebView2Loader.dll": "0937030efc718f3da77c5e0978fb5046e381d0bb7b01acaad31a535a1b588a33"
+      },
+      "unresolved": [
+        "Notice covers matched SDK DLLs only, not the separate installed Edge WebView2 Runtime or its provisioning/license review."
+      ]
+    },
+    {
+      "id": "CPython-3.12.10",
+      "file": "CPython-3.12.10-LICENSE.txt",
+      "sha256": "e502c6b880ff58d614901495a9009c136539cd0b1e2a2abb8fc00b934c203419",
+      "source": {
+        "url": "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip",
+        "archiveSha256": "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3",
+        "member": "LICENSE.txt"
+      },
+      "payload": {
+        "_internal/python312.dll": "9a0e3435aaa680d868150f87ab3e388ad2eebc22f87e036155c7b4eda8cd2120",
+        "verifier/_internal/python312.dll": "9a0e3435aaa680d868150f87ab3e388ad2eebc22f87e036155c7b4eda8cd2120",
+        "_internal/VCRUNTIME140.dll": "052ad6a20d375957e82aa6a3c441ea548d89be0981516ca7eb306e063d5027f4",
+        "verifier/_internal/VCRUNTIME140.dll": "052ad6a20d375957e82aa6a3c441ea548d89be0981516ca7eb306e063d5027f4",
+        "_internal/VCRUNTIME140_1.dll": "6a99bc0128e0c7d6cbbf615fcc26909565e17d4ca3451b97f8987f9c6acbc6c8",
+        "verifier/_internal/VCRUNTIME140_1.dll": "6a99bc0128e0c7d6cbbf615fcc26909565e17d4ca3451b97f8987f9c6acbc6c8",
+        "_internal/libcrypto-3.dll": "ccfffddcd3defb8d899026298af9af43bc186130f8483d77e97c93233d5f27d7",
+        "verifier/_internal/libcrypto-3.dll": "ccfffddcd3defb8d899026298af9af43bc186130f8483d77e97c93233d5f27d7",
+        "_internal/libffi-8.dll": "eff52743773eb550fcc6ce3efc37c85724502233b6b002a35496d828bd7b280a",
+        "verifier/_internal/libffi-8.dll": "eff52743773eb550fcc6ce3efc37c85724502233b6b002a35496d828bd7b280a",
+        "_internal/libssl-3.dll": "007142039f04d04e0ed607bda53de095e5bc6a8a10d26ecedde94ea7d2d7eefe",
+        "verifier/_internal/libssl-3.dll": "007142039f04d04e0ed607bda53de095e5bc6a8a10d26ecedde94ea7d2d7eefe",
+        "_internal/sqlite3.dll": "8daa45684bf6688fca28d956b2e8942f2fa98f656675ce68e6d61dd869848a7a",
+        "verifier/_internal/sqlite3.dll": "8daa45684bf6688fca28d956b2e8942f2fa98f656675ce68e6d61dd869848a7a"
+      },
+      "unresolved": [
+        "The official CPython Windows distribution notice is preserved unchanged for byte-matched binaries; this does not establish rights for every native file in the frozen application.",
+        "MSVC/UCRT and cryptography statically linked native components still require complete distribution/notice reconciliation."
+      ]
+    }
+  ]
+}
