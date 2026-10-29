@@ -43,9 +43,12 @@ verifier implementation in each language, arbitrary-payload hashing equivalence,
 or completed public registry publication. The [release process](RELEASE.md)
 remains a separate gate. OpenTelemetry helpers are not established by this status.
 
-The proposed [Desktop Developer Edition](../commercial/DESKTOP_DEVELOPER_EDITION_READINESS.md)
-adds a bundled verifier, offline SDK assets and reproducible samples without
-changing these contracts. Its workbench and SDK-kit export are not implemented.
+The [Desktop Developer preview](../commercial/DESKTOP_DEVELOPER_CANDIDATE.md)
+implements a limited bundled synthetic workflow, strict verifier and pinned SDK-kit
+export without changing these contracts. It is an unsigned engineering candidate,
+not a production project editor, key-custody service or completed Store product.
+The broader [Developer Edition readiness plan](../commercial/DESKTOP_DEVELOPER_EDITION_READINESS.md)
+remains separate from those implemented preview features.
 
 ## Nonclaims
 

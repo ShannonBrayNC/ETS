@@ -57,6 +57,14 @@ For a local engineering build after staging the exact reviewed kit:
 No signing, trust installation, production publisher identity, registry
 publication, release, deployment, Store submission, or merge is performed.
 
+## Authorized next step: separate Developer client evidence
+
+Use the [Developer signing, installation and WACK handoff](../../docs/commercial/WINDOWS_DEVELOPER_QUALIFICATION.md)
+only after the owner authorizes those Windows actions. The helper requires explicit
+`-Edition developer` and an already-approved `CN=ETSDeveloper.Development` certificate.
+Verifier signing and Lenovo results are not Developer evidence. No key, trust,
+installation, security/network or WACK operation is performed by this build.
+
 ## Remaining release gates
 
 Keep WACK, clean Windows 11 standard-user installation and uninstall/upgrade,
