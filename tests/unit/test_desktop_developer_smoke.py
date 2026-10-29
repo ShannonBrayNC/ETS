@@ -17,7 +17,8 @@ def test_developer_smoke_uses_only_private_picker_targets(tmp_path):
 def test_developer_smoke_launch_is_separate_and_temp_folder_removed(monkeypatch):
     observed = []
 
-    def launch(smoke, scenario, *, developer):
+    def launch(smoke, scenario, *, developer, smoke_observations):
+        assert smoke_observations == {}
         assert smoke and developer and isinstance(scenario, DeveloperSmoke)
         assert scenario.directory.is_dir()
         observed.append(scenario.directory)

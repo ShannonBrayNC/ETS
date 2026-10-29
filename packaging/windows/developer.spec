@@ -13,5 +13,6 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="ets-developer",
-          debug=False, strip=False, upx=False, console=False)
+          debug=False, strip=False, upx=False, console=False,
+          manifest=str(root / "packaging/windows/desktop.manifest"))
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="ets-developer")

@@ -11,6 +11,8 @@ on:
       - 'ets/reports/**'
       - 'ets/version.py'
       - 'tests/unit/test_desktop*'
+      - 'tests/unit/test_desktop_manifest.py'
+      - 'tests/unit/test_desktop_dpi.py'
       - 'tests/unit/test_msix_layout.py'
       - 'tests/unit/test_developer_packaging.py'
       - 'tests/e2e/desktop/**'
@@ -79,6 +81,13 @@ jobs:
           $env:ETS_VERIFY_EXECUTABLE = (Resolve-Path dist/ets-verify/ets-verify.exe).Path
           python -m pytest tests/unit/test_verifier_standalone.py --junitxml=test-results/developer-frozen-verifier.xml
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify actual frozen GUI manifest and source regressions
+        shell: pwsh
+        run: |
+          python -m pytest tests/unit/test_desktop_manifest.py tests/unit/test_desktop_dpi.py --junitxml=test-results/desktop-dpi-source.xml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python packaging/windows/check_desktop_manifest.py --executable dist/ets-developer/ets-developer.exe --output test-results/desktop-frozen-manifest.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Exercise frozen local sandbox and SDK export with no language tools on PATH
         shell: pwsh
         run: |
@@ -107,7 +116,12 @@ jobs:
           Copy-Item packaging/windows/developer-kit.json test-results/sdk-kit-pin.json
       - name: Build distinct unsigned Developer development MSIX
         shell: pwsh
-        run: ./packaging/windows/build-msix.ps1 -Source dist/ets-developer -OutputDirectory dist/developer-msix -PackageVersion '0.1.0.0' -Edition developer
+        run: ./packaging/windows/build-msix.ps1 -Source dist/ets-developer -OutputDirectory dist/developer-msix -PackageVersion '0.1.1.0' -Edition developer
+      - name: Verify unpacked MSIX GUI manifest and development identity
+        shell: pwsh
+        run: |
+          python packaging/windows/check_desktop_manifest.py --unpacked dist/developer-msix/unpacked --edition developer --version '0.1.1.0' --output test-results/desktop-msix-manifest.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Bind package and retained results to exact candidate source
         shell: pwsh
         env:

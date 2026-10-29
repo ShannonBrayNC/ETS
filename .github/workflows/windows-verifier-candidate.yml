@@ -15,6 +15,8 @@ on:
       - 'tests/unit/test_verifier_strict_reports.py'
       - 'tests/unit/test_desktop_controller.py'
       - 'tests/unit/test_desktop_smoke.py'
+      - 'tests/unit/test_desktop_manifest.py'
+      - 'tests/unit/test_desktop_dpi.py'
       - 'tests/unit/test_msix_layout.py'
       - 'tests/unit/test_dependency_evidence.py'
       - 'tests/unit/test_candidate_record.py'
@@ -71,6 +73,13 @@ jobs:
           python -m PyInstaller --clean --noconfirm packaging/windows/desktop.spec
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Copy-Item dist/ets-verify dist/ets-desktop/verifier -Recurse
+      - name: Verify actual frozen GUI manifest and source regressions
+        shell: pwsh
+        run: |
+          python -m pytest tests/unit/test_desktop_manifest.py tests/unit/test_desktop_dpi.py --junitxml=test-results/desktop-dpi-source.xml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python packaging/windows/check_desktop_manifest.py --executable dist/ets-desktop/ets-desktop.exe --output test-results/desktop-frozen-manifest.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Launch native WebView2 smoke test
         shell: pwsh
         run: |
@@ -104,7 +113,12 @@ jobs:
         run: ./packaging/windows/test-signing-preflight.ps1
       - name: Build and validate unsigned development MSIX
         shell: pwsh
-        run: ./packaging/windows/build-msix.ps1 -PackageVersion '0.1.1.0'
+        run: ./packaging/windows/build-msix.ps1 -PackageVersion '0.1.2.0'
+      - name: Verify unpacked MSIX GUI manifest and development identity
+        shell: pwsh
+        run: |
+          python packaging/windows/check_desktop_manifest.py --unpacked dist/msix/unpacked --edition verifier --version '0.1.2.0' --output test-results/desktop-msix-manifest.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify client preflight rejects unsigned Server candidate
         shell: pwsh
         run: |

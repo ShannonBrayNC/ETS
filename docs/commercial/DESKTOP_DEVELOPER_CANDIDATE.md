@@ -1,5 +1,7 @@
 # Desktop Developer: partial offline candidate
 
+Current system-DPI repair and newly versioned development-candidate handoff: [Windows DPI candidate](WINDOWS_DPI_CANDIDATE.md). Prior results below remain attached to their original package bytes.
+
 This increment implements one bounded vertical slice, not the entire Developer
 Edition readiness plan. It is an **unsigned alpha engineering candidate**, not a
 Store submission or release approval. The existing standalone ETS Verifier and
