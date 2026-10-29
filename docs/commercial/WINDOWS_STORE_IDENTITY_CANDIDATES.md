@@ -62,6 +62,33 @@ artwork**. Dependency evidence is build-environment metadata, **not an exact
 runtime/native/SDK SBOM or redistribution approval**. The pinned SDK archive is
 hash-checked and every inventory member verified; it remains alpha-testing-only.
 
+`stage_runtime_notices.py` also preserves three exact upstream notices under
+`THIRD_PARTY_EVIDENCE/SUPPLEMENTAL_NOTICES`, with source URLs, archive/commit
+provenance, and SHA-256 checks against the supplied notice and matching runtime
+binaries (or exact installed `proxy_tools` source). Any hash/version mismatch
+fails packaging before notices are copied. These are supplemental evidence, not
+legal approval or a complete SBOM. The original environment inventory deliberately
+still records the wheel's missing `proxy_tools` notice.
+
+- CPython 3.12.10: unchanged aggregate notice from the official Windows embedded
+  distribution, bound to both copies of the matching Python/OpenSSL/libffi/SQLite
+  and MSVC DLLs. This does not prove coverage of every native component.
+- Microsoft.Web.WebView2 SDK 1.0.3856.49: unchanged NuGet package notice, bound to
+  the matching Core/WinForms assemblies and three architecture loader DLLs. This
+  is not the separate WebView2 Runtime provisioning/license decision.
+- `proxy_tools` 0.1.0: exact source-matched upstream BSD notice and copyright
+  credits (Armin Ronacher 2013; Jonathan Tushman 2014). PyPI metadata says MIT,
+  while source and notice say BSD; upstream placeholder/trailing text is retained
+  byte-for-byte. **This discrepancy is not resolved by copying the notice.**
+  The dependency is used by pywebview and no supported newer PyPI release exists;
+  obtain rights-review clarification rather than deleting it or inventing MIT text.
+
+Full native/runtime and SDK SBOM reconciliation remains open, including MSVC/UCRT,
+cryptography's embedded native components, and exported SDK dependencies. The kit's
+existing SPDX file lists only a root directory with `NOASSERTION`, not those
+components. Retained package hashes from any earlier CI run are superseded by the
+new notice-bearing candidates; never substitute one without updating review evidence.
+
 ## Still open before Store submission
 
 - Final package icons, approved app screenshots, and truthful listing/restricted

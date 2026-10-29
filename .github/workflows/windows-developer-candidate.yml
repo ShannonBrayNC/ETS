@@ -16,6 +16,7 @@ on:
       - 'tests/unit/test_local_validation_regressions.py'
       - 'tests/unit/test_msix_layout.py'
       - 'tests/unit/test_store_identity_profile.py'
+      - 'tests/unit/test_runtime_notices.py'
       - 'tests/unit/test_developer_packaging.py'
       - 'tests/e2e/desktop/**'
       - 'pyproject.toml'
@@ -113,6 +114,10 @@ jobs:
         shell: pwsh
         run: |
           python packaging/windows/collect_dependency_evidence.py --output dist/ets-developer/THIRD_PARTY_EVIDENCE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest tests/unit/test_runtime_notices.py --junitxml=test-results/runtime-notices.xml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python packaging/windows/stage_runtime_notices.py --payload dist/ets-developer
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip freeze | Out-File test-results/build-environment.txt -Encoding utf8
           Copy-Item packaging/windows/developer-kit.json test-results/sdk-kit-pin.json
