@@ -1,4 +1,4 @@
-"""Stage an unsigned x64 development MSIX layout; never infer a Store identity."""
+"""Stage unsigned x64 MSIX candidates with explicit, allowlisted identity profiles."""
 
 from __future__ import annotations
 
@@ -21,6 +21,11 @@ RESTRICTED = (
 )
 IDENTITY = "ETSVerifier.Development"
 PUBLISHER = "CN=ETSVerifier.Development"
+STORE_PUBLISHER = "CN=1FB1B754-89E5-418D-A454-50CADF768A9F"
+STORE_IDENTITIES = {
+    "verifier": ("EchoMediaAILLC.ETSVerifier", "ETS Verifier"),
+    "developer": ("EchoMediaAILLC.ETSDesktopDeveloper", "ETS Desktop Developer"),
+}
 KIT_PIN = Path(__file__).with_name("developer-kit.json")
 
 
@@ -97,15 +102,25 @@ def tile_png(size: int) -> bytes:
 
 
 def stage(
-    source: Path, layout: Path, version: str, *, edition: str = "verifier"
+    source: Path, layout: Path, version: str | None = None, *, edition: str = "verifier",
+    profile: str = "development"
 ) -> dict[str, str]:
     if edition not in {"verifier", "developer"}:
         raise ValueError("Unsupported engineering edition")
+    if profile not in {"development", "store"}:
+        raise ValueError("Unsupported identity profile")
+    if version is None:
+        version = "1.0.0.0" if profile == "store" else "0.1.0.0"
     developer = edition == "developer"
     identity = "ETSDeveloper.Development" if developer else IDENTITY
     publisher = "CN=ETSDeveloper.Development" if developer else PUBLISHER
     executable = "ets-developer.exe" if developer else "ets-desktop.exe"
     display_name = "ETS Desktop Developer (Preview)" if developer else "ETS Verifier (Development)"
+    publisher_display_name = "ETS Development"
+    if profile == "store":
+        identity, display_name = STORE_IDENTITIES[edition]
+        publisher = STORE_PUBLISHER
+        publisher_display_name = "EchoMedia AI LLC"
     description = (
         "Synthetic local SDK sandbox and strict verifier engineering candidate"
         if developer else "Offline evidence verification engineering candidate"
@@ -114,6 +129,8 @@ def stage(
         raise ValueError("Use a four-part version with final component 0, for example 0.1.0.0")
     if any(int(part) > 65535 for part in version.split(".")):
         raise ValueError("Version components must be at most 65535")
+    if profile == "store" and int(version.split(".")[0]) == 0:
+        raise ValueError("Store package major version must be greater than zero")
     validate_source_tree(source)
     if os.path.lexists(layout):
         raise FileExistsError("Use a new layout directory; existing files are protected")
@@ -156,7 +173,7 @@ def stage(
     properties = ET.SubElement(root, tag("Properties"))
     for name, value in {
         "DisplayName": display_name,
-        "PublisherDisplayName": "ETS Development",
+        "PublisherDisplayName": publisher_display_name,
         "Description": description,
         "Logo": "Assets\\StoreLogo.png",
     }.items():
@@ -204,9 +221,11 @@ if __name__ == "__main__":
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--layout", type=Path, required=True)
     parser.add_argument("--inventory", type=Path, required=True)
-    parser.add_argument("--version", default="0.1.0.0")
+    parser.add_argument("--version")
+    parser.add_argument("--profile", choices=("development", "store"), default="development")
     parser.add_argument("--edition", choices=("verifier", "developer"), default="verifier")
     args = parser.parse_args()
-    inventory = stage(args.source, args.layout, args.version, edition=args.edition)
+    inventory = stage(args.source, args.layout, args.version,
+                      edition=args.edition, profile=args.profile)
     with args.inventory.open("x", encoding="utf-8") as output:
         json.dump(inventory, output, indent=2, sort_keys=True)

@@ -19,6 +19,7 @@ on:
       - 'tests/unit/test_desktop_dpi.py'
       - 'tests/unit/test_local_validation_regressions.py'
       - 'tests/unit/test_msix_layout.py'
+      - 'tests/unit/test_store_identity_profile.py'
       - 'tests/unit/test_dependency_evidence.py'
       - 'tests/unit/test_candidate_record.py'
       - 'tests/e2e/desktop/**'
@@ -168,6 +169,46 @@ jobs:
         with:
           name: ets-verifier-windows-x64-unsigned-${{ github.sha }}
           path: dist/ets-verify/
+          if-no-files-found: error
+      - name: Test explicit Store identity profile and negative identity boundaries
+        run: python -m pytest tests/unit/test_store_identity_profile.py --junitxml=test-results/store-identity-profile.xml
+      - name: Build unsigned Store-identity candidate without signing or submission
+        shell: pwsh
+        run: ./packaging/windows/build-msix.ps1 -Source dist/ets-desktop -OutputDirectory dist/store-verifier-msix -Edition verifier -Profile store -PackageVersion '1.0.0.0'
+      - name: Independently verify actual Store manifest and reject development signing
+        shell: pwsh
+        run: |
+          python packaging/windows/check_desktop_manifest.py --unpacked dist/store-verifier-msix/unpacked --edition verifier --version '1.0.0.0' --profile store --output test-results/store-msix-manifest.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $package = (Get-ChildItem dist/store-verifier-msix/*.msix | Select-Object -First 1).FullName
+          ./packaging/windows/test-store-signing-rejection.ps1 -Package $package -OutputFile test-results/store-signing-rejection.json
+      - name: Exercise the unpacked Store payload without installation
+        shell: pwsh
+        run: |
+          $result = Join-Path $PWD 'test-results/store-native-smoke.json'
+          $fixture = (Resolve-Path tests/fixtures/verifier/native-signed.json).Path
+          $trust = (Resolve-Path tests/fixtures/verifier/native-trust.json).Path
+          $process = Start-Process dist/store-verifier-msix/unpacked/ets-desktop.exe -ArgumentList '--smoke-test', '--smoke-result', $result, '--smoke-bundle', $fixture, '--smoke-trust', $trust -PassThru
+          if (-not $process.WaitForExit(300000)) { $process.Kill($true); throw 'Store payload smoke timed out' }
+          if ($process.ExitCode -ne 0) { Get-Content $result -ErrorAction SilentlyContinue; throw 'Store payload smoke failed' }
+          Get-Content $result
+      - name: Bind unsigned Store-identity candidate and results to exact source
+        shell: pwsh
+        env:
+          CANDIDATE_SOURCE_SHA: ${{ github.sha }}
+          CANDIDATE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          $actual = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:CANDIDATE_SOURCE_SHA) { throw 'Candidate source mismatch' }
+          python packaging/windows/candidate_record.py assemble --packages dist/store-verifier-msix --results test-results --output dist/store-verifier-review --source-sha $actual --run-url $env:CANDIDATE_RUN_URL
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python packaging/windows/candidate_record.py verify dist/store-verifier-review
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload Store-identity candidate not approved for submission
+        uses: actions/upload-artifact@v4
+        with:
+          name: ets-verifier-store-identity-review-${{ github.sha }}
+          path: dist/store-verifier-review/
           if-no-files-found: error
       - name: Upload qualification results
         if: always()
