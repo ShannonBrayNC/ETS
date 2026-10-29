@@ -74,3 +74,6 @@ agent or green CI run must not fill the approver field on someone's behalf.
 - [Development signing and client lifecycle procedure](WINDOWS_SIGNING_QUALIFICATION.md)
 - [Desktop smoke and network-test scope](WINDOWS_DESKTOP_CANDIDATE.md)
 - [Dependency evidence and review limits](WINDOWS_DEPENDENCY_EVIDENCE.md)
+- [Offline evidence reconciliation](OFFLINE_QUALIFICATION_EVIDENCE.md): validates
+  supplied source/package records and hashes attachments without performing tests
+  or filling owner approvals. Manual gates remain NOT RUN by the assembler.
