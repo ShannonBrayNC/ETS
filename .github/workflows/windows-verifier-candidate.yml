@@ -17,6 +17,7 @@ on:
       - 'tests/unit/test_desktop_smoke.py'
       - 'tests/unit/test_desktop_manifest.py'
       - 'tests/unit/test_desktop_dpi.py'
+      - 'tests/unit/test_local_validation_regressions.py'
       - 'tests/unit/test_msix_layout.py'
       - 'tests/unit/test_dependency_evidence.py'
       - 'tests/unit/test_candidate_record.py'
@@ -76,7 +77,7 @@ jobs:
       - name: Verify actual frozen GUI manifest and source regressions
         shell: pwsh
         run: |
-          python -m pytest tests/unit/test_desktop_manifest.py tests/unit/test_desktop_dpi.py --junitxml=test-results/desktop-dpi-source.xml
+          python -m pytest tests/unit/test_desktop_manifest.py tests/unit/test_desktop_dpi.py tests/unit/test_local_validation_regressions.py --junitxml=test-results/desktop-dpi-source.xml
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python packaging/windows/check_desktop_manifest.py --executable dist/ets-desktop/ets-desktop.exe --output test-results/desktop-frozen-manifest.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
