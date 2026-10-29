@@ -54,7 +54,7 @@ def test_smoke_startup_failure_writes_actual_detail(monkeypatch, tmp_path):
     import json
     report = tmp_path / 'result.json'
     monkeypatch.setattr('sys.argv', ['ets-desktop', '--smoke-test', '--smoke-result', str(report)])
-    def fail(*args):
+    def fail(*args, **kwargs):
         raise RuntimeError('Python bridge failed')
     monkeypatch.setattr(host, '_launch', fail)
     assert host.main() == 1

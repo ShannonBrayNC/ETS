@@ -14,6 +14,7 @@ from typing import Any
 from ets.desktop.controller import DesktopAPI
 from ets.desktop.developer import DeveloperAPI
 from ets.desktop.developer_smoke import DeveloperSmoke
+from ets.desktop.dpi import observe_window_dpi
 from ets.desktop.smoke import NativeSmoke
 
 
@@ -32,19 +33,25 @@ def main(*, developer: bool = False) -> int:
         args.smoke_result.write_text(
             json.dumps({"status": "starting", "detail": "initializing WebView2"}), encoding="utf-8"
         )
+    smoke_observations: dict[str, Any] = {}
     try:
         if developer and args.smoke_test:
             if args.smoke_bundle or args.smoke_trust:
                 parser.error("Developer smoke creates its own isolated synthetic sample")
             with TemporaryDirectory(prefix="ets-developer-smoke-") as temporary:
-                status = _launch(True, DeveloperSmoke(Path(temporary)), developer=True)
+                status = _launch(
+                    True, DeveloperSmoke(Path(temporary)), developer=True,
+                    smoke_observations=smoke_observations,
+                )
         elif args.smoke_bundle:
             with TemporaryDirectory(prefix="ets-native-smoke-") as temporary:
                 scenario = NativeSmoke(args.smoke_bundle, Path(temporary), args.smoke_trust)
-                status = _launch(True, scenario)
+                status = _launch(True, scenario, smoke_observations=smoke_observations)
         else:
             status = (
-                _launch(args.smoke_test, developer=True) if developer else _launch(args.smoke_test)
+                _launch(
+                    args.smoke_test, developer=developer, smoke_observations=smoke_observations,
+                )
             )
         detail = "window loaded" if status == 0 else "window smoke check failed"
     except Exception as exc:
@@ -60,7 +67,7 @@ def main(*, developer: bool = False) -> int:
             )
     if args.smoke_result:
         args.smoke_result.write_text(
-            json.dumps({"status": status, "detail": detail}), encoding="utf-8"
+            json.dumps({"status": status, "detail": detail, **smoke_observations}), encoding="utf-8"
         )
     return status
 
@@ -78,7 +85,7 @@ def _startup_error_message(exc: Exception) -> str:
 
 def _launch(
     smoke_test: bool, scenario: NativeSmoke | DeveloperSmoke | None = None,
-    *, developer: bool = False,
+    *, developer: bool = False, smoke_observations: dict[str, Any] | None = None,
 ) -> int:
     if sys.platform != "win32":
         raise RuntimeError("The desktop candidate currently supports Windows only")
@@ -136,6 +143,13 @@ def _launch(
     def smoke() -> None:
         if ready.wait(45):
             try:
+                # pywebview's loaded native BrowserForm owns the top-level HWND.
+                # Query that window, not this background smoke thread's context.
+                observation = observe_window_dpi(int(window.native.Handle.ToInt64()))
+                if smoke_observations is not None:
+                    smoke_observations["windowDpi"] = observation
+                if observation["awareness"] != 1:
+                    raise RuntimeError("Desktop HWND is not system-DPI-aware: " + str(observation))
                 if scenario is not None:
                     scenario.run(window)
                 passed.append(

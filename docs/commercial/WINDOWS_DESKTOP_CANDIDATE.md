@@ -1,5 +1,7 @@
 # Windows desktop verifier candidate
 
+Current system-DPI repair and newly versioned development-candidate handoff: [Windows DPI candidate](WINDOWS_DPI_CANDIDATE.md). Prior results below remain attached to their original package bytes.
+
 Status: engineering candidate; not an MSIX or Store release.
 
 The first desktop shell uses Python/pywebview with the Windows EdgeChromium
