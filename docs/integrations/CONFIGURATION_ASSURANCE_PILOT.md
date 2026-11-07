@@ -36,3 +36,12 @@ Sequence follow-on offers by evidence: DSC 1.1/Azure Automation migration-equiva
 - [Graph TCM limits and retention](https://learn.microsoft.com/en-us/graph/api/resources/unified-tenant-configuration-management-api-overview?view=graph-rest-1.0): size the collection plan for six-hour evaluations and the tenant quota. Baseline updates remove previous monitor results and drifts.
 - [Machine remediation modes](https://learn.microsoft.com/en-us/azure/governance/machine-configuration/concepts/remediation-options) and [migration guide](https://learn.microsoft.com/en-us/azure/governance/machine-configuration/whats-new/migrating-from-azure-automation): autocorrection can hide drift history from the ordinary compliance result.
 - [Microsoft OpenTelemetry Distro](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/microsoft-opentelemetry)
+
+
+## Approved execution priority — November 7, 2026
+
+All recommendations from the Microsoft alignment technical review are approved and prioritized. The [approved execution map](MICROSOFT_ALIGNMENT_PRIORITY_20261107.md) is authoritative for the next development sequence and links all 12 tracked work items.
+
+Start with CE #1211/#1212 Distro migration, privacy and real ingestion qualification for #637; then qualify identity/runtime/trust, read-only configuration collection, payload-byte verification, QRF proposals, separately authorized execution and independent offline review. ETS #828 remains open for Q0–Q5 evidence; #957 maps to one gated six-working-week pilot. Security gates precede live writes. Existing ETS signing profiles are retained; CMS is not a pilot requirement. QRF's November read-only beta is distinct from complete repair qualification. Migration equivalence is a follow-on acceptance track before the September 30, 2027 retirement.
+
+This priority supersedes conflicting scheduling assumptions above, while preserving historical status snapshots, active Edge/Mobile P0 qualification and physical safety gates. Implementation, live collection, remediation and customer qualification remain pending their recorded evidence; approval is not a passing test result.
