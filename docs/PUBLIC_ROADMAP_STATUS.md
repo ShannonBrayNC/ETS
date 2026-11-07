@@ -430,6 +430,10 @@ The following should remain explicit in the public rollout:
 
 ---
 
+## November 7, 2026 planning addendum — configuration assurance
+
+The [DSC and Agent 365 configuration assurance workstream](integrations/CONFIGURATION_ASSURANCE_PILOT.md) is planned for the organizational pilot rollout. Kickoff, live collection, remediation and customer qualification are pending. The dated status above remains the September snapshot.
+
 # Public rollout sequence
 
 For public communication, the clearest progression is:
