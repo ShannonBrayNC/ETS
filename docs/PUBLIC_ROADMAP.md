@@ -461,3 +461,12 @@ This document is not a release schedule, procurement commitment, safety certific
 The ETS program is intentionally evidence-gated. A capability moves forward when its claims can be tested, its assumptions are visible, its failures can be recorded, and an independent party can verify the evidence that supports the claimed result.
 
 That principle applies to everything from a Microsoft 365 event to an Agent 365 execution to a Ranger actuator moving a physical machine.
+
+
+## Approved execution priority — November 7, 2026
+
+All recommendations from the Microsoft alignment technical review are approved and prioritized. The [approved execution map](integrations/MICROSOFT_ALIGNMENT_PRIORITY_20261107.md) is authoritative for the next development sequence and links all 12 tracked work items.
+
+Start with CE #1211/#1212 Distro migration, privacy and real ingestion qualification for #637; then qualify identity/runtime/trust, read-only configuration collection, payload-byte verification, QRF proposals, separately authorized execution and independent offline review. ETS #828 remains open for Q0–Q5 evidence; #957 maps to one gated six-working-week pilot. Security gates precede live writes. Existing ETS signing profiles are retained; CMS is not a pilot requirement. QRF's November read-only beta is distinct from complete repair qualification. Migration equivalence is a follow-on acceptance track before the September 30, 2027 retirement.
+
+This priority supersedes conflicting scheduling assumptions above, while preserving historical status snapshots, active Edge/Mobile P0 qualification and physical safety gates. Implementation, live collection, remediation and customer qualification remain pending their recorded evidence; approval is not a passing test result.
