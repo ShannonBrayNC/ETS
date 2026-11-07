@@ -166,6 +166,10 @@ criterion is still open. Do not advance to installable beta or Store launch sole
 because CI passes. Complete the [release qualification record](WINDOWS_RELEASE_QUALIFICATION_RECORD.md)
 for the exact candidate before making a release-readiness claim.
 
+### Phase 4 organizational pilot: configuration assurance
+
+Offer a read-only Microsoft 365 drift assessment first. The [pilot rollout and exit evidence](../integrations/CONFIGURATION_ASSURANCE_PILOT.md) define the three pilot controls, six-week sequence, accountable functions, and customer handoff. Demonstrate one approved repair only on a disposable target. Qualify migration assurance and additional offers against measured coverage and independent verification results.
+
 ## Success measures and outstanding decisions
 
 Track install-to-first-successful-verification conversion, time to first verified
