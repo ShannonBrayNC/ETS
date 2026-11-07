@@ -167,6 +167,10 @@ The first commercial demonstration should deliberately remain narrow: a governed
 
 The detailed workstream is maintained in [`integrations/MICROSOFT_AGENT_365_EVIDENCE_ACQUISITION.md`](integrations/MICROSOFT_AGENT_365_EVIDENCE_ACQUISITION.md).
 
+### Configuration assurance pilot — planned November 2026
+
+Following the bounded SharePoint demonstration, extend Phase 3 to Microsoft 365 tenant and host configuration drift. The [six-week DSC and Agent 365 pilot](integrations/CONFIGURATION_ASSURANCE_PILOT.md) combines read-only collection, QRF investigation, scoped repair and independently verified read-back. Its organizational pilot exit is a portable bundle that distinguishes drift, lost visibility and verified recovery.
+
 ### ETS AI Witness
 
 General AI Witness research continues beyond the Microsoft-specific integration and includes:
