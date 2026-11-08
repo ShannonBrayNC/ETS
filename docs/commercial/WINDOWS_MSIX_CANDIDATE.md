@@ -1,5 +1,11 @@
 # Unsigned development MSIX candidate
 
+> Update (2026-10-29): the owner has supplied both newly created Store identities.
+> See [unsigned Store-identity candidates](WINDOWS_STORE_IDENTITY_CANDIDATES.md)
+> for the explicit opt-in profile. The development defaults below are unchanged;
+> client, runtime, license, artwork, and submission gates remain open.
+
+
 This increment wraps the frozen desktop and verifier in an MSIX with the explicit
 development identity `ETSVerifier.Development` and publisher
 `CN=ETSVerifier.Development`. These are engineering values, not Partner Center

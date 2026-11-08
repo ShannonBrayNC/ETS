@@ -15,6 +15,8 @@ on:
       - 'tests/unit/test_desktop_dpi.py'
       - 'tests/unit/test_local_validation_regressions.py'
       - 'tests/unit/test_msix_layout.py'
+      - 'tests/unit/test_store_identity_profile.py'
+      - 'tests/unit/test_runtime_notices.py'
       - 'tests/unit/test_developer_packaging.py'
       - 'tests/e2e/desktop/**'
       - 'pyproject.toml'
@@ -113,6 +115,10 @@ jobs:
         run: |
           python packaging/windows/collect_dependency_evidence.py --output dist/ets-developer/THIRD_PARTY_EVIDENCE
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest tests/unit/test_runtime_notices.py --junitxml=test-results/runtime-notices.xml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python packaging/windows/stage_runtime_notices.py --payload dist/ets-developer
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip freeze | Out-File test-results/build-environment.txt -Encoding utf8
           Copy-Item packaging/windows/developer-kit.json test-results/sdk-kit-pin.json
       - name: Build distinct unsigned Developer development MSIX
@@ -147,6 +153,50 @@ jobs:
         with:
           name: ets-developer-review-${{ github.sha }}
           path: dist/developer-review/
+          if-no-files-found: error
+      - name: Test explicit Store identity profile and negative identity boundaries
+        run: python -m pytest tests/unit/test_store_identity_profile.py --junitxml=test-results/store-identity-profile.xml
+      - name: Build unsigned Store-identity candidate without signing or submission
+        shell: pwsh
+        run: ./packaging/windows/build-msix.ps1 -Source dist/ets-developer -OutputDirectory dist/store-developer-msix -Edition developer -Profile store -PackageVersion '1.0.0.0'
+      - name: Independently verify actual Store manifest and reject development signing
+        shell: pwsh
+        run: |
+          python packaging/windows/check_desktop_manifest.py --unpacked dist/store-developer-msix/unpacked --edition developer --version '1.0.0.0' --profile store --output test-results/store-msix-manifest.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $package = (Get-ChildItem dist/store-developer-msix/*.msix | Select-Object -First 1).FullName
+          ./packaging/windows/test-store-signing-rejection.ps1 -Package $package -OutputFile test-results/store-signing-rejection.json
+      - name: Exercise the unpacked Store payload without installation
+        shell: pwsh
+        run: |
+          $result = Join-Path $PWD 'test-results/store-native-smoke.json'
+          $start = [Diagnostics.ProcessStartInfo]::new((Resolve-Path dist/store-developer-msix/unpacked/ets-developer.exe).Path)
+          $start.UseShellExecute = $false
+          $start.Environment['PATH'] = "$env:SystemRoot\System32;$env:SystemRoot"
+          $start.Environment.Remove('PYTHONHOME') | Out-Null
+          $start.Environment.Remove('PYTHONPATH') | Out-Null
+          foreach ($argument in @('--smoke-test', '--smoke-result', $result)) { $start.ArgumentList.Add($argument) }
+          $process = [Diagnostics.Process]::Start($start)
+          if (-not $process.WaitForExit(300000)) { $process.Kill($true); throw 'Store payload smoke timed out' }
+          if ($process.ExitCode -ne 0) { Get-Content $result -ErrorAction SilentlyContinue; throw 'Store payload smoke failed' }
+          Get-Content $result
+      - name: Bind unsigned Store-identity candidate and results to exact source
+        shell: pwsh
+        env:
+          CANDIDATE_SOURCE_SHA: ${{ github.sha }}
+          CANDIDATE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          $actual = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:CANDIDATE_SOURCE_SHA) { throw 'Candidate source mismatch' }
+          python packaging/windows/candidate_record.py assemble --packages dist/store-developer-msix --results test-results --output dist/store-developer-review --source-sha $actual --run-url $env:CANDIDATE_RUN_URL
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python packaging/windows/candidate_record.py verify dist/store-developer-review
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload Store-identity candidate not approved for submission
+        uses: actions/upload-artifact@v4
+        with:
+          name: ets-developer-store-identity-review-${{ github.sha }}
+          path: dist/store-developer-review/
           if-no-files-found: error
       - name: Upload Developer engineering results
         if: always()
