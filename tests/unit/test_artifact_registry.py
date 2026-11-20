@@ -4,7 +4,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ets.core.artifact_registry import ArtifactRegistryError, load_artifact_registry
+from ets.core.artifact_registry import (
+    ArtifactRegistryError,
+    DurableArtifactRegistry,
+    load_artifact_registry,
+)
+from ets.core.artifacts import ArtifactRecord, create_artifact_record
 from ets.core.log import InMemoryAppendOnlyLog
 from ets.core.models import EvidenceEvent
 
@@ -64,3 +69,41 @@ def test_load_artifact_registry_rejects_duplicate_artifacts() -> None:
 
     with pytest.raises(ArtifactRegistryError, match="duplicate artifact_id"):
         load_artifact_registry([first, second])
+
+
+def test_registry_recovers_replica_cache_miss_from_canonical_event() -> None:
+    log = InMemoryAppendOnlyLog()
+    stale_replica = DurableArtifactRegistry({}, log)
+    entry = log.append(artifact_event())
+
+    assert "artifact-001" in stale_replica
+    assert stale_replica["artifact-001"].event_id == entry.event.event_id
+    assert stale_replica["artifact-001"].log_index == entry.log_index
+
+
+def test_projection_failure_does_not_hide_committed_registration(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class ProjectionFailureLog(InMemoryAppendOnlyLog):
+        def save_artifact_record(self, record: ArtifactRecord) -> None:
+            raise RuntimeError("simulated projection failure")
+
+    log = ProjectionFailureLog()
+    entry = log.append(artifact_event())
+    registry = DurableArtifactRegistry({}, log)
+    record = create_artifact_record(
+        artifact_id="artifact-001",
+        artifact_hash=entry.event.content_hash,
+        reference_uri="ets://artifact/artifact-001",
+        content_type="text/plain",
+        byte_size=12,
+        metadata={"case": "alpha"},
+        ingestion_timestamp_utc=entry.event.created_at_utc,
+        event_id=entry.event.event_id,
+        log_index=entry.log_index,
+    )
+
+    registry[record.artifact_id] = record
+
+    assert registry[record.artifact_id] == record
+    assert "projection failed after canonical event commit" in caplog.text
