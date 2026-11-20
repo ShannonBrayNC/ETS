@@ -16,6 +16,7 @@ NS = {
     "compat": "urn:schemas-microsoft-com:compatibility.v1",
     "dpi2005": "http://schemas.microsoft.com/SMI/2005/WindowsSettings",
     "dpi2016": "http://schemas.microsoft.com/SMI/2016/WindowsSettings",
+    "uap": "http://schemas.microsoft.com/appx/manifest/uap/windows10",
     "appx": "http://schemas.microsoft.com/appx/manifest/foundation/windows10",
 }
 SUPPORTED_OS = {
@@ -104,20 +105,42 @@ def inspect_executable(executable: Path) -> dict[str, object]:
     }
 
 
-def validate_package(unpacked: Path, edition: str, version: str) -> Path:
+def validate_package(unpacked: Path, edition: str, version: str, *,
+                     profile: str = "development") -> Path:
+    if edition not in {"verifier", "developer"} or profile not in {"development", "store"}:
+        raise ValueError("Unsupported edition or identity profile")
+    # Intentionally independent of the layout generator: a builder typo must fail this gate.
     identity = "ETSDeveloper.Development" if edition == "developer" else "ETSVerifier.Development"
+    publisher = f"CN={identity}"
+    display_name = ("ETS Desktop Developer (Preview)" if edition == "developer"
+                    else "ETS Verifier (Development)")
+    publisher_display_name = "ETS Development"
+    if profile == "store":
+        identity = ("EchoMediaAILLC.ETSDesktopDeveloper" if edition == "developer"
+                    else "EchoMediaAILLC.ETSVerifier")
+        publisher = "CN=1FB1B754-89E5-418D-A454-50CADF768A9F"
+        display_name = "ETS Desktop Developer" if edition == "developer" else "ETS Verifier"
+        publisher_display_name = "EchoMedia AI LLC"
     executable = "ets-developer.exe" if edition == "developer" else "ets-desktop.exe"
     root = ET.parse(unpacked / "AppxManifest.xml").getroot()
     identities = root.findall("appx:Identity", NS)
     if len(identities) != 1 or identities[0].attrib != {
-        "Name": identity, "Publisher": f"CN={identity}", "Version": version,
+        "Name": identity, "Publisher": publisher, "Version": version,
         "ProcessorArchitecture": "x64",
     }:
-        raise ValueError("Unpacked MSIX development identity/version does not match candidate")
+        raise ValueError("Unpacked MSIX identity/version does not match candidate")
     apps = root.findall("appx:Applications/appx:Application", NS)
     if (len(apps) != 1 or apps[0].get("Executable") != executable
             or apps[0].get("EntryPoint") != "Windows.FullTrustApplication"):
         raise ValueError("Unpacked MSIX does not launch the expected GUI")
+    for field, expected in (("DisplayName", display_name),
+                            ("PublisherDisplayName", publisher_display_name)):
+        values = root.findall(f"appx:Properties/appx:{field}", NS)
+        if len(values) != 1 or values[0].text != expected:
+            raise ValueError(f"Unpacked MSIX {field} does not match profile")
+    visuals = apps[0].findall("uap:VisualElements", NS)
+    if len(visuals) != 1 or visuals[0].get("DisplayName") != display_name:
+        raise ValueError("Unpacked MSIX visual DisplayName does not match profile")
     return unpacked / executable
 
 
@@ -128,15 +151,17 @@ def main() -> None:
     source.add_argument("--unpacked", type=Path)
     parser.add_argument("--edition", choices=("verifier", "developer"))
     parser.add_argument("--version")
+    parser.add_argument("--profile", choices=("development", "store"), default="development")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.unpacked and not (args.edition and args.version):
         parser.error("--unpacked requires --edition and --version")
-    executable = (validate_package(args.unpacked, args.edition, args.version)
+    executable = (validate_package(args.unpacked, args.edition, args.version, profile=args.profile)
                   if args.unpacked else args.executable)
     report = inspect_executable(executable)
     if args.unpacked:
-        report.update(edition=args.edition, packageVersion=args.version, unpackedMsixValidated=True)
+        report.update(edition=args.edition, profile=args.profile, packageVersion=args.version,
+                      unpackedMsixValidated=True)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))

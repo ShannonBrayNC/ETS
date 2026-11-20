@@ -9,3 +9,6 @@
 *.zip binary
 *.gz binary
 *.tgz binary
+
+# Preserve byte-exact upstream redistribution notices, including original CRLF.
+packaging/windows/notices/*-LICENSE.txt -text
