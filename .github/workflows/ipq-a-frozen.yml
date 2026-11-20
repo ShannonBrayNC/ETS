@@ -1,6 +1,7 @@
 name: IPQ-A Frozen Core Qualification
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
     paths:

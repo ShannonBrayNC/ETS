@@ -1,6 +1,7 @@
 name: IPQ-C Frozen Gateway Qualification
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
     paths:

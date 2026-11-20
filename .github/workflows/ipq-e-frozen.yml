@@ -1,6 +1,7 @@
 name: IPQ-E Frozen Enterprise Qualification
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
