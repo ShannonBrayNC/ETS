@@ -1,0 +1,158 @@
+{
+  "schema_version": "ets.ipq_g.retained_artifacts.v1",
+  "frozen_sut_sha": "75927c5a6c3f35e56c4f6e2cd88947e18a2ff333",
+  "artifacts": [
+    {
+      "family": "A",
+      "id": 14674711331,
+      "name": "ipq-a-frozen-core",
+      "run_id": 44826466806,
+      "head_sha": "4c6099d704f475536686ca9e76d89484d08360cf",
+      "digest": "sha256:e585232c49cd05a8cf87c96770c8397951b9a2109026195ebb2bce0fc3c155cc"
+    },
+    {
+      "family": "A",
+      "id": 14673513706,
+      "name": "ipq-a-frozen-persistence",
+      "run_id": 44826466806,
+      "head_sha": "4c6099d704f475536686ca9e76d89484d08360cf",
+      "digest": "sha256:c2551c92e78f5471d7cda5a8ae32919c8439e0f6d5c2e41576c84b4c9aa2effa"
+    },
+    {
+      "family": "B",
+      "id": 14673668536,
+      "name": "ipq-b-lifecycle-frozen",
+      "run_id": 44826466788,
+      "head_sha": "4c6099d704f475536686ca9e76d89484d08360cf",
+      "digest": "sha256:cdd859ee07b6a92192e8af7796715197c3d60c316b11bec4e3476f6b2aba8c93"
+    },
+    {
+      "family": "B",
+      "id": 14674276497,
+      "name": "ipq-b-native-frozen",
+      "run_id": 44826466788,
+      "head_sha": "4c6099d704f475536686ca9e76d89484d08360cf",
+      "digest": "sha256:3b69edc6dd7082800928965a941721177955f2f6d8650ee02cd4c65897bba1db"
+    },
+    {
+      "family": "C",
+      "id": 14673364268,
+      "name": "ipq-c-https-frozen",
+      "run_id": 44826788055,
+      "head_sha": "80ef77f2084b75128b780eec5904fac866b55dd1",
+      "digest": "sha256:5b71a6b59815e9b6348e8aa22580bf73263f60d98b48573bad8ae729339e7716"
+    },
+    {
+      "family": "C",
+      "id": 14674865895,
+      "name": "ipq-c-syslog-frozen",
+      "run_id": 44826788055,
+      "head_sha": "80ef77f2084b75128b780eec5904fac866b55dd1",
+      "digest": "sha256:f759604b62c6605dc4e151fa57b27275a1483e7f90ed75f6d3ba9696e3d90f95"
+    },
+    {
+      "family": "C",
+      "id": 14673731996,
+      "name": "ipq-c-file-drop-frozen",
+      "run_id": 44826788055,
+      "head_sha": "80ef77f2084b75128b780eec5904fac866b55dd1",
+      "digest": "sha256:f4d0593f91a376ba4dadcbe581c4f67c96f8395780579c47a87ae62e358fe381"
+    },
+    {
+      "family": "C",
+      "id": 14673708885,
+      "name": "ipq-c-otlp-frozen",
+      "run_id": 44826788055,
+      "head_sha": "80ef77f2084b75128b780eec5904fac866b55dd1",
+      "digest": "sha256:87e86bcc6466f89d761e3da4adc56510511bf61f2c9514c0b719702820281447"
+    },
+    {
+      "family": "D",
+      "id": 14673753366,
+      "name": "ipq-d-frozen-connector-platform",
+      "run_id": 44826466820,
+      "head_sha": "4c6099d704f475536686ca9e76d89484d08360cf",
+      "digest": "sha256:3b1cc875580088a021e8fe7e49bcc8635909b98bf64f16989a46373579379e3f"
+    },
+    {
+      "family": "D",
+      "id": 14673334097,
+      "name": "ipq-d-frozen-console-build",
+      "run_id": 44826466820,
+      "head_sha": "4c6099d704f475536686ca9e76d89484d08360cf",
+      "digest": "sha256:26320efd44d8da9fad6812115ec0921d51c8468646da826c711aea0d835d8d7f"
+    },
+    {
+      "family": "D",
+      "id": 14673299529,
+      "name": "ipq-d-frozen-browser",
+      "run_id": 44826466820,
+      "head_sha": "4c6099d704f475536686ca9e76d89484d08360cf",
+      "digest": "sha256:49957d03c66d795b44552aefa619ff8e300702eafe0d091364746c0e537d8fea"
+    },
+    {
+      "family": "E",
+      "id": 14673463715,
+      "name": "ipq-e-github-audit-frozen",
+      "run_id": 44826466918,
+      "head_sha": "4c6099d704f475536686ca9e76d89484d08360cf",
+      "digest": "sha256:c48da03eda94e74035f9788a8a811a4662f8648248c8c90652beaca1869c663d"
+    },
+    {
+      "family": "E",
+      "id": 14673324086,
+      "name": "ipq-e-aws-cloudtrail-frozen",
+      "run_id": 44826466918,
+      "head_sha": "4c6099d704f475536686ca9e76d89484d08360cf",
+      "digest": "sha256:045fe17d993916032e2f34c613f4dc1262c3a2e3292bf5c55ed1f69257ddb422"
+    },
+    {
+      "family": "E",
+      "id": 14673463725,
+      "name": "ipq-e-okta-system-log-frozen",
+      "run_id": 44826466918,
+      "head_sha": "4c6099d704f475536686ca9e76d89484d08360cf",
+      "digest": "sha256:ebabaa260afaf13118c7a3840d5e4b06b5de732a49b5b6e6e604aea01891b592"
+    },
+    {
+      "family": "E",
+      "id": 14674176492,
+      "name": "ipq-e-generic-rest-frozen",
+      "run_id": 44826466918,
+      "head_sha": "4c6099d704f475536686ca9e76d89484d08360cf",
+      "digest": "sha256:44e5c9cb5bb24ceed5d06370b512873721765b289774af576607fa6ac2abe944"
+    },
+    {
+      "family": "F",
+      "id": 14673269366,
+      "name": "ipq-f-package-frozen",
+      "run_id": 44826466950,
+      "head_sha": "4c6099d704f475536686ca9e76d89484d08360cf",
+      "digest": "sha256:453eddc0c66c4d5874bd226c40d386a414131e68560d6a81b3ae1ae580f88f4b"
+    },
+    {
+      "family": "F",
+      "id": 14674103143,
+      "name": "ipq-f-microsoft-common-frozen",
+      "run_id": 44826466950,
+      "head_sha": "4c6099d704f475536686ca9e76d89484d08360cf",
+      "digest": "sha256:017ea53c687b210a92849d6c73c90c03e334c17d848d855e0098b4239f85ba59"
+    },
+    {
+      "family": "F",
+      "id": 14673623651,
+      "name": "ipq-f-graph-source-frozen",
+      "run_id": 44826466950,
+      "head_sha": "4c6099d704f475536686ca9e76d89484d08360cf",
+      "digest": "sha256:1a3634b58d4ae1ff517b153f39532a285dc626cd846be761728e4b57cd152fee"
+    },
+    {
+      "family": "F",
+      "id": 14674940359,
+      "name": "ipq-f-entra-delta-frozen",
+      "run_id": 44826466950,
+      "head_sha": "4c6099d704f475536686ca9e76d89484d08360cf",
+      "digest": "sha256:f3fc50ca5b66a94b7a50bf627d0cf4deda89a2b919e944cb0e5e110406a9bca5"
+    }
+  ]
+}

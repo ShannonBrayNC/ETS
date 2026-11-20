@@ -6,7 +6,9 @@ Frozen SUT: `75927c5a6c3f35e56c4f6e2cd88947e18a2ff333`
 
 ## Rule
 
-The frozen SUT is immutable. The detached harness checks out exact `75927c5...` into `sut/`, executes only baseline-native product/tests from that tree, and records both `sut_sha` and `harness_sha`. Later Gateway changes cannot be substituted for a missing frozen behavior.
+The frozen product is immutable. The detached harness checks out exact `75927c5...` into `sut/` and records both `sut_sha` and `harness_sha`. Later Gateway changes cannot be substituted for a missing frozen behavior.
+
+For evidence recovery, the OTLP group uses the harness's mTLS test fixture because the original generated certificates have expired. The fixture bases certificate validity on the execution clock and preserves the frozen event timestamps and assertions. The workflow retains the exact test-only diff and fixture digest alongside the results.
 
 ## Independent evidence families
 

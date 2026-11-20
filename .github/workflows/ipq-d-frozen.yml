@@ -1,6 +1,7 @@
 name: IPQ-D Frozen Baseline Qualification
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
     paths:

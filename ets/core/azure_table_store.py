@@ -47,7 +47,11 @@ class AzureTableBackend(Protocol):
 
     def transact(self, actions: Sequence[TableAction]) -> None: ...
 
-    def list_entries(self, partition_key: str) -> list[Mapping[str, object]]: ...
+    def list_entries(
+        self, partition_key: str, *, end_index: int
+    ) -> list[Mapping[str, object]]:
+        """Return entry rows below the exclusive end index, in row-key order."""
+        ...
 
 
 class AzureTableEventStore:
@@ -157,7 +161,9 @@ class AzureTableEventStore:
     def list_entries(self) -> list[LogEntry]:
         metadata = self._load_metadata()
         expected_count = _required_int(metadata.values, "next_index")
-        entities = self._backend.list_entries(self._partition_key)
+        # The append transaction advances metadata and creates the entry together.
+        # Bound the query to that committed prefix even if a later append wins the race.
+        entities = self._backend.list_entries(self._partition_key, end_index=expected_count)
         if len(entities) != expected_count:
             raise StorageValidationError("Azure Table log metadata does not match entry count")
 
@@ -395,10 +401,12 @@ class AzureSdkTableBackend:
                 raise AzureTableConflictError("Azure Table transaction conflicted") from exc
             raise
 
-    def list_entries(self, partition_key: str) -> list[Mapping[str, object]]:
+    def list_entries(
+        self, partition_key: str, *, end_index: int
+    ) -> list[Mapping[str, object]]:
         query = (
             f"PartitionKey eq '{partition_key}' and "
-            f"RowKey ge '{_ENTRY_PREFIX}' and RowKey lt 'entry.'"
+            f"RowKey ge '{_ENTRY_PREFIX}' and RowKey lt '{_entry_row_key(end_index)}'"
         )
         entities: list[Mapping[str, object]] = [
             dict(entity.items()) for entity in self._client.query_entities(query)
