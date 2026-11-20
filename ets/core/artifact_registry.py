@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from datetime import UTC
 from typing import Any, Protocol, TypeGuard, cast
 
 from ets.core.artifacts import ArtifactRecord, build_artifact_event_id, create_artifact_record
-from ets.core.log import LogEntry
+from ets.core.log import EventNotFoundError, LogEntry
+
+logger = logging.getLogger(__name__)
 
 
 class ArtifactRegistryError(ValueError):
@@ -28,17 +31,70 @@ class EventListingStore(Protocol):
         """Return all log entries in index order."""
 
 
+class EventLookupStore(Protocol):
+    """Storage contract for recovering one artifact from its canonical event."""
+
+    def get_by_event_id(self, event_id: str) -> LogEntry:
+        """Return one log entry by its deterministic event identifier."""
+
+
 class DurableArtifactRegistry(dict[str, ArtifactRecord]):
-    """Dict-compatible registry that persists new artifact records when supported."""
+    """Replica-local artifact cache backed by canonical registration events.
+
+    The append-only event is the registration commit. The optional artifact-record table is a
+    convenience projection, so a projection failure must not hide or roll back an event that has
+    already committed. Cache misses are recovered by deterministic event ID so replicas started
+    before another replica's registration do not remain stale.
+    """
 
     def __init__(self, records: dict[str, ArtifactRecord], store: object) -> None:
         super().__init__(records)
         self._store = store
 
     def __setitem__(self, artifact_id: str, record: ArtifactRecord) -> None:
-        if _supports_artifact_record_persistence(self._store):
-            self._store.save_artifact_record(record)
+        if artifact_id != record.artifact_id:
+            raise ArtifactRegistryError("artifact registry key does not match record")
         super().__setitem__(artifact_id, record)
+        if _supports_artifact_record_persistence(self._store):
+            try:
+                self._store.save_artifact_record(record)
+            except Exception:
+                logger.warning(
+                    "artifact record projection failed after canonical event commit: %s",
+                    record.event_id,
+                    exc_info=True,
+                )
+
+    def __contains__(self, artifact_id: object) -> bool:
+        if dict.__contains__(self, artifact_id):
+            return True
+        if not isinstance(artifact_id, str):
+            return False
+        return self._recover(artifact_id) is not None
+
+    def __getitem__(self, artifact_id: str) -> ArtifactRecord:
+        try:
+            return dict.__getitem__(self, artifact_id)
+        except KeyError:
+            record = self._recover(artifact_id)
+            if record is None:
+                raise
+            return record
+
+    def _recover(self, artifact_id: str) -> ArtifactRecord | None:
+        if not _supports_event_lookup(self._store):
+            return None
+        try:
+            entry = self._store.get_by_event_id(build_artifact_event_id(artifact_id))
+        except EventNotFoundError:
+            return None
+        record = artifact_record_from_log_entry(entry)
+        if record is None:
+            raise ArtifactRegistryError("artifact event ID does not identify a registration")
+        if record.artifact_id != artifact_id:
+            raise ArtifactRegistryError("artifact event does not match requested artifact_id")
+        dict.__setitem__(self, artifact_id, record)
+        return record
 
 
 def artifact_record_from_log_entry(entry: LogEntry) -> ArtifactRecord | None:
@@ -117,5 +173,11 @@ def _supports_event_listing(value: object) -> TypeGuard[EventListingStore]:
     if not hasattr(value, "list_entries"):
         return False
     return callable(cast(Any, value).list_entries)
+
+
+def _supports_event_lookup(value: object) -> TypeGuard[EventLookupStore]:
+    if not hasattr(value, "get_by_event_id"):
+        return False
+    return callable(cast(Any, value).get_by_event_id)
 
 

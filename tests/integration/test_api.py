@@ -529,6 +529,40 @@ def test_duplicate_artifact_id_returns_conflict():
     assert response.json()["error"]["code"] == "ETS_EVENT_DUPLICATE"
 
 
+def test_artifact_registration_is_visible_to_an_existing_replica():
+    shared_log = InMemoryAppendOnlyLog()
+    first_replica = TestClient(create_app(log=shared_log))
+    second_replica = TestClient(create_app(log=shared_log))
+
+    registration = first_replica.post("/evidence/register", json=make_artifact_registration())
+    recovered = second_replica.get("/evidence/artifact_001")
+    duplicate = second_replica.post("/evidence/register", json=make_artifact_registration())
+
+    assert registration.status_code == 201
+    assert recovered.status_code == 200
+    assert recovered.json()["event_id"] == registration.json()["event_id"]
+    assert duplicate.status_code == 409
+
+
+def test_committed_artifact_survives_projection_write_failure():
+    class ProjectionFailureLog(InMemoryAppendOnlyLog):
+        def save_artifact_record(self, record) -> None:
+            raise RuntimeError("simulated projection failure")
+
+    log = ProjectionFailureLog()
+    client = TestClient(create_app(log=log))
+
+    registration = client.post("/evidence/register", json=make_artifact_registration())
+    recovered = client.get("/evidence/artifact_001")
+    restarted_replica = TestClient(create_app(log=log))
+    recovered_after_restart = restarted_replica.get("/evidence/artifact_001")
+
+    assert registration.status_code == 201
+    assert recovered.status_code == 200
+    assert recovered_after_restart.status_code == 200
+    assert recovered_after_restart.json()["event_id"] == registration.json()["event_id"]
+
+
 def test_artifact_hash_does_not_depend_on_metadata():
     client = make_client()
     first = client.post(
