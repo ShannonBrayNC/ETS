@@ -111,6 +111,11 @@ docker compose up --build
 .\scripts\validate-docker-federation.ps1
 ```
 
+The reference Compose profile publishes every node on IPv4 loopback only. This
+keeps the insecure local protocol lab off external host interfaces by default;
+remote access requires a separately reviewed deployment profile and security
+boundary.
+
 Docker validation is environment-dependent. A release candidate must document
 whether Docker was available locally and whether all health endpoints passed.
 
