@@ -66,11 +66,13 @@ class FakeAzureTableBackend:
             staged[key] = VersionedTableEntity(dict(action.values), self._etag())
         self.entities = staged
 
-    def list_entries(self, partition_key: str) -> list[Mapping[str, object]]:
+    def list_entries(
+        self, partition_key: str, *, end_index: int
+    ) -> list[Mapping[str, object]]:
         rows = [
             entity.values
             for (partition, row), entity in self.entities.items()
-            if partition == partition_key and row.startswith("entry-")
+            if partition == partition_key and "entry-" <= row < f"entry-{end_index:020d}"
         ]
         return sorted(rows, key=lambda row: str(row["RowKey"]))
 
@@ -120,6 +122,23 @@ def test_reopening_store_reconstructs_existing_log_without_resetting_metadata() 
 
     assert second.log_index == 1
     assert [entry.event.event_id for entry in reopened.list_entries()] == ["evt_001", "evt_002"]
+
+
+def test_read_keeps_committed_prefix_when_log_advances(monkeypatch: pytest.MonkeyPatch) -> None:
+    backend = FakeAzureTableBackend()
+    store = AzureTableEventStore(backend, log_id="hosted-pilot")
+    first = store.append(make_event("evt_001"))
+    list_entries = backend.list_entries
+
+    def list_after_append(partition_key: str, *, end_index: int) -> list[Mapping[str, object]]:
+        store.append(make_event("evt_002"))
+        return list_entries(partition_key, end_index=end_index)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(backend, "list_entries", list_after_append)
+        assert store.list_entries() == [first]
+
+    assert [entry.event.event_id for entry in store.list_entries()] == ["evt_001", "evt_002"]
 
 
 def test_competing_append_conflict_reloads_metadata_and_allocates_next_index() -> None:

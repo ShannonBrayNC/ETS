@@ -478,11 +478,12 @@ def create_app(
         target: Annotated[AnchorTarget, Query()] = "local_file",
     ) -> AnchorExport:
         _authorize(request, request_auth_policy, "evidence.export")
-        tree_head = _tree_head(event_log, log_id, tree_head_signer)
+        entries = event_log.list_entries()
+        tree_head = _tree_head_for_entries(entries, log_id, tree_head_signer)
         anchor = build_anchor_export(
             target=target,
             tree_head=tree_head,
-            latest_block_hash=_latest_block_hash(event_log.list_entries()),
+            latest_block_hash=_latest_block_hash(entries),
             exported_at_utc=datetime.now(UTC),
             notes=_anchor_notes(target, signing_mode),
         )
@@ -806,8 +807,9 @@ def create_app(
         scope = _scope_from_request(request, context)
         entry = event_log.get_by_event_id(event_id)
         _ensure_entry_matches_scope(entry, scope)
-        tree_head = _tree_head(event_log, log_id, tree_head_signer)
-        proof = generate_inclusion_proof(event_log.list_entries(), entry.log_index)
+        entries = event_log.list_entries()
+        tree_head = _tree_head_for_entries(entries, log_id, tree_head_signer)
+        proof = generate_inclusion_proof(entries, entry.log_index)
         verification = verify_inclusion_proof(proof)
         _increment_metric(request, "proof_count")
         audit_event(
@@ -1151,7 +1153,13 @@ def _create_azure_key_vault_signer(
 
 
 def _tree_head(log: EventStore, log_id: str, signer: TreeHeadSigner) -> SignedTreeHead:
-    leaves = [entry.leaf_hash for entry in log.list_entries()]
+    return _tree_head_for_entries(log.list_entries(), log_id, signer)
+
+
+def _tree_head_for_entries(
+    entries: list[LogEntry], log_id: str, signer: TreeHeadSigner
+) -> SignedTreeHead:
+    leaves = [entry.leaf_hash for entry in entries]
     tree_head = SignedTreeHead(
         tree_size=len(leaves),
         root_hash=merkle_root(leaves),

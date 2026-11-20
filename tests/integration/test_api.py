@@ -1,5 +1,6 @@
 
 import base64
+import json
 from datetime import UTC, datetime
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -8,8 +9,11 @@ from fastapi.testclient import TestClient
 
 from ets import __version__
 from ets.api.app import create_app
+from ets.core.log import InMemoryAppendOnlyLog
 from ets.core.models import EvidenceEvent
-from ets.core.signing import Ed25519TreeHeadSigner
+from ets.core.signing import Ed25519TreeHeadSigner, verify_tree_head_signature
+from ets.core.tree_head import SignedTreeHead
+from ets.verifier import verify_bundle
 
 
 def make_event(event_id: str = "evt_001") -> dict:
@@ -382,6 +386,34 @@ def test_proof_bundle_route_returns_offline_verification_artifacts():
     assert body["event"]["event_id"] == "evt_001"
     assert body["verification_result"]["valid"] is True
     assert body["tree_head"]["root_hash"] == body["inclusion_proof"]["root_hash"]
+
+
+def test_proof_bundle_stays_consistent_when_an_append_follows_the_snapshot(monkeypatch):
+    log = InMemoryAppendOnlyLog()
+    log.append(EvidenceEvent.model_validate_json(json.dumps(make_event())))
+    private_key = Ed25519PrivateKey.generate()
+    signer = Ed25519TreeHeadSigner(private_key.private_bytes_raw().hex(), "snapshot-test")
+    client = TestClient(create_app(log=log, signer=signer))
+    list_entries = log.list_entries
+
+    def list_then_append():
+        entries = list_entries()
+        if len(entries) == 1:
+            log.append(EvidenceEvent.model_validate_json(json.dumps(make_event("evt_concurrent"))))
+        return entries
+
+    monkeypatch.setattr(log, "list_entries", list_then_append)
+    response = client.get("/api/v1/bundles/evt_001")
+
+    assert response.status_code == 200
+    bundle = response.json()
+    assert bundle["tree_head"]["tree_size"] == 1
+    assert verify_bundle(bundle).valid
+    assert verify_tree_head_signature(
+        SignedTreeHead.model_validate_json(json.dumps(bundle["tree_head"])),
+        private_key.public_key().public_bytes_raw().hex(),
+    )
+    assert len(list_entries()) == 2
 
 
 def test_metrics_route_reports_activity_counts():
