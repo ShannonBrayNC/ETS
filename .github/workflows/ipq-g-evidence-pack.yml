@@ -40,13 +40,14 @@ jobs:
             "$actual" "$IPQ_FROZEN_SUT_SHA" "$BASE_SHA" "$GITHUB_SHA" \
             > artifacts/ipq-g/identity.txt
 
-      - name: Verify and extract exact retained A-F artifacts
+      - name: Verify and extract exact A-F recovery artifacts
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           python scripts/verify_and_extract_ipq_artifacts.py \
-            docs/test/IPQ_G_RETAINED_ARTIFACTS.json \
+            docs/test/IPQ_G_RECOVERY_ARTIFACTS.json \
             artifacts/ipq-g/retained
+          cp docs/test/IPQ_G_RECOVERY_ARTIFACTS.json artifacts/ipq-g/recovery-manifest.json
 
       - name: Inventory verified retained evidence files
         shell: bash
