@@ -6,6 +6,11 @@ Planning decision, 2026-11-07. Target a read-only Microsoft 365 drift assessment
 
 Select three disposable controls with stable target IDs: one Microsoft Graph Tenant Configuration Management (TCM) resource supported in the test tenant, one Microsoft365DSC property independently readable from its workload, and one cross-platform DSC 3 host property supported on the chosen OS. Assign a control owner and a single authorized writer per property. Use a reviewed Git revision for desired state. Treat discovered settings as baseline candidates until approved.
 
+Before granting access, record the six pilot principals in the machine-validated
+[configuration assurance identity profile](CONFIGURATION_ASSURANCE_IDENTITY_PROFILE.md). The
+contract rejects app-only Enterprise MCP access and investigator/executor identity reuse; live
+positive and negative qualification remains required.
+
 - WatchTower collects read-only findings. Pin OS, engine, adapters, module versions, API versions and permissions. Distinguish classic DSC 1.1 MOF/LCM, PowerShell DSC 2.x with Azure Machine Configuration, and standalone DSC 3 JSON/YAML workers. Microsoft365DSC manages tenant settings and has its own runtime prerequisites. Use test-only operations or Azure Machine Configuration Audit for initial assessments. ApplyAndMonitor may write on first assignment.
 - QRF uses an Entra agent instance and approved MCP tools to investigate, correlate an exception or ticket, and propose an exact repair. Work IQ can locate authorized business context. The Microsoft OpenTelemetry Distro associates the agent invocation and tool spans with the case. Keep protected evidence out of span attributes.
 - A separate pipeline identity may execute one approved repair in the disposable scope. Bind approval to tenant, resource, property diff, baseline digest and expiry. Re-read before writing, reject a competing edit, and read back before retrying a timeout. Capture rollback and partial failure. Use a separate reader for verification and record shared source dependencies.
