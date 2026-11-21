@@ -23,7 +23,7 @@ Six working weeks is an execution estimate contingent on staffing, access and ga
 - [ ] [OBS-01 — Migrate Minesweeper observability to pinned Microsoft OpenTelemetry Distro](https://github.com/ShannonBrayNC/EchoMedia-ContentEngine/issues/1211) (P0)
 - [ ] [OBS-02 — Gate tenant qualification on real ingestion and complete correlation](https://github.com/ShannonBrayNC/EchoMedia-ContentEngine/issues/1212) (P0)
 - [ ] [ID-01 — Qualify read-only investigator and separately authorized execution identities](https://github.com/ShannonBrayNC/ETS/issues/960) (P0)
-- [ ] [OBS-03 — Freeze Agent 365 telemetry semantics and evidence custody profile](https://github.com/ShannonBrayNC/ETS/issues/961) (P1)
+- [ ] [OBS-03 — Freeze Agent 365 telemetry semantics and evidence custody profile](https://github.com/ShannonBrayNC/ETS/issues/961) (P1) — [bounded profile contract](AGENT365_TELEMETRY_CUSTODY_PROFILE.md); live controlled-tenant qualification remains open
 - [ ] [DSC-01 — Qualify scheduled DSC 3 read/test runner and freshness failures](https://github.com/ShannonBrayNC/ETS/issues/962) (P0)
 - [ ] [M365-01 — Qualify selected read-only Microsoft365DSC resource and runtime](https://github.com/ShannonBrayNC/ETS/issues/963) (P1)
 - [ ] [TCM-01 — Block baseline replacement until configuration monitor archive verifies](https://github.com/ShannonBrayNC/ETS/issues/964) (P1)
