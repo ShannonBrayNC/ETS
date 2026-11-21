@@ -42,6 +42,9 @@ PLAN-01 is coordination; ETS #828 remains the Q0–Q5 qualification authority an
 
 - Findings F01/F03 → OBS-01; F02 → OBS-02; F04/F05 → VER-01; F06 → ID-01; F07 → OBS-03; F08 → DSC-01; F09 → M365-01; F10 → TCM-01; F11 → MIG-01; F12 → EXEC-01; F13 → PLAN-01; F14 → QUAL-01.
 - Use existing supported ETS Ed25519/proof profiles. CMS is not a pilot requirement. Preserve historical proof semantics; any new configuration verdict profile is explicitly versioned.
+- The bounded [configuration verdict profile](CONFIGURATION_VERDICT_PROFILE.md) supplies VER-01
+  reviewer tooling that rehashes separately exported verdict/artifact bytes and reports integrity,
+  trust, authorization, repair and uncertainty independently. Live qualification remains open.
 - A successful proof signature is not validation of separately exported artifact bytes, authorization or repair. Qualify each verdict and report uncertainty separately.
 - Microsoft telemetry ingestion and ETS evidence custody are separate observations. Do not use SDK loader success, export attempt or synthetic traces as live ingestion proof.
 - Standalone DSC 3 requires an owned trigger and freshness policy. Machine Configuration assignment evaluation and legacy LCM behavior are qualified separately.
