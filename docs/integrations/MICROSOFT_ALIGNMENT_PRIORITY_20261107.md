@@ -44,7 +44,7 @@ PLAN-01 is coordination; ETS #828 remains the Q0–Q5 qualification authority an
 - Use existing supported ETS Ed25519/proof profiles. CMS is not a pilot requirement. Preserve historical proof semantics; any new configuration verdict profile is explicitly versioned.
 - A successful proof signature is not validation of separately exported artifact bytes, authorization or repair. Qualify each verdict and report uncertainty separately.
 - Microsoft telemetry ingestion and ETS evidence custody are separate observations. Do not use SDK loader success, export attempt or synthetic traces as live ingestion proof.
-- Standalone DSC 3 requires an owned trigger and freshness policy. Machine Configuration assignment evaluation and legacy LCM behavior are qualified separately.
+- Standalone DSC 3 requires an owned trigger and freshness policy. The machine-validated [scheduled DSC 3 read/test runner profile](DSC3_READ_TEST_RUNNER_PROFILE.md) supplies the local implementation contract and fail-closed stale-checker semantics; live qualification remains open. Machine Configuration assignment evaluation and legacy LCM behavior are qualified separately.
 - Work IQ supplies authorized business context, not automatic write authority. Qualify delegated enterprise MCP and any autonomous broker separately.
 - QRF's later-November beta is a read-only thin slice. WatchTower architecture/synthetic fixtures do not establish a production sensor. Full repair qualification follows measured evidence.
 - Edge and Mobile retain concurrent P0 qualification lanes. Physical/Ranger gates and protected active baselines remain intact. No blanket Distro/DSC dependency is imposed on every ETS product.
