@@ -29,6 +29,7 @@ Six working weeks is an execution estimate contingent on staffing, access and ga
 - [ ] [TCM-01 — Block baseline replacement until configuration monitor archive verifies](https://github.com/ShannonBrayNC/ETS/issues/964) (P1)
 - [ ] [VER-01 — Qualify configuration evidence profile using existing ETS signing profiles](https://github.com/ShannonBrayNC/ETS/issues/965) (P0)
 - [ ] [EXEC-01 — Enforce approval-bound disposable executor and independent read-back](https://github.com/ShannonBrayNC/ETS/issues/966) (P0)
+  - Bounded contract milestone: [approval-bound disposable executor profile](APPROVAL_BOUND_EXECUTOR_PROFILE.md). Live execution and qualification remain open.
 - [ ] [QUAL-01 — Qualify real repair bundle with second engineer and offline tamper tests](https://github.com/ShannonBrayNC/ETS/issues/967) (P0)
 - [ ] [MIG-01 — Build legacy MOF to Machine Configuration equivalence acceptance suite](https://github.com/ShannonBrayNC/ETS/issues/968) (P1)
 
