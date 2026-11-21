@@ -33,6 +33,7 @@ from ets.verifier import (
     verify_event_hash,
     verify_inclusion,
 )
+from ets.verifier.configuration import verify_configuration_verdict_package
 from ets.verifier.input import InputLimitError, read_json
 from ets.verifier.service import (
     TreeHeadTrustStore,
@@ -89,6 +90,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _tree_head(args.previous, args.latest)
         if args.command == "election-proof":
             return _election_proof(args.path)
+        if args.command == "configuration-verdict":
+            return _configuration_verdict(
+                args.verdict,
+                args.bundle,
+                tuple(args.artifact),
+                args.trust_store,
+                args.expected_log_id,
+            )
     except InputLimitError:
         return _finish(
             args,
@@ -234,6 +243,22 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="path to an ElectionInclusionProofBundle JSON file",
     )
+
+    configuration = subparsers.add_parser(
+        "configuration-verdict",
+        help="verify an exported configuration verdict, artifacts, and signed ETS proof",
+    )
+    configuration.add_argument("verdict", type=Path, help="configuration verdict JSON bytes")
+    configuration.add_argument("bundle", type=Path, help="ETS proof bundle for the verdict bytes")
+    configuration.add_argument(
+        "--artifact",
+        action="append",
+        required=True,
+        metavar="ARTIFACT_ID=PATH",
+        help="separately exported artifact; repeat for all five declared artifacts",
+    )
+    configuration.add_argument("--trust-store", type=Path, required=True)
+    configuration.add_argument("--expected-log-id", required=True)
 
     return parser
 
@@ -424,6 +449,41 @@ def _election_proof(path: Path) -> int:
     payload = _read_json(path)
     bundle = ElectionInclusionProofBundle.model_validate_json(json.dumps(payload))
     result = verify_election_inclusion_bundle(bundle)
+    print(json.dumps(result.model_dump(mode="json"), sort_keys=True))
+    return 0 if result.valid else 1
+
+
+def _configuration_verdict(
+    verdict_path: Path,
+    bundle_path: Path,
+    artifact_arguments: tuple[str, ...],
+    trust_store_path: Path,
+    expected_log_id: str,
+) -> int:
+    verdict_bytes = verdict_path.read_bytes()
+    if len(verdict_bytes) > MAX_OFFLINE_BUNDLE_BYTES:
+        raise InputLimitError("configuration verdict exceeds byte limit")
+    bundle = EvidenceProofBundle.model_validate_json(
+        json.dumps(_read_json_limited(bundle_path, MAX_OFFLINE_BUNDLE_BYTES))
+    )
+    artifact_payloads: dict[str, bytes] = {}
+    for argument in artifact_arguments:
+        artifact_id, separator, raw_path = argument.partition("=")
+        if not separator or not artifact_id or not raw_path or artifact_id in artifact_payloads:
+            raise ValueError("--artifact must be a unique ARTIFACT_ID=PATH value")
+        path = Path(raw_path)
+        with path.open("rb") as stream:
+            raw = stream.read(MAX_OFFLINE_BUNDLE_BYTES + 1)
+        if len(raw) > MAX_OFFLINE_BUNDLE_BYTES:
+            raise InputLimitError("configuration artifact exceeds byte limit")
+        artifact_payloads[artifact_id] = raw
+    result = verify_configuration_verdict_package(
+        verdict_bytes=verdict_bytes,
+        proof_bundle=bundle,
+        artifact_payloads=artifact_payloads,
+        trust_store=_load_trust_store(trust_store_path, False),
+        policy=VerifierPolicy(require_tree_head_signature=True, expected_log_id=expected_log_id),
+    )
     print(json.dumps(result.model_dump(mode="json"), sort_keys=True))
     return 0 if result.valid else 1
 
