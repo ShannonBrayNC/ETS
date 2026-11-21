@@ -31,8 +31,13 @@ Expected artifacts:
 - `artifacts/benchmarks/benchmark-results.json`
 - `artifacts/benchmarks/benchmark-results.md`
 
-Benchmark timings are machine-dependent. Event counts, tree size, and output
-shape are deterministic.
+The benchmark records per-append latency plus repeated inclusion-proof generation
+and verification latency (mean, p50, p95, p99, and maximum), serialized proof
+size, workload counts, and the Python/platform environment. Leaf indexes are
+sampled deterministically across the complete tree; timings remain
+machine-dependent. CI artifacts also record the source revision and workflow
+run identifier. These bounded in-memory measurements are not production
+throughput, capacity, or service-level claims.
 
 ## Experiment Reproduction
 
