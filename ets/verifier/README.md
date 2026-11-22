@@ -95,6 +95,25 @@ ets-verify offline .\bundle.json `
   --expected-log-id ets-production
 ```
 
+Configuration-assurance reviewer verification rehashes the separately exported verdict and all
+five declared artifacts before checking the verdict event's existing ETS proof and signed tree
+head:
+
+```powershell
+ets-verify configuration-verdict .\verdict.json .\bundle.json `
+  --artifact baseline-1=.\baseline.json `
+  --artifact before-1=.\before.json `
+  --artifact approval-1=.\approval.json `
+  --artifact tool-result-1=.\tool-result.json `
+  --artifact read-back-1=.\read-back.json `
+  --trust-store .\ets-trust.json `
+  --expected-log-id ets-production
+```
+
+Its output keeps integrity, checkpoint trust, authorization, repair and uncertainty separate. A
+valid result proves only the bounded package and checkpoint relationship; it does not independently
+prove approver authority, source truth, observer independence, or a real-world repair.
+
 Online verification:
 
 ```powershell
