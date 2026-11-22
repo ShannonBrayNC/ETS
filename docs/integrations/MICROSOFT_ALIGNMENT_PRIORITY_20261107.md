@@ -23,12 +23,13 @@ Six working weeks is an execution estimate contingent on staffing, access and ga
 - [ ] [OBS-01 — Migrate Minesweeper observability to pinned Microsoft OpenTelemetry Distro](https://github.com/ShannonBrayNC/EchoMedia-ContentEngine/issues/1211) (P0)
 - [ ] [OBS-02 — Gate tenant qualification on real ingestion and complete correlation](https://github.com/ShannonBrayNC/EchoMedia-ContentEngine/issues/1212) (P0)
 - [ ] [ID-01 — Qualify read-only investigator and separately authorized execution identities](https://github.com/ShannonBrayNC/ETS/issues/960) (P0)
-- [ ] [OBS-03 — Freeze Agent 365 telemetry semantics and evidence custody profile](https://github.com/ShannonBrayNC/ETS/issues/961) (P1)
+- [ ] [OBS-03 — Freeze Agent 365 telemetry semantics and evidence custody profile](https://github.com/ShannonBrayNC/ETS/issues/961) (P1) — [bounded profile contract](AGENT365_TELEMETRY_CUSTODY_PROFILE.md); live controlled-tenant qualification remains open
 - [ ] [DSC-01 — Qualify scheduled DSC 3 read/test runner and freshness failures](https://github.com/ShannonBrayNC/ETS/issues/962) (P0)
 - [ ] [M365-01 — Qualify selected read-only Microsoft365DSC resource and runtime](https://github.com/ShannonBrayNC/ETS/issues/963) (P1)
 - [ ] [TCM-01 — Block baseline replacement until configuration monitor archive verifies](https://github.com/ShannonBrayNC/ETS/issues/964) (P1)
 - [ ] [VER-01 — Qualify configuration evidence profile using existing ETS signing profiles](https://github.com/ShannonBrayNC/ETS/issues/965) (P0)
 - [ ] [EXEC-01 — Enforce approval-bound disposable executor and independent read-back](https://github.com/ShannonBrayNC/ETS/issues/966) (P0)
+  - Bounded contract milestone: [approval-bound disposable executor profile](APPROVAL_BOUND_EXECUTOR_PROFILE.md). Live execution and qualification remain open.
 - [ ] [QUAL-01 — Qualify real repair bundle with second engineer and offline tamper tests](https://github.com/ShannonBrayNC/ETS/issues/967) (P0)
 - [ ] [MIG-01 — Build legacy MOF to Machine Configuration equivalence acceptance suite](https://github.com/ShannonBrayNC/ETS/issues/968) (P1)
 
@@ -42,13 +43,12 @@ PLAN-01 is coordination; ETS #828 remains the Q0–Q5 qualification authority an
 
 - Findings F01/F03 → OBS-01; F02 → OBS-02; F04/F05 → VER-01; F06 → ID-01; F07 → OBS-03; F08 → DSC-01; F09 → M365-01; F10 → TCM-01; F11 → MIG-01; F12 → EXEC-01; F13 → PLAN-01; F14 → QUAL-01.
 - Use existing supported ETS Ed25519/proof profiles. CMS is not a pilot requirement. Preserve historical proof semantics; any new configuration verdict profile is explicitly versioned.
+- The bounded [configuration verdict profile](CONFIGURATION_VERDICT_PROFILE.md) supplies VER-01
+  reviewer tooling that rehashes separately exported verdict/artifact bytes and reports integrity,
+  trust, authorization, repair and uncertainty independently. Live qualification remains open.
 - A successful proof signature is not validation of separately exported artifact bytes, authorization or repair. Qualify each verdict and report uncertainty separately.
 - Microsoft telemetry ingestion and ETS evidence custody are separate observations. Do not use SDK loader success, export attempt or synthetic traces as live ingestion proof.
-- Standalone DSC 3 requires an owned trigger and freshness policy. Machine Configuration assignment evaluation and legacy LCM behavior are qualified separately.
-- The bounded [configuration monitor archive gate](CONFIGURATION_MONITOR_ARCHIVE_GATE.md) verifies
-  complete paginated export bytes before baseline replacement, binds the old/new baselines to the
-  reviewed decision, and keeps emergency exceptions explicit. Live monitor qualification remains
-  open.
+- Standalone DSC 3 requires an owned trigger and freshness policy. The machine-validated [scheduled DSC 3 read/test runner profile](DSC3_READ_TEST_RUNNER_PROFILE.md) supplies the local implementation contract and fail-closed stale-checker semantics; live qualification remains open. Machine Configuration assignment evaluation and legacy LCM behavior are qualified separately.
 - Work IQ supplies authorized business context, not automatic write authority. Qualify delegated enterprise MCP and any autonomous broker separately.
 - QRF's later-November beta is a read-only thin slice. WatchTower architecture/synthetic fixtures do not establish a production sensor. Full repair qualification follows measured evidence.
 - Edge and Mobile retain concurrent P0 qualification lanes. Physical/Ranger gates and protected active baselines remain intact. No blanket Distro/DSC dependency is imposed on every ETS product.
