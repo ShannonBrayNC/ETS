@@ -33,6 +33,12 @@ Six working weeks is an execution estimate contingent on staffing, access and ga
 - [ ] [QUAL-01 — Qualify real repair bundle with second engineer and offline tamper tests](https://github.com/ShannonBrayNC/ETS/issues/967) (P0)
 - [ ] [MIG-01 — Build legacy MOF to Machine Configuration equivalence acceptance suite](https://github.com/ShannonBrayNC/ETS/issues/968) (P1)
 
+Bounded MIG-01 implementation milestone: the
+[Machine Configuration migration equivalence profile](MACHINE_CONFIGURATION_EQUIVALENCE_PROFILE.md)
+defines exact artifact retention, five required behavior comparisons,
+single-writer enforcement, correction telemetry, and fail-closed acceptance
+classification. Live host execution and migration qualification remain open.
+
 ## Dependency rules
 
 OBS-02 depends on OBS-01 and the OBS-03 semantic profile. Live collection depends on ID-01 and each source's qualified runtime. EXEC-01 live execution depends on ID-01, VER-01 and the selected source's baseline/before-state gates; TCM baseline replacement also depends on TCM-01 archival verification. QUAL-01 depends on the complete selected live case including execution and independent read-back. MIG-01 is follow-on, not a pilot prerequisite.
