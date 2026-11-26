@@ -27,6 +27,7 @@ Six working weeks is an execution estimate contingent on staffing, access and ga
 - [ ] [DSC-01 — Qualify scheduled DSC 3 read/test runner and freshness failures](https://github.com/ShannonBrayNC/ETS/issues/962) (P0)
 - [ ] [M365-01 — Qualify selected read-only Microsoft365DSC resource and runtime](https://github.com/ShannonBrayNC/ETS/issues/963) (P1)
 - [ ] [TCM-01 — Block baseline replacement until configuration monitor archive verifies](https://github.com/ShannonBrayNC/ETS/issues/964) (P1)
+  - Bounded contract milestone: [configuration monitor archive gate](CONFIGURATION_MONITOR_ARCHIVE_GATE.md). Live Microsoft configuration-monitor qualification remains open.
 - [ ] [VER-01 — Qualify configuration evidence profile using existing ETS signing profiles](https://github.com/ShannonBrayNC/ETS/issues/965) (P0)
 - [ ] [EXEC-01 — Enforce approval-bound disposable executor and independent read-back](https://github.com/ShannonBrayNC/ETS/issues/966) (P0)
   - Bounded contract milestone: [approval-bound disposable executor profile](APPROVAL_BOUND_EXECUTOR_PROFILE.md). Live execution and qualification remain open.
